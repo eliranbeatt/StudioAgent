@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { reserveStockInternal } from "./inventory_helpers";
 
 export const reserveStock = mutation({
   args: {
@@ -10,38 +11,13 @@ export const reserveStock = mutation({
     qty: v.number(),
   },
   handler: async (ctx, args) => {
-    // 1. Check availability
-    const item = await ctx.db.get(args.inventoryItemId);
-    if (!item) throw new Error("Inventory item not found");
-
-    const existingReservations = await ctx.db
-      .query("inventoryReservations")
-      .withIndex("by_item", (q) => q.eq("inventoryItemId", args.inventoryItemId))
-      .filter((q) => q.neq(q.field("status"), "cancelled"))
-      .collect();
-
-    const totalReserved = existingReservations.reduce((sum, res) => sum + res.qty, 0);
-    const available = item.onHandQty - totalReserved;
-
-    let status: "active" | "overbooked" = "active";
-    if (args.qty > available) {
-      status = "overbooked";
-    }
-
-    // 2. Create Reservation
-    const resId = await ctx.db.insert("inventoryReservations", {
+    return await reserveStockInternal(ctx, {
       projectId: args.projectId,
       inventoryItemId: args.inventoryItemId,
       elementId: args.elementId,
       materialLineId: args.materialLineId,
       qty: args.qty,
-      status,
-      computedAvailableAfter: available - args.qty,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
     });
-
-    return { resId, status, availableAfter: available - args.qty };
   },
 });
 
