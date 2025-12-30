@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { applyPatchOps, PatchOp } from "./patch";
 import { runReconciliation } from "./reconciliation";
 import { findExistingReservation, reserveStockInternal } from "./inventory_helpers";
+import { query } from "./_generated/server";
 
 type DraftType = "element" | "projectCost";
 
@@ -161,5 +162,55 @@ export const applyChangeSet = mutation({
       createdFrom: args.createdFrom,
       createdBy: args.createdBy,
     });
+  },
+});
+
+export const listOpenDrafts = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const drafts = await ctx.db
+      .query("elementDrafts")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .filter((q) =>
+        q.or(q.eq(q.field("status"), "open"), q.eq(q.field("status"), "needsReview"))
+      )
+      .collect();
+
+    const results: Array<{
+      draftType: "element" | "projectCost";
+      draftId: string;
+      elementId?: string;
+      title: string;
+      revisionNumber: number;
+    }> = [];
+
+    for (const draft of drafts) {
+      const element = await ctx.db.get(draft.elementId);
+      results.push({
+        draftType: "element",
+        draftId: draft._id,
+        elementId: draft.elementId,
+        title: element?.title ?? "Untitled Element",
+        revisionNumber: draft.revisionNumber,
+      });
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (project?.projectCostContainerId) {
+      const container = await ctx.db.get(project.projectCostContainerId);
+      if (container?.currentDraftId) {
+        const pcDraft = await ctx.db.get(container.currentDraftId);
+        if (pcDraft && (pcDraft.status === "open" || pcDraft.status === "needsReview")) {
+          results.push({
+            draftType: "projectCost",
+            draftId: pcDraft._id,
+            title: "Project Level Costs",
+            revisionNumber: pcDraft.revisionNumber,
+          });
+        }
+      }
+    }
+
+    return results;
   },
 });

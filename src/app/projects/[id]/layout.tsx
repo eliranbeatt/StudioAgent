@@ -22,7 +22,7 @@ export default function ProjectLayout({
 
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
-    { name: "Studio Agent", href: `/projects/${projectId}/studio`, icon: Bot },
+    { name: "AgenticEshet", href: `/projects/${projectId}/studio`, icon: Bot },
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },
     { name: "Quote", href: `/projects/${projectId}/quote`, icon: FileText },
@@ -38,8 +38,8 @@ export default function ProjectLayout({
             &larr; Console
           </Link>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold text-lg">M</div>
-            <h1 className="text-lg font-bold text-gray-900 tracking-tight">Magnetic Studio</h1>
+            <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold text-lg">A</div>
+            <h1 className="text-lg font-bold text-gray-900 tracking-tight">AgenticEshet</h1>
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-1">

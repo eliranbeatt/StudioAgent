@@ -132,3 +132,98 @@ export const getFinancialSummary = query({
         }
     }
 })
+
+export const getDraftCostBreakdown = query({
+    args: { projectId: v.id("projects") },
+    handler: async (ctx, args) => {
+        const project = await ctx.db.get(args.projectId);
+        if (!project) return null;
+
+        const elementDrafts = await ctx.db
+            .query("elementDrafts")
+            .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+            .filter((q) =>
+                q.or(
+                    q.eq(q.field("status"), "open"),
+                    q.eq(q.field("status"), "needsReview")
+                )
+            )
+            .collect();
+
+        const elementCosts = elementDrafts.reduce(
+            (acc, draft) => {
+                const snapshot = draft.workingSnapshot ?? {};
+                const materials = Object.values<any>(snapshot.materials?.byId ?? {});
+                const labor = Object.values<any>(snapshot.labor?.byId ?? {});
+                const subcontract = Object.values<any>(snapshot.subcontract?.byId ?? {});
+
+                for (const line of materials) {
+                    if (line?.deletedAt) continue;
+                    acc.materials += Number(line?.qty ?? 0) * Number(line?.unitCost ?? 0);
+                }
+                for (const line of labor) {
+                    if (line?.deletedAt) continue;
+                    acc.labor += Number(line?.qty ?? 0) * Number(line?.rate ?? 0);
+                }
+                for (const line of subcontract) {
+                    if (line?.deletedAt) continue;
+                    acc.subcontract += Number(line?.cost ?? 0);
+                }
+                return acc;
+            },
+            { materials: 0, labor: 0, subcontract: 0 }
+        );
+
+        const projectCostContainer = project.projectCostContainerId
+            ? await ctx.db.get(project.projectCostContainerId)
+            : null;
+
+        let projectCostDraft = null;
+        if (projectCostContainer?.currentDraftId) {
+            projectCostDraft = await ctx.db.get(projectCostContainer.currentDraftId);
+        }
+
+        const projectCostSnapshot = projectCostDraft?.workingSnapshot ?? {};
+        const projectMaterials = Object.values<any>(projectCostSnapshot.materials?.byId ?? {});
+        const projectLabor = Object.values<any>(projectCostSnapshot.labor?.byId ?? {});
+        const projectSubcontract = Object.values<any>(projectCostSnapshot.subcontract?.byId ?? {});
+
+        const projectCosts = { materials: 0, labor: 0, subcontract: 0 };
+        for (const line of projectMaterials) {
+            if (line?.deletedAt) continue;
+            projectCosts.materials += Number(line?.qty ?? 0) * Number(line?.unitCost ?? 0);
+        }
+        for (const line of projectLabor) {
+            if (line?.deletedAt) continue;
+            projectCosts.labor += Number(line?.qty ?? 0) * Number(line?.rate ?? 0);
+        }
+        for (const line of projectSubcontract) {
+            if (line?.deletedAt) continue;
+            projectCosts.subcontract += Number(line?.cost ?? 0);
+        }
+
+        const elementDirect =
+            elementCosts.materials + elementCosts.labor + elementCosts.subcontract;
+        const projectDirect =
+            projectCosts.materials + projectCosts.labor + projectCosts.subcontract;
+
+        return {
+            elementDrafts: elementDrafts.length,
+            elementCosts: {
+                materials: elementCosts.materials,
+                labor: elementCosts.labor,
+                subcontract: elementCosts.subcontract,
+                directCost: elementDirect,
+            },
+            projectCosts: {
+                materials: projectCosts.materials,
+                labor: projectCosts.labor,
+                subcontract: projectCosts.subcontract,
+                directCost: projectDirect,
+            },
+            totals: {
+                directCost: elementDirect + projectDirect,
+            },
+        };
+    },
+});

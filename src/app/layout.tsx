@@ -6,7 +6,7 @@ import ConvexClientProvider from './ConvexClientProvider'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Studio Agent',
+  title: 'AgenticEshet',
   description: 'Project Management for Studios',
 }
 
