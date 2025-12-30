@@ -3,17 +3,36 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  /* Brand & Accents */
+  --primary: 20 20 20; /* Almost Black */
+  --primary-foreground: 255 255 255;
+  --accent: 79 70 229; /* Indigo 600 */
+  --accent-foreground: 255 255 255;
+  
+  /* Backgrounds */
+  --background: 250 250 250; /* Light Gray */
+  --surface: 255 255 255;
+  --surface-raised: 255 255 255;
+  
+  /* Text */
+  --foreground: 15 23 42; /* Slate 900 */
+  --muted-foreground: 100 116 139; /* Slate 500 */
+  
+  /* UI Elements */
+  --border: 226 232 240; /* Slate 200 */
+  --radius: 0.75rem;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: rgb(var(--foreground));
+  background: rgb(var(--background));
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors font-medium;
+  }
+  .card {
+    @apply bg-white border border-gray-100 rounded-xl shadow-sm hover:shadow-md transition-all;
+  }
 }
