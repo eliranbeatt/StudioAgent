@@ -1,0 +1,593 @@
+Below is the **updated greenfield spec (v2)** with your suggested refinements **implemented**: safer reconciliation (flag-first + “graveyard”), project-level/global costs, past-project context tiering (digest layer, no RAG), Change Orders, optimistic UI patching, JSONB + indexed sidecar columns, agent chain-of-verification, element recipes, and inventory conflict detection.
+
+---
+
+# 0) What changed vs v1 (high impact)
+
+1. **Reconciliation Engine is now “Flag-first”** (non-destructive by default).
+
+   * Auto-fix only for **safe** operations.
+   * Anything that may remove money/cost lines becomes a **pending decision** shown in a new **Tombstone Graveyard** UI.
+
+2. **Element-only expanded to include Project-Level Costs**
+
+   * Add a first-class **ProjectCostContainer** (“Global Element”) for overhead/general conditions that aren’t tied to a specific element.
+
+3. **Past project linking gets a “Digest Tier”**
+
+   * Agent never pulls 500 elements into context. It first reads a small **ProjectDigest JSON** and fetches full element snapshots only for selected items.
+
+4. **Approved Budget + Change Orders**
+
+   * Baseline budget remains immutable, but **Change Orders adjust budget legitimately**, separating “overspend” vs “client-approved scope increase”.
+
+5. **Optimistic UI + server reconciliation responses**
+
+   * UI applies patches immediately, server returns warnings/fix proposals that appear as banners/toasts and optional “apply fix” actions.
+
+6. **Snapshots stay JSONB, but we add indexed “sidecar” fields** for analytics/search.
+
+7. **Agent gets a “chain of verification”** step before emitting ChangeSets.
+
+8. **Management Hub gets “Element Recipes” templates**.
+
+9. **Inventory adds reservation/conflict detection** when materials are switched to stock.
+
+---
+
+# 1) Product definition
+
+## 1.1 Goal
+
+A clean app where **Elements + Project-Level Costs** are the single source of truth, supporting:
+
+* One **Studio Agent** (multi-skill) that can:
+
+  * propose elements,
+  * break elements into **tasks + materials + labor**,
+  * estimate using **Management Hub prices first**,
+  * generate quotes and support approvals.
+* Full **Draft → Approve → Version** lifecycle for elements and project-level costs.
+* **Approved Budget Baseline** + **Change Orders** + **Variance**.
+
+## 1.2 Non-goals (v1)
+
+* No RAG ingestion pipeline.
+* No file-based chunking/embeddings.
+* Past-project context is DB fetch with digest tiering (below).
+
+---
+
+# 2) IA (UI)
+
+## 2.1 Global navigation
+
+* **Projects**
+* **Management Hub**
+* **Admin** (skills/config)
+
+## 2.2 Per-project tabs
+
+1. **Overview**
+2. **Studio Agent**
+3. **Accounting**
+4. **Tasks**
+5. **Quote**
+6. **Graveyard** *(NEW: “Tombstone Graveyard”)*
+
+   > This can be a sub-tab under Tasks/Accounting, but it must exist as a dedicated screen.
+
+---
+
+# 3) Core domain model (single truth + global costs)
+
+## 3.1 Entities
+
+* **Project**
+* **Element**
+* **ProjectCostContainer** *(NEW)*: project-level costs not tied to any element
+* **Draft / Version** (for both Element and ProjectCostContainer)
+* **ElementSnapshot** (JSONB)
+* **ProjectCostSnapshot** (JSONB)
+* **ChangeSet** (+ patch ops)
+* **QuoteVersion**
+* **BudgetBaseline** (approved budget)
+* **ChangeOrder** *(NEW)*
+* **Management Hub**: employees, vendors, catalog, inventory, price observations, recipes
+
+---
+
+# 4) Data contracts (dev-ready)
+
+## 4.1 Project
+
+Adds linked projects + baseline + CO ledger pointers:
+
+```json
+{
+  "id": "proj_...",
+  "name": "...",
+  "defaults": {
+    "profitPct": 0.30,
+    "overheadPct": 0.15,
+    "riskPct": 0.10,
+    "excludeManagementLaborFromCost": true
+  },
+  "elementIds": ["el_..."],
+  "projectCostContainerId": "pc_...",
+  "linkedProjects": [
+    { "projectId": "proj_old", "mode": "contextOnly|importSuggestions" }
+  ],
+  "activeBudgetBaselineId": "budget_...",
+  "changeOrderIds": ["co_..."],
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+## 4.2 ProjectCostContainer (Global Element)
+
+Header:
+
+```json
+{
+  "id": "pc_...",
+  "projectId": "proj_...",
+  "title": "Project Level Costs",
+  "currentApprovedVersionId": "pcv_...",
+  "currentDraftId": "pcd_..."
+}
+```
+
+Snapshot (same line types as element, but no “buildable thing”):
+
+```json
+{
+  "snapshotId": "pcsnap_...",
+  "projectId": "proj_...",
+  "materials": [],
+  "labor": [
+    {
+      "lineId": "lab_...",
+      "role": "Project Manager",
+      "rateType": "day",
+      "rate": 900,
+      "qty": 3,
+      "unit": "day",
+      "category": "management|production",
+      "deletedAt": null,
+      "source": { "mode": "manual", "origin": "user" }
+    }
+  ],
+  "subcontract": [
+    { "lineId": "sub_...", "name": "Site Insurance", "cost": 1200, "deletedAt": null }
+  ],
+  "notes": ["General conditions, site-wide costs..."]
+}
+```
+
+## 4.3 ElementSnapshot updates (links + procurement)
+
+Add explicit procurement state + inventory link:
+
+```json
+{
+  "materials": [
+    {
+      "lineId": "mat_...",
+      "name": "MDF 12mm",
+      "qty": 4,
+      "unit": "sheet",
+      "unitCost": 160,
+      "vendorId": "ven_...",
+      "procurement": {
+        "mode": "purchase|stock|rent|subcontract",
+        "inventoryItemId": "inv_...",
+        "reserve": true
+      },
+      "needPurchase": true,
+      "links": { "taskIds": ["task_..."] },
+      "deletedAt": null,
+      "source": { "mode": "derived|manual", "origin": "user|agent" }
+    }
+  ]
+}
+```
+
+## 4.4 ChangeSet (adds “reviewable impacts”)
+
+```json
+{
+  "id": "chg_...",
+  "draftId": "eld_...",
+  "createdBy": { "type": "user|agent", "agentSkillId": "skill_..." },
+  "createdFrom": { "tab": "Tasks", "stage": "planning" },
+  "reason": "...",
+  "patchOps": [ ... ],
+  "impactPreview": {
+    "moneyImpacts": [
+      { "type": "laborRemoved", "amount": 4000, "lineIds": ["lab_..."], "requiresConfirmation": true }
+    ],
+    "inventoryImpacts": [
+      { "type": "switchToStock", "materialLineId": "mat_...", "inventoryItemId": "inv_...", "reserveQty": 4 }
+    ]
+  }
+}
+```
+
+---
+
+# 5) Reconciliation Engine v2 (flag-first, non-destructive)
+
+## 5.1 Philosophy
+
+* **Never auto-delete money** by default.
+* Prefer **Unlink + Flag + Graveyard**.
+* Auto-fix only when it is:
+
+  * reversible,
+  * non-destructive,
+  * and clearly intended.
+
+## 5.2 Output types
+
+Every reconciliation run returns:
+
+* `safeFixOps[]` (auto-applicable)
+* `reviewRequired[]` (requires user decision)
+* `blockers[]` (cannot approve)
+
+## 5.3 Default behaviors (your requested refinement)
+
+### A) Deleting a task linked to labor cost
+
+**Default action**: *Unlink Only* + flag
+
+* Remove taskId link from the labor line.
+* DO NOT tombstone the labor line automatically.
+* Mark labor line:
+
+  * `status: "orphaned"`
+  * `needsReview: true`
+* Add to **Graveyard**:
+
+  * “You deleted 1 task. Do you want to remove 4,000 NIS labor placeholder?” Yes/No
+
+### B) Deleting a purchase task
+
+**Default action**: flag decision (not auto)
+
+* Suggest: switch material procurement to **stock** OR keep as purchase but mark task “hidden”.
+* Put in Graveyard:
+
+  * “Purchase task removed. Choose material procurement mode: [Stock] [Purchase without task] [Create new purchase task]”
+
+### C) Safe auto-fixes (still allowed)
+
+Examples of safe auto-fix:
+
+* removing links to tombstoned tasks (non-destructive)
+* auto-tombstone truly empty tasks (title empty + no metadata)
+* normalize invalid values (negative qty → flag + set to null)
+
+## 5.4 Tombstone Graveyard UI (NEW)
+
+A dedicated screen that lists “pending destructive or financially meaningful consequences”.
+
+### Graveyard items
+
+Each item has:
+
+* what action happened (task deleted, task tombstoned, etc.)
+* what it impacts (labor lines, materials procurement, dependencies)
+* estimated cost impact
+* suggested options (choose one)
+* bulk actions
+
+### Example: Bulk confirm
+
+> “You deleted 5 tasks. They are linked to 4 labor lines totaling 4,000 NIS placeholders.”
+> Buttons:
+
+* **Keep costs (placeholders)**
+* **Remove costs**
+* **Convert to Project-Level Cost**
+* **Assign to another task**
+
+This eliminates reconciliation frustration and gives you control.
+
+---
+
+# 6) Accounting ↔ Tasks bidirectional consistency (now safer)
+
+## 6.1 Link model
+
+* Tasks link to cost lines and vice versa (as in v1).
+* Derived lines remain possible, but **deletion never auto-removes money lines** unless user confirms.
+
+## 6.2 Reconciliation rule table (v2)
+
+* Task deleted → labor line becomes orphaned (flag)
+* Purchase task deleted → procurement mode decision (flag)
+* Material switched to stock → create inventory reservation (safe fix) but conflict-check (flag if conflict)
+* Dependencies broken → safe fix remove dangling dependency edges (auto)
+
+---
+
+# 7) Inventory enhancements (stock conflicts + reservations)
+
+## 7.1 Inventory entities
+
+* InventoryItem: name, unit, onHandQty, location
+* InventoryReservation: projectId, elementId, materialLineId, qty, dateRange(optional), status
+
+## 7.2 Conflict detection (NEW)
+
+When material procurement is set to `stock` with `reserve=true`:
+
+* server checks available quantity:
+
+  * `available = onHand - activeReservations`
+* if insufficient:
+
+  * create **warning** + graveyard decision:
+
+    * “Not enough stock. Switch to purchase?” or “Reduce qty” or “Proceed (overbook)”
+* optional date-range:
+
+  * for overlapping projects/reservations
+
+---
+
+# 8) Past project context: Digest Tier (no RAG, token-safe)
+
+## 8.1 ProjectDigest (generated & stored)
+
+When a project is archived (or manually “Generate Digest”):
+Store a compact JSON:
+
+```json
+{
+  "projectId": "proj_old",
+  "title": "Delta Xmas",
+  "keywords": ["דלפק", "PVC", "קיר צילום"],
+  "summary": "Pop-up with 12 elements, heavy print + installation.",
+  "totals": { "sellPrice": 120000, "directCost": 80000 },
+  "elementIndex": [
+    {
+      "elementId": "el_1",
+      "title": "קיר צילום",
+      "tags": ["הדפסה", "התקנה"],
+      "complexity": 3,
+      "costBand": "10k-15k"
+    }
+  ]
+}
+```
+
+## 8.2 Agent fetch protocol (mandatory)
+
+1. Fetch **ProjectDigest** only.
+2. Ask user/auto-select candidate elements from digest index.
+3. Fetch full snapshots only for selected elementIds (max N).
+
+This avoids context overflow while keeping “no RAG” promise.
+
+---
+
+# 9) Approved Budget + Change Orders (missing financial piece added)
+
+## 9.1 BudgetBaseline (approved quote)
+
+* Immutable record based on quote version + element versions + project-cost version.
+
+## 9.2 ChangeOrder entity (NEW)
+
+```json
+{
+  "id": "co_...",
+  "projectId": "proj_...",
+  "title": "Client requested extra signage",
+  "status": "draft|sent|approved|rejected|cancelled",
+  "source": {
+    "changeSetIds": ["chg_..."],
+    "elementDraftIds": ["eld_..."],
+    "projectCostDraftId": "pcd_..."
+  },
+  "financials": {
+    "deltaDirectCost": 2000,
+    "deltaSellPrice": 3500
+  },
+  "approvedAt": null,
+  "approvedBy": null,
+  "notes": "..."
+}
+```
+
+## 9.3 Workflow
+
+1. You or agent creates ChangeSets as usual (draft changes).
+2. You can mark a set of draft changes as:
+
+   * **Internal variance** (no baseline change)
+   * **Change Order candidate**
+3. If CO is **approved**:
+
+   * baseline is adjusted via a ledger:
+
+     * `BudgetBaselineAdjustments[]`
+   * variance view splits into:
+
+     * **Approved CO variance** (good)
+     * **Unapproved variance** (bad/overspend)
+
+## 9.4 Accounting tab after baseline exists
+
+Shows:
+
+* Baseline (planned)
+* CO-approved baseline adjustments (sum)
+* Current forecast
+* Variance split:
+
+  * `varianceUnapproved`
+  * `varianceApprovedCO`
+
+---
+
+# 10) Optimistic UI + patching (architecture refinement)
+
+## 10.1 Client behavior
+
+* Apply patch locally immediately (optimistic).
+* Send ChangeSet to server.
+* Server returns:
+
+  * `acceptedPatchOps[]` (canonical)
+  * `safeFixOps[]` (optional auto-applied fixes)
+  * `reviewRequired[]` (graveyard items)
+  * `warnings[]`
+
+## 10.2 UI rendering rules
+
+* If `safeFixOps` returned → apply automatically and toast: “Auto-fixed 2 safe issues”.
+* If `reviewRequired` returned → show banner + link to Graveyard.
+* If conflict (revision mismatch) → show merge UI:
+
+  * “Your draft is behind. Re-apply your change?” (rebase)
+
+## 10.3 Draft concurrency
+
+Each draft has:
+
+* `revisionNumber` incremented per server commit.
+  ChangeSets include `baseRevisionNumber` to detect conflicts.
+
+---
+
+# 11) Postgres JSONB + indexed sidecar fields (analytics/search)
+
+## 11.1 Storage pattern
+
+* `element_versions` stores JSONB snapshot.
+* `element_drafts` stores JSONB working snapshot.
+
+## 11.2 Sidecar indexed table (recommended)
+
+`element_snapshot_index` (materialized per approved version + optionally draft):
+
+* `elementId`
+* `versionId`
+* `totalDirectCost`
+* `totalSellPrice`
+* `vendorIds[]`
+* `materialNames[]` or `materialTags[]`
+* `domains[]` (tasks domains)
+* `updatedAt`
+
+Populated by server on approve (and optionally on draft-save).
+
+This enables:
+
+* “How many projects used Red Paint last year?”
+* vendor usage stats
+* cost trend reports
+
+---
+
+# 12) Agent strategy upgrades
+
+## 12.1 Chain of Verification (mandatory)
+
+Before emitting ChangeSets, agent must:
+
+1. Simulate applying patch to a copy of the snapshot.
+2. Detect orphans (labor lines unlinked, purchase tasks removed, dependency break).
+3. Instead of destructive fixes, it should:
+
+   * add **reviewRequired suggestions**
+   * or output a non-destructive “unlink + flag” patch
+4. Output `impactPreview` so UI can show the effect.
+
+Server still runs reconciliation, but this reduces reconciliation load.
+
+## 12.2 Element Recipes (templates) in Management Hub
+
+Add a template library:
+
+* Recipe contains:
+
+  * element type
+  * default tasks + dependencies
+  * default materials/labor (as placeholders)
+  * typical vendors
+  * complexity + cost band
+
+Agent can:
+
+* propose elements *from recipes*,
+* instantiate a recipe into a new element draft,
+* then customize.
+
+This is better than relying only on past projects.
+
+---
+
+# 13) Updated acceptance criteria (non-negotiables)
+
+1. **No destructive auto-fix** without user confirmation for money-impacting changes.
+2. **Graveyard exists** and can bulk-confirm cost removals / procurement flips.
+3. **Project-level costs are first-class** (no fake “General Stuff element” workaround).
+4. Agent past-context is **digest-first**, snapshot fetch only for selected items.
+5. **Change Orders** adjust baseline legitimately and variance splits approved vs unapproved.
+6. UI is **optimistic**; reconciliation feedback returns from server as warnings/fix proposals.
+7. Inventory switching to stock creates reservations + conflict warnings.
+8. Snapshots are JSONB but high-frequency analytics fields are indexed in sidecar columns/tables.
+
+---
+
+# 14) Implementation epics (build order)
+
+### Epic 1 — Core versioning & patch engine
+
+* Draft/Version
+* ChangeSets + apply
+* Diff viewer
+* Revision conflict handling
+
+### Epic 2 — ProjectCostContainer
+
+* UI + accounting rollups
+* include in quote + baseline
+
+### Epic 3 — Reconciliation v2 + Graveyard
+
+* safeFix vs reviewRequired vs blockers
+* graveyard decisions emit ChangeSets
+
+### Epic 4 — Accounting ↔ Tasks linking
+
+* link UI
+* orphan markers
+* procurement state
+
+### Epic 5 — Quote + BudgetBaseline
+
+* generate + export
+* approve → create baseline
+
+### Epic 6 — Change Orders
+
+* create CO from ChangeSets
+* approve CO → baseline adjustments + variance split
+
+### Epic 7 — Past project digest tier
+
+* digest generation
+* agent context protocol + UI selection
+
+### Epic 8 — Management Hub Recipes + Inventory reservations
+
+* recipe CRUD + instantiate
+* stock reservations + conflict detection
+

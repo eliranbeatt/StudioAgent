@@ -1,0 +1,311 @@
+```ts
+// ==============================
+// Reconciliation Output Schema
+// (Exact TypeScript Types)
+// ==============================
+
+// ---- IDs & primitives ----
+export type UUID = string; // uuid v4
+export type ISODateTime = string; // RFC3339 string
+
+export type DraftType = "element" | "projectCost";
+export type DraftStatus = "open" | "needsReview" | "approved" | "discarded";
+
+export type ReconciliationSeverity = "info" | "warning" | "blocker";
+export type ReconciliationScope = "draft" | "project";
+
+export type MoneyCurrency = "NIS" | "USD" | "EUR" | string;
+
+// ---- Patch Operations (the subset reconciliation may emit) ----
+// NOTE: these are the operations produced by reconciliation.
+// Your main ChangeSet patchOps can be broader; keep this strict.
+export type PatchOp =
+  | ReplaceOp
+  | AddOp
+  | RemoveOp
+  | TombstoneOp
+  | LinkOp
+  | UnlinkOp;
+
+export interface ReplaceOp {
+  op: "replace";
+  path: string; // stable-id path, e.g. "/labor/byId/lab_77/status"
+  value: unknown;
+}
+
+export interface AddOp {
+  op: "add";
+  path: string; // e.g. "/tasks" (append) OR "/tasks/byId/task_123"
+  value: unknown;
+}
+
+export interface RemoveOp {
+  op: "remove";
+  path: string; // e.g. "/tasks/byId/task_123/dependsOn/task_9"
+}
+
+export interface TombstoneOp {
+  op: "tombstone";
+  path: string; // e.g. "/materials/byId/mat_123"
+  value: { deletedAt: ISODateTime | "now"; reason?: string };
+}
+
+/**
+ * Link/Unlink are “semantic” ops. Your server can translate them
+ * to replace/add/remove internally, but keeping them explicit is safer
+ * for reconciliation + UI explanation.
+ */
+export interface LinkOp {
+  op: "link";
+  path: string; // target container path; convention depends on your model
+  value: {
+    from: { kind: RefsKind; id: string };
+    to: { kind: RefsKind; id: string };
+    rel: RefRelation;
+  };
+}
+
+export interface UnlinkOp {
+  op: "unlink";
+  path: string;
+  value: {
+    from: { kind: RefsKind; id: string };
+    to: { kind: RefsKind; id: string };
+    rel: RefRelation;
+  };
+}
+
+export type RefsKind = "task" | "laborLine" | "materialLine" | "subcontractLine";
+export type RefRelation =
+  | "task_requires_labor"
+  | "task_requires_material"
+  | "task_fulfills_procurement"
+  | "line_linked_to_task";
+
+// ---- Impacts (used for previews and graveyard decisions) ----
+export type MoneyImpactType =
+  | "laborRemoved"
+  | "laborKeptPlaceholder"
+  | "materialRemoved"
+  | "procurementModeChanged"
+  | "noChange"
+  | "costIncreased"
+  | "costDecreased";
+
+export interface MoneyImpact {
+  type: MoneyImpactType;
+  currency: MoneyCurrency;
+  amount: number; // positive magnitude, UI decides sign based on type
+  lineIds?: string[]; // lineId(s) impacted
+  elementId?: UUID;
+  note?: string;
+}
+
+export type InventoryImpactType =
+  | "reserveStock"
+  | "releaseReservation"
+  | "switchToStock"
+  | "switchToPurchase"
+  | "overbooked"
+  | "noChange";
+
+export interface InventoryImpact {
+  type: InventoryImpactType;
+  inventoryItemId?: UUID;
+  materialLineId?: string;
+  elementId?: UUID;
+  qty?: number;
+  dateRange?: { start: ISODateTime; end: ISODateTime } | null;
+  note?: string;
+}
+
+export interface ImpactPreview {
+  moneyImpacts?: MoneyImpact[];
+  inventoryImpacts?: InventoryImpact[];
+  other?: Array<{
+    kind: string;
+    note: string;
+    refs?: Record<string, string>;
+  }>;
+}
+
+// ---- Reconciliation Messages (UI banners/toasts) ----
+export interface ReconciliationMessage {
+  code: string; // stable code for analytics and filtering
+  severity: ReconciliationSeverity;
+  message: string; // user-facing
+  scope: ReconciliationScope;
+  refs?: Record<string, string>; // {taskId, laborLineId, materialLineId, elementId...}
+  details?: unknown; // safe for logs / debug panel
+}
+
+// ---- Blockers: must be resolved before approval ----
+export type BlockerCode =
+  | "SCHEMA_INVALID"
+  | "DANGLING_REFERENCE"
+  | "DUPLICATE_ID"
+  | "MISSING_REQUIRED_FIELD"
+  | "REVISION_CONFLICT"
+  | "INVALID_VALUE"
+  | "UNRESOLVED_GRAVEYARD"
+  | "UNKNOWN";
+
+export interface ReconciliationBlocker {
+  code: BlockerCode;
+  message: string; // user-facing
+  refs?: Record<string, string>;
+  suggestedFixOps?: PatchOp[]; // may exist but not auto-applied
+  details?: unknown;
+}
+
+// ---- ReviewRequired (Graveyard candidates) ----
+export type ReviewKind =
+  | "laborOrphanedDecision"
+  | "purchaseTaskDeletedDecision"
+  | "materialSwitchedToStockNeedsReservationDecision"
+  | "inventoryOverbookDecision"
+  | "removeDerivedLinesDecision"
+  | "otherDecision";
+
+export interface ReviewOption {
+  id: string; // stable within this review item
+  label: string; // UI button label
+  description?: string; // optional helper text
+  patchOps: PatchOp[]; // ops to apply if selected
+  impactPreview?: ImpactPreview;
+  // Optional: whether selecting this option should create inventory reservations, etc.
+  flags?: {
+    createsReservation?: boolean;
+    removesMoneyLines?: boolean;
+    keepsPlaceholders?: boolean;
+  };
+}
+
+export interface ReviewRequiredItem {
+  kind: ReviewKind;
+  message: string; // user-facing summary
+  refs?: Record<string, string>; // pointers for UI (taskId/laborLineId/etc.)
+  options: ReviewOption[];
+  impactPreview?: ImpactPreview; // overall preview for the decision
+  severity?: Exclude<ReconciliationSeverity, "info">; // usually warning
+  // If true, approval should be blocked until resolved (implemented as blocker UNRESOLVED_GRAVEYARD)
+  blocksApproval?: boolean;
+}
+
+// ---- Safe fixes (auto-applied or user-appliable) ----
+export interface SafeFixSet {
+  // Ops safe enough to auto-apply (non-destructive)
+  autoApplyOps: PatchOp[];
+  // Ops safe but maybe better as “Apply Fix” button (still non-destructive)
+  suggestedOps: PatchOp[];
+  impactPreview?: ImpactPreview;
+  message?: string; // optional toast/banner summary
+}
+
+// ---- Main reconciliation output ----
+export interface ReconciliationOutput {
+  version: 1; // bump when schema changes
+  draftType: DraftType;
+  draftId: UUID;
+  projectId: UUID;
+
+  // The reconciliation engine is run against a specific post-patch draft state.
+  evaluatedAt: ISODateTime;
+  evaluatedRevisionNumber: number;
+
+  // High-level result flags
+  status: "clean" | "hasWarnings" | "needsReview" | "blocked";
+
+  // Non-destructive auto-fixes and suggestions
+  safeFixes: SafeFixSet;
+
+  // Decisions that should go to Graveyard
+  reviewRequired: ReviewRequiredItem[];
+
+  // Hard blockers that prevent approval
+  blockers: ReconciliationBlocker[];
+
+  // Non-blocking messages (banners/toasts)
+  warnings: ReconciliationMessage[];
+  infos?: ReconciliationMessage[];
+
+  // Optional summary for quick UI (Accounting/Tasks badges)
+  summary?: {
+    orphanedLaborLineCount?: number;
+    orphanedMaterialLineCount?: number;
+    inventoryOverbookCount?: number;
+    danglingDependencyCount?: number;
+    unresolvedGraveyardCount?: number;
+    estimatedMoneyAtRisk?: { currency: MoneyCurrency; amount: number };
+  };
+
+  // For debugging / admin panel (never required)
+  debug?: {
+    ruleRuns: Array<{
+      ruleId: string;
+      tookMs: number;
+      produced: {
+        autoApplyOps: number;
+        suggestedOps: number;
+        reviewRequired: number;
+        blockers: number;
+        warnings: number;
+      };
+    }>;
+  };
+}
+
+// ---- Server response wrapper (applyChangeSet) ----
+export interface ApplyChangeSetResponse {
+  ok: true;
+  changeSetId: UUID;
+
+  draftType: DraftType;
+  draftId: UUID;
+
+  baseRevisionNumber: number;
+  newRevisionNumber: number;
+
+  // Canonical ops actually applied (after server normalization)
+  acceptedPatchOps: PatchOp[];
+
+  // Ops server applied immediately (safe fixes)
+  serverAppliedSafeFixOps: PatchOp[];
+
+  // Reconciliation output for UI rendering (banner + graveyard creation)
+  reconciliation: ReconciliationOutput;
+
+  // Graveyard items created (if any)
+  graveyard?: {
+    createdItemIds: UUID[];
+  };
+
+  // Convenient rollup so UI can update totals without re-fetch
+  draftSummary?: {
+    totalDirectCost?: number;
+    dirty: boolean;
+    status: DraftStatus;
+  };
+}
+
+// ---- Error variant (revision conflicts etc.) ----
+export interface ApplyChangeSetErrorResponse {
+  ok: false;
+  error: {
+    code:
+      | "REVISION_CONFLICT"
+      | "DRAFT_NOT_FOUND"
+      | "VALIDATION_FAILED"
+      | "PATCH_APPLY_FAILED"
+      | "UNKNOWN";
+    message: string;
+    details?: unknown;
+  };
+  // For conflict resolution UI
+  conflict?: {
+    serverRevisionNumber: number;
+    clientBaseRevisionNumber: number;
+    suggestedAction: "rebase" | "refresh" | "manualMerge";
+  };
+}
+```

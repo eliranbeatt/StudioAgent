@@ -1,0 +1,391 @@
+Below is a **from-scratch plan** for a proper **Management Hub** (global “truth” data) that both **you** can maintain and **agents must consult first** before estimating—so vendors/materials/people/prices come from your real data, not hallucinations. This plan fits your current app architecture (Next.js + Convex) and builds on the existing management/accounting/price-memory foundations you already have. 
+
+---
+
+## 1) What the Management Hub is (and is not)
+
+### What it is
+
+A **global, curated “Studio Master Data” layer** used across all projects:
+
+* ספקים (Vendors) + contacts + tags + ratings
+* עובדים/קבלנים (People) + roles + skills + rates
+* קטלוג חומרים ושירותים (Catalog Items) + units + vendor links
+* תצפיות מחיר (Price Observations) + provenance (purchase/quote/manual)
+* רכישות (Procurement Log) + line-items that feed price memory
+
+### What it must guarantee
+
+1. **Agents always query it first** (read-only) before inventing anything.
+2. Only **your real selections** (and real purchases) update it automatically.
+3. Agent “suggestions” can exist, but they land in a **Proposed Queue** until you accept.
+
+---
+
+## 2) Key UX principle: “Use → Confirm → Learn”
+
+You don’t want to “manage data for the sake of managing data”.
+So the Management Hub learns mainly from **actual usage**:
+
+**In-project actions that count as “truth”:**
+
+* You picked a vendor from a dropdown → vendor usage is logged.
+* You picked a catalog item (material/service) → item usage is logged.
+* You edited a unit price and used it in accounting/quote → new price observation saved.
+* You recorded a purchase → strongest truth; updates price memory.
+
+**Agent actions are not truth** unless you explicitly accept them.
+
+---
+
+## 3) Data model (schemas)
+
+### 3.1 Core entities
+
+#### `Vendor`
+
+* `_id`
+* `name` (display, Hebrew ok)
+* `normalizedName` (lowercase/trim/punct removed)
+* `category` (e.g., “בית דפוס”, “נגריה”, “הובלות”, “ברזל”, “השכרות”)
+* `tags[]` (free tags; Hebrew allowed)
+* `rating` (1–5)
+* `contact` { `phone?`, `email?`, `address?`, `person?`, `notes?` }
+* `status` (`active|inactive|blacklist`)
+* `preferredForTags[]` (optional: “PVC”, “הדפסה”, “עץ”)
+* `createdAt`, `updatedAt`
+
+Indexes:
+
+* by `normalizedName`
+* by `category`
+* by `tags` (in Convex: multi-field indexes or tag table)
+
+---
+
+#### `Person` (Employees & Contractors)
+
+* `_id`
+* `name`
+* `normalizedName`
+* `role` (primary role: “ארט”, “גרפיקאי/ת”, “סט דראסר/ית”, “מתקין/ה”…)
+* `status` (`employee|contractor|vendor-contact`)
+* `skillsTags[]` (what they do best)
+* `defaultRate` (reference to `RateCardEntry`)
+* `contacts` { phone/email }
+* `notes`
+* timestamps
+
+---
+
+#### `CatalogItem` (Materials + Services unified)
+
+Instead of “materials library” vs “services”, keep **one catalog** with `type`.
+
+* `_id`
+* `type` (`material|service`)
+* `name`
+* `normalizedName`
+* `synonyms[]` (free text variants)
+* `category` (e.g., “עץ”, “ברזל”, “PVC”, “הדפסה”, “השכרה”, “צביעה”)
+* `defaultUnit` (e.g., `sqm`, `meter`, `unit`, `day`, `hour`, `kg`)
+* `spec` (optional: thickness, finish, etc.)
+* `defaultVendorId?`
+* `vendorRefs[]`: [{ `vendorId`, `vendorSku?`, `link?`, `notes?` }]
+* `lastPrice` { `value`, `currency`, `unit`, `date`, `vendorId?`, `source` }
+* `tags[]`
+* timestamps
+
+---
+
+#### `RateCardEntry` (Labor rates)
+
+* `_id`
+* `role` (e.g., “ארט”)
+* `unit` (`day|hour|project`)
+* `rate`
+* `currency` (ILS)
+* `effectiveFrom`, `effectiveTo?`
+* `personId?` (if personalized) else global default
+* `notes`
+
+This supports: “Default ארט worker: 800/day but editable”.
+
+---
+
+### 3.2 Truth & memory layer
+
+#### `PriceObservation`
+
+Atomic “I saw this price” record.
+
+* `_id`
+* `catalogItemId`
+* `vendorId?`
+* `price` (number)
+* `currency`
+* `unit`
+* `qtyPack?` (optional: e.g., “sheet 122x244”)
+* `date`
+* `sourceType` (`purchase|manual|quoteAccepted|invoice|agentProposed`)
+* `sourceRef` { `projectId?`, `purchaseId?`, `quoteId?`, `materialLineId?` }
+* `confidence` (`confirmed|high|medium|low`)
+* `createdBy` (`user|system|agent`)
+* timestamps
+
+**Rule:** only `confirmed` observations affect “best estimate” defaults automatically.
+
+---
+
+#### `Purchase`
+
+* `_id`
+* `projectId?` (often yes)
+* `vendorId`
+* `handledByPersonId?`
+* `date`
+* `currency`
+* `totalAmount`
+* `status` (`recorded|paid|cancelled`)
+* `lineItems[]`: [{
+
+  * `catalogItemId?` (or `freeTextName` until mapped)
+  * `description?`
+  * `qty`
+  * `unit`
+  * `unitPrice`
+  * `lineTotal`
+  * `tags[]`
+    }]
+* `notes`
+* timestamps
+
+**On save:** write `PriceObservation` per line item (confirmed).
+
+---
+
+### 3.3 “Agents can suggest but not corrupt truth”
+
+#### `ProposedUpdate`
+
+* `_id`
+* `entityType` (`Vendor|Person|CatalogItem|PriceObservation|NormalizationMapping`)
+* `payload` (the proposed object)
+* `reason` (why the agent thinks it’s needed)
+* `createdFrom` { `projectId`, `agentRunId`, `messageId` }
+* `status` (`pending|accepted|rejected`)
+* `resolution` { `resolvedBy`, `resolvedAt`, `resultEntityId?` }
+
+**Only when you accept** → it becomes real Vendor/CatalogItem/etc.
+
+---
+
+### 3.4 Normalization / de-dup (critical)
+
+You already have the idea (`canonicalItems`, `itemNormalizationMap`). Keep/strengthen it:
+
+#### `NameNormalizationMap`
+
+* `_id`
+* `kind` (`vendor|person|catalogItem`)
+* `variantText`
+* `normalizedVariant`
+* `targetId`
+* `confidence`
+* `createdBy` (`user|system|agent`)
+* timestamps
+
+This prevents: “נייר כרומו” vs “כרומו” becoming 2 items.
+
+---
+
+## 4) Data flows (how updates happen)
+
+### 4.1 “Selection → UsageEvent → Price memory”
+
+Whenever you select something in project tabs (Accounting / Tasks / Quote):
+
+1. Write the project line with IDs (`vendorId`, `catalogItemId`, etc.)
+2. Emit a **UsageEvent** (optional but very useful)
+3. If price was edited/confirmed → write `PriceObservation (confirmed/manual)`
+
+**Why UsageEvent matters:** it allows “most used vendors for PVC” and “recently used items” ranking.
+
+---
+
+### 4.2 Purchases are the strongest signal
+
+Procurement Log entry:
+
+* creates Purchase
+* generates PriceObservations (confirmed)
+* updates `CatalogItem.lastPrice` (denormalized convenience)
+
+---
+
+### 4.3 Quotes acceptance can also confirm prices
+
+If you have a “Quote approved/sent” action:
+
+* mark quoteAccepted
+* optionally log PriceObservations as `quoteAccepted` (lower confidence than purchase, but useful)
+
+---
+
+## 5) Agent interactions (must-use Management Hub first)
+
+### 5.1 The single golden rule in every estimating agent
+
+Before estimating:
+
+1. **Search catalog items by tags + name**
+2. Resolve best price estimates from observations
+3. Resolve vendors/people/rates from directory
+4. Only if missing → propose additions (do not auto-create)
+
+### 5.2 Agent tool surface (Convex actions/queries)
+
+You’ll expose a small “Management API” to agents:
+
+**Read tools**
+
+* `management.searchCatalog({ query, tags, type }) -> [CatalogItemMatch]`
+* `management.getBestPrice({ catalogItemId, vendorId?, unit }) -> BestPriceResult`
+* `management.searchVendors({ query, tags, category }) -> [VendorMatch]`
+* `management.getLaborDefaults({ role }) -> [RateCardEntry]`
+* `management.getPreferredForProject({ projectId }) -> { topVendors, topItems, recentPrices }`
+
+**Propose tools**
+
+* `management.proposeEntity({ entityType, payload, reason, context }) -> proposedUpdateId`
+* `management.proposePriceObservation(...) -> proposedUpdateId`
+
+**Accept tools (UI only, not agents)**
+
+* `management.acceptProposedUpdate(proposedUpdateId)`
+* `management.rejectProposedUpdate(proposedUpdateId)`
+
+### 5.3 What the agent receives as context (example)
+
+For an estimation run, you feed it:
+
+* Project high-level tags (e.g., “PVC”, “הדפסה”, “הקמה”)
+* Top 10 vendors by relevant tags + rating + last used
+* Top 20 catalog items by tags + lastPrice + lastVendor
+* Labor defaults (e.g., ארט 800/day)
+* A “pricing policy”: prefer confirmed purchase observations, then manual confirmed, then fallback.
+
+### 5.4 Output contract (agent cannot freestyle)
+
+Estimator agent output must reference IDs:
+
+* For each material/service line:
+
+  * `catalogItemId` (or `proposedUpdateId` if missing)
+  * `vendorId` (or null + reason)
+  * `unit`, `qty`, `unitPrice`, `priceSource` (`bestPrice|fallback|unknown`)
+  * `assumptions[]`
+
+This guarantees the app can auto-fill accounting without guessing.
+
+---
+
+## 6) Query logic: “Best price estimate”
+
+A deterministic function (no LLM):
+
+`getBestPrice(catalogItemId, unit, vendorId?)` returns:
+
+1. Latest **confirmed purchase** observation (same unit; vendor match if requested)
+2. Else latest **confirmed manual** observation
+3. Else median of last N confirmed observations (same unit)
+4. Else `CatalogItem.lastPrice`
+5. Else `unknown` (agent must ask or propose)
+
+Return payload:
+
+* `price`, `currency`, `unit`
+* `confidence`
+* `sourceType`
+* `sourceRef`
+* `observedAt`
+* `vendorId?`
+
+---
+
+## 7) UI plan (Management Hub v2)
+
+Your current page has 4 boxes (Supplier, Employees, Materials, Procurement) + price table. Keep that mental model, but add 2 missing parts:
+
+### A) Directory
+
+* Vendors (ספקים)
+* People (אנשים)
+
+### B) Catalog
+
+* Catalog items (materials/services unified)
+* Normalization/synonyms editor (“כרומו” ↔ “נייר כרומו”)
+
+### C) Prices & Purchases
+
+* Procurement Log (purchases with line items)
+* Price Observations explorer (filter by item/vendor/date/source/confidence)
+
+### D) Proposed Queue (new)
+
+* “Agent suggested X” with Accept / Reject
+* Batch accept + quick edits before accepting
+
+### E) “Pinned / Preferred”
+
+* Per tag/category you can pin: “Preferred vendor for PVC”
+* Per role: default person or default rate
+
+---
+
+## 8) Integration points with the rest of the app
+
+### Accounting tab
+
+* Material line chooses from `CatalogItem` (autocomplete)
+* Vendor dropdown from `Vendor`
+* UnitPrice autopopulates from `getBestPrice`
+* On edit + “Confirm” toggle → writes `PriceObservation(confirmed/manual)`
+
+### Tasks / Solutioning
+
+* When agent suggests materials/services, it must pick from catalog IDs.
+* When you approve a version/snapshot, you can optionally “commit learned prices” if there were confirmed edits.
+
+### Quote
+
+* Quote generation uses resolved vendor/material names from IDs
+* If quote accepted → can write `quoteAccepted` observations
+
+---
+
+## 9) Migration plan (from your current tables)
+
+You already have tables like `vendors`, `employees`, `materialCatalog`, `purchases`, `priceObservations`, and normalization tables. 
+Migration approach:
+
+1. Introduce `CatalogItem(type)` while keeping old `materialCatalog` temporarily
+2. Backfill: each materialCatalog row → CatalogItem(type=material)
+3. Add ProposedQueue + Normalization improvements
+4. Update UI fields to write IDs consistently
+5. Switch agents to new read tools first
+6. Deprecate old structures
+
+---
+
+## 10) The one thing that will make this actually work: “Agents are read-first”
+
+To ensure the agent always uses Management Hub:
+
+* In every agent `getContext()`, call `management.getPreferredForProject()`
+* In the prompt, include a hard rule:
+
+  * “If you output a material/vendor/person without an existing ID or proposedUpdateId, the output is invalid.”
+* Add a validator that rejects agent output if it contains free-text entities that weren’t resolved.
+

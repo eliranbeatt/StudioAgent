@@ -1,0 +1,1164 @@
+Perfect — here’s the **dev-ready Postgres schema + indexes + triggers/functions**, and the **exact API payload contracts** for:
+
+* `applyChangeSet` (optimistic UI + reconciliation response)
+* `graveyardDecision`
+* `approveQuote` → creates `BudgetBaseline`
+* `approveChangeOrder` → creates baseline adjustment ledger + updates variance model
+
+Everything below assumes **Postgres 15+** and a backend that applies JSON Patch-like ops server-side.
+
+---
+
+## 1) Postgres schema (DDL)
+
+### 1.1 Extensions
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS btree_gin;  -- optional
+```
+
+### 1.2 Enums
+
+```sql
+DO $$ BEGIN
+  CREATE TYPE project_status AS ENUM ('active','archived');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE element_status AS ENUM ('drafting','approvedForQuote','inProduction','delivered','archived');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE draft_status AS ENUM ('open','needsReview','approved','discarded');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE co_status AS ENUM ('draft','sent','approved','rejected','cancelled');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE quote_status AS ENUM ('draft','generated','approved','superseded');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE baseline_status AS ENUM ('approved','superseded');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE graveyard_status AS ENUM ('pending','resolved','dismissed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE procurement_mode AS ENUM ('purchase','stock','rent','subcontract');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE inventory_res_status AS ENUM ('active','overbooked','cancelled','fulfilled');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+```
+
+### 1.3 Common trigger: updated_at
+
+```sql
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END $$;
+```
+
+---
+
+## 2) Core tables
+
+### 2.1 Users (minimal; integrate with your auth)
+
+```sql
+CREATE TABLE IF NOT EXISTS app_users (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text UNIQUE NOT NULL,
+  display_name text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_users_updated ON app_users;
+CREATE TRIGGER trg_users_updated
+BEFORE UPDATE ON app_users
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+### 2.2 Projects
+
+```sql
+CREATE TABLE IF NOT EXISTS projects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  client_name text,
+  status project_status NOT NULL DEFAULT 'active',
+  currency text NOT NULL DEFAULT 'NIS',
+
+  defaults jsonb NOT NULL DEFAULT '{
+    "profitPct": 0.30,
+    "overheadPct": 0.15,
+    "riskPct": 0.10,
+    "excludeManagementLaborFromCost": true
+  }'::jsonb,
+
+  project_cost_container_id uuid,         -- fk added after table exists
+  active_budget_baseline_id uuid,         -- fk added after table exists
+
+  created_by uuid REFERENCES app_users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_projects_updated ON projects;
+CREATE TRIGGER trg_projects_updated
+BEFORE UPDATE ON projects
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+### 2.3 Project links (past project context)
+
+```sql
+CREATE TABLE IF NOT EXISTS project_links (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  linked_project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  mode text NOT NULL CHECK (mode IN ('contextOnly','importSuggestions')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(project_id, linked_project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_links_project ON project_links(project_id);
+```
+
+---
+
+## 3) Elements + drafts + versions
+
+### 3.1 Elements
+
+```sql
+CREATE TABLE IF NOT EXISTS elements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  type text NOT NULL CHECK (type IN ('build','rent','print','transport','install','subcontract','mixed')),
+  status element_status NOT NULL DEFAULT 'drafting',
+  tags text[] NOT NULL DEFAULT ARRAY[]::text[],
+
+  current_approved_version_id uuid,
+  current_draft_id uuid,
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_elements_project ON elements(project_id);
+CREATE INDEX IF NOT EXISTS idx_elements_status ON elements(status);
+
+DROP TRIGGER IF EXISTS trg_elements_updated ON elements;
+CREATE TRIGGER trg_elements_updated
+BEFORE UPDATE ON elements
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+### 3.2 Element drafts (working snapshots)
+
+```sql
+CREATE TABLE IF NOT EXISTS element_drafts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  element_id uuid NOT NULL REFERENCES elements(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  base_version_id uuid, -- nullable: first draft before any version
+  status draft_status NOT NULL DEFAULT 'open',
+
+  revision_number int NOT NULL DEFAULT 1,
+
+  created_from jsonb NOT NULL DEFAULT '{}'::jsonb,  -- {tab, stage}
+  working_snapshot jsonb NOT NULL,                 -- ElementSnapshot JSONB
+  schema_version int NOT NULL DEFAULT 1,
+
+  created_by uuid REFERENCES app_users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- one open/needsReview draft per element
+CREATE UNIQUE INDEX IF NOT EXISTS ux_element_open_draft
+ON element_drafts(element_id)
+WHERE status IN ('open','needsReview');
+
+CREATE INDEX IF NOT EXISTS idx_element_drafts_project ON element_drafts(project_id);
+CREATE INDEX IF NOT EXISTS idx_element_drafts_status ON element_drafts(status);
+
+DROP TRIGGER IF EXISTS trg_element_drafts_updated ON element_drafts;
+CREATE TRIGGER trg_element_drafts_updated
+BEFORE UPDATE ON element_drafts
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+### 3.3 Element versions (immutable)
+
+```sql
+CREATE TABLE IF NOT EXISTS element_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  element_id uuid NOT NULL REFERENCES elements(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  version_number int NOT NULL,
+  status text NOT NULL CHECK (status IN ('approved')),
+  tags text[] NOT NULL DEFAULT ARRAY[]::text[],
+  summary text,
+
+  snapshot jsonb NOT NULL,
+  schema_version int NOT NULL DEFAULT 1,
+
+  approved_by uuid REFERENCES app_users(id),
+  approved_at timestamptz NOT NULL DEFAULT now(),
+
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_element_versions_num
+ON element_versions(element_id, version_number);
+
+CREATE INDEX IF NOT EXISTS idx_element_versions_project ON element_versions(project_id);
+CREATE INDEX IF NOT EXISTS idx_element_versions_element ON element_versions(element_id);
+```
+
+> Version numbering should be assigned transactionally:
+
+* `SELECT COALESCE(MAX(version_number),0)+1 FROM element_versions WHERE element_id=? FOR UPDATE`
+
+---
+
+## 4) Project-level costs (Global container)
+
+### 4.1 ProjectCostContainer
+
+```sql
+CREATE TABLE IF NOT EXISTS project_cost_containers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+  title text NOT NULL DEFAULT 'Project Level Costs',
+
+  current_approved_version_id uuid,
+  current_draft_id uuid,
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_pcc_updated ON project_cost_containers;
+CREATE TRIGGER trg_pcc_updated
+BEFORE UPDATE ON project_cost_containers
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE projects
+  ADD CONSTRAINT fk_project_pcc
+  FOREIGN KEY (project_cost_container_id)
+  REFERENCES project_cost_containers(id);
+```
+
+### 4.2 Drafts/Versions for project costs
+
+```sql
+CREATE TABLE IF NOT EXISTS project_cost_drafts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  container_id uuid NOT NULL REFERENCES project_cost_containers(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  base_version_id uuid,
+  status draft_status NOT NULL DEFAULT 'open',
+  revision_number int NOT NULL DEFAULT 1,
+
+  created_from jsonb NOT NULL DEFAULT '{}'::jsonb,
+  working_snapshot jsonb NOT NULL,         -- ProjectCostSnapshot JSONB
+  schema_version int NOT NULL DEFAULT 1,
+
+  created_by uuid REFERENCES app_users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pc_open_draft
+ON project_cost_drafts(container_id)
+WHERE status IN ('open','needsReview');
+
+DROP TRIGGER IF EXISTS trg_pc_drafts_updated ON project_cost_drafts;
+CREATE TRIGGER trg_pc_drafts_updated
+BEFORE UPDATE ON project_cost_drafts
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+CREATE TABLE IF NOT EXISTS project_cost_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  container_id uuid NOT NULL REFERENCES project_cost_containers(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  version_number int NOT NULL,
+  status text NOT NULL CHECK (status IN ('approved')),
+  tags text[] NOT NULL DEFAULT ARRAY[]::text[],
+  summary text,
+
+  snapshot jsonb NOT NULL,
+  schema_version int NOT NULL DEFAULT 1,
+
+  approved_by uuid REFERENCES app_users(id),
+  approved_at timestamptz NOT NULL DEFAULT now(),
+
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pc_versions_num
+ON project_cost_versions(container_id, version_number);
+```
+
+---
+
+## 5) ChangeSets + reconciliation outputs + graveyard
+
+### 5.1 ChangeSets
+
+```sql
+CREATE TABLE IF NOT EXISTS change_sets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  draft_type text NOT NULL CHECK (draft_type IN ('element','projectCost')),
+  draft_id uuid NOT NULL, -- references element_drafts or project_cost_drafts (app-level FK)
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  created_by jsonb NOT NULL,        -- {type:'user|agent', userId?, agentSkillId?}
+  created_from jsonb NOT NULL,      -- {tab, stage}
+
+  base_revision_number int NOT NULL,
+  patch_ops jsonb NOT NULL,         -- array of ops
+  impact_preview jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+  -- reconciliation results persisted (so UI can re-render)
+  reconciliation jsonb NOT NULL DEFAULT '{}'::jsonb, -- {safeFixOps, reviewRequired, blockers, warnings}
+
+  reason text,
+
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_changesets_project ON change_sets(project_id);
+CREATE INDEX IF NOT EXISTS idx_changesets_draft ON change_sets(draft_type, draft_id);
+```
+
+### 5.2 Tombstone Graveyard items (reviewRequired)
+
+```sql
+CREATE TABLE IF NOT EXISTS graveyard_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  draft_type text NOT NULL CHECK (draft_type IN ('element','projectCost')),
+  draft_id uuid NOT NULL,
+
+  change_set_id uuid NOT NULL REFERENCES change_sets(id) ON DELETE CASCADE,
+
+  status graveyard_status NOT NULL DEFAULT 'pending',
+
+  kind text NOT NULL,               -- e.g. "laborOrphanedDecision", "purchaseTaskDeletedDecision"
+  message text NOT NULL,
+
+  options jsonb NOT NULL,           -- [{id,label,patchOps,impactPreview}, ...]
+  selected_option_id text,
+
+  resolved_by uuid REFERENCES app_users(id),
+  resolved_at timestamptz,
+
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_graveyard_project ON graveyard_items(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_graveyard_draft ON graveyard_items(draft_type, draft_id, status);
+```
+
+---
+
+## 6) Quote + baseline + change orders
+
+### 6.1 Quote versions
+
+```sql
+CREATE TABLE IF NOT EXISTS quote_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  status quote_status NOT NULL DEFAULT 'generated',
+
+  source_element_version_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
+  source_project_cost_version_id uuid,
+
+  language text NOT NULL DEFAULT 'he',
+  sections jsonb NOT NULL,          -- {shortDescription, items[], terms[]}
+  totals jsonb NOT NULL,            -- {directCost, overhead, risk, profit, grandTotal}
+
+  created_by uuid REFERENCES app_users(id),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_quotes_project ON quote_versions(project_id, created_at DESC);
+```
+
+### 6.2 Budget baseline (approved quote)
+
+```sql
+CREATE TABLE IF NOT EXISTS budget_baselines (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  quote_version_id uuid NOT NULL REFERENCES quote_versions(id) ON DELETE RESTRICT,
+  status baseline_status NOT NULL DEFAULT 'approved',
+
+  source_element_version_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
+  source_project_cost_version_id uuid,
+
+  planned jsonb NOT NULL,           -- {byElement[], totals{}}
+  approved_by uuid REFERENCES app_users(id),
+  approved_at timestamptz NOT NULL DEFAULT now(),
+
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_baseline_project ON budget_baselines(project_id, approved_at DESC);
+
+ALTER TABLE projects
+  ADD CONSTRAINT fk_projects_active_baseline
+  FOREIGN KEY (active_budget_baseline_id)
+  REFERENCES budget_baselines(id);
+```
+
+### 6.3 Baseline adjustments ledger (for Change Orders)
+
+```sql
+CREATE TABLE IF NOT EXISTS budget_adjustments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  baseline_id uuid NOT NULL REFERENCES budget_baselines(id) ON DELETE CASCADE,
+
+  change_order_id uuid NOT NULL,    -- FK added after change_orders exists
+  delta jsonb NOT NULL,             -- {deltaDirectCost, deltaSellPrice, byElementDelta[]}
+
+  approved_by uuid REFERENCES app_users(id),
+  approved_at timestamptz NOT NULL DEFAULT now(),
+
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_budget_adj_baseline ON budget_adjustments(baseline_id, approved_at DESC);
+```
+
+### 6.4 Change Orders
+
+```sql
+CREATE TABLE IF NOT EXISTS change_orders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  title text NOT NULL,
+  status co_status NOT NULL DEFAULT 'draft',
+
+  -- Link to draft changes
+  source jsonb NOT NULL DEFAULT '{}'::jsonb,  -- {changeSetIds[], elementDraftIds[], projectCostDraftId?}
+  financials jsonb NOT NULL DEFAULT '{}'::jsonb, -- {deltaDirectCost, deltaSellPrice}
+
+  approved_by uuid REFERENCES app_users(id),
+  approved_at timestamptz,
+  rejected_at timestamptz,
+  notes text,
+
+  created_by uuid REFERENCES app_users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_cos_updated ON change_orders;
+CREATE TRIGGER trg_cos_updated
+BEFORE UPDATE ON change_orders
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE budget_adjustments
+  ADD CONSTRAINT fk_budget_adj_co
+  FOREIGN KEY (change_order_id)
+  REFERENCES change_orders(id);
+```
+
+---
+
+## 7) Past project digest tier
+
+```sql
+CREATE TABLE IF NOT EXISTS project_digests (
+  project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  digest jsonb NOT NULL,
+  schema_version int NOT NULL DEFAULT 1,
+  generated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_digests_gin
+ON project_digests USING GIN (digest jsonb_path_ops);
+```
+
+---
+
+## 8) Snapshot indexing sidecar (for analytics/search)
+
+### 8.1 Element snapshot index
+
+```sql
+CREATE TABLE IF NOT EXISTS element_snapshot_index (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  element_id uuid NOT NULL REFERENCES elements(id) ON DELETE CASCADE,
+
+  version_id uuid REFERENCES element_versions(id) ON DELETE CASCADE,
+  draft_id uuid REFERENCES element_drafts(id) ON DELETE CASCADE,
+
+  -- precomputed
+  total_direct_cost numeric NOT NULL DEFAULT 0,
+  total_sell_price numeric NOT NULL DEFAULT 0,
+
+  vendor_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
+  material_names text[] NOT NULL DEFAULT ARRAY[]::text[],
+  domains text[] NOT NULL DEFAULT ARRAY[]::text[],
+
+  updated_at timestamptz NOT NULL DEFAULT now(),
+
+  CHECK (
+    (version_id IS NOT NULL AND draft_id IS NULL) OR
+    (version_id IS NULL AND draft_id IS NOT NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_esidx_project ON element_snapshot_index(project_id);
+CREATE INDEX IF NOT EXISTS idx_esidx_element ON element_snapshot_index(element_id);
+CREATE INDEX IF NOT EXISTS idx_esidx_cost ON element_snapshot_index(project_id, total_direct_cost DESC);
+
+CREATE INDEX IF NOT EXISTS idx_esidx_vendor_gin ON element_snapshot_index USING GIN (vendor_ids);
+CREATE INDEX IF NOT EXISTS idx_esidx_material_gin ON element_snapshot_index USING GIN (material_names);
+CREATE INDEX IF NOT EXISTS idx_esidx_domains_gin ON element_snapshot_index USING GIN (domains);
+```
+
+---
+
+## 9) Management Hub (minimal but complete)
+
+### 9.1 Employees + roles/rates
+
+```sql
+CREATE TABLE IF NOT EXISTS employees (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  display_name text NOT NULL,
+  role text NOT NULL, -- "Art Worker" etc.
+  default_day_rate numeric NOT NULL DEFAULT 800,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_employees_updated ON employees;
+CREATE TRIGGER trg_employees_updated
+BEFORE UPDATE ON employees
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+### 9.2 Vendors
+
+```sql
+CREATE TABLE IF NOT EXISTS vendors (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  type text NOT NULL DEFAULT 'general', -- בית דפוס / נגריה etc
+  phone text,
+  email text,
+  address text,
+  notes text,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_vendors_name ON vendors(name);
+
+DROP TRIGGER IF EXISTS trg_vendors_updated ON vendors;
+CREATE TRIGGER trg_vendors_updated
+BEFORE UPDATE ON vendors
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+### 9.3 Material catalog + price observations
+
+```sql
+CREATE TABLE IF NOT EXISTS material_catalog (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  canonical_name text NOT NULL,
+  unit text NOT NULL,
+  synonyms text[] NOT NULL DEFAULT ARRAY[]::text[],
+  typical_vendor_id uuid REFERENCES vendors(id),
+  tags text[] NOT NULL DEFAULT ARRAY[]::text[],
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(canonical_name, unit)
+);
+
+CREATE INDEX IF NOT EXISTS idx_matcat_name ON material_catalog(canonical_name);
+CREATE INDEX IF NOT EXISTS idx_matcat_syn_gin ON material_catalog USING GIN (synonyms);
+
+DROP TRIGGER IF EXISTS trg_matcat_updated ON material_catalog;
+CREATE TRIGGER trg_matcat_updated
+BEFORE UPDATE ON material_catalog
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+CREATE TABLE IF NOT EXISTS price_observations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  catalog_id uuid NOT NULL REFERENCES material_catalog(id) ON DELETE CASCADE,
+  vendor_id uuid REFERENCES vendors(id),
+  unit_cost numeric NOT NULL,
+  currency text NOT NULL DEFAULT 'NIS',
+  observed_at timestamptz NOT NULL DEFAULT now(),
+  source text NOT NULL CHECK (source IN ('purchase','manual','approvedElement')),
+  source_ref jsonb NOT NULL DEFAULT '{}'::jsonb  -- e.g., {projectId, elementId, versionId}
+);
+
+CREATE INDEX IF NOT EXISTS idx_priceobs_catalog ON price_observations(catalog_id, observed_at DESC);
+```
+
+### 9.4 Inventory + reservations
+
+```sql
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  catalog_id uuid REFERENCES material_catalog(id),
+  name text NOT NULL,
+  unit text NOT NULL,
+  on_hand_qty numeric NOT NULL DEFAULT 0,
+  location text,
+  notes text,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_name ON inventory_items(name);
+
+DROP TRIGGER IF EXISTS trg_inventory_updated ON inventory_items;
+CREATE TRIGGER trg_inventory_updated
+BEFORE UPDATE ON inventory_items
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+CREATE TABLE IF NOT EXISTS inventory_reservations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  inventory_item_id uuid NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  element_id uuid REFERENCES elements(id) ON DELETE SET NULL,
+  material_line_id text, -- lineId from snapshot (string/uuid stored as text for portability)
+
+  qty numeric NOT NULL,
+  date_range tstzrange,  -- optional; NULL means "generic reservation"
+
+  status inventory_res_status NOT NULL DEFAULT 'active',
+  computed_available_after numeric, -- set by trigger (informational)
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_invres_item ON inventory_reservations(inventory_item_id, status);
+CREATE INDEX IF NOT EXISTS idx_invres_project ON inventory_reservations(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_invres_range_gist ON inventory_reservations USING GIST (date_range);
+
+DROP TRIGGER IF EXISTS trg_invres_updated ON inventory_reservations;
+CREATE TRIGGER trg_invres_updated
+BEFORE UPDATE ON inventory_reservations
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+> Quantity conflict detection is easiest in app logic, but here’s a **lightweight trigger** that marks overbooked vs active (does not block).
+
+---
+
+## 10) Triggers/functions (indexing + reservation check)
+
+### 10.1 Compute totals + index fields from snapshot JSONB
+
+You’ll adapt these paths to your exact snapshot structure, but here’s a workable baseline.
+
+```sql
+CREATE OR REPLACE FUNCTION compute_element_index_fields(snapshot jsonb)
+RETURNS TABLE(
+  total_direct_cost numeric,
+  total_sell_price numeric,
+  vendor_ids uuid[],
+  material_names text[],
+  domains text[]
+) LANGUAGE plpgsql AS $$
+DECLARE
+  mats jsonb := COALESCE(snapshot->'materials','[]'::jsonb);
+  labs jsonb := COALESCE(snapshot->'labor','[]'::jsonb);
+  tasks jsonb := COALESCE(snapshot->'tasks','[]'::jsonb);
+
+  mat_cost numeric := 0;
+  lab_cost numeric := 0;
+  v_ids uuid[] := ARRAY[]::uuid[];
+  m_names text[] := ARRAY[]::text[];
+  doms text[] := ARRAY[]::text[];
+
+  item jsonb;
+  v text;
+  vn uuid;
+  nm text;
+BEGIN
+  -- materials: sum qty*unitCost for non-deleted
+  FOR item IN SELECT * FROM jsonb_array_elements(mats) LOOP
+    IF (item->>'deletedAt') IS NULL THEN
+      mat_cost := mat_cost + COALESCE((item->>'qty')::numeric,0) * COALESCE((item->>'unitCost')::numeric,0);
+      nm := item->>'name';
+      IF nm IS NOT NULL THEN m_names := array_append(m_names, nm); END IF;
+      v := item->>'vendorId';
+      IF v IS NOT NULL AND v <> '' THEN
+        vn := v::uuid;
+        v_ids := array_append(v_ids, vn);
+      END IF;
+    END IF;
+  END LOOP;
+
+  -- labor: sum qty*rate (day/hour/fixed simplified as qty*rate) for non-deleted
+  FOR item IN SELECT * FROM jsonb_array_elements(labs) LOOP
+    IF (item->>'deletedAt') IS NULL THEN
+      lab_cost := lab_cost + COALESCE((item->>'qty')::numeric,0) * COALESCE((item->>'rate')::numeric,0);
+    END IF;
+  END LOOP;
+
+  -- domains from tasks
+  FOR item IN SELECT * FROM jsonb_array_elements(tasks) LOOP
+    IF (item->>'deletedAt') IS NULL THEN
+      IF (item->>'domain') IS NOT NULL THEN
+        doms := array_append(doms, item->>'domain');
+      END IF;
+    END IF;
+  END LOOP;
+
+  total_direct_cost := mat_cost + lab_cost;
+
+  -- sell price isn’t purely in snapshot; set 0 here and compute in app OR store in snapshot meta.
+  total_sell_price := 0;
+
+  vendor_ids := (SELECT ARRAY(SELECT DISTINCT unnest(v_ids)));
+  material_names := (SELECT ARRAY(SELECT DISTINCT unnest(m_names)));
+  domains := (SELECT ARRAY(SELECT DISTINCT unnest(doms)));
+
+  RETURN NEXT;
+END $$;
+```
+
+### 10.2 Trigger: maintain `element_snapshot_index` on new versions
+
+```sql
+CREATE OR REPLACE FUNCTION upsert_element_version_index()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+  fields record;
+BEGIN
+  SELECT * INTO fields FROM compute_element_index_fields(NEW.snapshot);
+
+  INSERT INTO element_snapshot_index (
+    project_id, element_id, version_id,
+    total_direct_cost, total_sell_price,
+    vendor_ids, material_names, domains,
+    updated_at
+  )
+  VALUES (
+    NEW.project_id, NEW.element_id, NEW.id,
+    fields.total_direct_cost, fields.total_sell_price,
+    fields.vendor_ids, fields.material_names, fields.domains,
+    now()
+  )
+  ON CONFLICT (version_id) DO UPDATE SET
+    total_direct_cost = EXCLUDED.total_direct_cost,
+    total_sell_price = EXCLUDED.total_sell_price,
+    vendor_ids = EXCLUDED.vendor_ids,
+    material_names = EXCLUDED.material_names,
+    domains = EXCLUDED.domains,
+    updated_at = now();
+
+  RETURN NEW;
+END $$;
+
+-- Need a unique constraint for ON CONFLICT(version_id)
+DO $$ BEGIN
+  ALTER TABLE element_snapshot_index
+    ADD CONSTRAINT ux_esidx_version UNIQUE (version_id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DROP TRIGGER IF EXISTS trg_esidx_on_version ON element_versions;
+CREATE TRIGGER trg_esidx_on_version
+AFTER INSERT ON element_versions
+FOR EACH ROW EXECUTE FUNCTION upsert_element_version_index();
+```
+
+> If you also want draft indexing, duplicate this trigger for `element_drafts` (but do it only if needed for search).
+
+### 10.3 Trigger: inventory reservation status (overbooked vs active)
+
+```sql
+CREATE OR REPLACE FUNCTION recompute_inventory_reservation()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+  on_hand numeric;
+  reserved numeric;
+  available_after numeric;
+BEGIN
+  SELECT on_hand_qty INTO on_hand FROM inventory_items WHERE id = NEW.inventory_item_id;
+
+  -- sum overlapping active reservations (same item; overlap if ranges overlap OR either is NULL)
+  SELECT COALESCE(SUM(qty),0) INTO reserved
+  FROM inventory_reservations
+  WHERE inventory_item_id = NEW.inventory_item_id
+    AND status IN ('active','overbooked')
+    AND id <> NEW.id
+    AND (
+      NEW.date_range IS NULL OR date_range IS NULL OR date_range && NEW.date_range
+    );
+
+  available_after := on_hand - reserved - NEW.qty;
+  NEW.computed_available_after := available_after;
+
+  IF available_after < 0 THEN
+    NEW.status := 'overbooked';
+  ELSE
+    NEW.status := COALESCE(NEW.status,'active');
+  END IF;
+
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_invres_recompute ON inventory_reservations;
+CREATE TRIGGER trg_invres_recompute
+BEFORE INSERT OR UPDATE OF qty, date_range, status, inventory_item_id
+ON inventory_reservations
+FOR EACH ROW EXECUTE FUNCTION recompute_inventory_reservation();
+```
+
+---
+
+# 2) API contracts (request/response payloads)
+
+Below are **exact JSON contracts**. Use REST, tRPC, or RPC — same shapes.
+
+## 2.1 `POST /api/drafts/applyChangeSet`
+
+### Request
+
+```json
+{
+  "draftType": "element",
+  "draftId": "eld_...",
+  "projectId": "proj_...",
+  "baseRevisionNumber": 12,
+  "createdFrom": { "tab": "Accounting", "stage": "planning" },
+  "createdBy": { "type": "user", "userId": "usr_..." },
+  "reason": "Adjusted MDF qty and unitCost",
+  "patchOps": [
+    { "op": "replace", "path": "/materials/byId/mat_123/qty", "value": 6 },
+    { "op": "replace", "path": "/materials/byId/mat_123/unitCost", "value": 170 }
+  ]
+}
+```
+
+### Response (canonical + reconciliation)
+
+```json
+{
+  "ok": true,
+  "draftType": "element",
+  "draftId": "eld_...",
+  "newRevisionNumber": 13,
+
+  "acceptedPatchOps": [
+    { "op": "replace", "path": "/materials/byId/mat_123/qty", "value": 6 },
+    { "op": "replace", "path": "/materials/byId/mat_123/unitCost", "value": 170 }
+  ],
+
+  "serverAppliedSafeFixOps": [
+    {
+      "op": "replace",
+      "path": "/meta/lastEditedAt",
+      "value": "2025-12-30T11:22:33.456Z"
+    }
+  ],
+
+  "reconciliation": {
+    "safeFixOps": [
+      {
+        "op": "remove",
+        "path": "/tasks/byId/task_9/dependsOn/task_deleted"
+      }
+    ],
+    "reviewRequired": [
+      {
+        "kind": "laborOrphanedDecision",
+        "message": "Task 'Install MDF' was removed but labor line remains as placeholder (2,400 NIS). Decide what to do.",
+        "options": [
+          {
+            "id": "keepPlaceholder",
+            "label": "Keep labor as placeholder",
+            "patchOps": [
+              { "op": "replace", "path": "/labor/byId/lab_77/status", "value": "orphaned" }
+            ],
+            "impactPreview": {
+              "moneyImpacts": [{ "type": "noChange", "amount": 0 }]
+            }
+          },
+          {
+            "id": "removeLabor",
+            "label": "Remove labor line",
+            "patchOps": [
+              { "op": "tombstone", "path": "/labor/byId/lab_77", "value": { "deletedAt": "now" } }
+            ],
+            "impactPreview": {
+              "moneyImpacts": [{ "type": "laborRemoved", "amount": 2400 }]
+            }
+          }
+        ]
+      }
+    ],
+    "blockers": [],
+    "warnings": [
+      { "code": "MISSING_VENDOR_PRICE", "message": "No catalog price found for 'MDF 12mm' vendor. Marked as proposed." }
+    ]
+  },
+
+  "graveyard": {
+    "createdItemIds": ["gy_..."]
+  },
+
+  "draftSummary": {
+    "totalDirectCost": 12400,
+    "dirty": true,
+    "status": "open"
+  }
+}
+```
+
+**Important**: your patch paths should be stable-ID based. A common convention:
+
+* `/materials/byId/<lineId>/field`
+* `/tasks/byId/<taskId>/field`
+
+Your backend translates these into JSONB edits.
+
+---
+
+## 2.2 `POST /api/graveyard/decision`
+
+User picks an option for a graveyard item; server applies the option’s patchOps as a new ChangeSet.
+
+### Request
+
+```json
+{
+  "graveyardItemId": "gy_...",
+  "selectedOptionId": "removeLabor",
+  "resolvedBy": { "userId": "usr_..." }
+}
+```
+
+### Response
+
+```json
+{
+  "ok": true,
+  "graveyardItem": {
+    "id": "gy_...",
+    "status": "resolved",
+    "selectedOptionId": "removeLabor",
+    "resolvedAt": "2025-12-30T11:30:00.000Z"
+  },
+  "appliedChangeSet": {
+    "id": "chg_...",
+    "draftId": "eld_...",
+    "baseRevisionNumber": 13,
+    "newRevisionNumber": 14,
+    "patchOps": [
+      { "op": "tombstone", "path": "/labor/byId/lab_77", "value": { "deletedAt": "2025-12-30T11:30:00.000Z" } }
+    ],
+    "impactPreview": {
+      "moneyImpacts": [{ "type": "laborRemoved", "amount": 2400 }]
+    }
+  },
+  "reconciliation": {
+    "safeFixOps": [],
+    "reviewRequired": [],
+    "blockers": [],
+    "warnings": []
+  }
+}
+```
+
+---
+
+## 2.3 `POST /api/quotes/approveQuote` → creates BudgetBaseline
+
+### Request
+
+```json
+{
+  "projectId": "proj_...",
+  "quoteVersionId": "quotev_...",
+  "approvedBy": "usr_..."
+}
+```
+
+### Response
+
+```json
+{
+  "ok": true,
+  "budgetBaseline": {
+    "id": "budget_...",
+    "projectId": "proj_...",
+    "quoteVersionId": "quotev_...",
+    "status": "approved",
+    "approvedAt": "2025-12-30T12:00:00.000Z",
+    "planned": {
+      "byElement": [
+        {
+          "elementId": "el_...",
+          "elementVersionId": "elv_1",
+          "plannedDirectCost": 8000,
+          "plannedSellPrice": 12480
+        }
+      ],
+      "projectCosts": {
+        "projectCostVersionId": "pcv_2",
+        "plannedDirectCost": 3000,
+        "plannedSellPrice": 4680
+      },
+      "totals": {
+        "plannedDirectCost": 11000,
+        "plannedSellPrice": 17160
+      }
+    }
+  },
+  "project": {
+    "id": "proj_...",
+    "activeBudgetBaselineId": "budget_..."
+  }
+}
+```
+
+> Backend should also mark older baselines as `superseded` if you allow multiple.
+
+---
+
+## 2.4 `POST /api/changeOrders/approveChangeOrder` → creates adjustment ledger
+
+### Request
+
+```json
+{
+  "projectId": "proj_...",
+  "changeOrderId": "co_...",
+  "approvedBy": "usr_..."
+}
+```
+
+### Response
+
+```json
+{
+  "ok": true,
+  "changeOrder": {
+    "id": "co_...",
+    "status": "approved",
+    "approvedAt": "2025-12-30T12:10:00.000Z"
+  },
+  "baseline": {
+    "id": "budget_...",
+    "status": "approved"
+  },
+  "budgetAdjustment": {
+    "id": "badj_...",
+    "baselineId": "budget_...",
+    "changeOrderId": "co_...",
+    "approvedAt": "2025-12-30T12:10:00.000Z",
+    "delta": {
+      "deltaDirectCost": 2000,
+      "deltaSellPrice": 3500,
+      "byElementDelta": [
+        { "elementId": "el_...", "deltaDirectCost": 1200, "deltaSellPrice": 2100 }
+      ]
+    }
+  },
+  "varianceModel": {
+    "baselinePlanned": { "directCost": 11000, "sellPrice": 17160 },
+    "approvedCOAdjustments": { "directCost": 2000, "sellPrice": 3500 },
+    "effectiveBudget": { "directCost": 13000, "sellPrice": 20660 },
+    "currentForecast": { "directCost": 13950, "sellPrice": 22150 },
+    "variance": {
+      "approvedCO": { "directCost": 2000, "sellPrice": 3500 },
+      "unapproved": { "directCost": 950, "sellPrice": 1490 }
+    }
+  }
+}
+```
+
+---
+
+# 3) Approval flow (DB writes you’ll actually do)
+
+## 3.1 Approving an element draft → new version
+
+Transaction steps:
+
+1. `SELECT ... FOR UPDATE` element row
+2. compute next version number
+3. insert into `element_versions(snapshot=working_snapshot)`
+4. update `elements.current_approved_version_id`
+5. update `element_drafts.status='approved'`
+6. (optional) close/open new draft later
+
+## 3.2 Approving quote → baseline
+
+Transaction steps:
+
+1. insert into `budget_baselines` using quote sources + computed planned json
+2. set `projects.active_budget_baseline_id`
+3. mark other baselines as `superseded` (optional)
+
+## 3.3 Approving change order → adjustment ledger
+
+Transaction steps:
+
+1. verify `projects.active_budget_baseline_id` exists
+2. update `change_orders.status='approved'`
+3. insert into `budget_adjustments(baseline_id, change_order_id, delta)`
+4. variance is computed at read-time (baseline + adjustments vs forecast)
+
+---
+
+# 4) One practical recommendation (so this doesn’t get brittle)
+
+Keep **JSON paths stable** by adopting a backend-normalization step:
+
+* In JSONB snapshot, store arrays as arrays (fine),
+* But in patch API, always patch as `byId` paths,
+* Backend resolves `byId` → array index at apply-time (and fails cleanly if missing).
+
+That avoids “array index drift” and keeps ChangeSets safe.
+
+---

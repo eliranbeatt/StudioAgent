@@ -1,0 +1,134 @@
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+
+export const approveQuoteAsBaseline = mutation({
+  args: {
+    projectId: v.id("projects"),
+    quoteId: v.id("quoteVersions"),
+  },
+  handler: async (ctx, args) => {
+    const quote = await ctx.db.get(args.quoteId);
+    if (!quote) throw new Error("Quote not found");
+
+    // 1. Create Baseline
+    const baselineId = await ctx.db.insert("budgetBaselines", {
+      projectId: args.projectId,
+      quoteVersionId: args.quoteId,
+      status: "approved",
+      sourceElementVersionIds: quote.sourceElementVersionIds,
+      sourceProjectCostVersionId: quote.sourceProjectCostVersionId,
+      planned: {
+        totals: quote.totals,
+      },
+      approvedAt: Date.now(),
+      createdAt: Date.now(),
+    });
+
+    // 2. Update Project with active baseline
+    await ctx.db.patch(args.projectId, {
+      activeBudgetBaselineId: baselineId,
+    });
+
+    // 3. Mark quote as approved
+    await ctx.db.patch(args.quoteId, {
+      status: "approved",
+    });
+
+    return baselineId;
+  },
+});
+
+export const createChangeOrder = mutation({
+  args: {
+    projectId: v.id("projects"),
+    title: v.string(),
+    deltaDirectCost: v.number(),
+    deltaSellPrice: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("changeOrders", {
+      projectId: args.projectId,
+      title: args.title,
+      status: "draft",
+      financials: {
+        deltaDirectCost: args.deltaDirectCost,
+        deltaSellPrice: args.deltaSellPrice,
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const approveChangeOrder = mutation({
+  args: {
+    changeOrderId: v.id("changeOrders"),
+  },
+  handler: async (ctx, args) => {
+    const co = await ctx.db.get(args.changeOrderId);
+    if (!co) throw new Error("CO not found");
+    if (co.status !== "draft") throw new Error("CO not in draft");
+
+    const project = await ctx.db.get(co.projectId);
+    if (!project?.activeBudgetBaselineId) throw new Error("No active baseline to adjust");
+
+    // 1. Mark CO as approved
+    await ctx.db.patch(args.changeOrderId, {
+      status: "approved",
+      approvedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    // 2. Create Budget Adjustment Ledger entry
+    await ctx.db.insert("budgetAdjustments", {
+      projectId: co.projectId,
+      baselineId: project.activeBudgetBaselineId,
+      changeOrderId: args.changeOrderId,
+      delta: co.financials,
+      approvedAt: Date.now(),
+      createdAt: Date.now(),
+    });
+
+    return { ok: true };
+  },
+});
+
+export const getFinancialSummary = query({
+    args: { projectId: v.id("projects") },
+    handler: async (ctx, args) => {
+        const project = await ctx.db.get(args.projectId);
+        if(!project) return null;
+
+        let baselineTotals = { directCost: 0, grandTotal: 0 };
+        let coAdjustments = { directCost: 0, sellPrice: 0 };
+
+        if(project.activeBudgetBaselineId) {
+            const baseline = await ctx.db.get(project.activeBudgetBaselineId);
+            if(baseline) {
+                baselineTotals = {
+                    directCost: baseline.planned.totals.directCost,
+                    grandTotal: baseline.planned.totals.grandTotal
+                };
+            }
+
+            const adjustments = await ctx.db
+                .query("budgetAdjustments")
+                .withIndex("by_baseline", q => q.eq("baselineId", project.activeBudgetBaselineId!))
+                .collect();
+            
+            for(const adj of adjustments) {
+                coAdjustments.directCost += adj.delta.deltaDirectCost;
+                coAdjustments.sellPrice += adj.delta.deltaSellPrice;
+            }
+        }
+
+        return {
+            baseline: baselineTotals,
+            approvedCO: coAdjustments,
+            effectiveBudget: {
+                directCost: baselineTotals.directCost + coAdjustments.directCost,
+                sellPrice: baselineTotals.grandTotal + coAdjustments.sellPrice
+            }
+        }
+    }
+})

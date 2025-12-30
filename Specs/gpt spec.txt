@@ -1,0 +1,475 @@
+Got it. Below is the **re-written, expanded greenfield spec** that incorporates your remarks:
+
+* The **single Studio Agent** must cover **Tasks + Accounting** (materials/labor) as first-class outputs, not just idea/solution/quote.
+* **Accounting ↔ Tasks are bidirectionally consistent** through the **Element Snapshot** (single truth) + a **Reconciliation Engine** that auto-fixes or flags gaps.
+* Add **Approve Quote / Approved Budget Baseline** → show in Accounting and compute **gaps/variance** vs current evolving execution.
+* Add **Link past project** in Overview so the agent can pull those past elements/descriptions as context (no RAG; direct DB fetch).
+
+---
+
+# 1) Product definition
+
+## 1.1 Goal
+
+Build a clean-slate StudioOps app where a project is planned and executed through **Elements (אלמנטים)**, each element holding the complete plan: **requirements, tasks, materials, labor, procurement mode, costs, dependencies**.
+
+The system supports:
+
+* **Ideation → Planning → Solutioning → Quote** inside **one Studio Agent** with multiple skills,
+* **Draft → Approve → Version** workflows for everything,
+* **Approved Budget baseline** (Approved Quote) to track **variance/gaps** during execution,
+* **Management Hub** as the trusted source for employees/rates/material prices/vendors/inventory.
+
+## 1.2 Non-goals (v1)
+
+* No RAG ingestion, embeddings, or file pipelines per chat.
+* No “facts DB” pipeline.
+* No external integrations required (Trello/Drive/etc.) in v1.
+
+---
+
+# 2) Information architecture (UI)
+
+## 2.1 Global
+
+* Projects
+* Management Hub (ניהול)
+* Admin (Skills/Models/Settings) *(recommended)*
+
+## 2.2 Per Project Tabs
+
+1. **Overview**
+2. **Studio Agent**
+3. **Accounting**
+4. **Tasks**
+5. **Quote**
+
+---
+
+# 3) Core principle: Elements are single source of truth
+
+Everything is stored and versioned as **ElementSnapshot**.
+**Tasks, Accounting, Quote** are *views + edit surfaces* that produce **ChangeSets** to update element drafts.
+
+> There is no separate “tasks domain” or “accounting domain” that can drift. They are projections of the same snapshot.
+
+---
+
+# 4) Domain model (entities)
+
+## 4.1 Project
+
+* contains elements
+* contains project settings (margins, defaults)
+* contains **Approved Budget Baselines** (from approved quotes)
+* can reference past projects for context
+
+## 4.2 Element
+
+* header metadata + pointers to latest approved version and open draft
+
+## 4.3 ElementSnapshot (the truth blob)
+
+Holds:
+
+* brief (what/style/constraints/open questions)
+* solution approach + alternatives + risks
+* tasks + dependencies
+* materials lines
+* labor lines
+* procurement state (purchase vs stock vs rent vs subcontract)
+* costing metadata
+
+## 4.4 Draft / Version
+
+* Draft is mutable working copy
+* Version is immutable approved snapshot
+* Each approval creates a new version with tags: createdFromTab, stage, summary
+
+## 4.5 ChangeSet
+
+* patch ops applied to drafts
+* always stores origin: user vs agent, tab, stage, reason
+
+## 4.6 ApprovedQuote / BudgetBaseline (NEW)
+
+A project-level baseline derived from a set of approved element versions, used for variance tracking.
+
+---
+
+# 5) Accounting ↔ Tasks consistency (critical)
+
+You explicitly want:
+
+* Changes in **Accounting**, once approved & saved to elements, must affect **Tasks** when relevant.
+* Changes in **Tasks**, once approved & saved to elements, must affect **Accounting** when relevant.
+
+This is implemented through **(A) hard links**, **(B) derived lines**, and **(C) a reconciliation engine**.
+
+## 5.1 Hard links (required)
+
+Every cost line can optionally link to tasks, and tasks can link to cost lines.
+
+### Task fields
+
+* `taskId`
+* `domain` (סטודיו/קניות/הובלה/התקנה/ניהול/ספקי משנה/יום צילום/פירוק)
+* `costRefs`:
+
+  * `laborLineIds[]`
+  * `materialLineIds[]`
+* `procurementIntent` for purchase tasks: which materials they fulfill
+
+### Material line fields
+
+* `links.taskIds[]` (tasks that create/consume this line)
+
+### Labor line fields
+
+* `links.taskIds[]` (tasks that require this labor)
+
+## 5.2 Derived lines (optional but recommended)
+
+Some lines are best treated as “derived”:
+
+* If the Planner creates tasks with time estimates and assignees, it can auto-create labor lines derived from tasks.
+* If you manually edit accounting, lines are “manual”.
+
+Each line has:
+
+* `source.mode = "derived" | "manual"`
+* `source.from = { taskId? }`
+
+## 5.3 Reconciliation engine (NEW, mandatory)
+
+Whenever a draft is modified (by user or agent), run reconciliation:
+
+### 5.3.1 Reconciliation outcomes
+
+* **Auto-fix** (safe deterministic updates)
+* **Flag for review** (creates a warning banner with “Apply fixes” button)
+* **Block approval** only for invalid schema/integrity issues (missing required ids, broken pointers)
+
+### 5.3.2 Rules you requested (implemented as deterministic auto-fix)
+
+#### Rule A — Delete a task that contributes labor cost
+
+If a task is tombstoned and it has linked labor lines:
+
+* Remove that taskId from each linked labor line.
+* If a labor line becomes **unlinked and derived**, tombstone it automatically.
+* If a labor line becomes unlinked but **manual**, keep it but mark:
+
+  * `status: "orphaned"` + warning “Labor line no longer tied to any task”.
+
+#### Rule B — Delete a purchase task → material switches to stock (instead of purchase)
+
+Purchase tasks have `domain="קניות"` and `procurementType="purchase"`.
+If such a task is tombstoned:
+
+* For each linked material line:
+
+  * set `procurement.mode = "stock"`
+  * set `needPurchase = false`
+  * set `inventory.consume = true`
+  * add warning if inventory is unknown/insufficient in Management Hub.
+
+#### Rule C — Remove/complete a purchase task but keep material
+
+If task is marked done OR deleted:
+
+* the material line remains (tombstones are not used for the material)
+* procurement changes as above, depending on your selection (purchase done vs switch to stock)
+
+#### Rule D — If task becomes “empty” → auto-tombstone
+
+If task loses meaningful content (title blank / no domain / no intent):
+
+* auto tombstone + add ChangeSet reason “auto-clean”.
+
+### 5.3.3 “Management labor should not double count”
+
+* Labor lines with `roleCategory="management"` are still allowed in tasks (for tsaka), but:
+* Accounting rollup excludes them by default via project setting:
+
+  * `excludeManagementLaborFromCost = true`
+
+---
+
+# 6) Approved Quote / Approved Budget baseline (NEW)
+
+You want: once budget is approved, it appears on Accounting and all gaps are calculated from it, while you continue changing plans during execution.
+
+## 6.1 Concept
+
+* **BudgetBaseline** is an immutable project record representing the approved quote state.
+* It references:
+
+  * quote version
+  * element version ids included
+  * totals and per-element planned budgets
+
+## 6.2 Data contract
+
+```json
+{
+  "id": "budget_...",
+  "projectId": "proj_...",
+  "quoteVersionId": "quotev_...",
+  "sourceElementVersionIds": ["elv_1", "elv_7"],
+  "status": "approved",
+  "approvedAt": "...",
+  "approvedBy": "user_...",
+  "planned": {
+    "byElement": [
+      {
+        "elementId": "el_...",
+        "elementVersionId": "elv_1",
+        "plannedDirectCost": 8000,
+        "plannedSellPrice": 12480
+      }
+    ],
+    "totals": {
+      "plannedDirectCost": 20000,
+      "plannedSellPrice": 31200
+    }
+  }
+}
+```
+
+## 6.3 Accounting tab behavior (after baseline exists)
+
+Accounting shows **three layers**:
+
+1. **Approved Budget (Baseline)**
+
+* planned direct cost / planned sell price per element + totals (read-only)
+
+2. **Current Forecast (Latest Draft/Approved)**
+
+* what your current elements/tasks/materials/labor add up to
+
+3. **Variance (Gap)**
+
+* `varianceDirectCost = currentDirectCost - plannedDirectCost`
+* `varianceSell = currentSell - plannedSell`
+
+### Variance views
+
+* by element
+* by category (materials/labor/subcontract/transport/prints/rentals)
+* “top drivers” (largest deltas)
+
+## 6.4 What happens if you change elements after budget approval?
+
+Normal: you keep editing drafts and approving versions.
+The baseline stays immutable.
+
+Optionally add:
+
+* **Change Request mode** (later): tag changes as “client-approved add-on” vs “internal optimization”.
+
+---
+
+# 7) Linking past projects to new projects (NEW)
+
+You want: in Overview, connect a past project so the agent can pull its elements/description as context.
+
+## 7.1 UI (Overview)
+
+* “Linked Past Projects” section:
+
+  * select one or more past projects
+  * show: name, date, tags, key elements count
+  * quick action: “Import elements as suggestions” (not auto-create)
+
+## 7.2 Data model
+
+```json
+{
+  "projectId": "proj_new",
+  "linkedProjects": [
+    { "projectId": "proj_old", "mode": "contextOnly|importSuggestions" }
+  ]
+}
+```
+
+## 7.3 Agent behavior (no RAG)
+
+When the agent runs and scope includes project:
+
+* it can fetch:
+
+  * past project overview
+  * list of past elements + their latest approved snapshots
+* it uses them as structured context for:
+
+  * element suggestions
+  * planning templates
+  * cost heuristics (still must prefer Management Hub for prices)
+
+---
+
+# 8) Studio Agent (single agent, multiple skills) — expanded
+
+You want the Studio Agent to handle:
+
+* element breakdown into tasks/materials/labor
+* accounting/task updates
+* quote creation and approval flow
+* structured questions + free chat
+
+## 8.1 Studio Agent tab layout
+
+Top controls:
+
+* Stage: **Auto / Ideation / Planning / Solutioning / Quote**
+* Scope: **Project / Selected Elements / Single Element**
+* Interaction: **Structured Questions / Free Chat**
+* Action mode:
+
+  * “Suggest” (default)
+  * “Apply to Draft” (still requires approval)
+
+Panels:
+
+* Left: Structured Questions (with “Answer & Apply”)
+* Right: Chat + “Proposed Changes” viewer (diff + ChangeSets)
+
+## 8.2 Skills inside the agent (must exist v1)
+
+1. **Router** (decides stage + skills)
+2. **Clarifier** (minimal required Qs)
+3. **Element Suggester** (creates suggested elements list)
+4. **Planner** (creates tasks + dependencies + initial materials/labor)
+5. **Estimator** (fills pricing from Management Hub; flags missing)
+6. **Reconciler** (runs sync rules; produces fix-up ChangeSet)
+7. **Quote Builder** (creates quote draft)
+8. **Validator/Judge** (rejects invalid ChangeSets)
+
+## 8.3 Output contract (strict)
+
+Agent returns only:
+
+* `questionnaire[]`
+* `suggestedElements[]`
+* `changeSets[]`
+* `warnings[]`
+* `requiresUserDecision[]` (e.g., choose stock vs purchase)
+
+No freeform mutation.
+
+---
+
+# 9) Quote tab + “Approve Quote” flow (expanded)
+
+## 9.1 Quote creation
+
+* Generate Quote from:
+
+  * approved element versions (default)
+  * optionally include drafts for preview
+
+Quote includes:
+
+* project short description
+* list of elements with price each
+* totals
+* terms
+* logo/header
+
+## 9.2 Approve quote → create BudgetBaseline
+
+Button: **Approve Budget**
+
+* locks a BudgetBaseline record (section 6)
+* surfaces baseline in Accounting tab automatically
+* adds project timeline event: “Budget approved on DATE”
+
+---
+
+# 10) Technical architecture (greenfield)
+
+## 10.1 Suggested stack (implementation-ready, not mandatory)
+
+* Frontend: Next.js + React + Tailwind + shadcn/ui
+* Backend: FastAPI or Node (tRPC) — either is fine
+* DB: Postgres (JSONB for snapshots) + indices
+* Files later (not v1): S3/MinIO
+* Auth: simple email login / password / magic link
+
+Key point: patch engine + snapshot/versioning is easier with Postgres JSONB + server-side patch apply.
+
+## 10.2 Patch engine requirements
+
+* JSON pointer paths
+* first-class `tombstone` op (sets `deletedAt`)
+* stable-id addressing helpers (patch by `lineId`/`taskId` not array index)
+* validator checks:
+
+  * unique IDs
+  * no dangling links
+  * schema conformance
+
+## 10.3 Reconciliation engine placement
+
+Runs:
+
+* after each ChangeSet apply (server-side)
+* before approval (server-side)
+  Produces:
+* `reconciliationWarnings[]`
+* optional auto-fix ChangeSet (applied or “review then apply”)
+
+---
+
+# 11) API surface (minimal but complete)
+
+## 11.1 Projects
+
+* `createProject`
+* `updateProject`
+* `getProject(projectId)` includes linked projects summary
+* `linkPastProject(projectId, pastProjectId, mode)`
+
+## 11.2 Elements / Drafts / Versions
+
+* `createElement(projectId, title, type)`
+* `openOrCreateDraft(elementId)`
+* `applyChangeSet(draftId, changeSet)`
+* `runReconciliation(draftId)` *(usually implicit)*
+* `approveDraft(draftId, tags, summary)` → creates element version
+* `batchApproveDrafts(projectId, elementIds[])`
+
+## 11.3 Quote / Budget
+
+* `generateQuote(projectId, source="approved|includeDrafts")`
+* `approveQuote(quoteVersionId)` → creates budget baseline
+* `getActiveBudgetBaseline(projectId)`
+
+## 11.4 Management Hub
+
+* employees/roles/rates CRUD
+* vendors CRUD
+* catalog CRUD
+* price observations CRUD
+* inventory (basic) CRUD
+
+---
+
+# 12) Acceptance criteria (your remarks encoded)
+
+1. **Studio Agent can produce Tasks + Materials + Labor** for elements in Planning/Solutioning.
+2. **Approved changes in Accounting affect Tasks** when linked/derived.
+3. **Approved changes in Tasks affect Accounting** when linked/derived:
+
+   * deleting labor tasks updates labor lines
+   * deleting purchase tasks flips materials to stock mode + needPurchase=false
+4. **Approve Quote creates Approved Budget Baseline**, and Accounting shows:
+
+   * baseline planned budget
+   * current forecast
+   * variance/gaps
+5. **Overview supports linking past projects**, and agent uses them as direct DB context (no RAG).
+6. No drift: **Tasks/Accounting/Quote are projections** of element snapshots only.
+
