@@ -16,6 +16,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const saveUploadedFile = useAction(api.files.saveUploadedFile);
   const appendBrainEvent = useMutation(api.brain.appendFromEvent);
+  const createElementFromStructured = useMutation(api.agent.createElementFromStructured);
   const updateProjectDetails = useMutation(api.projects.updateProjectDetails);
   const linkProject = useMutation(api.projects.linkProject);
   const unlinkProject = useMutation(api.projects.unlinkProject);
@@ -31,6 +32,8 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
     budgetCap: "",
     projectTypes: [] as string[],
   });
+  const [newElementTitle, setNewElementTitle] = useState("");
+  const [newElementType, setNewElementType] = useState("build");
 
   useEffect(() => {
     if (!overview?.project) return;
@@ -338,9 +341,46 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
       <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
           <h3 className="font-semibold text-gray-900">Elements</h3>
-          <span className="text-xs text-gray-400">
-            {overview.counts.elementCount} total
-          </span>
+          <div className="flex items-center gap-2">
+            <input
+              value={newElementTitle}
+              onChange={(e) => setNewElementTitle(e.target.value)}
+              className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-white"
+              placeholder="New element title"
+            />
+            <select
+              value={newElementType}
+              onChange={(e) => setNewElementType(e.target.value)}
+              className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-white"
+            >
+              <option value="build">Build</option>
+              <option value="rent">Rent</option>
+              <option value="print">Print</option>
+              <option value="transport">Transport</option>
+              <option value="install">Install</option>
+              <option value="subcontract">Subcontract</option>
+              <option value="mixed">Mixed</option>
+            </select>
+            <button
+              className="rounded-lg bg-black text-white px-3 py-1 text-xs font-semibold uppercase tracking-wider"
+              onClick={async () => {
+                const title = newElementTitle.trim();
+                if (!title) return;
+                await createElementFromStructured({
+                  projectId,
+                  title,
+                  type: newElementType,
+                });
+                setNewElementTitle("");
+                setNewElementType("build");
+              }}
+            >
+              Create
+            </button>
+            <span className="text-xs text-gray-400">
+              {overview.counts.elementCount} total
+            </span>
+          </div>
         </div>
         <div className="divide-y">
           {overview.elements.length === 0 ? (

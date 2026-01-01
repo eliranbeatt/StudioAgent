@@ -321,6 +321,20 @@ export default defineSchema({
     resolved: v.optional(v.any()),
   }).index("by_project", ["projectId"]),
 
+  // Suggested Elements
+  suggestedElements: defineTable({
+    projectId: v.id("projects"),
+    title: v.string(),
+    type: v.string(),
+    status: v.string(), // pending | approved | rejected
+    sourceMessageId: v.optional(v.id("messages")),
+    approvedElementId: v.optional(v.id("elements")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"]),
+
   // Element Snapshot Index (Analytics/Search)
   elementSnapshotIndex: defineTable({
     projectId: v.id("projects"),

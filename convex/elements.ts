@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { buildElementSection, buildElementSectionId } from "./brain_helpers";
 
@@ -63,6 +63,44 @@ export const approveElementDraft = mutation({
     });
 
     return { ok: true, versionId };
+  },
+});
+
+export const getElementDetail = query({
+  args: {
+    elementId: v.id("elements"),
+  },
+  handler: async (ctx, args) => {
+    const element = await ctx.db.get(args.elementId);
+    if (!element) return null;
+
+    const draft = element.currentDraftId ? await ctx.db.get(element.currentDraftId) : null;
+    const approved = element.currentApprovedVersionId
+      ? await ctx.db.get(element.currentApprovedVersionId)
+      : null;
+
+    return {
+      element: {
+        id: element._id,
+        title: element.title,
+        type: element.type,
+        status: element.status,
+      },
+      draft: draft
+        ? {
+            id: draft._id,
+            revisionNumber: draft.revisionNumber,
+            snapshot: draft.workingSnapshot ?? {},
+          }
+        : null,
+      approved: approved
+        ? {
+            id: approved._id,
+            versionNumber: approved.versionNumber,
+            snapshot: approved.snapshot ?? {},
+          }
+        : null,
+    };
   },
 });
 

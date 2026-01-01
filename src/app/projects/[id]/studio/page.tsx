@@ -36,6 +36,9 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [brainStatus, setBrainStatus] = useState<string>("");
   const [brainTargetElementId, setBrainTargetElementId] = useState<string>("");
   const [brainManualText, setBrainManualText] = useState<string>("");
+  const [newElementTitle, setNewElementTitle] = useState<string>("");
+  const [newElementType, setNewElementType] = useState<string>("build");
+  const [selectedElementDetailId, setSelectedElementDetailId] = useState<string | null>(null);
 
   // State for conversation ID since we need to fetch/create it via mutation
   const [conversationId, setConversationId] = useState<Id<"conversations"> | null>(null);
@@ -51,6 +54,8 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const appendBrainEvent = useMutation(api.brain.appendFromEvent);
   const generateDraftFromBrain = useMutation(api.brain.generateElementDraftFromText);
   const approveElementDraft = useMutation(api.elements.approveElementDraft);
+  const approveSuggestedElement = useMutation(api.suggestions.approveSuggestedElement);
+  const rejectSuggestedElement = useMutation(api.suggestions.rejectSuggestedElement);
 
   useEffect(() => {
     if (projectId) {
@@ -72,9 +77,14 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   );
   const fileContext = useQuery(api.files.getProjectContext, projectId ? { projectId } : "skip");
   const brain = useQuery(api.brain.get, projectId ? { projectId } : "skip");
+  const suggestions = useQuery(api.suggestions.listSuggested, projectId ? { projectId } : "skip");
+  const elementDetail = useQuery(
+    api.elements.getElementDetail,
+    selectedElementDetailId ? { elementId: selectedElementDetailId as any } : "skip"
+  );
 
   // Mutations
-  const sendMessage = useMutation(api.agent.sendMessage);
+  const sendMessage = useAction(api.agent.sendMessage);
   const applyChangeSet = useMutation(api.drafts.applyChangeSet);
   const seedSimulation = useMutation(api.debug.seedSimulation);
 
@@ -419,6 +429,38 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  const handleCreateElementManual = async () => {
+    const title = newElementTitle.trim();
+    if (!title) return;
+    try {
+      await createElementFromStructured({
+        projectId,
+        title,
+        type: newElementType,
+      });
+      setNewElementTitle("");
+      setNewElementType("build");
+    } catch (err: any) {
+      setApplyStatus(err?.message ?? "Failed to create element.");
+    }
+  };
+
+  const handleApproveSuggestion = async (suggestionId: string) => {
+    try {
+      await approveSuggestedElement({ suggestionId: suggestionId as any });
+    } catch (err: any) {
+      setApplyStatus(err?.message ?? "Failed to approve suggestion.");
+    }
+  };
+
+  const handleRejectSuggestion = async (suggestionId: string) => {
+    try {
+      await rejectSuggestedElement({ suggestionId: suggestionId as any });
+    } catch (err: any) {
+      setApplyStatus(err?.message ?? "Failed to reject suggestion.");
+    }
+  };
+
   const handleSeed = async () => {
     const result = await seedSimulation({ projectId });
     setDebugDraftId(result.draftId);
@@ -711,6 +753,39 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
           <DraftStatusPanel projectId={projectId} />
 
           <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
+            <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">
+              Create Element
+            </div>
+            <div className="space-y-2 text-xs text-gray-600">
+              <input
+                value={newElementTitle}
+                onChange={(e) => setNewElementTitle(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs text-gray-700 bg-white"
+                placeholder="Element title"
+              />
+              <select
+                value={newElementType}
+                onChange={(e) => setNewElementType(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs text-gray-700 bg-white"
+              >
+                <option value="build">Build</option>
+                <option value="rent">Rent</option>
+                <option value="print">Print</option>
+                <option value="transport">Transport</option>
+                <option value="install">Install</option>
+                <option value="subcontract">Subcontract</option>
+                <option value="mixed">Mixed</option>
+              </select>
+              <button
+                onClick={handleCreateElementManual}
+                className="w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition-colors bg-black text-white hover:bg-gray-800"
+              >
+                Create Element
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <div className="text-gray-900 font-bold text-xs uppercase tracking-wider">
                 Current Knowledge
@@ -802,6 +877,46 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
             )}
           </div>
 
+          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
+            <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">
+              Suggested Elements
+            </div>
+            {!suggestions ? (
+              <div className="text-xs text-gray-500">Loading suggestions...</div>
+            ) : suggestions.length === 0 ? (
+              <div className="text-xs text-gray-500">No suggestions yet.</div>
+            ) : (
+              <div className="space-y-2 text-xs text-gray-600">
+                {suggestions.filter((item: any) => item.status === "pending").length === 0 ? (
+                  <div className="text-xs text-gray-500">No pending suggestions.</div>
+                ) : (
+                  suggestions
+                    .filter((item: any) => item.status === "pending")
+                    .map((item: any) => (
+                      <div key={item._id} className="border border-gray-100 rounded-lg p-2">
+                        <div className="font-semibold text-gray-800">{item.title}</div>
+                        <div className="text-[10px] text-gray-400 uppercase">{item.type}</div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            onClick={() => handleApproveSuggestion(item._id)}
+                            className="px-2 py-1 text-[10px] font-semibold rounded-md bg-black text-white hover:bg-gray-800"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleRejectSuggestion(item._id)}
+                            className="px-2 py-1 text-[10px] font-semibold rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="h-px bg-gray-100" />
 
           <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
@@ -856,14 +971,18 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
               <div className="text-xs text-gray-500">No elements yet.</div>
             ) : (
               <div className="space-y-2 text-xs">
-                {overview.elements.slice(0, 4).map((element: any) => (
-                  <div key={element.id} className="flex items-center justify-between">
+                {overview.elements.map((element: any) => (
+                  <button
+                    key={element.id}
+                    onClick={() => setSelectedElementDetailId(element.id)}
+                    className="w-full text-left flex items-center justify-between hover:bg-gray-50 rounded-md px-1 py-1"
+                  >
                     <div className="flex items-center gap-2">
                       <Layers size={12} className="text-gray-400" />
                       <span className="text-gray-700">{element.title}</span>
                     </div>
                     <span className="text-[10px] text-gray-400">{element.status}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -1071,6 +1190,13 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
       </div>
+
+      {selectedElementDetailId ? (
+        <ElementDetailDrawer
+          detail={elementDetail}
+          onClose={() => setSelectedElementDetailId(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1159,4 +1285,57 @@ function DraftStatusPanel({ projectId }: { projectId: Id<"projects"> }) {
       </div>
     </div>
   )
+}
+
+function ElementDetailDrawer({
+  detail,
+  onClose,
+}: {
+  detail: any;
+  onClose: () => void;
+}) {
+  const element = detail?.element;
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white shadow-2xl">
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-gray-400">Element Detail</div>
+            <div className="text-lg font-semibold text-gray-900">
+              {element?.title ?? "Loading..."}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800"
+          >
+            Close
+          </button>
+        </div>
+
+        {!detail ? (
+          <div className="mt-4 text-sm text-gray-500">Loading element detail...</div>
+        ) : (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-gray-600">
+            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
+              <div className="text-[10px] font-semibold uppercase text-gray-400 mb-2">
+                Draft Snapshot
+              </div>
+              <pre className="whitespace-pre-wrap text-[11px] text-gray-700 max-h-56 overflow-auto">
+{JSON.stringify(detail?.draft?.snapshot ?? {}, null, 2)}
+              </pre>
+            </div>
+            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
+              <div className="text-[10px] font-semibold uppercase text-gray-400 mb-2">
+                Approved Snapshot
+              </div>
+              <pre className="whitespace-pre-wrap text-[11px] text-gray-700 max-h-56 overflow-auto">
+{JSON.stringify(detail?.approved?.snapshot ?? {}, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
