@@ -1295,6 +1295,10 @@ function ElementDetailDrawer({
   onClose: () => void;
 }) {
   const element = detail?.element;
+  const draftSnapshot = detail?.draft?.snapshot ?? null;
+  const approvedSnapshot = detail?.approved?.snapshot ?? null;
+  const draftData = buildElementPanels(draftSnapshot);
+  const approvedData = buildElementPanels(approvedSnapshot);
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white shadow-2xl">
       <div className="max-w-6xl mx-auto p-6">
@@ -1317,25 +1321,117 @@ function ElementDetailDrawer({
           <div className="mt-4 text-sm text-gray-500">Loading element detail...</div>
         ) : (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-gray-600">
-            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
-              <div className="text-[10px] font-semibold uppercase text-gray-400 mb-2">
-                Draft Snapshot
-              </div>
-              <pre className="whitespace-pre-wrap text-[11px] text-gray-700 max-h-56 overflow-auto">
-{JSON.stringify(detail?.draft?.snapshot ?? {}, null, 2)}
-              </pre>
-            </div>
-            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
-              <div className="text-[10px] font-semibold uppercase text-gray-400 mb-2">
-                Approved Snapshot
-              </div>
-              <pre className="whitespace-pre-wrap text-[11px] text-gray-700 max-h-56 overflow-auto">
-{JSON.stringify(detail?.approved?.snapshot ?? {}, null, 2)}
-              </pre>
-            </div>
+            <SnapshotPanel title="Draft" data={draftData} />
+            <SnapshotPanel title="Approved" data={approvedData} />
           </div>
         )}
       </div>
     </div>
   );
+}
+
+function SnapshotPanel({
+  title,
+  data,
+}: {
+  title: string;
+  data: ReturnType<typeof buildElementPanels>;
+}) {
+  return (
+    <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
+      <div className="text-[10px] font-semibold uppercase text-gray-400 mb-3">
+        {title} Snapshot
+      </div>
+      {!data ? (
+        <div className="text-[11px] text-gray-500">No snapshot available.</div>
+      ) : (
+        <div className="space-y-3">
+          <PanelBlock label={`Tasks (${data.tasks.length})`}>
+            {data.tasks.length === 0 ? (
+              <div className="text-[11px] text-gray-500">No tasks.</div>
+            ) : (
+              data.tasks.map((task) => (
+                <div key={task.id} className="text-[11px] text-gray-700">
+                  {task.title}
+                </div>
+              ))
+            )}
+          </PanelBlock>
+          <PanelBlock label={`Materials (${data.materials.length})`}>
+            {data.materials.length === 0 ? (
+              <div className="text-[11px] text-gray-500">No materials.</div>
+            ) : (
+              data.materials.map((line) => (
+                <div key={line.id} className="text-[11px] text-gray-700">
+                  {line.name} · {line.qty} {line.unit} · {line.unitCost}
+                </div>
+              ))
+            )}
+          </PanelBlock>
+          <PanelBlock label={`Labor (${data.labor.length})`}>
+            {data.labor.length === 0 ? (
+              <div className="text-[11px] text-gray-500">No labor.</div>
+            ) : (
+              data.labor.map((line) => (
+                <div key={line.id} className="text-[11px] text-gray-700">
+                  {line.role} · {line.qty} · {line.rate}
+                </div>
+              ))
+            )}
+          </PanelBlock>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelBlock({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="text-[10px] font-semibold uppercase text-gray-400 mb-1">
+        {label}
+      </div>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function buildElementPanels(snapshot: any) {
+  if (!snapshot) return null;
+  const tasks = Object.values<any>(snapshot?.tasks?.byId ?? {})
+    .filter((task) => !task?.deletedAt)
+    .map((task) => ({
+      id: String(task?.id ?? ""),
+      title: String(task?.title ?? "Untitled task"),
+    }))
+    .filter((task) => task.id.length > 0);
+
+  const materials = Object.values<any>(snapshot?.materials?.byId ?? {})
+    .filter((line) => !line?.deletedAt)
+    .map((line) => ({
+      id: String(line?.id ?? ""),
+      name: String(line?.name ?? "Material"),
+      qty: Number(line?.qty ?? 0),
+      unit: String(line?.unit ?? ""),
+      unitCost: Number(line?.unitCost ?? 0),
+    }))
+    .filter((line) => line.id.length > 0);
+
+  const labor = Object.values<any>(snapshot?.labor?.byId ?? {})
+    .filter((line) => !line?.deletedAt)
+    .map((line) => ({
+      id: String(line?.id ?? ""),
+      role: String(line?.role ?? "Labor"),
+      qty: Number(line?.qty ?? 0),
+      rate: Number(line?.rate ?? 0),
+    }))
+    .filter((line) => line.id.length > 0);
+
+  return { tasks, materials, labor };
 }
