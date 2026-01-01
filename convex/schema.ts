@@ -63,6 +63,17 @@ export default defineSchema({
     clientName: v.optional(v.string()),
     status: projectStatus,
     currency: v.string(), // Default 'NIS'
+    description: v.optional(v.string()),
+    overviewSummary: v.optional(v.string()),
+    projectTypes: v.optional(v.array(v.string())),
+    details: v.optional(
+      v.object({
+        eventDate: v.optional(v.number()),
+        budgetCap: v.optional(v.number()),
+        location: v.optional(v.string()),
+        notes: v.optional(v.string()),
+      })
+    ),
     defaults: v.object({
       profitPct: v.number(),
       overheadPct: v.number(),
@@ -279,6 +290,37 @@ export default defineSchema({
     generatedAt: v.number(),
   }).index("by_project", ["projectId"]),
 
+  // Project Brain (Current Knowledge)
+  projectBrains: defineTable({
+    projectId: v.id("projects"),
+    version: v.number(),
+    updatedAt: v.number(),
+    sections: v.array(v.any()),
+    conflicts: v.optional(v.array(v.any())),
+  }).index("by_project", ["projectId"]),
+
+  brainEvents: defineTable({
+    projectId: v.id("projects"),
+    eventId: v.string(),
+    type: v.string(),
+    createdAt: v.number(),
+    status: v.string(),
+    error: v.optional(v.string()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_event", ["projectId", "eventId"]),
+
+  brainConflicts: defineTable({
+    projectId: v.id("projects"),
+    scope: v.string(),
+    elementId: v.optional(v.id("elements")),
+    message: v.string(),
+    relatedSectionId: v.string(),
+    relatedExcerpt: v.optional(v.string()),
+    createdAt: v.number(),
+    resolved: v.optional(v.any()),
+  }).index("by_project", ["projectId"]),
+
   // Element Snapshot Index (Analytics/Search)
   elementSnapshotIndex: defineTable({
     projectId: v.id("projects"),
@@ -350,6 +392,51 @@ export default defineSchema({
     sourceRef: v.any(), // { projectId, elementId, versionId }
   }).index("by_catalog", ["catalogId", "observedAt"]),
 
+  purchases: defineTable({
+    projectId: v.optional(v.id("projects")),
+    vendorId: v.id("vendors"),
+    date: v.number(),
+    currency: v.string(),
+    totalAmount: v.number(),
+    status: v.union(
+      v.literal("recorded"),
+      v.literal("paid"),
+      v.literal("cancelled")
+    ),
+    lineItems: v.array(v.any()), // [{ catalogId?, description?, qty, unit, unitPrice, lineTotal }]
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_date", ["date"]),
+
+  projectFiles: defineTable({
+    projectId: v.id("projects"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    extractedText: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_project", ["projectId", "createdAt"]),
+
+  proposedUpdates: defineTable({
+    entityType: v.union(
+      v.literal("Vendor"),
+      v.literal("Person"),
+      v.literal("CatalogItem"),
+      v.literal("PriceObservation"),
+      v.literal("NormalizationMapping")
+    ),
+    payload: v.any(),
+    reason: v.string(),
+    createdFrom: v.any(), // { projectId, agentRunId, messageId }
+    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("rejected")),
+    resolution: v.optional(v.any()), // { resolvedBy, resolvedAt, resultEntityId }
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_status", ["status"]),
+
   // Inventory Items
   inventoryItems: defineTable({
     catalogId: v.optional(v.id("materialCatalog")),
@@ -402,4 +489,12 @@ export default defineSchema({
     metadata: v.optional(v.any()), // e.g. { questions: [], changeSetId: "" }
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
+
+  structuredAnswers: defineTable({
+    projectId: v.id("projects"),
+    stage: v.union(v.literal("ideation"), v.literal("planning"), v.literal("solutioning")),
+    answers: v.any(), // { [questionId]: string }
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project_stage", ["projectId", "stage"]),
 });

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, Package, ShoppingCart, UserCircle } from "lucide-react";
+import { Users, Package, ShoppingCart, UserCircle, ReceiptText, Tags } from "lucide-react";
 
 export default function ManagementLayout({
   children,
@@ -28,6 +28,18 @@ export default function ManagementLayout({
             className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
           >
             <Package size={20} /> Material Catalog
+          </Link>
+          <Link
+            href="/management/prices"
+            className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
+          >
+            <Tags size={20} /> Price Observations
+          </Link>
+          <Link
+            href="/management/purchases"
+            className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
+          >
+            <ReceiptText size={20} /> Purchases
           </Link>
           <Link
             href="/management/employees"

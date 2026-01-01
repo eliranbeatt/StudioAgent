@@ -1,0 +1,441 @@
+Cool — with your latest rule, the “Brain” becomes **an editable, user-owned text artifact** that is **auto-filled from approved truth**, but **doesn’t become truth until the user generates + approves a new element draft**.
+
+Below is a **full dev plan** that stays simple, but won’t collapse under duplicates / bloat / retries.
+
+---
+
+# Brain v1 Dev Plan (Simple + Robust)
+
+## 0) What we are building
+
+A **right-side panel** called **Current Knowledge** that:
+
+1. Updates only on **Send / Submit / Upload** (no keystrokes, no streaming).
+2. Stores short **digest text**, organized by:
+
+   * **Project (General)**
+   * **Unmapped**
+   * **Per Element** sections
+3. Appends new info (no rewrite) **except**:
+
+   * When an **element is approved**, the element’s Current Knowledge text is **replaced** with a rendered text from the approved snapshot.
+4. Is **always editable** (even after approval).
+5. Lets user click: **“Generate new element draft from this text”** → produces a draft snapshot/ChangeSet → user approves.
+
+**Critical rule:** Approved ElementSnapshot remains the **single source of truth** for all “real” app domains (tasks/accounting/quote/etc.). Current Knowledge is just editable memory + an editing surface to create new drafts.
+
+---
+
+# 1) Core invariants (non-negotiable)
+
+### Invariant A — Truth lives only in approved ElementSnapshots
+
+* The system must never treat Current Knowledge edits as truth automatically.
+* Truth changes only happen through: **Generate Draft → Review → Approve**.
+
+### Invariant B — Brain updates are append-only, with one exception
+
+* Trigger events append short lines to the relevant section.
+* **Exception:** `elementApproved` replaces the **element’s** Current Knowledge text with formatted approved data.
+
+### Invariant C — Current Knowledge is always editable
+
+* User edits are allowed anytime.
+* After edits, the element is marked **“Modified vs Approved”** until user generates a draft and approves.
+
+### Invariant D — Brain should never block Studio
+
+* If Brain fails, Studio response still returns.
+* UI shows a small “Brain update failed” indicator.
+
+---
+
+# 2) Data Model (minimal + durable)
+
+Use **one project-level doc** + a small event log for idempotency.
+
+## 2.1 `projectBrain` (1 doc per project)
+
+```ts
+type BrainSection = {
+  id: string;
+  title: string;              // fixed by UI, not editable
+  scope: "project" | "unmapped" | "element";
+  elementId?: string;
+
+  content: string;            // user-editable text (multi-line)
+  updatedAt: number;
+
+  // Used only for status / UX
+  lastAutoAppendAt?: number;
+  lastSyncedApprovedSnapshotId?: string;  // only for element sections
+  dirtySinceLastSync?: boolean;           // true if user edited after last sync
+};
+
+type ProjectBrain = {
+  projectId: string;
+  version: number;            // optimistic concurrency
+  updatedAt: number;
+
+  sections: BrainSection[];   // includes project/unmapped + one per element
+  conflicts: BrainConflict[]; // optional but recommended
+};
+```
+
+## 2.2 `brainEvents` (append-only, tiny)
+
+Purpose: **dedupe retries** and debug.
+
+```ts
+type BrainEvent = {
+  id: string;                 // idempotencyKey (from Studio turn) OR derived
+  projectId: string;
+  type: "chat"|"answers"|"file"|"manual"|"elementApproved";
+  createdAt: number;
+  status: "applied"|"skipped"|"failed";
+  error?: string;
+};
+```
+
+## 2.3 `brainConflicts` (optional v1, but simple)
+
+```ts
+type BrainConflict = {
+  id: string;
+  scope: "project"|"element";
+  elementId?: string;
+  createdAt: number;
+
+  // Minimal conflict: just a warning with references
+  message: string;            // "Budget conflict: 20k vs 30k"
+  relatedSectionId: string;
+  relatedExcerpt?: string;    // optional small snippet
+  resolved?: { at: number; action: "ignored"|"fixedInDraft" };
+};
+```
+
+> Keep conflicts **informational**, not a workflow engine.
+
+---
+
+# 3) API Surface (Convex-style)
+
+## Queries
+
+* `brain.get(projectId)` → returns `ProjectBrain` (and ensures default exists)
+
+## Mutations (user edits)
+
+* `brain.updateSectionContent({ projectId, sectionId, newContent, expectedVersion })`
+
+  * increments `version`
+  * sets `dirtySinceLastSync=true` if element section and edit wasn’t a sync
+* `brain.createSectionForElement({ projectId, elementId, title })` (called when new element created)
+* `brain.deleteElementSection({ projectId, elementId })` (called when element deleted)
+
+## Actions (LLM)
+
+* `brain.appendFromEvent({ projectId, eventId, type, payload, selectedElementIds })`
+* `brain.generateElementDraftFromText({ projectId, elementId, sectionContent, approvedSnapshotId })`
+
+## Mutations (sync on approval)
+
+* `brain.syncElementSectionFromApproved({ projectId, elementId, approvedSnapshotId })`
+
+---
+
+# 4) Integration with your Single Agent (`runStudioTurn`)
+
+### When to trigger Brain
+
+Only on:
+
+1. `chatMessageSent`
+2. `structuredAnswersSubmitted`
+3. `fileIngested`
+4. `manualAddKnowledge`
+5. `elementApproved`
+
+### Recommended orchestration pattern (simple + fast UX)
+
+Inside `runStudioTurn(event)`:
+
+1. Run the Studio skill (normal behavior)
+2. Fire `brain.appendFromEvent(...)` **best-effort**
+3. Return Studio response immediately + a `brainUpdate` status
+
+Client has a reactive `brain.get()` query anyway, so the panel updates as soon as the action commits.
+
+---
+
+# 5) Brain append logic (simple but not dumb)
+
+## 5.1 Destination rules
+
+* If exactly one element is selected → append to that element section
+* Else → append to **Unmapped**
+* If event is clearly project-level (deadline, location, budget cap) → append to **Project** section
+
+**Do not overthink routing**. Unmapped is your safe bucket.
+
+## 5.2 Append format
+
+Always append a small block like:
+
+```
+[2026-01-01 21:43] • <bullet 1>
+• <bullet 2>
+• <bullet 3>
+```
+
+This keeps it readable and avoids needing a “Recent Updates” system.
+
+## 5.3 Dedupe / idempotency (must-have)
+
+* If `brainEvents` already contains `eventId` with status applied/skipped → do nothing.
+* If content to append is identical to the last appended block (hash) → skip.
+
+---
+
+# 6) Element approval behavior (your key requirement)
+
+When an element is approved:
+
+### 6.1 Replace element Current Knowledge text
+
+Call:
+
+`brain.syncElementSectionFromApproved(projectId, elementId, approvedSnapshotId)`
+
+It:
+
+* deterministically renders the approved snapshot into text
+* **overwrites** the element section `content`
+* sets:
+
+  * `lastSyncedApprovedSnapshotId = approvedSnapshotId`
+  * `dirtySinceLastSync = false`
+
+### 6.2 Still editable after sync
+
+User can edit immediately after. Editing sets `dirtySinceLastSync = true`.
+
+### 6.3 UX badge
+
+Element section header shows:
+
+* ✅ “Synced with Approved vX” when not dirty
+* ✏️ “Modified (not yet approved)” when dirty
+
+---
+
+# 7) “Generate new draft element from this text” (core feature)
+
+Button on element section: **Generate Draft From Text**
+
+### Input to the parser action
+
+* `sectionContent` (the edited Current Knowledge text)
+* `approvedSnapshotId` + approved snapshot JSON
+* strict ElementSnapshot schema
+
+### Output
+
+* Either:
+
+  1. a **ChangeSet patch** (recommended)
+  2. a full **proposed ElementSnapshot draft**
+
+### Flow
+
+1. Action returns a `draftChangeSet` (or `draftSnapshot`)
+2. UI shows a diff vs approved
+3. User approves → new snapshot becomes approved
+4. Approval triggers the sync again → knowledge text replaced with new approved render (clean slate)
+
+### Safety rules (so it won’t explode)
+
+* The parser must be **conservative**:
+
+  * If text is ambiguous, it should output:
+
+    * `questions[]` OR `assumptions[]` in the draft summary
+* It must never silently drop major fields; if missing, mark as “unknown” or keep old.
+
+---
+
+# 8) Conflict detection (optional but aligned with your rules)
+
+You said: “agent can suggest contradiction, user decides.”
+
+Keep it minimal:
+
+### Only detect conflicts for:
+
+* budget numbers
+* dimensions
+* dates
+* quantities
+* location/site
+
+How:
+
+* Extract numeric/date candidates from new append block
+* Compare to approved snapshot (if element section) or to latest known project constraints
+* If mismatch → add a `BrainConflict` warning (no auto fix)
+
+User can ignore, or they fix it by editing text + generating a new draft.
+
+---
+
+# 9) Keeping it short (without “rewriting”)
+
+Even with approval resets, **Project + Unmapped** can grow forever.
+
+Minimal approach:
+
+* Cap content length per section (e.g. 12,000 chars)
+* If exceeded:
+
+  * move oldest lines into `brainArchive` (optional table) or simply truncate oldest with a marker:
+
+    * `--- archived older notes ---`
+
+No summarization, no auto rewrite.
+
+---
+
+# 10) UI Spec (simple)
+
+Right panel: **Current Knowledge**
+
+Sections:
+
+1. **Project**
+2. **Unmapped**
+3. **Elements** (accordion)
+
+Each section:
+
+* fixed title (not editable)
+* big editable text area (content)
+* small footer:
+
+  * “Last auto-update: …”
+  * for element: “Synced with Approved: … / Modified …”
+* element section buttons:
+
+  * **Generate Draft From Text**
+  * (optional) **Revert to Approved** (overwrites content with current approved render)
+
+Conflicts:
+
+* small warning list at bottom of section or a badge next to title
+
+---
+
+# 11) Prompt/contracts (so the LLM can’t freestyle)
+
+## 11.1 Brain Append Output (strict)
+
+```ts
+type BrainAppendOutput = {
+  bullets: string[];              // 1..5 short Hebrew bullets
+  suggestedScope: "project"|"unmapped"|"element";
+  suggestedElementId?: string;    // only if scope=element
+  conflicts?: { message: string }[];
+};
+```
+
+## 11.2 Element Draft Parser Output (strict)
+
+```ts
+type ElementDraftFromTextOutput = {
+  changeSet: RevisionPatchOps;     // your existing patch format
+  summary: string;                // short
+  assumptions: string[];
+  questions: string[];            // only if needed
+};
+```
+
+---
+
+# 12) Jira-style Ticket Plan (with acceptance criteria)
+
+## EPIC BRAIN-1: Storage + UI
+
+**B1. Create `projectBrain` + `brain.get`**
+
+* AC: opening project always shows Project + Unmapped sections
+* AC: adding an element creates an element section
+
+**B2. Editable section content**
+
+* AC: user edits saved via mutation; structure (titles, order) not breakable
+* AC: optimistic concurrency prevents silent overwrites
+
+**B3. Element section status badge**
+
+* AC: dirty flag toggles true on edit, false on sync
+
+## EPIC BRAIN-2: Event-driven append
+
+**B4. `brainEvents` idempotency**
+
+* AC: same `eventId` never appends twice
+
+**B5. `brain.appendFromEvent` action**
+
+* AC: send/submit/upload appends 1–5 bullets to correct section
+* AC: if no element selected → unmapped
+
+**B6. Studio integration**
+
+* AC: Brain failure does not block Studio response
+* AC: UI shows a small “Brain update failed” state if it fails
+
+## EPIC BRAIN-3: Approval sync
+
+**B7. Deterministic element snapshot renderer**
+
+* AC: given snapshot JSON, produces consistent text
+
+**B8. Sync on approval**
+
+* AC: approving an element overwrites that element’s knowledge content with rendered text
+* AC: sets dirty=false and lastSyncedApprovedSnapshotId
+
+## EPIC BRAIN-4: Generate draft from text
+
+**B9. `brain.generateElementDraftFromText` action**
+
+* AC: produces a ChangeSet compatible with your element versioning
+* AC: returns summary + assumptions/questions
+
+**B10. UI: “Generate Draft From Text”**
+
+* AC: shows diff, allows user to approve/discard
+* AC: after approval, sync runs and knowledge resets to new approved render
+
+## (Optional) EPIC BRAIN-5: Conflicts + caps
+
+**B11. Conflict warnings**
+
+* AC: numeric/date mismatches create warnings (no auto fix)
+
+**B12. Section size caps**
+
+* AC: project/unmapped never grow beyond cap; oldest content archived/truncated
+
+---
+
+## The one thing I’d push back on (but still implementing as you want)
+
+If you allow the editable “current knowledge” to be **the only** thing agents read, you’ll eventually get cases where the user edited it to something inconsistent with approved snapshot.
+
+So: **agent context pack should always include both**:
+
+* approved snapshot (truth)
+* current knowledge text (user working notes)
+
+And the agent must treat current knowledge as “user intent / draft”, not truth.

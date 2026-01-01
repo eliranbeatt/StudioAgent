@@ -1,0 +1,73 @@
+# Brain (Current Knowledge) codex plan
+
+## Sources and precedence
+- Specs/brain.txt (behavior and invariants)
+- Current code: convex/schema.ts, convex/agent.ts, convex/files.ts, convex/projects.ts, convex/drafts.ts, src/app/projects/[id]/studio/page.tsx, src/app/projects/[id]/overview/page.tsx
+
+## Current state
+- No brain tables or API surface yet.
+- Studio chat uses convex/agent.sendMessage and stores messages; structured answers are saved then sent as a summary message.
+- File ingestion is handled by convex/files.saveUploadedFile and projectFiles table.
+- Element approval flow is not implemented yet; elementVersions table exists but is unused.
+- Studio already has a right-side context panel that can host Current Knowledge UI.
+
+## Plan
+1. Data model and schema
+   - Add new tables in convex/schema.ts: projectBrains, brainEvents, brainConflicts (and optional brainArchives if truncation is needed).
+   - Keep sections/conflicts stored as v.any or v.array(v.any) to match the BrainSection shape in Specs/brain.txt without heavy schema churn.
+   - Add index by projectId for fast lookups.
+
+2. Brain API module
+   - Create convex/brain.ts with:
+     - query brain.get(projectId) to return stored ProjectBrain or a default with Project/Unmapped sections.
+     - mutation brain.updateSectionContent({ projectId, sectionId, newContent, expectedVersion }) to update text and set dirty flags.
+     - mutation brain.createSectionForElement({ projectId, elementId, title }) to add an element section on element creation.
+     - mutation brain.deleteElementSection({ projectId, elementId }) for element removal.
+     - mutation brain.syncElementSectionFromApproved({ projectId, elementId, approvedSnapshotId }) to overwrite content and clear dirty flags.
+     - action brain.appendFromEvent({ projectId, eventId, type, payload, selectedElementIds }) to append auto bullets.
+     - action brain.generateElementDraftFromText({ projectId, elementId, sectionContent, approvedSnapshotId }) to produce patchOps and metadata for review.
+   - Reuse the OpenAI call pattern from convex/projects.ts (buildOverviewSummary) for append/draft generation; fall back to simple heuristics when no API key is present.
+
+3. Initialize and maintain sections
+   - Update convex/projects.ts create() to insert projectBrains with Project and Unmapped sections after project creation.
+   - Update convex/agent.ts (createElementFromStructured and structured branch in sendMessage) to call brain.createSectionForElement when inserting elements.
+   - Update convex/debug.ts seedSimulation to also create a brain section (so debug data stays consistent).
+
+4. Element approval and sync (needed for the replace on approval rule)
+   - Add an approval mutation (new convex/elements.ts or extend convex/drafts.ts) that:
+     - reads the current element draft,
+     - inserts a new elementVersions row,
+     - updates elements.currentApprovedVersionId and element status (approvedForQuote),
+     - marks the draft status as approved.
+   - Call brain.syncElementSectionFromApproved inside the approval mutation to overwrite Current Knowledge for that element.
+   - Add a helper in convex/brain.ts to render approved snapshots into text (start with a deterministic key/value listing from the snapshot shape used in drafts).
+
+5. Event-driven appends (best-effort, non-blocking)
+   - Update convex/agent.ts sendMessage to return the userMessageId (and projectId) so the UI can pass a stable eventId.
+   - In src/app/projects/[id]/studio/page.tsx:
+     - add useAction(api.brain.appendFromEvent),
+     - call it after sendMessage completes (type chat or answers), and swallow errors into a small UI badge.
+     - pass selectedElementIds if the user has picked a focused element for routing (add a simple selector in the panel).
+   - In src/app/projects/[id]/overview/page.tsx:
+     - after saveUploadedFile, call appendFromEvent with type file and payload { fileName, summary }.
+   - Add a small inline Manual add input in the Current Knowledge panel that uses appendFromEvent type manual.
+
+6. Current Knowledge UI in Studio
+   - Extend src/app/projects/[id]/studio/page.tsx right column:
+     - useQuery(api.brain.get) to render Project, Unmapped, and Element sections.
+     - each section uses a textarea that calls brain.updateSectionContent on blur or Save.
+     - show lastAutoAppendAt and dirty badge for element sections.
+   - For element sections:
+     - add Generate Draft From Text button that calls brain.generateElementDraftFromText,
+     - show patchOps in the same ChangeSet UI pattern already used in Studio messages,
+     - apply via api.drafts.applyChangeSet with draftId/revisionNumber from api.drafts.listOpenDrafts.
+     - add Revert to Approved that calls brain.syncElementSectionFromApproved.
+
+7. Deduping and size caps
+   - Use brainEvents to skip duplicate eventId writes.
+   - Track last appended block hash per section to avoid identical repeats.
+   - Enforce a max length per section in brain.appendFromEvent and trim oldest lines with a clear marker.
+
+8. Validation
+   - Manual: send a chat message, submit structured answers, and upload a file; verify Current Knowledge updates in the correct section without blocking the main response.
+   - Manual: edit an element section, generate draft, apply ChangeSet, approve element, confirm the section resets to the approved render and dirty flag clears.

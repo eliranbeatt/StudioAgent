@@ -1,6 +1,7 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { applyChangeSet } from "./drafts";
+import { internal } from "./_generated/api";
 
 // Helper to create initial draft state
 const INITIAL_SNAPSHOT = {
@@ -53,6 +54,11 @@ export const seedSimulation = mutation({
     });
 
     await ctx.db.patch(elementId, { currentDraftId: draftId });
+    await ctx.runMutation(internal.brain.createSectionForElementInternal, {
+      projectId: args.projectId,
+      elementId,
+      title: "Simulation Wall",
+    });
 
     return { draftId, elementId };
   },
