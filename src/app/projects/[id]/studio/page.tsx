@@ -788,6 +788,13 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                     Append to knowledge
                   </button>
                 </div>
+                {brain?.conflicts?.length ? (
+                  <div className="border-t border-gray-100 pt-3 text-[10px] text-amber-600">
+                    {brain.conflicts.slice(-3).map((conflict: any, idx: number) => (
+                      <div key={`${conflict.id}-${idx}`}>{conflict.message}</div>
+                    ))}
+                  </div>
+                ) : null}
                 {brainStatus ? (
                   <div className="text-[10px] text-gray-500">{brainStatus}</div>
                 ) : null}

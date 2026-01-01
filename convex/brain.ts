@@ -320,6 +320,8 @@ export const appendFromEvent = mutation({
       selectedIds.length === 1
         ? buildElementSectionId(String(selectedIds[0]))
         : defaultIds.unmapped;
+    const targetScope = selectedIds.length === 1 ? "element" : "project";
+    const targetElementId = selectedIds.length === 1 ? selectedIds[0] : null;
 
     let found = false;
     let updatedSections = (brain?.sections ?? []).map((section: any) => {
@@ -360,10 +362,24 @@ export const appendFromEvent = mutation({
       ];
     }
 
+    const conflictEntries = await detectConflicts(ctx, {
+      projectId: args.projectId,
+      scope: targetScope,
+      elementId: targetElementId,
+      sectionId: targetSectionId,
+      text: block,
+    });
+
+    const nextConflicts =
+      conflictEntries.length > 0
+        ? [...(brain?.conflicts ?? []), ...conflictEntries].slice(-50)
+        : brain?.conflicts ?? [];
+
     await ctx.db.patch(brain!._id, {
       sections: updatedSections,
       version: brain!.version + 1,
       updatedAt: now,
+      conflicts: nextConflicts,
     });
 
     await ctx.db.insert("brainEvents", {
@@ -633,6 +649,211 @@ function capSectionContent(content: string) {
   if (content.length <= MAX_SECTION_CHARS) return content;
   const keep = content.slice(content.length - MAX_SECTION_CHARS);
   return `--- archived older notes ---\n${keep}`;
+}
+
+async function detectConflicts(
+  ctx: any,
+  args: {
+    projectId: any;
+    scope: "project" | "element";
+    elementId: any | null;
+    sectionId: string;
+    text: string;
+  }
+) {
+  const signals = extractConflictSignals(args.text);
+  if (signals.length === 0) return [];
+
+  const conflicts: Array<{
+    id: string;
+    scope: string;
+    elementId?: any;
+    message: string;
+    relatedSectionId: string;
+    relatedExcerpt?: string;
+    createdAt: number;
+  }> = [];
+
+  const now = Date.now();
+  if (args.scope === "project") {
+    const project = await ctx.db.get(args.projectId);
+    if (project?.details?.budgetCap !== undefined && signals.some((s) => s.kind === "budget")) {
+      const incoming = signals.find((s) => s.kind === "budget")!;
+      if (incoming.value !== null && Number(project.details.budgetCap) !== incoming.value) {
+        conflicts.push({
+          id: `budget_${now}`,
+          scope: "project",
+          message: `Budget conflict: ${incoming.value} vs ${project.details.budgetCap}`,
+          relatedSectionId: args.sectionId,
+          relatedExcerpt: incoming.raw,
+          createdAt: now,
+        });
+      }
+    }
+    if (project?.details?.eventDate && signals.some((s) => s.kind === "date")) {
+      const incoming = signals.find((s) => s.kind === "date")!;
+      if (incoming.dateValue && normalizeDate(project.details.eventDate) !== incoming.dateValue) {
+        conflicts.push({
+          id: `date_${now}`,
+          scope: "project",
+          message: `Date conflict: ${incoming.dateValue} vs ${normalizeDate(project.details.eventDate)}`,
+          relatedSectionId: args.sectionId,
+          relatedExcerpt: incoming.raw,
+          createdAt: now,
+        });
+      }
+    }
+    if (project?.details?.location && signals.some((s) => s.kind === "location")) {
+      const incoming = signals.find((s) => s.kind === "location")!;
+      if (incoming.textValue && normalizeText(project.details.location) !== normalizeText(incoming.textValue)) {
+        conflicts.push({
+          id: `location_${now}`,
+          scope: "project",
+          message: `Location conflict: ${incoming.textValue} vs ${project.details.location}`,
+          relatedSectionId: args.sectionId,
+          relatedExcerpt: incoming.raw,
+          createdAt: now,
+        });
+      }
+    }
+  }
+
+  if (args.scope === "element" && args.elementId && signals.some((s) => s.kind === "quantity")) {
+    const element = await ctx.db.get(args.elementId);
+    if (element?.currentApprovedVersionId) {
+      const version = await ctx.db.get(element.currentApprovedVersionId);
+      const snapshot = version?.snapshot ?? {};
+      const totalQty = sumSnapshotQuantities(snapshot);
+      const incoming = signals.find((s) => s.kind === "quantity")!;
+      if (incoming.value !== null && totalQty > 0 && Math.abs(totalQty - incoming.value) >= 1) {
+        conflicts.push({
+          id: `qty_${now}`,
+          scope: "element",
+          elementId: args.elementId,
+          message: `Quantity conflict: ${incoming.value} vs ${totalQty}`,
+          relatedSectionId: args.sectionId,
+          relatedExcerpt: incoming.raw,
+          createdAt: now,
+        });
+      }
+    }
+  }
+
+  for (const conflict of conflicts) {
+    await ctx.db.insert("brainConflicts", {
+      projectId: args.projectId,
+      scope: conflict.scope,
+      elementId: conflict.elementId,
+      message: conflict.message,
+      relatedSectionId: conflict.relatedSectionId,
+      relatedExcerpt: conflict.relatedExcerpt,
+      createdAt: conflict.createdAt,
+    });
+  }
+
+  return conflicts;
+}
+
+function extractConflictSignals(text: string) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const signals: Array<{
+    kind: "budget" | "date" | "quantity" | "location";
+    value: number | null;
+    dateValue?: string;
+    textValue?: string;
+    raw: string;
+  }> = [];
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes("budget")) {
+      signals.push({
+        kind: "budget",
+        value: parseNumberFromText(line),
+        raw: line,
+      });
+    }
+    if (lower.includes("date") || lower.includes("deadline") || lower.includes("event")) {
+      const dateValue = parseDateFromText(line);
+      signals.push({
+        kind: "date",
+        value: null,
+        dateValue,
+        raw: line,
+      });
+    }
+    if (lower.includes("qty") || lower.includes("quantity")) {
+      signals.push({
+        kind: "quantity",
+        value: parseNumberFromText(line),
+        raw: line,
+      });
+    }
+    if (lower.includes("location") || lower.includes("site")) {
+      const textValue = parseTextAfterLabel(line, ["location", "site"]);
+      signals.push({
+        kind: "location",
+        value: null,
+        textValue,
+        raw: line,
+      });
+    }
+  }
+
+  return signals;
+}
+
+function parseNumberFromText(text: string) {
+  const match = text.replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  if (!match) return null;
+  return Number(match[0]);
+}
+
+function parseDateFromText(text: string) {
+  const iso = text.match(/\d{4}-\d{2}-\d{2}/);
+  if (iso) return iso[0];
+  const slash = text.match(/\d{2}\/\d{2}\/\d{4}/);
+  if (slash) {
+    const [mm, dd, yyyy] = slash[0].split("/");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return undefined;
+}
+
+function parseTextAfterLabel(text: string, labels: string[]) {
+  for (const label of labels) {
+    const regex = new RegExp(`${label}\\s*[:\\-]\\s*(.+)$`, "i");
+    const match = text.match(regex);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+  return undefined;
+}
+
+function normalizeDate(timestamp: number) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeText(text: string) {
+  return text.trim().toLowerCase();
+}
+
+function sumSnapshotQuantities(snapshot: any) {
+  const materials = Object.values<any>(snapshot?.materials?.byId ?? {}).filter(
+    (line) => !line?.deletedAt
+  );
+  const labor = Object.values<any>(snapshot?.labor?.byId ?? {}).filter(
+    (line) => !line?.deletedAt
+  );
+  const matQty = materials.reduce((sum, line) => sum + Number(line?.qty ?? 0), 0);
+  const laborQty = labor.reduce((sum, line) => sum + Number(line?.qty ?? 0), 0);
+  return matQty + laborQty;
 }
 
 function formatTimestamp(now: number) {
