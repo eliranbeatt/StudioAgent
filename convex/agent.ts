@@ -204,7 +204,7 @@ export const preProcessMessage = internalMutation({
     }
 
     if (projectId) {
-      const suggestions = extractSuggestedElements(args.content);
+      const suggestions = extractSuggestedElementsExplicit(args.content);
       if (suggestions.length > 0) {
         await ctx.runMutation(internal.suggestions.addSuggestionsFromMessageInternal, {
           projectId,
@@ -229,7 +229,7 @@ export const preProcessMessage = internalMutation({
       await ctx.db.patch(args.conversationId, { updatedAt: Date.now() });
 
       if (projectId) {
-        const agentSuggestions = extractSuggestedElements(responseContent);
+        const agentSuggestions = extractSuggestedElementsFromAgent(responseContent);
         if (agentSuggestions.length > 0) {
           await ctx.runMutation(internal.suggestions.addSuggestionsFromMessageInternal, {
             projectId,
@@ -321,7 +321,7 @@ Context:
 ${result.fileContext?.map((f) => `- ${f.fileName}: ${f.summary ?? "no summary"}`).join("\n")}
 
 You help with ideation, planning, and task management. Be concise and helpful.
-If you suggest new elements, format each suggestion as: "element: <title> (<type>)".`;
+If you suggest new elements, list them as bullet items with clear titles and optional types.`;
 
         const completion = await client.chat.completions.create({
           model: targetModel,
@@ -355,7 +355,7 @@ If you suggest new elements, format each suggestion as: "element: <title> (<type
     });
 
     if (result.projectId) {
-      const agentSuggestions = extractSuggestedElements(responseContent);
+      const agentSuggestions = extractSuggestedElementsFromAgent(responseContent);
       if (agentSuggestions.length > 0) {
         await ctx.runMutation(internal.suggestions.addSuggestionsFromMessageInternal, {
           projectId: result.projectId,
@@ -808,11 +808,13 @@ function normalizeElementType(input?: string) {
   return allowed.has(value) ? (value as any) : "build";
 }
 
-function extractSuggestedElements(content: string) {
+const ELEMENT_TYPES = ["build", "rent", "print", "transport", "install", "subcontract", "mixed"];
+
+function extractSuggestedElementsExplicit(content: string) {
   const lines = content.split(/\r?\n/);
   const suggestions: Array<{ title: string; type?: string }> = [];
   for (const rawLine of lines) {
-    const line = rawLine.trim().replace(/^[-*]\s*/, "");
+    const line = stripBullet(rawLine);
     if (!line) continue;
     const match =
       line.match(/^suggested element\s*[:\-]\s*(.+)$/i) ||
@@ -825,36 +827,114 @@ function extractSuggestedElements(content: string) {
     }
   }
 
-  const unique = new Map<string, { title: string; type?: string }>();
-  for (const suggestion of suggestions) {
-    unique.set(suggestion.title.toLowerCase(), suggestion);
+  return uniqueSuggestions(suggestions);
+}
+
+function extractSuggestedElementsFromAgent(content: string) {
+  const hasCue = hasSuggestionCue(content);
+  const lines = content.split(/\r?\n/);
+  const suggestions: Array<{ title: string; type?: string }> = [];
+  for (const rawLine of lines) {
+    const line = stripBullet(rawLine);
+    if (!line) continue;
+    const parsed = parseSuggestedElementLineRelaxed(line, hasCue);
+    if (parsed?.title) {
+      suggestions.push(parsed);
+    }
   }
-  return Array.from(unique.values());
+  return uniqueSuggestions(suggestions);
 }
 
 function parseSuggestedElementLine(text: string) {
   const trimmed = text.trim();
   if (!trimmed) return null;
+  return parseSuggestedElementLineRelaxed(trimmed, true);
+}
 
-  const typeMatch = trimmed.match(/\((build|rent|print|transport|install|subcontract|mixed)\)/i);
-  if (typeMatch) {
-    const title = trimmed.replace(typeMatch[0], "").trim();
-    return { title, type: typeMatch[1].toLowerCase() };
+function parseSuggestedElementLineRelaxed(text: string, hasCue: boolean) {
+  const cleaned = stripLeadPhrases(text);
+  if (!cleaned) return null;
+
+  const { title, type } = extractTypeAndTitle(cleaned);
+  const hasTypeKeyword = Boolean(type) || containsTypeKeyword(cleaned);
+  const looksLikeSuggestion = hasCue || hasTypeKeyword || /element/i.test(cleaned);
+  if (!looksLikeSuggestion) return null;
+
+  const finalTitle = title.trim();
+  if (finalTitle.length < 3) return null;
+  return { title: finalTitle, type };
+}
+
+function extractTypeAndTitle(text: string) {
+  let title = text.trim();
+  let type: string | undefined;
+
+  const parenMatch = title.match(/\((build|rent|print|transport|install|subcontract|mixed)\)/i);
+  if (parenMatch) {
+    type = parenMatch[1].toLowerCase();
+    title = title.replace(parenMatch[0], "").trim();
   }
 
-  const typeLabelMatch = trimmed.match(/type\s*[:\-]\s*(\w+)/i);
+  const typeLabelMatch = title.match(/type\s*[:\-]\s*(\w+)/i);
   if (typeLabelMatch) {
-    const title = trimmed.replace(typeLabelMatch[0], "").trim().replace(/[-–—]+$/, "").trim();
-    return { title, type: typeLabelMatch[1].toLowerCase() };
-  }
-
-  const parts = trimmed.split(/\s[-–—]\s/);
-  if (parts.length === 2) {
-    const possibleType = parts[1].trim().toLowerCase();
-    if (["build", "rent", "print", "transport", "install", "subcontract", "mixed"].includes(possibleType)) {
-      return { title: parts[0].trim(), type: possibleType };
+    const candidate = typeLabelMatch[1].toLowerCase();
+    if (ELEMENT_TYPES.includes(candidate)) {
+      type = candidate;
+      title = title.replace(typeLabelMatch[0], "").trim().replace(/[-–—]+$/, "").trim();
     }
   }
 
-  return { title: trimmed };
+  const startsWithType = title.match(/^(build|rent|print|transport|install|subcontract|mixed)\b/i);
+  if (startsWithType) {
+    type = startsWithType[1].toLowerCase();
+    title = title.replace(startsWithType[0], "").trim();
+  }
+
+  const parts = title.split(/\s[-–—]\s/);
+  if (parts.length === 2) {
+    const possibleType = parts[1].trim().toLowerCase();
+    if (ELEMENT_TYPES.includes(possibleType)) {
+      type = possibleType;
+      title = parts[0].trim();
+    }
+  }
+
+  const words = title.split(/\s+/);
+  if (words.length > 1) {
+    const last = words[words.length - 1].toLowerCase();
+    if (ELEMENT_TYPES.includes(last)) {
+      type = last;
+      title = words.slice(0, -1).join(" ").trim();
+    }
+  }
+
+  return { title, type };
+}
+
+function stripBullet(text: string) {
+  return text.trim().replace(/^[-*•]\s*/, "");
+}
+
+function stripLeadPhrases(text: string) {
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^(suggest|suggested|consider|add|include|option|idea)s?\s*[:\-]?\s*/i, "");
+  cleaned = cleaned.replace(/^(we should|you could|maybe|try|recommend)\s+/i, "");
+  cleaned = cleaned.replace(/^[\d]+\.\s+/, "");
+  return cleaned.trim();
+}
+
+function hasSuggestionCue(content: string) {
+  return /(suggest|suggested|option|idea|elements?)/i.test(content);
+}
+
+function containsTypeKeyword(text: string) {
+  return ELEMENT_TYPES.some((type) => new RegExp(`\\b${type}\\b`, "i").test(text));
+}
+
+function uniqueSuggestions(list: Array<{ title: string; type?: string }>) {
+  const unique = new Map<string, { title: string; type?: string }>();
+  for (const suggestion of list) {
+    unique.set(suggestion.title.toLowerCase(), suggestion);
+  }
+  return Array.from(unique.values());
 }
