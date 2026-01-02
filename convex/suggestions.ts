@@ -95,11 +95,6 @@ export const approveSuggestedElement = mutation({
     });
 
     await ctx.db.patch(elementId, { currentDraftId: draftId });
-    await ctx.runMutation(internal.brain.createSectionForElementInternal, {
-      projectId: suggestion.projectId,
-      elementId,
-      title: suggestion.title,
-    });
 
     await ctx.db.patch(args.suggestionId, {
       status: "approved",
@@ -140,5 +135,5 @@ function normalizeElementType(input?: string) {
     "mixed",
   ]);
   const value = (input ?? "").trim().toLowerCase();
-  return allowed.has(value) ? value : "build";
+  return allowed.has(value) ? (value as any) : "build";
 }

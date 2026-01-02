@@ -32,10 +32,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
   const [answersStatus, setAnswersStatus] = useState<string>("");
   const [taskTargetElementId, setTaskTargetElementId] = useState<string>("");
-  const [brainDrafts, setBrainDrafts] = useState<Record<string, string>>({});
-  const [brainStatus, setBrainStatus] = useState<string>("");
-  const [brainTargetElementId, setBrainTargetElementId] = useState<string>("");
-  const [brainManualText, setBrainManualText] = useState<string>("");
+
   const [newElementTitle, setNewElementTitle] = useState<string>("");
   const [newElementType, setNewElementType] = useState<string>("build");
   const [selectedElementDetailId, setSelectedElementDetailId] = useState<string | null>(null);
@@ -43,16 +40,15 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   // State for conversation ID since we need to fetch/create it via mutation
   const [conversationId, setConversationId] = useState<Id<"conversations"> | null>(null);
 
+
+
   // Mutations
   const getOrCreateConversation = useMutation(api.agent.getOrCreateConversation);
   const setConversationStage = useMutation(api.agent.setConversationStage);
   const saveStructuredAnswers = useMutation(api.agent.saveStructuredAnswers);
   const createElementFromStructured = useMutation(api.agent.createElementFromStructured);
   const generateTaskPatchOps = useMutation(api.agent.generateTaskPatchOps);
-  const ensureProjectBrain = useMutation(api.brain.ensureProjectBrain);
-  const updateBrainSection = useMutation(api.brain.updateSectionContent);
-  const appendBrainEvent = useMutation(api.brain.appendFromEvent);
-  const generateDraftFromBrain = useMutation(api.brain.generateElementDraftFromText);
+
   const approveElementDraft = useMutation(api.elements.approveElementDraft);
   const approveSuggestedElement = useMutation(api.suggestions.approveSuggestedElement);
   const rejectSuggestedElement = useMutation(api.suggestions.rejectSuggestedElement);
@@ -76,7 +72,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     projectId ? { projectId, stage: stageSelection } : "skip"
   );
   const fileContext = useQuery(api.files.getProjectContext, projectId ? { projectId } : "skip");
-  const brain = useQuery(api.brain.get, projectId ? { projectId } : "skip");
+
   const suggestions = useQuery(api.suggestions.listSuggested, projectId ? { projectId } : "skip");
   const elementDetail = useQuery(
     api.elements.getElementDetail,
@@ -108,23 +104,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     setAnswerDrafts(structuredAnswers.answers as Record<string, string>);
   }, [structuredAnswers?.answers]);
 
-  useEffect(() => {
-    if (!projectId) return;
-    if (brain === null) {
-      ensureProjectBrain({ projectId }).catch(() => null);
-    }
-  }, [projectId, brain]);
-
-  useEffect(() => {
-    if (!brain?.sections) return;
-    const nextDrafts: Record<string, string> = {};
-    for (const section of brain.sections) {
-      if (section?.id) {
-        nextDrafts[section.id] = String(section.content ?? "");
-      }
-    }
-    setBrainDrafts(nextDrafts);
-  }, [brain?.version]);
 
   useEffect(() => {
     if (!overview?.elements || overview.elements.length === 0) return;
@@ -132,11 +111,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     setTaskTargetElementId(overview.elements[0].id);
   }, [overview?.elements, taskTargetElementId]);
 
-  useEffect(() => {
-    if (!overview?.elements || overview.elements.length === 0) return;
-    if (brainTargetElementId) return;
-    setBrainTargetElementId(overview.elements[0].id);
-  }, [overview?.elements, brainTargetElementId]);
 
   const handleSend = async () => {
     if (!input.trim() || !conversationId) return;
@@ -148,16 +122,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       channel,
       model,
     });
-    if (projectId) {
-      const eventId = result?.userMessageId ?? `chat_${Date.now()}`;
-      await safeAppendBrain({
-        projectId,
-        eventId,
-        type: "chat",
-        payload: { text: currentInput },
-        selectedElementIds: brainTargetElementId ? [brainTargetElementId as any] : [],
-      });
-    }
   };
 
   useEffect(() => {
@@ -190,37 +154,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  const safeAppendBrain = async (args: {
-    projectId: Id<"projects">;
-    eventId: string;
-    type: string;
-    payload: any;
-    selectedElementIds?: Id<"elements">[];
-  }) => {
-    try {
-      await appendBrainEvent(args);
-      setBrainStatus("Brain updated.");
-    } catch {
-      setBrainStatus("Brain update failed.");
-    }
-  };
-
-  const handleSaveBrainSection = async (section: any) => {
-    if (!brain) return;
-    const content = brainDrafts[section.id] ?? "";
-    if (content === section.content) return;
-    try {
-      await updateBrainSection({
-        projectId,
-        sectionId: section.id,
-        newContent: content,
-        expectedVersion: brain.version,
-      });
-      setBrainStatus("Brain section saved.");
-    } catch (err: any) {
-      setBrainStatus(err?.message ?? "Failed to save brain section.");
-    }
-  };
 
   const handleApplyChangeSet = async () => {
     setApplyStatus("");
@@ -304,20 +237,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   };
 
   const structuredQuestions = getQuestions(stageSelection);
-  const brainSections = useMemo(() => {
-    if (!brain?.sections) return [];
-    const scopeRank: Record<string, number> = {
-      project: 0,
-      unmapped: 1,
-      element: 2,
-    };
-    return [...brain.sections].sort((a: any, b: any) => {
-      const rankA = scopeRank[String(a?.scope ?? "element")] ?? 2;
-      const rankB = scopeRank[String(b?.scope ?? "element")] ?? 2;
-      if (rankA !== rankB) return rankA - rankB;
-      return String(a?.title ?? "").localeCompare(String(b?.title ?? ""));
-    });
-  }, [brain?.sections]);
+
 
   const handleSaveStructuredAnswers = async () => {
     setAnswersStatus("");
@@ -354,16 +274,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
         content: summary,
         channel: "structured",
       });
-      if (projectId) {
-        const eventId = result?.userMessageId ?? `answers_${Date.now()}`;
-        await safeAppendBrain({
-          projectId,
-          eventId,
-          type: "answers",
-          payload: { text: summary },
-          selectedElementIds: brainTargetElementId ? [brainTargetElementId as any] : [],
-        });
-      }
     }
 
     setAnswersStatus("Saved structured answers.");
@@ -389,45 +299,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  const handleManualBrainAppend = async () => {
-    if (!brainManualText.trim()) return;
-    const eventId = `manual_${Date.now()}`;
-    await safeAppendBrain({
-      projectId,
-      eventId,
-      type: "manual",
-      payload: { text: brainManualText.trim() },
-      selectedElementIds: brainTargetElementId ? [brainTargetElementId as any] : [],
-    });
-    setBrainManualText("");
-  };
-
-  const handleGenerateDraftFromSection = async (section: any) => {
-    if (!section?.elementId) return;
-    const content = brainDrafts[section.id] ?? section.content ?? "";
-    try {
-      const result = await generateDraftFromBrain({
-        projectId,
-        elementId: section.elementId,
-        sectionContent: String(content),
-      });
-      if (!result?.ok) {
-        setBrainStatus(result?.error ?? "Failed to generate draft.");
-        return;
-      }
-      setPatchOpsText(JSON.stringify(result.patchOps ?? [], null, 2));
-      setSelectedDraftType("element");
-      if (result.draftId) {
-        setSelectedDraftId(result.draftId);
-      }
-      if (result.baseRevisionNumber !== undefined) {
-        setBaseRevisionNumber(result.baseRevisionNumber);
-      }
-      setBrainStatus(result.summary ?? "Draft generated from Current Knowledge.");
-    } catch (err: any) {
-      setBrainStatus(err?.message ?? "Failed to generate draft.");
-    }
-  };
 
   const handleCreateElementManual = async () => {
     const title = newElementTitle.trim();
@@ -785,97 +656,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
 
-          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-gray-900 font-bold text-xs uppercase tracking-wider">
-                Current Knowledge
-              </div>
-            </div>
-            {!brain ? (
-              <div className="text-xs text-gray-500">Loading knowledge...</div>
-            ) : (
-              <div className="space-y-4">
-                {brainSections.map((section: any) => (
-                  <div key={section.id} className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[11px] font-semibold text-gray-700 uppercase">
-                        {section.title}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {section.scope === "element" ? (
-                          <button
-                            onClick={() => handleGenerateDraftFromSection(section)}
-                            className="text-[10px] font-semibold uppercase text-gray-600 hover:text-gray-900"
-                          >
-                            Generate Draft
-                          </button>
-                        ) : null}
-                        {section.scope === "element" ? (
-                          <span className={`text-[10px] uppercase ${section.dirtySinceLastSync ? "text-amber-600" : "text-emerald-600"}`}>
-                            {section.dirtySinceLastSync ? "Modified" : "Synced"}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <textarea
-                      value={brainDrafts[section.id] ?? section.content ?? ""}
-                      onChange={(e) =>
-                        setBrainDrafts((prev) => ({ ...prev, [section.id]: e.target.value }))
-                      }
-                      rows={4}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 bg-white"
-                    />
-                    <button
-                      onClick={() => handleSaveBrainSection(section)}
-                      className="px-3 py-1.5 text-[10px] font-semibold rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50"
-                    >
-                      Save
-                    </button>
-                  </div>
-                ))}
-                <div className="border-t border-gray-100 pt-3 space-y-2">
-                  <div className="text-[10px] font-semibold uppercase text-gray-400">
-                    Add note
-                  </div>
-                  <select
-                    value={brainTargetElementId}
-                    onChange={(e) => setBrainTargetElementId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs text-gray-700 bg-white"
-                  >
-                    <option value="">Unmapped</option>
-                    {overview?.elements?.map((element: any) => (
-                      <option key={element.id} value={element.id}>
-                        {element.title}
-                      </option>
-                    ))}
-                  </select>
-                  <textarea
-                    value={brainManualText}
-                    onChange={(e) => setBrainManualText(e.target.value)}
-                    rows={2}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 bg-white"
-                    placeholder="Add a quick note..."
-                  />
-                  <button
-                    onClick={handleManualBrainAppend}
-                    className="w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition-colors bg-black text-white hover:bg-gray-800"
-                  >
-                    Append to knowledge
-                  </button>
-                </div>
-                {brain?.conflicts?.length ? (
-                  <div className="border-t border-gray-100 pt-3 text-[10px] text-amber-600">
-                    {brain.conflicts.slice(-3).map((conflict: any, idx: number) => (
-                      <div key={`${conflict.id}-${idx}`}>{conflict.message}</div>
-                    ))}
-                  </div>
-                ) : null}
-                {brainStatus ? (
-                  <div className="text-[10px] text-gray-500">{brainStatus}</div>
-                ) : null}
-              </div>
-            )}
-          </div>
+
 
           <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
             <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">

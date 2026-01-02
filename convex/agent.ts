@@ -151,11 +151,6 @@ export const preProcessMessage = internalMutation({
         });
 
         await ctx.db.patch(elementId, { currentDraftId: draftId });
-        await ctx.runMutation(internal.brain.createSectionForElementInternal, {
-          projectId,
-          elementId,
-          title: structuredFields.title,
-        });
 
         responseContent = `Created element "${structuredFields.title}" (${elementType}). You can add tasks, materials, and labor next.`;
         responseType = "text";
@@ -482,11 +477,6 @@ export const createElementFromStructured = mutation({
     });
 
     await ctx.db.patch(elementId, { currentDraftId: draftId });
-    await ctx.runMutation(internal.brain.createSectionForElementInternal, {
-      projectId: args.projectId,
-      elementId,
-      title: args.title,
-    });
 
     return { elementId, draftId, type: elementType };
   },

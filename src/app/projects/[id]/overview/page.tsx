@@ -15,7 +15,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const linkedProjects = useQuery(api.projects.listLinkedProjects, { projectId });
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const saveUploadedFile = useAction(api.files.saveUploadedFile);
-  const appendBrainEvent = useMutation(api.brain.appendFromEvent);
+
   const createElementFromStructured = useMutation(api.agent.createElementFromStructured);
   const updateProjectDetails = useMutation(api.projects.updateProjectDetails);
   const linkProject = useMutation(api.projects.linkProject);
@@ -430,13 +430,6 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
                     fileName: file.name,
                     contentType: file.type,
                     size: file.size,
-                  });
-                  await appendBrainEvent({
-                    projectId,
-                    eventId: `file_${storageId}`,
-                    type: "file",
-                    payload: { fileName: file.name },
-                    selectedElementIds: [],
                   });
                 }
               }}

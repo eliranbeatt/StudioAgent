@@ -285,41 +285,13 @@ export default defineSchema({
   // Project Digests (Archive/Context)
   projectDigests: defineTable({
     projectId: v.id("projects"),
-    digest: v.any(),
-    schemaVersion: v.number(),
-    generatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
-
-  // Project Brain (Current Knowledge)
-  projectBrains: defineTable({
-    projectId: v.id("projects"),
-    version: v.number(),
-    updatedAt: v.number(),
-    sections: v.array(v.any()),
-    conflicts: v.optional(v.array(v.any())),
-  }).index("by_project", ["projectId"]),
-
-  brainEvents: defineTable({
-    projectId: v.id("projects"),
-    eventId: v.string(),
-    type: v.string(),
+    linkedProjectId: v.id("projects"),
+    mode: v.union(v.literal("contextOnly"), v.literal("importSuggestions")),
     createdAt: v.number(),
-    status: v.string(),
-    error: v.optional(v.string()),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_event", ["projectId", "eventId"]),
-
-  brainConflicts: defineTable({
-    projectId: v.id("projects"),
-    scope: v.string(),
-    elementId: v.optional(v.id("elements")),
-    message: v.string(),
-    relatedSectionId: v.string(),
-    relatedExcerpt: v.optional(v.string()),
-    createdAt: v.number(),
-    resolved: v.optional(v.any()),
   }).index("by_project", ["projectId"]),
+
+
+
 
   // Suggested Elements
   suggestedElements: defineTable({
