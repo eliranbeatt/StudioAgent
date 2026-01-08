@@ -8,8 +8,7 @@ import {
   Calculator,
   ListTodo,
   FileText,
-  AlertTriangle,
-  Lightbulb
+
 } from "lucide-react";
 
 export default function ProjectLayout({
@@ -24,11 +23,11 @@ export default function ProjectLayout({
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
     { name: "AgenticEshet", href: `/projects/${projectId}/studio`, icon: Bot },
-    { name: "Suggested", href: `/projects/${projectId}/suggested`, icon: Lightbulb },
+
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },
     { name: "Quote", href: `/projects/${projectId}/quote`, icon: FileText },
-    { name: "Graveyard", href: `/projects/${projectId}/graveyard`, icon: AlertTriangle },
+
   ];
 
   return (

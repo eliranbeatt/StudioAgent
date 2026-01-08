@@ -30,11 +30,7 @@ const quoteStatus = v.union(
   v.literal("superseded")
 );
 const baselineStatus = v.union(v.literal("approved"), v.literal("superseded"));
-const graveyardStatus = v.union(
-  v.literal("pending"),
-  v.literal("resolved"),
-  v.literal("dismissed")
-);
+
 const procurementMode = v.union(
   v.literal("purchase"),
   v.literal("stock"),
@@ -91,7 +87,7 @@ export default defineSchema({
   projectLinks: defineTable({
     projectId: v.id("projects"),
     linkedProjectId: v.id("projects"),
-    mode: v.union(v.literal("contextOnly"), v.literal("importSuggestions")),
+    mode: v.literal("contextOnly"),
     createdAt: v.number(),
   }).index("by_project", ["projectId"]),
 
@@ -212,22 +208,7 @@ export default defineSchema({
     .index("by_draft", ["draftType", "draftId" as any]), // Using any to bypass explicit type check for union id in index definition if strictly required, but Convex handles string fields for IDs in indexes usually.
 
   // Graveyard Items
-  graveyardItems: defineTable({
-    projectId: v.id("projects"),
-    draftType: v.union(v.literal("element"), v.literal("projectCost")),
-    draftId: v.string(), // ID string
-    changeSetId: v.id("changeSets"),
-    status: graveyardStatus,
-    kind: v.string(),
-    message: v.string(),
-    options: v.any(), // [{ id, label, patchOps... }]
-    selectedOptionId: v.optional(v.string()),
-    resolvedBy: v.optional(v.id("users")),
-    resolvedAt: v.optional(v.number()),
-    createdAt: v.number(),
-  })
-    .index("by_project_status", ["projectId", "status"])
-    .index("by_draft", ["draftType", "draftId", "status"]),
+
 
   // Quote Versions
   quoteVersions: defineTable({
@@ -286,7 +267,7 @@ export default defineSchema({
   projectDigests: defineTable({
     projectId: v.id("projects"),
     linkedProjectId: v.id("projects"),
-    mode: v.union(v.literal("contextOnly"), v.literal("importSuggestions")),
+    mode: v.literal("contextOnly"),
     createdAt: v.number(),
   }).index("by_project", ["projectId"]),
 
@@ -294,18 +275,7 @@ export default defineSchema({
 
 
   // Suggested Elements
-  suggestedElements: defineTable({
-    projectId: v.id("projects"),
-    title: v.string(),
-    type: v.string(),
-    status: v.string(), // pending | approved | rejected
-    sourceMessageId: v.optional(v.id("messages")),
-    approvedElementId: v.optional(v.id("elements")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_status", ["projectId", "status"]),
+
 
   // Element Snapshot Index (Analytics/Search)
   elementSnapshotIndex: defineTable({

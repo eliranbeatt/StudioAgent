@@ -198,16 +198,7 @@ export const preProcessMessage = internalMutation({
       }
     }
 
-    if (projectId) {
-      const suggestions = extractSuggestedElementsExplicit(args.content);
-      if (suggestions.length > 0) {
-        await ctx.runMutation(internal.suggestions.addSuggestionsFromMessageInternal, {
-          projectId,
-          messageId: userMessageId,
-          suggestions,
-        });
-      }
-    }
+
 
     // If we have a response content, we handled it.
     if (responseContent !== null) {
@@ -223,16 +214,7 @@ export const preProcessMessage = internalMutation({
       });
       await ctx.db.patch(args.conversationId, { updatedAt: Date.now() });
 
-      if (projectId) {
-        const agentSuggestions = extractSuggestedElementsFromAgent(responseContent);
-        if (agentSuggestions.length > 0) {
-          await ctx.runMutation(internal.suggestions.addSuggestionsFromMessageInternal, {
-            projectId,
-            messageId: agentMessageId,
-            suggestions: agentSuggestions,
-          });
-        }
-      }
+
 
       return {
         handled: true,
@@ -308,6 +290,8 @@ export const sendMessage = action({
         let targetModel = "gpt-4o";
         if (args.model === "gpt-5-mini" || args.model === "gpt-5-nano") {
           targetModel = "gpt-4o-mini";
+        } else if (args.model === "gpt-5.2-thinking" || args.model === "gpt-5.2") {
+          targetModel = "gpt-4o";
         }
 
         const systemInstructions = `You are AgenticEshet, a studio assistant for project management.
@@ -349,16 +333,7 @@ If you suggest new elements, list them as bullet items with clear titles and opt
       model: args.model,
     });
 
-    if (result.projectId) {
-      const agentSuggestions = extractSuggestedElementsFromAgent(responseContent);
-      if (agentSuggestions.length > 0) {
-        await ctx.runMutation(internal.suggestions.addSuggestionsFromMessageInternal, {
-          projectId: result.projectId,
-          messageId: agentMessageId,
-          suggestions: agentSuggestions,
-        });
-      }
-    }
+
 
     return {
       userMessageId: result.userMessageId,
@@ -798,133 +773,4 @@ function normalizeElementType(input?: string) {
   return allowed.has(value) ? (value as any) : "build";
 }
 
-const ELEMENT_TYPES = ["build", "rent", "print", "transport", "install", "subcontract", "mixed"];
 
-function extractSuggestedElementsExplicit(content: string) {
-  const lines = content.split(/\r?\n/);
-  const suggestions: Array<{ title: string; type?: string }> = [];
-  for (const rawLine of lines) {
-    const line = stripBullet(rawLine);
-    if (!line) continue;
-    const match =
-      line.match(/^suggested element\s*[:\-]\s*(.+)$/i) ||
-      line.match(/^suggest element\s*[:\-]\s*(.+)$/i) ||
-      line.match(/^element\s*[:\-]\s*(.+)$/i);
-    if (!match?.[1]) continue;
-    const parsed = parseSuggestedElementLine(match[1]);
-    if (parsed?.title) {
-      suggestions.push(parsed);
-    }
-  }
-
-  return uniqueSuggestions(suggestions);
-}
-
-function extractSuggestedElementsFromAgent(content: string) {
-  const hasCue = hasSuggestionCue(content);
-  const lines = content.split(/\r?\n/);
-  const suggestions: Array<{ title: string; type?: string }> = [];
-  for (const rawLine of lines) {
-    const line = stripBullet(rawLine);
-    if (!line) continue;
-    const parsed = parseSuggestedElementLineRelaxed(line, hasCue);
-    if (parsed?.title) {
-      suggestions.push(parsed);
-    }
-  }
-  return uniqueSuggestions(suggestions);
-}
-
-function parseSuggestedElementLine(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  return parseSuggestedElementLineRelaxed(trimmed, true);
-}
-
-function parseSuggestedElementLineRelaxed(text: string, hasCue: boolean) {
-  const cleaned = stripLeadPhrases(text);
-  if (!cleaned) return null;
-
-  const { title, type } = extractTypeAndTitle(cleaned);
-  const hasTypeKeyword = Boolean(type) || containsTypeKeyword(cleaned);
-  const looksLikeSuggestion = hasCue || hasTypeKeyword || /element/i.test(cleaned);
-  if (!looksLikeSuggestion) return null;
-
-  const finalTitle = title.trim();
-  if (finalTitle.length < 3) return null;
-  return { title: finalTitle, type };
-}
-
-function extractTypeAndTitle(text: string) {
-  let title = text.trim();
-  let type: string | undefined;
-
-  const parenMatch = title.match(/\((build|rent|print|transport|install|subcontract|mixed)\)/i);
-  if (parenMatch) {
-    type = parenMatch[1].toLowerCase();
-    title = title.replace(parenMatch[0], "").trim();
-  }
-
-  const typeLabelMatch = title.match(/type\s*[:\-]\s*(\w+)/i);
-  if (typeLabelMatch) {
-    const candidate = typeLabelMatch[1].toLowerCase();
-    if (ELEMENT_TYPES.includes(candidate)) {
-      type = candidate;
-      title = title.replace(typeLabelMatch[0], "").trim().replace(/[-–—]+$/, "").trim();
-    }
-  }
-
-  const startsWithType = title.match(/^(build|rent|print|transport|install|subcontract|mixed)\b/i);
-  if (startsWithType) {
-    type = startsWithType[1].toLowerCase();
-    title = title.replace(startsWithType[0], "").trim();
-  }
-
-  const parts = title.split(/\s[-–—]\s/);
-  if (parts.length === 2) {
-    const possibleType = parts[1].trim().toLowerCase();
-    if (ELEMENT_TYPES.includes(possibleType)) {
-      type = possibleType;
-      title = parts[0].trim();
-    }
-  }
-
-  const words = title.split(/\s+/);
-  if (words.length > 1) {
-    const last = words[words.length - 1].toLowerCase();
-    if (ELEMENT_TYPES.includes(last)) {
-      type = last;
-      title = words.slice(0, -1).join(" ").trim();
-    }
-  }
-
-  return { title, type };
-}
-
-function stripBullet(text: string) {
-  return text.trim().replace(/^[-*•]\s*/, "");
-}
-
-function stripLeadPhrases(text: string) {
-  let cleaned = text.trim();
-  cleaned = cleaned.replace(/^(suggest|suggested|consider|add|include|option|idea)s?\s*[:\-]?\s*/i, "");
-  cleaned = cleaned.replace(/^(we should|you could|maybe|try|recommend)\s+/i, "");
-  cleaned = cleaned.replace(/^[\d]+\.\s+/, "");
-  return cleaned.trim();
-}
-
-function hasSuggestionCue(content: string) {
-  return /(suggest|suggested|option|idea|elements?)/i.test(content);
-}
-
-function containsTypeKeyword(text: string) {
-  return ELEMENT_TYPES.some((type) => new RegExp(`\\b${type}\\b`, "i").test(text));
-}
-
-function uniqueSuggestions(list: Array<{ title: string; type?: string }>) {
-  const unique = new Map<string, { title: string; type?: string }>();
-  for (const suggestion of list) {
-    unique.set(suggestion.title.toLowerCase(), suggestion);
-  }
-  return Array.from(unique.values());
-}

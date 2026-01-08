@@ -1,7 +1,7 @@
 import { action, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
-import { buildDefaultSections } from "./brain_helpers";
+
 
 export const create = mutation({
   args: {
@@ -59,13 +59,7 @@ export const create = mutation({
     await ctx.db.patch(containerId, { currentDraftId: draftId });
     await ctx.db.patch(projectId, { projectCostContainerId: containerId });
 
-    await ctx.db.insert("projectBrains", {
-      projectId,
-      version: 1,
-      updatedAt: now,
-      sections: buildDefaultSections(now),
-      conflicts: [],
-    });
+
 
     return projectId;
   },
@@ -99,16 +93,8 @@ export const getStats = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.id))
       .collect();
 
-    const pendingGraveyard = await ctx.db
-      .query("graveyardItems")
-      .withIndex("by_project_status", (q) =>
-        q.eq("projectId", args.id).eq("status", "pending")
-      )
-      .collect();
-
     return {
       elementCount: elements.length,
-      graveyardCount: pendingGraveyard.length,
     };
   },
 });
@@ -126,12 +112,7 @@ export const getOverview = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.id))
       .collect();
 
-    const pendingGraveyard = await ctx.db
-      .query("graveyardItems")
-      .withIndex("by_project_status", (q) =>
-        q.eq("projectId", args.id).eq("status", "pending")
-      )
-      .collect();
+
 
     const baseline = project.activeBudgetBaselineId
       ? await ctx.db.get(project.activeBudgetBaselineId)
@@ -139,11 +120,11 @@ export const getOverview = query({
 
     const adjustments = project.activeBudgetBaselineId
       ? await ctx.db
-          .query("budgetAdjustments")
-          .withIndex("by_baseline", (q) =>
-            q.eq("baselineId", project.activeBudgetBaselineId!)
-          )
-          .collect()
+        .query("budgetAdjustments")
+        .withIndex("by_baseline", (q) =>
+          q.eq("baselineId", project.activeBudgetBaselineId!)
+        )
+        .collect()
       : [];
 
     const approvedCO = adjustments.reduce(
@@ -170,22 +151,21 @@ export const getOverview = query({
       })),
       counts: {
         elementCount: elements.length,
-        graveyardCount: pendingGraveyard.length,
       },
       baseline: baseline
         ? {
-            id: baseline._id,
-            totals: baseline.planned?.totals ?? { directCost: 0, grandTotal: 0 },
-            approvedAt: baseline.approvedAt,
-          }
+          id: baseline._id,
+          totals: baseline.planned?.totals ?? { directCost: 0, grandTotal: 0 },
+          approvedAt: baseline.approvedAt,
+        }
         : null,
       approvedCO,
       projectCostContainer: container
         ? {
-            id: container._id,
-            currentDraftId: container.currentDraftId ?? null,
-            currentApprovedVersionId: container.currentApprovedVersionId ?? null,
-          }
+          id: container._id,
+          currentDraftId: container.currentDraftId ?? null,
+          currentApprovedVersionId: container.currentApprovedVersionId ?? null,
+        }
         : null,
     };
   },
@@ -248,16 +228,16 @@ export const listLinkedProjects = query({
           .first();
         return project
           ? {
-              linkId: link._id,
-              mode: link.mode,
-              project: {
-                id: project._id,
-                name: project.name,
-                status: project.status,
-              },
-              digest: digest?.digest ?? null,
-              generatedAt: digest?.generatedAt ?? null,
-            }
+            linkId: link._id,
+            mode: link.mode,
+            project: {
+              id: project._id,
+              name: project.name,
+              status: project.status,
+            },
+            digest: digest?.digest ?? null,
+            generatedAt: digest?.generatedAt ?? null,
+          }
           : null;
       })
     );
@@ -270,7 +250,7 @@ export const linkProject = mutation({
   args: {
     projectId: v.id("projects"),
     linkedProjectId: v.id("projects"),
-    mode: v.union(v.literal("contextOnly"), v.literal("importSuggestions")),
+    mode: v.literal("contextOnly"),
   },
   handler: async (ctx, args) => {
     if (args.projectId === args.linkedProjectId) {
@@ -425,11 +405,11 @@ async function computeBudgetTotals(ctx: any, project: any) {
 
   const adjustments = project.activeBudgetBaselineId
     ? await ctx.db
-        .query("budgetAdjustments")
-        .withIndex("by_baseline", (q: any) =>
-          q.eq("baselineId", project.activeBudgetBaselineId)
-        )
-        .collect()
+      .query("budgetAdjustments")
+      .withIndex("by_baseline", (q: any) =>
+        q.eq("baselineId", project.activeBudgetBaselineId)
+      )
+      .collect()
     : [];
 
   const approvedCO = adjustments.reduce(

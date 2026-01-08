@@ -1,0 +1,546 @@
+
+Below is the **full dev plan** you asked for:
+
+* ✅ **Only additions / deltas** to your current Convex schema (no duplication)
+* ✅ New tables + added fields + indexes
+* ✅ How everything interacts (flows + atomic apply)
+* ✅ ChangeSet schema (ops array) + apply algorithm
+* ✅ Memory system schema:
+
+  1. **Source documents + AI ingested summary**
+  2. **Running memory** (user-only, GPT-5-nano, delta append)
+  3. **Q&A memory** (parsed from real Q&A events; structured + always-updated digest)
+
+---
+
+# 0) Rule for the coding agent (important)
+
+**Instruction to the coding agent (must follow):**
+
+1. **Read the current Convex `schema.ts`** and list existing tables + fields.
+2. **Do not duplicate** any existing tables in output.
+3. Only:
+
+   * add missing fields to existing tables
+   * add new tables
+   * add indexes
+4. If a table already exists with similar purpose, **extend it** instead of creating a duplicate.
+
+(Practically: in your repo, this is “open schema.ts → patch it”.)
+
+---
+
+# 1) Data model: what we’re adding
+
+## 1.1 Existing tables: minimal additions (no duplication)
+
+### `elements` (add conflict-safe revisions + approval pointers)
+
+Add:
+
+* `rev: number` (default 0 at create; increment on every element update)
+* `approvedVersionId?: Id<"elementVersions">` (latest approved snapshot)
+* `hasUnapprovedChanges?: boolean` (true if edited after approve)
+* `status` already exists? ensure it’s `DRAFT | APPROVED` (don’t change if you already have)
+
+Indexes (add if missing):
+
+* `by_project` (`projectId`)
+* `by_project_status` (`projectId`, `status`)
+* `by_project_updated` (`projectId`, `updatedAt`)
+
+### `tasks`, `accountingLines`, `printParts`, `purchases`, `receipts` (audit linkage)
+
+Add optional field on each:
+
+* `createdFromChangeSetId?: Id<"changeSets">`
+
+This is huge for debugging (“why does this task exist?”).
+
+### `projects`
+
+Add (if missing):
+
+* `counters.nextElementNo` (atomic element numbering)
+* `pricingDefaults` (project-level markup defaults)
+* `stage` (IDEATION/QUOTE/BREAKDOWN)
+
+---
+
+# 2) New tables (full schemas)
+
+Below are **complete** Convex table schemas for the new stuff.
+
+## 2.1 `changeSets` (A: ops array in one doc)
+
+**Core idea:** store a stable envelope + `ops[]` where each op is `{ kind, payload }`.
+This avoids schema migrations when you add new op types later.
+
+```ts
+changeSets: defineTable({
+  projectId: v.id("projects"),
+  stage: v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN")),
+
+  status: v.union(v.literal("PROPOSED"), v.literal("APPLIED"), v.literal("DISCARDED")),
+
+  reason_he: v.string(),
+
+  // Conflict control: list of entities this changeSet expects to be unchanged.
+  base: v.optional(v.object({
+    elements: v.optional(v.array(v.object({
+      elementId: v.id("elements"),
+      rev: v.number(),
+    }))),
+  })),
+
+  // The ops list (A): stable structure
+  ops: v.array(v.object({
+    kind: v.string(),   // e.g. "element.create", "task.create"
+    payload: v.any(),   // validated at runtime in applyChangeSet()
+  })),
+
+  // UI preview strings (so you don’t need to compute preview on every render)
+  preview_he: v.optional(v.object({
+    elements: v.optional(v.array(v.string())),
+    tasks: v.optional(v.array(v.string())),
+    accounting: v.optional(v.array(v.string())),
+    printing: v.optional(v.array(v.string())),
+    purchases: v.optional(v.array(v.string())),
+  })),
+
+  schemaVersion: v.optional(v.number()), // start with 1
+
+  createdAt: v.number(),
+  createdBy_he: v.optional(v.string()),
+
+  appliedAt: v.optional(v.number()),
+  appliedBy_he: v.optional(v.string()),
+
+  discardedAt: v.optional(v.number()),
+  discardedBy_he: v.optional(v.string()),
+})
+.index("by_project", ["projectId"])
+.index("by_project_status", ["projectId", "status"])
+.index("by_project_stage", ["projectId", "stage"]);
+```
+
+### The allowed `kind` values (v1)
+
+Keep it small:
+
+* `element.create`
+* `element.update`
+* `task.create`
+* `accountingLine.create`
+* `printPart.create`
+* `purchase.create` (with allocations + receipt links in payload)
+
+You can add more kinds later without migrations.
+
+---
+
+## 2.2 Chat storage (single flow)
+
+### `conversations`
+
+```ts
+conversations: defineTable({
+  projectId: v.id("projects"),
+  stage: v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN")),
+  title_he: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+.index("by_project", ["projectId"])
+.index("by_project_updated", ["projectId", "updatedAt"]);
+```
+
+### `conversationMessages`
+
+Stores normal chat + structured blocks + events.
+
+```ts
+conversationMessages: defineTable({
+  conversationId: v.id("conversations"),
+  projectId: v.id("projects"),
+
+  role: v.union(v.literal("user"), v.literal("assistant"), v.literal("event")),
+
+  // Human-readable text in Hebrew
+  text_he: v.optional(v.string()),
+
+  // One interactive block (Clarification/Suggestion/ChangeSet review) stored as JSON
+  block: v.optional(v.any()),
+
+  // Events emitted by UI (answers submitted / selections / applied / discarded)
+  eventType: v.optional(v.string()),
+  eventPayload: v.optional(v.any()),
+
+  // Link message to a changeset (for review/apply)
+  changeSetId: v.optional(v.id("changeSets")),
+
+  createdAt: v.number(),
+})
+.index("by_conversation", ["conversationId"])
+.index("by_project", ["projectId"])
+.index("by_changeset", ["changeSetId"]);
+```
+
+---
+
+# 3) Memory system (your 3 requested memory types)
+
+We’ll implement it as:
+
+1. `memoryDocs` (source docs + their AI summaries)
+2. `runningMemory` stored as a `memoryDoc` kind = `RUNNING_MEMORY`
+3. `qaPairs` structured table + a digest `memoryDoc` kind = `QA_DIGEST`
+
+## 3.1 `memoryDocs` (documents + AI ingested summary + the “living docs”)
+
+```ts
+memoryDocs: defineTable({
+  projectId: v.id("projects"),
+  elementId: v.optional(v.id("elements")),
+
+  // SOURCE_DOC: vendor quote, brief, PDF, image notes, etc.
+  // RUNNING_MEMORY: always-updating user-only summary
+  // QA_DIGEST: always-updating digest of Q&A
+  kind: v.union(
+    v.literal("SOURCE_DOC"),
+    v.literal("RUNNING_MEMORY"),
+    v.literal("QA_DIGEST")
+  ),
+
+  title_he: v.optional(v.string()),
+
+  // Where the doc comes from
+  source: v.optional(v.object({
+    sourceType: v.union(
+      v.literal("FILE"),
+      v.literal("TEXT"),
+      v.literal("URL"),
+      v.literal("CHAT_EXPORT"),
+      v.literal("OTHER")
+    ),
+    fileId: v.optional(v.id("files")), // if FILE
+    url: v.optional(v.string()),       // if URL
+  })),
+
+  // Optional raw text for small docs (avoid huge blobs; store big stuff in files)
+  rawText_he: v.optional(v.string()),
+
+  // AI ingested summary (for SOURCE_DOC)
+  aiSummary: v.optional(v.object({
+    model: v.string(),         // e.g. "gpt-5-nano"
+    summaryMd_he: v.string(),  // short, structured
+    facts_he: v.optional(v.array(v.string())),
+    updatedAt: v.number(),
+  })),
+
+  // For RUNNING_MEMORY / QA_DIGEST: the living markdown document
+  contentMd_he: v.optional(v.string()),
+
+  schemaVersion: v.optional(v.number()),
+
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+.index("by_project", ["projectId"])
+.index("by_project_kind", ["projectId", "kind"])
+.index("by_project_element_kind", ["projectId", "elementId", "kind"]);
+```
+
+### How you’ll use it
+
+* **Source docs**: upload → create `memoryDocs(kind=SOURCE_DOC, source.fileId=...)` → run ingestion action → store `aiSummary`.
+* **Running memory**: exactly one doc per project (and optionally per element if you want later) with `kind=RUNNING_MEMORY`.
+* **Q&A digest**: exactly one doc per project with `kind=QA_DIGEST`.
+
+No backfills needed: if a project doesn’t have a RUNNING_MEMORY doc yet, you create it lazily.
+
+---
+
+## 3.2 `qaPairs` (structured questions & answers)
+
+This is the “don’t ask again” engine.
+
+```ts
+qaPairs: defineTable({
+  projectId: v.id("projects"),
+  elementId: v.optional(v.id("elements")),
+
+  // The actual question that was asked (not invented later)
+  question_he: v.string(),
+
+  // Optional stable key to detect repeats (computed server-side)
+  questionKey: v.optional(v.string()),
+
+  // The user's answer (from structured UI or parsed)
+  answer_he: v.string(),
+
+  // Where it came from
+  source: v.object({
+    sourceType: v.union(
+      v.literal("CLARIFICATION_BLOCK"),
+      v.literal("CHAT_PARSE")
+    ),
+    conversationId: v.optional(v.id("conversations")),
+    messageId: v.optional(v.id("conversationMessages")),
+  }),
+
+  createdAt: v.number(),
+})
+.index("by_project", ["projectId"])
+.index("by_project_element", ["projectId", "elementId"])
+.index("by_project_questionKey", ["projectId", "questionKey"]);
+```
+
+### Why both `qaPairs` and `QA_DIGEST` doc?
+
+* `qaPairs` is structured and queryable (avoid repeats).
+* `QA_DIGEST` is a single markdown chunk the agent can read fast (context window friendly).
+
+---
+
+# 4) How tables interact (the full flow)
+
+## 4.1 One chat flow with interactive blocks
+
+1. User message → saved in `conversationMessages(role=user)`
+2. Agent replies:
+
+   * plain text OR clarification block OR suggestion block OR changeSet block
+3. If agent proposes changes:
+
+   * server creates `changeSets(PROPOSED)`
+   * assistant message includes `changeSetId`
+4. User clicks Apply:
+
+   * UI calls `applyChangeSet(changeSetId)` (single atomic mutation)
+   * server writes an `event` message `changeset_applied` + updates changeSet status
+
+## 4.2 ChangeSet apply (atomic multi-table update)
+
+`applyChangeSet()`:
+
+* checks conflicts (`elements.rev`)
+* validates ops
+* creates records in correct order (temp mapping)
+* updates element revs
+* marks changeset APPLIED
+
+If anything fails → nothing is written (atomic).
+
+---
+
+# 5) ChangeSet ops payload spec (v1)
+
+You store `{ kind, payload }`, but you must enforce payload shape in code.
+
+## 5.1 `element.create`
+
+Payload:
+
+* `tempId: string`
+* `fields: { name_he, description_he?, measurements?, ... }`
+
+## 5.2 `element.update`
+
+Payload:
+
+* `elementId: Id<elements>`
+* `baseRev: number`
+* `fields: partial element fields to update`
+
+## 5.3 `task.create`
+
+Payload:
+
+* `tempId?: string`
+* `elementRef?: { elementId?: Id, tempId?: string }`
+* `fields: { title_he, category, stage, location, durationMinutes, ... }`
+* `dependsOn?: Array<{ taskId?: Id, tempId?: string }>`
+
+## 5.4 `accountingLine.create`
+
+Payload:
+
+* `elementRef?`
+* `fields: { side, bucket, title_he, total, qty?, unitCost?, ... }`
+
+## 5.5 `printPart.create`
+
+Payload:
+
+* `elementRef`
+* `fields: { label_he, substrate, qty, size, requiresProof, ... }`
+
+## 5.6 `purchase.create`
+
+Payload:
+
+* `fields: { vendor_he?, total, purchaseDate?, paymentMethod? }`
+* `allocations?: [{ elementRef?, amount, notes_he? }]`
+* `receiptFileIds?: Id<files>[]` (or fileLinks)
+
+---
+
+# 6) The key mutation: `applyChangeSet()` (process plan)
+
+### Steps (exact)
+
+1. Load changeSet, verify `status=PROPOSED`
+2. Conflict check:
+
+   * For each `element.update`, load element and compare:
+
+     * `element.rev === payload.baseRev`
+   * If mismatch → throw `CONFLICT` with details
+3. Validate all ops (hard checks)
+4. Execute ops in safe order with temp mapping:
+
+   * A) Create Elements (build `tempElementId → realId`)
+   * B) Create PrintParts (resolve element ref)
+   * C) Create Tasks (resolve element ref + task dependencies)
+   * D) Create Accounting lines
+   * E) Create Purchases + allocations + receipt links
+   * F) Apply Element updates (and increment rev)
+5. Patch changeSet:
+
+   * `status=APPLIED`, `appliedAt=now`
+
+### Safety rules inside apply
+
+* If printing exists but no QA task exists → either:
+
+  * fail with error (strict mode), or
+  * auto-create a QA task (recommended)
+* If `safetyCritical=true` → auto-create “בדיקת בטיחות/אישור” task
+
+---
+
+# 7) Memory processes (how the 3 memory types are updated)
+
+## 7.1 Source docs ingestion
+
+When user uploads a document:
+
+1. store file in `files`
+2. create `memoryDocs(kind=SOURCE_DOC, source.fileId=...)`
+3. run ingestion action:
+
+   * extract text (if needed)
+   * summarize with GPT-5-nano (or your preferred model)
+4. update `memoryDocs.aiSummary`
+
+No backfill: docs without aiSummary just show “not processed yet”.
+
+---
+
+## 7.2 Running memory (user-only, delta-only)
+
+**Goal:** one always-updating markdown doc with only user inputs summarized.
+
+Process after every user message:
+
+1. call `appendRunningMemory(projectId, elementId?, userText)`
+2. it uses GPT-5-nano to create a **delta bullet list** (no dedup)
+3. append under headings inside `contentMd_he`
+
+Storage:
+
+* `memoryDocs(kind=RUNNING_MEMORY).contentMd_he`
+
+---
+
+## 7.3 Q&A log (structured + digest)
+
+### Source of truth = `qaPairs`
+
+Two ways to populate:
+
+**A) From ClarificationBlock submissions (best v1)**
+
+* When user submits answers:
+
+  * create `qaPairs` rows for each question+answer
+  * update `QA_DIGEST` markdown
+
+**B) From free chat parse (optional v1.5)**
+
+* After user message, nano model detects if it answers a known open question and emits pairs.
+* save pairs and update digest.
+
+Digest update:
+
+* `memoryDocs(kind=QA_DIGEST).contentMd_he` is regenerated or appended.
+
+**Why this avoids repeating questions**
+Before the agent asks a question, it searches:
+
+* `qaPairs.by_project_questionKey` or scans latest Q&A
+  If answered → it shouldn’t ask again, unless user indicates change.
+
+---
+
+# 8) Queries you’ll need (“memory pack” for the agent)
+
+Create a single query like `getAgentContextPack(projectId, elementId?)` returning:
+
+* `project.stage`
+* selected element summary (from `elements`)
+* `RUNNING_MEMORY.contentMd_he`
+* `QA_DIGEST.contentMd_he` (or last N qaPairs)
+* top N `SOURCE_DOC.aiSummary.summaryMd_he` (project + element scoped)
+* recent tasks/accounting summaries as needed
+
+This is what makes the agent “smart” without bloat.
+
+---
+
+# 9) Implementation roadmap (small, safe, shippable)
+
+## Phase 1 — ChangeSet pipeline
+
+* Add `rev` to `elements` and increment on element updates
+* Add `changeSets` table
+* Implement:
+
+  * `createChangeSet()`
+  * `discardChangeSet()`
+  * `applyChangeSet()` with temp mapping + conflict checks + validations
+* Add `createdFromChangeSetId` optional fields (tasks/accounting/print/purchase/receipt)
+
+## Phase 2 — Single chat storage
+
+* Add `conversations`, `conversationMessages`
+* Write messages + event messages
+* Render blocks in UI using saved `block` JSON
+
+## Phase 3 — Approval snapshots
+
+* Ensure `elementVersions` exists (or add if missing)
+* Implement `approveElement(elementId)`:
+
+  * create snapshot
+  * set `approvedVersionId`
+  * set `hasUnapprovedChanges=false`
+
+## Phase 4 — Memory system
+
+* Add `memoryDocs` + `qaPairs`
+* Implement:
+
+  * `ensureRunningMemoryDoc(projectId)`
+  * `appendRunningMemory(...)` (nano)
+  * `upsertQAPairsFromClarification(...)`
+  * `updateQADigest(projectId)`
+  * `ingestSourceDoc(memoryDocId)` (nano)
+
+---
+
+* Do you already have `files` + storage flow in Convex?
+  If yes → memory docs can link to `files` immediately.
+
+

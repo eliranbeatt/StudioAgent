@@ -57,21 +57,7 @@ export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs)
     createdAt: Date.now(),
   });
 
-  const createdGraveyardItemIds: string[] = [];
-  for (const item of reconciliation.reviewRequired) {
-    const gyId = await ctx.db.insert("graveyardItems", {
-      projectId: args.projectId,
-      draftType: args.draftType,
-      draftId: args.draftId,
-      changeSetId,
-      status: "pending",
-      kind: item.kind,
-      message: item.message,
-      options: item.options,
-      createdAt: Date.now(),
-    });
-    createdGraveyardItemIds.push(gyId);
-  }
+
 
   await ctx.db.patch(draft._id, {
     workingSnapshot: reconciledSnapshot,
@@ -91,7 +77,7 @@ export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs)
     acceptedPatchOps: args.patchOps,
     serverAppliedSafeFixOps,
     reconciliation,
-    graveyard: { createdItemIds: createdGraveyardItemIds },
+
   };
 }
 
