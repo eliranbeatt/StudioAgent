@@ -62,6 +62,16 @@ export default defineSchema({
     description: v.optional(v.string()),
     overviewSummary: v.optional(v.string()),
     projectTypes: v.optional(v.array(v.string())),
+    stage: v.optional(v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN"))),
+    counters: v.optional(v.object({
+      nextElementNo: v.number(),
+    })),
+    pricingDefaults: v.optional(v.object({
+      profitPct: v.number(),
+      overheadPct: v.number(),
+      riskPct: v.number(),
+      excludeManagementLaborFromCost: v.boolean(),
+    })),
     details: v.optional(
       v.object({
         eventDate: v.optional(v.number()),
@@ -105,6 +115,9 @@ export default defineSchema({
       v.literal("mixed")
     ),
     status: elementStatus,
+    rev: v.optional(v.number()), // Incremented on every update
+    approvedVersionId: v.optional(v.id("elementVersions")), // Latest approved snapshot
+    hasUnapprovedChanges: v.optional(v.boolean()), // True if edited after approve
     tags: v.array(v.string()),
     currentApprovedVersionId: v.optional(v.id("elementVersions")),
     currentDraftId: v.optional(v.id("elementDrafts")),
@@ -112,7 +125,68 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_project_updated", ["projectId", "updatedAt"])
     .index("by_status", ["status"]),
+
+  // Tasks
+  tasks: defineTable({
+    projectId: v.id("projects"),
+    elementId: v.optional(v.id("elements")),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.optional(v.string()),
+    priority: v.optional(v.string()),
+    category: v.optional(v.string()),
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+    estimatedMinutes: v.optional(v.number()),
+    assignee: v.optional(v.string()),
+    dependencies: v.optional(v.array(v.string())), // Task IDs
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"])
+    .index("by_element", ["elementId"]),
+
+  // Accounting Lines (Materials, Labor, Subcontract)
+  accountingLines: defineTable({
+    projectId: v.id("projects"),
+    elementId: v.optional(v.id("elements")),
+    taskId: v.optional(v.id("tasks")),
+    type: v.union(v.literal("material"), v.literal("labor"), v.literal("subcontract"), v.literal("other")),
+    title: v.string(),
+    qty: v.optional(v.number()),
+    unitCost: v.optional(v.number()),
+    total: v.number(),
+    billable: v.optional(v.boolean()),
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    createdAt: v.number(),
+  }).index("by_project", ["projectId"])
+    .index("by_element", ["elementId"])
+    .index("by_task", ["taskId"]),
+
+  // Print Parts
+  printParts: defineTable({
+    projectId: v.id("projects"),
+    elementId: v.id("elements"),
+    label: v.string(),
+    substrate: v.optional(v.string()),
+    qty: v.number(),
+    size: v.optional(v.string()),
+    requiresProof: v.optional(v.boolean()),
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    createdAt: v.number(),
+  }).index("by_element", ["elementId"]),
+
+  // Receipts
+  receipts: defineTable({
+    projectId: v.id("projects"),
+    purchaseId: v.optional(v.id("purchases")),
+    fileId: v.id("projectFiles"),
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    createdAt: v.number(),
+  }).index("by_purchase", ["purchaseId"]),
 
   // Element Drafts (Working snapshots)
   elementDrafts: defineTable({
@@ -190,22 +264,48 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_container_version", ["containerId", "versionNumber"]),
 
-  // Change Sets
+  // Change Sets (Refactored)
   changeSets: defineTable({
-    draftType: v.union(v.literal("element"), v.literal("projectCost")),
-    draftId: v.union(v.id("elementDrafts"), v.id("projectCostDrafts")), // Logic to resolve ID type
     projectId: v.id("projects"),
-    createdBy: v.any(), // { type, userId, agentSkillId }
-    createdFrom: v.any(), // { tab, stage }
-    baseRevisionNumber: v.number(),
-    patchOps: v.any(), // Array of ops
-    impactPreview: v.any(),
-    reconciliation: v.any(), // { safeFixOps, reviewRequired, blockers, warnings }
-    reason: v.optional(v.string()),
+    stage: v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN")),
+    status: v.union(v.literal("PROPOSED"), v.literal("APPLIED"), v.literal("DISCARDED")),
+    reason_he: v.optional(v.string()),
+
+    // Conflict control
+    base: v.optional(v.object({
+      elements: v.optional(v.array(v.object({
+        elementId: v.id("elements"),
+        rev: v.number(),
+      }))),
+    })),
+
+    // The ops list
+    ops: v.array(v.object({
+      kind: v.string(), // e.g. "element.create", "task.create"
+      payload: v.any(),
+    })),
+
+    // UI preview strings
+    preview_he: v.optional(v.object({
+      elements: v.optional(v.array(v.string())),
+      tasks: v.optional(v.array(v.string())),
+      accounting: v.optional(v.array(v.string())),
+      printing: v.optional(v.array(v.string())),
+      purchases: v.optional(v.array(v.string())),
+    })),
+
+    schemaVersion: v.optional(v.number()),
+
     createdAt: v.number(),
+    createdBy_he: v.optional(v.string()),
+    appliedAt: v.optional(v.number()),
+    appliedBy_he: v.optional(v.string()),
+    discardedAt: v.optional(v.number()),
+    discardedBy_he: v.optional(v.string()),
   })
     .index("by_project", ["projectId"])
-    .index("by_draft", ["draftType", "draftId" as any]), // Using any to bypass explicit type check for union id in index definition if strictly required, but Convex handles string fields for IDs in indexes usually.
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_project_stage", ["projectId", "stage"]),
 
   // Graveyard Items
 
@@ -361,6 +461,7 @@ export default defineSchema({
     ),
     lineItems: v.array(v.any()), // [{ catalogId?, description?, qty, unit, unitPrice, lineTotal }]
     notes: v.optional(v.string()),
+    createdFromChangeSetId: v.optional(v.id("changeSets")), // Audit
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_date", ["date"]),
@@ -428,13 +529,39 @@ export default defineSchema({
 
   conversations: defineTable({
     projectId: v.id("projects"),
-    title: v.optional(v.string()),
+    title: v.optional(v.string()), // Deprecated in favor of title_he?
+    title_he: v.optional(v.string()),
     status: v.union(v.literal("active"), v.literal("archived")),
-    stage: v.union(v.literal("ideation"), v.literal("planning"), v.literal("solutioning")),
+    stage: v.union(
+      v.literal("ideation"),
+      v.literal("planning"),
+      v.literal("solutioning"),
+      v.literal("IDEATION"),
+      v.literal("QUOTE"),
+      v.literal("BREAKDOWN")
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_updated", ["projectId", "updatedAt"]),
 
+  conversationMessages: defineTable({
+    conversationId: v.id("conversations"),
+    projectId: v.id("projects"),
+    role: v.union(v.literal("user"), v.literal("assistant"), v.literal("event")),
+    text_he: v.optional(v.string()),
+    block: v.optional(v.any()), // JSON
+    eventType: v.optional(v.string()),
+    eventPayload: v.optional(v.any()),
+    changeSetId: v.optional(v.id("changeSets")),
+    createdAt: v.number(),
+  })
+    .index("by_conversation", ["conversationId"])
+    .index("by_project", ["projectId"])
+    .index("by_changeset", ["changeSetId"]),
+
+  // Legacy messages table (keep for now)
   messages: defineTable({
     conversationId: v.id("conversations"),
     role: v.union(v.literal("user"), v.literal("agent"), v.literal("system")),
@@ -453,4 +580,61 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project_stage", ["projectId", "stage"]),
+
+  // Memory System
+  memoryDocs: defineTable({
+    projectId: v.id("projects"),
+    elementId: v.optional(v.id("elements")),
+    kind: v.union(
+      v.literal("SOURCE_DOC"),
+      v.literal("RUNNING_MEMORY"),
+      v.literal("QA_DIGEST")
+    ),
+    title_he: v.optional(v.string()),
+    source: v.optional(v.object({
+      sourceType: v.union(
+        v.literal("FILE"),
+        v.literal("TEXT"),
+        v.literal("URL"),
+        v.literal("CHAT_EXPORT"),
+        v.literal("OTHER")
+      ),
+      fileId: v.optional(v.id("projectFiles")),
+      url: v.optional(v.string()),
+    })),
+    rawText_he: v.optional(v.string()),
+    aiSummary: v.optional(v.object({
+      model: v.string(),
+      summaryMd_he: v.string(),
+      facts_he: v.optional(v.array(v.string())),
+      updatedAt: v.number(),
+    })),
+    contentMd_he: v.optional(v.string()),
+    schemaVersion: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_kind", ["projectId", "kind"])
+    .index("by_project_element_kind", ["projectId", "elementId", "kind"]),
+
+  qaPairs: defineTable({
+    projectId: v.id("projects"),
+    elementId: v.optional(v.id("elements")),
+    question_he: v.string(),
+    questionKey: v.optional(v.string()),
+    answer_he: v.string(),
+    source: v.object({
+      sourceType: v.union(
+        v.literal("CLARIFICATION_BLOCK"),
+        v.literal("CHAT_PARSE")
+      ),
+      conversationId: v.optional(v.id("conversations")),
+      messageId: v.optional(v.id("conversationMessages")),
+    }),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_element", ["projectId", "elementId"])
+    .index("by_project_questionKey", ["projectId", "questionKey"]),
 });
