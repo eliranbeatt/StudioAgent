@@ -22,6 +22,13 @@ export const listForProject = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
+    // 4. Fetch ElementDrafts
+    const allDrafts = await ctx.db
+      .query("elementDrafts")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const draftById = new Map(allDrafts.map((d) => [d._id, d]));
+
     // Build Maps
     const tasksByElement = new Map<string, typeof allTasks>();
     for (const task of allTasks) {
@@ -44,6 +51,8 @@ export const listForProject = query({
     // Transform
     const results = elements.map(element => {
         const elementTasks = tasksByElement.get(element._id) ?? [];
+        const draft = element.currentDraftId ? draftById.get(element.currentDraftId) : null;
+
         const mappedTasks = elementTasks.map(task => {
             const lines = linesByTask.get(task._id) ?? [];
             const materials = lines.filter(l => l.type === "material").map(l => ({
@@ -73,6 +82,8 @@ export const listForProject = query({
                 dependencies: task.dependencies,
                 materials,
                 labor,
+                draftId: draft?._id,
+                revisionNumber: draft?.revisionNumber,
             };
         });
 

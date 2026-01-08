@@ -248,6 +248,34 @@ export default defineSchema({
     .index("by_project_stage", ["projectId", "stage"]),
 
   // Graveyard Items
+  graveyardItems: defineTable({
+    projectId: v.id("projects"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    
+    // The "dead" item causing this entry (e.g. an element being deleted, or a high-value purchase being voided)
+    sourceRef: v.optional(v.object({
+      id: v.string(),
+      type: v.string(), // "element", "purchase", "task", etc.
+    })),
+
+    // Options for the user
+    options: v.array(v.object({
+      id: v.string(), // "keep", "discard", "archive"
+      label: v.string(),
+      // If chosen, these ops are applied as a new ChangeSet
+      patchOps: v.optional(v.array(v.any())), 
+    })),
+
+    status: v.union(v.literal("pending"), v.literal("resolved"), v.literal("dismissed")),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(v.id("users")),
+    chosenOptionId: v.optional(v.string()),
+
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"]),
 
 
   // Quote Versions
@@ -342,6 +370,19 @@ export default defineSchema({
     size: v.number(),
     extractedText: v.optional(v.string()),
     summary: v.optional(v.string()),
+    extractedInfo: v.optional(v.object({
+      topics: v.optional(v.array(v.string())),
+      domain: v.optional(v.string()),
+      entities: v.optional(v.array(v.object({
+        name: v.string(),
+        type: v.optional(v.string()),
+      }))),
+      summary: v.optional(v.string()),
+      facts: v.optional(v.array(v.string())),
+      language: v.optional(v.string()),
+      model: v.optional(v.string()),
+      updatedAt: v.optional(v.number()),
+    })),
     createdAt: v.number(),
   }).index("by_project", ["projectId", "createdAt"]),
 

@@ -102,15 +102,15 @@ ChangeSetBlock:
   ]
 }
 
-Allowed ChangeSet ops kinds:
-- element.create
-- element.patch
-- task.create
-- accountingLine.create
-- printPart.create
-- vendor.create
-- purchase.create
-- receipt.attach`;
+Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
+- element.create: { "tempId": string, "element": { "title": string, "type": string, "status": "drafting"|"approvedForQuote", "tags": string[] } }
+- element.patch: { "elementId": string, "patch": object }
+- task.create: { "tempId"?: string, "elementTempOrId"?: string, "fields": { "title": string, "description"?: string, "status"?: string, "priority"?: string, "category"?: string, "startDate"?: string, "endDate"?: string, "estimatedMinutes"?: number, "assignee"?: string, "dependencies"?: string[] } }
+- accountingLine.create: { "elementTempOrId"?: string, "taskTempOrId"?: string, "fields": { "title": string, "type": "material"|"labor"|"subcontract"|"other", "qty"?: number, "unitCost"?: number, "total": number, "billable"?: boolean } }
+- printPart.create: { "elementTempOrId": string, "fields": { "label": string, "substrate"?: string, "qty": number, "size"?: string, "requiresProof"?: boolean } }
+- vendor.create: { "tempId"?: string, "fields": { "name": string, "type"?: string, "phone"?: string, "email"?: string, "address"?: string, "notes"?: string } }
+- purchase.create: { "vendorTempOrId": string, "fields": { "date"?: number, "totalAmount": number, "notes"?: string } }
+- receipt.attach: { "purchaseTempOrId": string, "fileId": string }`;
 
 const STAGE_MODULES: Record<string, string> = {
   IDEATION: `Stage = IDEATION. Objective: turn brief into 5-10 feasible element ideas, rough budget + lead time range, key risks. Avoid over-questioning.`,
@@ -158,7 +158,7 @@ export const listConversations = query({
   args: { projectId: v.union(v.id("projects"), v.id("structuredAnswers")) },
   handler: async (ctx, args) => {
     let finalProjectId = args.projectId;
-    
+
     const asAnswer = ctx.db.normalizeId("structuredAnswers", args.projectId);
     if (asAnswer) {
       const answer = await ctx.db.get(asAnswer);
@@ -171,7 +171,7 @@ export const listConversations = query({
 
     // Ensure we have a valid project ID now
     if (!finalProjectId || !ctx.db.normalizeId("projects", finalProjectId)) {
-        return [];
+      return [];
     }
 
     return await ctx.db

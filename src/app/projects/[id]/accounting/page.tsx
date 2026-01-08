@@ -309,7 +309,7 @@ function SummaryTab({
                 <div>
                   <div className="font-medium text-gray-900">{element.title}</div>
                   <div className="text-xs text-gray-400">
-                    {element.tasks.length} tasks
+                    {element.tasks?.length ?? 0} tasks
                   </div>
                 </div>
                 <div className="text-right">
@@ -866,7 +866,7 @@ function MaterialLineRow({
           Task Links
         </div>
         <input
-          value={active.taskIds.join(", ")}
+          value={active.taskIds?.join(", ") ?? ""}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({
@@ -1037,7 +1037,7 @@ function LaborLineRow({
           Task Links
         </div>
         <input
-          value={active.taskIds.join(", ")}
+          value={active.taskIds?.join(", ") ?? ""}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({

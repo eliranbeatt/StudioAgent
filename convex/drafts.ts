@@ -42,18 +42,24 @@ export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs)
     reconciliation.safeFixes.autoApplyOps
   );
 
+  const stageStr = (args.createdFrom?.stage ?? "IDEATION").toUpperCase();
+  const stage = ["IDEATION", "QUOTE", "BREAKDOWN"].includes(stageStr) ? stageStr : "IDEATION";
+
   const changeSetId = await ctx.db.insert("changeSets", {
-    draftType: args.draftType,
-    // @ts-ignore
-    draftId: args.draftId,
     projectId: args.projectId,
-    createdBy: args.createdBy ?? { type: "user" },
-    createdFrom: args.createdFrom,
-    baseRevisionNumber: args.baseRevisionNumber,
-    patchOps: args.patchOps,
-    impactPreview: {},
-    reconciliation,
-    reason: args.reason,
+    stage: stage as "IDEATION" | "QUOTE" | "BREAKDOWN",
+    status: "APPLIED",
+    ops: [{
+      kind: "draft.patch",
+      payload: {
+        draftType: args.draftType,
+        draftId: args.draftId,
+        patchOps: args.patchOps,
+        baseRevisionNumber: args.baseRevisionNumber,
+      }
+    }],
+    reason_he: args.reason,
+    appliedAt: Date.now(),
     createdAt: Date.now(),
   });
 

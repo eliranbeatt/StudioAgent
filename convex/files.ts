@@ -1,9 +1,9 @@
-import { mutation, query, action, internalMutation } from "./_generated/server";
+import { mutation, query, action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
-const MAX_EXTRACTED_CHARS = 12000;
-const MAX_SUMMARY_CHARS = 1200;
+
+
 
 export const generateUploadUrl = mutation({
   args: {},
@@ -21,6 +21,7 @@ export const saveFileRecord = internalMutation({
     size: v.number(),
     extractedText: v.optional(v.string()),
     summary: v.optional(v.string()),
+    extractedInfo: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("projectFiles", {
@@ -31,34 +32,13 @@ export const saveFileRecord = internalMutation({
       size: args.size,
       extractedText: args.extractedText,
       summary: args.summary,
+      extractedInfo: args.extractedInfo,
       createdAt: Date.now(),
     });
   },
 });
 
-export const saveUploadedFile = action({
-  args: {
-    projectId: v.id("projects"),
-    storageId: v.id("_storage"),
-    fileName: v.string(),
-    contentType: v.string(),
-    size: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const extracted = await extractText(ctx, args.storageId, args.contentType);
-    const summary = summarizeText(extracted ?? "");
 
-    await ctx.runMutation(internal.files.saveFileRecord, {
-      projectId: args.projectId,
-      storageId: args.storageId,
-      fileName: args.fileName,
-      contentType: args.contentType,
-      size: args.size,
-      extractedText: extracted ?? undefined,
-      summary: summary ?? undefined,
-    });
-  },
-});
 
 export const listProjectFiles = query({
   args: { projectId: v.id("projects") },
@@ -68,6 +48,20 @@ export const listProjectFiles = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .order("desc")
       .collect();
+  },
+});
+
+export const deleteProjectFile = action({
+  args: { fileId: v.id("projectFiles") },
+  handler: async (ctx, args) => {
+    const file = await ctx.runQuery(internal.files.getFileRecord, { fileId: args.fileId });
+    if (!file) {
+      return { ok: false };
+    }
+
+    await ctx.storage.delete(file.storageId);
+    await ctx.runMutation(internal.files.deleteFileRecord, { fileId: args.fileId });
+    return { ok: true };
   },
 });
 
@@ -87,32 +81,18 @@ export const getProjectContext = query({
   },
 });
 
-async function extractText(ctx: any, storageId: any, contentType: string) {
-  const blob = await ctx.storage.get(storageId);
-  if (!blob) return null;
+export const getFileRecord = internalQuery({
+  args: { fileId: v.id("projectFiles") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.fileId);
+  },
+});
 
-  const isText =
-    contentType.startsWith("text/") ||
-    contentType.includes("json") ||
-    contentType.includes("csv") ||
-    contentType.includes("markdown");
+export const deleteFileRecord = internalMutation({
+  args: { fileId: v.id("projectFiles") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.fileId);
+  },
+});
 
-  if (!isText) {
-    return null;
-  }
 
-  const text = await blob.text();
-  return text.slice(0, MAX_EXTRACTED_CHARS);
-}
-
-function summarizeText(text: string) {
-  if (!text) return null;
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const summaryLines = lines.slice(0, 10);
-  const summary = summaryLines.join(" | ").slice(0, MAX_SUMMARY_CHARS);
-  return summary;
-}

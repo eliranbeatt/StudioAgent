@@ -1,0 +1,109 @@
+Below is an updated dev plan to implement the Elements tab so each Element renders as a single composite view while still pulling data from normalized tables (tasks, accountingLines, printParts, drafts, versions).
+
+This plan is aligned to the current schema and Convex APIs already in this repo.
+
+---
+
+## 1) Product goals for the Elements tab
+
+1) List Elements for a project with quick stats (tasks, budget, print parts).
+2) Open one Element and show a full, detailed view:
+   - core details + tags + status
+   - canonical tasks
+   - canonical budget (accountingLines)
+   - printing parts
+   - draft snapshot + approved snapshot metadata
+   - revision history
+3) Keep the draft/approval workflow visible:
+   - draft snapshots live in elementDrafts
+   - approved snapshots live in elementVersions
+
+---
+
+## 2) Current data model (already implemented)
+
+### Tables
+- elements
+  - currentDraftId, currentApprovedVersionId
+  - status, rev, tags
+- elementDrafts
+  - workingSnapshot (draft composite spec)
+  - revisionNumber, status
+- elementVersions
+  - snapshot (approved composite spec)
+  - versionNumber
+- tasks (elementId)
+- accountingLines (elementId, taskId)
+- printParts (elementId)
+
+### Composite contract (runtime shape)
+
+ElementComposite
+- element: element row
+- base:
+  - source: "draft" | "approved" | null
+  - spec: workingSnapshot or approved snapshot
+  - draftMeta, revisionMeta
+- canon:
+  - tasksCount, materialsTotal, laborTotal
+- links:
+  - tasks (canonical)
+  - accounting.lines (canonical)
+  - printing.printParts
+  - history (elementVersions)
+
+---
+
+## 3) Backend APIs needed
+
+### Queries
+- elements.listByProject(projectId)
+  - returns element rows + task counts + budget totals + print part counts
+  - include draft/approved metadata when available
+
+- elements.getComposite({ projectId, elementId, preferDraft })
+  - returns ElementComposite for the main panel
+
+### Mutations (existing)
+- elements.approveElementDraft(elementId)
+  - creates elementVersions snapshot and updates element status
+
+Note: canonical tasks/accounting/printing are currently created via changeSets.
+The Elements tab should read canonical tables + draft snapshots without attempting to apply drafts.
+
+---
+
+## 4) Frontend layout
+
+Route: /projects/[id]/elements
+Layout: two-column grid
+- left: elements list + search
+- right: detailed element view
+
+Sections in detail view:
+1) Details & Draft Status
+2) Tasks
+3) Budget (accountingLines)
+4) Printing
+5) Draft Snapshot (workingSnapshot view)
+6) Wiring & History (counts + versions)
+
+---
+
+## 5) Dev task breakdown (aligned to current repo)
+
+Phase A - Backend
+- [x] elements.listByProject
+- [x] elements.getComposite
+
+Phase B - UI
+- [x] Elements page route with sidebar + detail view
+- [x] Draft snapshot + canonical data panels
+- [x] History list
+
+Phase C - Follow-ups (optional)
+- [ ] Add quick links to Tasks/Accounting filtered by element
+- [ ] Add compare view between draft and approved snapshots
+- [ ] Add element-specific file/knowledge links once those tables are wired
+
+---

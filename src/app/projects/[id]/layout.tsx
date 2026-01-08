@@ -8,6 +8,7 @@ import {
   Calculator,
   ListTodo,
   FileText,
+  Layers,
 
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ export default function ProjectLayout({
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
     { name: "AgenticEshet", href: `/projects/${projectId}/studio`, icon: Bot },
 
+    { name: "Elements", href: `/projects/${projectId}/elements`, icon: Layers },
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },
     { name: "Quote", href: `/projects/${projectId}/quote`, icon: FileText },

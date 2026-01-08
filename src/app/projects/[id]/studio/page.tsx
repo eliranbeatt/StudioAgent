@@ -250,6 +250,12 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
               rows={2}
               placeholder="כתוב כאן..."
               className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-200"

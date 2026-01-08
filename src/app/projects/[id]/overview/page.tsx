@@ -14,7 +14,8 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const allProjects = useQuery(api.projects.listProjects, { excludeId: projectId });
   const linkedProjects = useQuery(api.projects.listLinkedProjects, { projectId });
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
-  const saveUploadedFile = useAction(api.files.saveUploadedFile);
+  const saveUploadedFile = useAction(api.filesActions.saveUploadedFile);
+  const deleteProjectFile = useAction(api.files.deleteProjectFile);
 
   const createElementFromStructured = useMutation(api.agent.createElementFromStructured);
   const updateProjectDetails = useMutation(api.projects.updateProjectDetails);
@@ -34,6 +35,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   });
   const [newElementTitle, setNewElementTitle] = useState("");
   const [newElementType, setNewElementType] = useState("build");
+  const [openFileId, setOpenFileId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!overview?.project) return;
@@ -440,15 +442,107 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
           {files && files.length > 0 ? (
             files.map((file) => (
               <div key={file._id} className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-gray-900">{file.fileName}</div>
-                  <div className="text-xs text-gray-500">{Math.round(file.size / 1024)} KB</div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="font-semibold text-gray-900">{file.fileName}</div>
+                    <div className="text-xs text-gray-500">{Math.round(file.size / 1024)} KB</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="text-xs font-semibold text-gray-600 hover:text-gray-900"
+                      onClick={() =>
+                        setOpenFileId((prev) => (prev === file._id ? null : file._id))
+                      }
+                    >
+                      {openFileId === file._id ? "Hide ingest" : "View ingest"}
+                    </button>
+                    <button
+                      className="text-xs font-semibold text-red-600 hover:text-red-700"
+                      onClick={async () => {
+                        const ok = window.confirm(`Delete ${file.fileName}?`);
+                        if (!ok) return;
+                        await deleteProjectFile({ fileId: file._id });
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
                 {file.summary ? (
                   <div className="mt-2 text-xs text-gray-600">{file.summary}</div>
                 ) : (
                   <div className="mt-2 text-xs text-gray-400">No extractable text.</div>
                 )}
+                {openFileId === file._id ? (
+                  <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-4 text-xs text-gray-600 space-y-3">
+                    <div>
+                      <div className="text-[10px] uppercase font-semibold text-gray-400">Structured Summary</div>
+                      <div className="mt-1 text-gray-700">
+                        {file.extractedInfo?.summary ?? "No structured summary yet."}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase font-semibold text-gray-400">Topics</div>
+                        <div className="mt-1">
+                          {(file.extractedInfo?.topics ?? []).length > 0
+                            ? file.extractedInfo.topics.join(", ")
+                            : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-semibold text-gray-400">Domain</div>
+                        <div className="mt-1">{file.extractedInfo?.domain ?? "—"}</div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-semibold text-gray-400">Entities</div>
+                      {(file.extractedInfo?.entities ?? []).length > 0 ? (
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {file.extractedInfo.entities.map((entity: any, idx: number) => (
+                            <span
+                              key={`${entity.name}-${idx}`}
+                              className="rounded-full border border-gray-200 bg-white px-2 py-1 text-[10px]"
+                            >
+                              {entity.name}
+                              {entity.type ? ` (${entity.type})` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-1">—</div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-semibold text-gray-400">Facts</div>
+                      {(file.extractedInfo?.facts ?? []).length > 0 ? (
+                        <ul className="mt-1 list-disc pl-4 space-y-1">
+                          {file.extractedInfo.facts.map((fact: string, idx: number) => (
+                            <li key={`fact-${idx}`}>{fact}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="mt-1">—</div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase font-semibold text-gray-400">Language</div>
+                        <div className="mt-1">{file.extractedInfo?.language ?? "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-semibold text-gray-400">Model</div>
+                        <div className="mt-1">{file.extractedInfo?.model ?? "—"}</div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-semibold text-gray-400">Extracted Text</div>
+                      <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-gray-200 bg-white p-2 text-[10px] text-gray-700">
+                        {file.extractedText ?? "No extracted text stored."}
+                      </pre>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ))
           ) : (
