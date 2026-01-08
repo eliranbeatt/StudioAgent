@@ -16,27 +16,11 @@ const draftStatus = v.union(
   v.literal("approved"),
   v.literal("discarded")
 );
-const coStatus = v.union(
-  v.literal("draft"),
-  v.literal("sent"),
-  v.literal("approved"),
-  v.literal("rejected"),
-  v.literal("cancelled")
-);
-const quoteStatus = v.union(
-  v.literal("draft"),
-  v.literal("generated"),
-  v.literal("approved"),
-  v.literal("superseded")
-);
-const baselineStatus = v.union(v.literal("approved"), v.literal("superseded"));
 
-const procurementMode = v.union(
-  v.literal("purchase"),
-  v.literal("stock"),
-  v.literal("rent"),
-  v.literal("subcontract")
-);
+
+
+
+
 const inventoryResStatus = v.union(
   v.literal("active"),
   v.literal("overbooked"),
@@ -93,13 +77,7 @@ export default defineSchema({
     updatedAt: v.number(),
   }),
 
-  // Project Links (Past project context)
-  projectLinks: defineTable({
-    projectId: v.id("projects"),
-    linkedProjectId: v.id("projects"),
-    mode: v.literal("contextOnly"),
-    createdAt: v.number(),
-  }).index("by_project", ["projectId"]),
+
 
   // Elements
   elements: defineTable({
@@ -224,45 +202,7 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_element_version", ["elementId", "versionNumber"]),
 
-  // Project Cost Containers
-  projectCostContainers: defineTable({
-    projectId: v.id("projects"),
-    title: v.string(),
-    currentApprovedVersionId: v.optional(v.id("projectCostVersions")),
-    currentDraftId: v.optional(v.id("projectCostDrafts")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
 
-  // Project Cost Drafts
-  projectCostDrafts: defineTable({
-    containerId: v.id("projectCostContainers"),
-    projectId: v.id("projects"),
-    baseVersionId: v.optional(v.id("projectCostVersions")),
-    status: draftStatus,
-    revisionNumber: v.number(),
-    createdFrom: v.any(),
-    workingSnapshot: v.any(),
-    schemaVersion: v.number(),
-    createdBy: v.optional(v.id("users")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_container", ["containerId"]),
-
-  // Project Cost Versions
-  projectCostVersions: defineTable({
-    containerId: v.id("projectCostContainers"),
-    projectId: v.id("projects"),
-    versionNumber: v.number(),
-    status: v.literal("approved"),
-    tags: v.array(v.string()),
-    summary: v.optional(v.string()),
-    snapshot: v.any(),
-    schemaVersion: v.number(),
-    approvedBy: v.optional(v.id("users")),
-    approvedAt: v.number(),
-    createdAt: v.number(),
-  }).index("by_container_version", ["containerId", "versionNumber"]),
 
   // Change Sets (Refactored)
   changeSets: defineTable({
@@ -311,65 +251,7 @@ export default defineSchema({
 
 
   // Quote Versions
-  quoteVersions: defineTable({
-    projectId: v.id("projects"),
-    status: quoteStatus,
-    sourceElementVersionIds: v.array(v.id("elementVersions")),
-    sourceProjectCostVersionId: v.optional(v.id("projectCostVersions")),
-    language: v.string(),
-    sections: v.any(),
-    totals: v.any(),
-    createdBy: v.optional(v.id("users")),
-    createdAt: v.number(),
-  }).index("by_project", ["projectId"]),
 
-  // Budget Baselines
-  budgetBaselines: defineTable({
-    projectId: v.id("projects"),
-    quoteVersionId: v.id("quoteVersions"),
-    status: baselineStatus,
-    sourceElementVersionIds: v.array(v.id("elementVersions")),
-    sourceProjectCostVersionId: v.optional(v.id("projectCostVersions")),
-    planned: v.any(), // { byElement[], totals{} }
-    approvedBy: v.optional(v.id("users")),
-    approvedAt: v.number(),
-    createdAt: v.number(),
-  }).index("by_project", ["projectId"]),
-
-  // Change Orders
-  changeOrders: defineTable({
-    projectId: v.id("projects"),
-    title: v.string(),
-    status: coStatus,
-    source: v.any(), // { changeSetIds[], ... }
-    financials: v.any(), // { deltaDirectCost, ... }
-    approvedBy: v.optional(v.id("users")),
-    approvedAt: v.optional(v.number()),
-    rejectedAt: v.optional(v.number()),
-    notes: v.optional(v.string()),
-    createdBy: v.optional(v.id("users")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
-
-  // Budget Adjustments
-  budgetAdjustments: defineTable({
-    projectId: v.id("projects"),
-    baselineId: v.id("budgetBaselines"),
-    changeOrderId: v.id("changeOrders"),
-    delta: v.any(),
-    approvedBy: v.optional(v.id("users")),
-    approvedAt: v.number(),
-    createdAt: v.number(),
-  }).index("by_baseline", ["baselineId"]),
-
-  // Project Digests (Archive/Context)
-  projectDigests: defineTable({
-    projectId: v.id("projects"),
-    linkedProjectId: v.id("projects"),
-    mode: v.literal("contextOnly"),
-    createdAt: v.number(),
-  }).index("by_project", ["projectId"]),
 
 
 
@@ -378,21 +260,7 @@ export default defineSchema({
 
 
   // Element Snapshot Index (Analytics/Search)
-  elementSnapshotIndex: defineTable({
-    projectId: v.id("projects"),
-    elementId: v.id("elements"),
-    versionId: v.optional(v.id("elementVersions")),
-    draftId: v.optional(v.id("elementDrafts")),
-    totalDirectCost: v.number(),
-    totalSellPrice: v.number(),
-    vendorIds: v.array(v.id("vendors")),
-    materialNames: v.array(v.string()),
-    domains: v.array(v.string()),
-    updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_element", ["elementId"])
-    .index("by_version", ["versionId"]),
+
 
   // -------------------------
   // Management Hub Tables
@@ -573,13 +441,7 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
 
-  structuredAnswers: defineTable({
-    projectId: v.id("projects"),
-    stage: v.union(v.literal("ideation"), v.literal("planning"), v.literal("solutioning")),
-    answers: v.any(), // { [questionId]: string }
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_project_stage", ["projectId", "stage"]),
+
 
   // Memory System
   memoryDocs: defineTable({

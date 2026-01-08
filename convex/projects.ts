@@ -27,37 +27,7 @@ export const create = mutation({
       updatedAt: now,
     });
 
-    const containerId = await ctx.db.insert("projectCostContainers", {
-      projectId,
-      title: "Project Level Costs",
-      createdAt: now,
-      updatedAt: now,
-    });
 
-    const initialProjectCostSnapshot = {
-      title: "Project Level Costs",
-      materials: { byId: {} },
-      labor: { byId: {} },
-      subcontract: { byId: {} },
-      notes: [],
-      meta: { version: 1 },
-    };
-
-    const draftId = await ctx.db.insert("projectCostDrafts", {
-      containerId,
-      projectId,
-      status: "open",
-      revisionNumber: 1,
-      createdFrom: { tab: "System", stage: "bootstrap" },
-      workingSnapshot: initialProjectCostSnapshot,
-      schemaVersion: 1,
-      createdBy: undefined,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await ctx.db.patch(containerId, { currentDraftId: draftId });
-    await ctx.db.patch(projectId, { projectCostContainerId: containerId });
 
 
 
@@ -114,32 +84,6 @@ export const getOverview = query({
 
 
 
-    const baseline = project.activeBudgetBaselineId
-      ? await ctx.db.get(project.activeBudgetBaselineId)
-      : null;
-
-    const adjustments = project.activeBudgetBaselineId
-      ? await ctx.db
-        .query("budgetAdjustments")
-        .withIndex("by_baseline", (q) =>
-          q.eq("baselineId", project.activeBudgetBaselineId!)
-        )
-        .collect()
-      : [];
-
-    const approvedCO = adjustments.reduce(
-      (acc, adj) => {
-        acc.directCost += Number(adj.delta?.deltaDirectCost ?? 0);
-        acc.sellPrice += Number(adj.delta?.deltaSellPrice ?? 0);
-        return acc;
-      },
-      { directCost: 0, sellPrice: 0 }
-    );
-
-    const container = project.projectCostContainerId
-      ? await ctx.db.get(project.projectCostContainerId)
-      : null;
-
     return {
       project,
       elements: elements.map((el) => ({
@@ -152,21 +96,6 @@ export const getOverview = query({
       counts: {
         elementCount: elements.length,
       },
-      baseline: baseline
-        ? {
-          id: baseline._id,
-          totals: baseline.planned?.totals ?? { directCost: 0, grandTotal: 0 },
-          approvedAt: baseline.approvedAt,
-        }
-        : null,
-      approvedCO,
-      projectCostContainer: container
-        ? {
-          id: container._id,
-          currentDraftId: container.currentDraftId ?? null,
-          currentApprovedVersionId: container.currentApprovedVersionId ?? null,
-        }
-        : null,
     };
   },
 });
@@ -211,146 +140,7 @@ export const updateProjectDetails = mutation({
   },
 });
 
-export const listLinkedProjects = query({
-  args: { projectId: v.id("projects") },
-  handler: async (ctx, args) => {
-    const links = await ctx.db
-      .query("projectLinks")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .collect();
 
-    const results = await Promise.all(
-      links.map(async (link) => {
-        const project = await ctx.db.get(link.linkedProjectId);
-        const digest = await ctx.db
-          .query("projectDigests")
-          .withIndex("by_project", (q) => q.eq("projectId", link.linkedProjectId))
-          .first();
-        return project
-          ? {
-            linkId: link._id,
-            mode: link.mode,
-            project: {
-              id: project._id,
-              name: project.name,
-              status: project.status,
-            },
-            digest: digest?.digest ?? null,
-            generatedAt: digest?.generatedAt ?? null,
-          }
-          : null;
-      })
-    );
-
-    return results.filter(Boolean);
-  },
-});
-
-export const linkProject = mutation({
-  args: {
-    projectId: v.id("projects"),
-    linkedProjectId: v.id("projects"),
-    mode: v.literal("contextOnly"),
-  },
-  handler: async (ctx, args) => {
-    if (args.projectId === args.linkedProjectId) {
-      throw new Error("Cannot link a project to itself.");
-    }
-
-    const existing = await ctx.db
-      .query("projectLinks")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .filter((q) => q.eq(q.field("linkedProjectId"), args.linkedProjectId))
-      .first();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, { mode: args.mode });
-      return { id: existing._id, updated: true };
-    }
-
-    const id = await ctx.db.insert("projectLinks", {
-      projectId: args.projectId,
-      linkedProjectId: args.linkedProjectId,
-      mode: args.mode,
-      createdAt: Date.now(),
-    });
-
-    return { id, updated: false };
-  },
-});
-
-export const unlinkProject = mutation({
-  args: {
-    projectId: v.id("projects"),
-    linkedProjectId: v.id("projects"),
-  },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("projectLinks")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .filter((q) => q.eq(q.field("linkedProjectId"), args.linkedProjectId))
-      .first();
-
-    if (existing) {
-      await ctx.db.delete(existing._id);
-    }
-
-    return { ok: true };
-  },
-});
-
-export const generateProjectDigest = mutation({
-  args: { projectId: v.id("projects") },
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId);
-    if (!project) {
-      throw new Error("Project not found.");
-    }
-
-    const elements = await ctx.db
-      .query("elements")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .collect();
-
-    const files = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .order("desc")
-      .take(5);
-
-    const budgetTotals = await computeBudgetTotals(ctx, project);
-
-    const digest = buildDigest({
-      project,
-      elements,
-      files,
-      budgetTotals,
-    });
-
-    const existing = await ctx.db
-      .query("projectDigests")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .first();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        digest,
-        schemaVersion: 1,
-        generatedAt: Date.now(),
-      });
-      return { id: existing._id, updated: true, digest };
-    }
-
-    const id = await ctx.db.insert("projectDigests", {
-      projectId: args.projectId,
-      digest,
-      schemaVersion: 1,
-      generatedAt: Date.now(),
-    });
-
-    return { id, updated: false, digest };
-  },
-});
 
 export const generateOverviewSummary = action({
   args: { id: v.id("projects") },
@@ -364,15 +154,11 @@ export const generateOverviewSummary = action({
       projectId: args.id,
     });
 
-    const linked = await ctx.runQuery(api.projects.listLinkedProjects, {
-      projectId: args.id,
-    });
 
     const summary = await buildOverviewSummary({
       project: overview.project,
       elements: overview.elements ?? [],
       files: files ?? [],
-      linkedDigests: linked ?? [],
     });
 
     await ctx.runMutation(api.projects.updateProjectSummary, {
@@ -398,102 +184,27 @@ export const updateProjectSummary = mutation({
   },
 });
 
-async function computeBudgetTotals(ctx: any, project: any) {
-  const baseline = project.activeBudgetBaselineId
-    ? await ctx.db.get(project.activeBudgetBaselineId)
-    : null;
 
-  const adjustments = project.activeBudgetBaselineId
-    ? await ctx.db
-      .query("budgetAdjustments")
-      .withIndex("by_baseline", (q: any) =>
-        q.eq("baselineId", project.activeBudgetBaselineId)
-      )
-      .collect()
-    : [];
-
-  const approvedCO = adjustments.reduce(
-    (acc: any, adj: any) => {
-      acc.directCost += Number(adj.delta?.deltaDirectCost ?? 0);
-      acc.sellPrice += Number(adj.delta?.deltaSellPrice ?? 0);
-      return acc;
-    },
-    { directCost: 0, sellPrice: 0 }
-  );
-
-  const baselineSell = Number(baseline?.planned?.totals?.grandTotal ?? 0);
-  return {
-    baselineSell,
-    approvedSell: approvedCO.sellPrice,
-    effectiveBudget: baselineSell + approvedCO.sellPrice,
-  };
-}
-
-function buildDigest({
-  project,
-  elements,
-  files,
-  budgetTotals,
-}: {
-  project: any;
-  elements: any[];
-  files: any[];
-  budgetTotals: { baselineSell: number; approvedSell: number; effectiveBudget: number };
-}) {
-  const keyElements = elements.slice(0, 5).map((el) => ({
-    title: el.title,
-    type: el.type,
-    status: el.status,
-  }));
-
-  const fileHighlights = files
-    .filter((file) => file.summary)
-    .slice(0, 4)
-    .map((file) => `${file.fileName}: ${file.summary}`);
-
-  const summaryParts = [
-    project.description?.trim(),
-    keyElements.length > 0
-      ? `Key elements: ${keyElements.map((el) => el.title).join(", ")}.`
-      : "No elements captured yet.",
-    fileHighlights.length > 0
-      ? `Files: ${fileHighlights.map((item) => item.split(":")[0]).join(", ")}.`
-      : null,
-  ].filter(Boolean);
-
-  return {
-    summary: summaryParts.join(" "),
-    keyElements,
-    fileHighlights,
-    totals: budgetTotals,
-  };
-}
 
 async function buildOverviewSummary({
   project,
   elements,
   files,
-  linkedDigests,
 }: {
   project: any;
   elements: any[];
   files: any[];
-  linkedDigests: Array<any>;
 }) {
   const apiKey = process.env.OPENAI_API_KEY;
   const elementList = elements.slice(0, 8).map((el) => `${el.title} (${el.type})`);
   const fileList = (files ?? []).slice(0, 6).map((file) =>
     file.summary ? `${file.fileName}: ${file.summary}` : file.fileName
   );
-  const linkedList = (linkedDigests ?? []).map((link) =>
-    link?.digest?.summary ? `${link.project?.name}: ${link.digest.summary}` : link.project?.name
-  );
 
   const fallbackSummary = [
     project.description?.trim(),
     elementList.length ? `Elements: ${elementList.join(", ")}.` : "No elements yet.",
     fileList.length ? `Knowledge: ${fileList.join(" | ")}.` : null,
-    linkedList.length ? `Past projects: ${linkedList.join(" | ")}.` : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -507,7 +218,6 @@ async function buildOverviewSummary({
     project.description ? `Description: ${project.description}` : null,
     elementList.length ? `Elements: ${elementList.join(", ")}` : "Elements: none",
     fileList.length ? `Knowledge files: ${fileList.join(" | ")}` : "Knowledge files: none",
-    linkedList.length ? `Past project digests: ${linkedList.join(" | ")}` : "Past project digests: none",
     "Write a concise project summary (2-4 sentences). Emphasize scope, key elements, and critical constraints.",
   ]
     .filter(Boolean)
