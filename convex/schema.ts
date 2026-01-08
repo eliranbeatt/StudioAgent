@@ -400,6 +400,11 @@ export default defineSchema({
     title: v.optional(v.string()), // Deprecated in favor of title_he?
     title_he: v.optional(v.string()),
     status: v.union(v.literal("active"), v.literal("archived")),
+    mode: v.optional(v.union(
+      v.literal("CHAT"),
+      v.literal("QUESTIONS"),
+      v.literal("SUGGESTIONS")
+    )),
     stage: v.union(
       v.literal("ideation"),
       v.literal("planning"),
@@ -440,6 +445,18 @@ export default defineSchema({
     metadata: v.optional(v.any()), // e.g. { questions: [], changeSetId: "" }
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
+
+  structuredAnswers: defineTable({
+    projectId: v.id("projects"),
+    stage: v.union(
+      v.literal("ideation"),
+      v.literal("planning"),
+      v.literal("solutioning")
+    ),
+    answers: v.any(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project_stage", ["projectId", "stage"]),
 
 
 
@@ -499,4 +516,31 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_element", ["projectId", "elementId"])
     .index("by_project_questionKey", ["projectId", "questionKey"]),
+
+  // -------------------------
+  // Project Linking & Digests
+  // -------------------------
+
+  projectLinks: defineTable({
+    projectId: v.id("projects"),
+    linkedProjectId: v.id("projects"),
+    mode: v.union(v.literal("contextOnly"), v.literal("importSuggestions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_linked", ["projectId", "linkedProjectId"]),
+
+  projectDigests: defineTable({
+    projectId: v.id("projects"),
+    summary: v.string(),
+    keyElements: v.optional(v.array(v.object({
+      id: v.id("elements"),
+      title: v.string(),
+      type: v.string(),
+    }))),
+    fileHighlights: v.optional(v.array(v.string())),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
 });

@@ -81,7 +81,7 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
           <div className="text-center py-20 bg-gray-50 rounded-xl border-2 border-dashed">
             <FileText size={48} className="mx-auto text-gray-300 mb-4" />
             <h3 className="text-gray-500 font-medium">No quotes generated yet.</h3>
-            <p className="text-gray-400 text-sm mt-1">Click "Generate New Quote" to start the process.</p>
+            <p className="text-gray-400 text-sm mt-1">Click &quot;Generate New Quote&quot; to start the process.</p>
           </div>
         )}
       </div>

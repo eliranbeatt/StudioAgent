@@ -3,6 +3,439 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import OpenAI from "openai";
 
+const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV1";
+
+const SYSTEM_PROMPT = `You are Emlly Studio Producer - a practical set-design + fabrication + install assistant in Israel.
+You behave as a flowing assistant in a single continuous chat:
+- listen,
+- ask only minimum blockers,
+- suggest realistic options,
+- propose ChangeSets the user can Apply/Discard,
+- keep everything mapped to Elements + Tasks + Accounting + Quote + Production.
+
+Hard rules:
+1) Incremental: do NOT output a full master plan unless explicitly asked. Choose ONE next-best action.
+2) Never write canonical data directly. Only propose ChangeSets.
+3) Use Hebrew for all user-facing text. JSON keys must be English.
+4) Never invent exact measurements/prices/vendors. State assumptions and ask minimal questions.
+5) Safety: if load-bearing/climbable/child-facing/overhead - flag risk and require a check.`;
+
+const DEVELOPER_PROMPT = `Return ONE JSON object:
+{
+  "assistantText_he": string,
+  "block": null | ClarificationBlock | SuggestionBlock | ChangeSetBlock
+}
+
+Only ONE block per turn. Choose exactly one next-best action: ANSWER / ASK / SUGGEST / PROPOSE_CHANGESET.
+
+ClarificationBlock:
+{
+  "type": "ClarificationBlock",
+  "title_he": string,
+  "questions": [
+    {
+      "id": string,
+      "text_he": string,
+      "inputType": "single"|"multi"|"number"|"date"|"text"|"toggle",
+      "options_he"?: string[],
+      "placeholder_he"?: string,
+      "required": boolean
+    }
+  ],
+  "submitLabel_he": string
+}
+
+SuggestionBlock:
+{
+  "type": "SuggestionBlock",
+  "title_he": string,
+  "subtitle_he"?: string,
+  "selectionMode": "single"|"multi",
+  "items": [
+    {
+      "id": string,
+      "label_he": string,
+      "why_he": string,
+      "details_he": string,
+      "tags_he": string[],
+      "impact": "time"|"cost"|"quality"|"risk",
+      "confidence": "high"|"medium"|"low",
+      "payload": object
+    }
+  ],
+  "freeTextPrompt_he": string,
+  "submitLabel_he": string
+}
+
+ChangeSetBlock:
+{
+  "type": "ChangeSetBlock",
+  "title_he": string,
+  "summary_he": string,
+  "changes": {
+    "elementsCreate": number,
+    "elementsPatch": number,
+    "elementDraftsPatch": number,
+    "tasksCreate": number,
+    "accountingLinesCreate": number,
+    "printPartsCreate": number,
+    "purchasesCreate": number,
+    "receiptsAttach": number,
+    "vendorsCreate": number
+  },
+  "diffPreview_he": {
+    "elements": string[],
+    "drafts": string[],
+    "tasks": string[],
+    "accounting": string[],
+    "printing": string[],
+    "purchases": string[]
+  },
+  "proposedChangeSet": {
+    "reason_he": string,
+    "base": { "elements": [{ "elementId": string, "rev": number }] },
+    "ops": [{ "kind": string, "payload": object }]
+  },
+  "actions": [
+    { "id": "apply", "label_he": string },
+    { "id": "discard", "label_he": string }
+  ]
+}
+
+Allowed ChangeSet ops kinds:
+- element.create
+- element.patch
+- task.create
+- accountingLine.create
+- printPart.create
+- vendor.create
+- purchase.create
+- receipt.attach`;
+
+const STAGE_MODULES: Record<string, string> = {
+  IDEATION: `Stage = IDEATION. Objective: turn brief into 5-10 feasible element ideas, rough budget + lead time range, key risks. Avoid over-questioning.`,
+  QUOTE: `Stage = QUOTE. Objective: convert chosen elements into a quote with tight assumptions/exclusions/options.`,
+  BREAKDOWN: `Stage = BREAKDOWN. Objective: atomic tasks + dependencies + risks + shopping/print plan.`,
+};
+
+const MODE_NUDGES: Record<string, string> = {
+  CHAT: "Mode = CHAT. Default to plain text unless a block is clearly better.",
+  QUESTIONS: "Mode = QUESTIONS. Prefer a ClarificationBlock if blocked.",
+  SUGGESTIONS: "Mode = SUGGESTIONS. Prefer a SuggestionBlock early.",
+};
+
+function normalizeStage(stage?: string): "IDEATION" | "QUOTE" | "BREAKDOWN" {
+  if (!stage) return "IDEATION";
+  const upper = stage.toUpperCase();
+  if (upper === "IDEATION" || upper === "QUOTE" || upper === "BREAKDOWN") return upper;
+  if (upper === "PLANNING") return "QUOTE";
+  if (upper === "SOLUTIONING") return "BREAKDOWN";
+  return "IDEATION";
+}
+
+function normalizeMode(mode?: string): "CHAT" | "QUESTIONS" | "SUGGESTIONS" {
+  if (!mode) return "CHAT";
+  const upper = mode.toUpperCase();
+  if (upper === "CHAT" || upper === "QUESTIONS" || upper === "SUGGESTIONS") return upper;
+  return "CHAT";
+}
+
+function safeParseAgentResponse(raw: string) {
+  try {
+    const cleaned = raw.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "");
+    const parsed = JSON.parse(cleaned);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (typeof parsed.assistantText_he !== "string") return null;
+    const block = parsed.block ?? null;
+    if (block !== null && typeof block !== "object") return null;
+    return { assistantText_he: parsed.assistantText_he, block };
+  } catch {
+    return null;
+  }
+}
+
+export const listConversations = query({
+  args: { projectId: v.union(v.id("projects"), v.id("structuredAnswers")) },
+  handler: async (ctx, args) => {
+    let finalProjectId = args.projectId;
+    
+    const asAnswer = ctx.db.normalizeId("structuredAnswers", args.projectId);
+    if (asAnswer) {
+      const answer = await ctx.db.get(asAnswer);
+      if (answer) {
+        finalProjectId = answer.projectId;
+      } else {
+        return []; // Answer not found, so no project context
+      }
+    }
+
+    // Ensure we have a valid project ID now
+    if (!finalProjectId || !ctx.db.normalizeId("projects", finalProjectId)) {
+        return [];
+    }
+
+    return await ctx.db
+      .query("conversations")
+      .withIndex("by_project_updated", (q) => q.eq("projectId", finalProjectId as any))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const createConversation = mutation({
+  args: {
+    projectId: v.id("projects"),
+    stage: v.optional(v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN"))),
+    mode: v.optional(v.union(v.literal("CHAT"), v.literal("QUESTIONS"), v.literal("SUGGESTIONS"))),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("conversations", {
+      projectId: args.projectId,
+      status: "active",
+      stage: args.stage ?? "IDEATION",
+      mode: args.mode ?? "CHAT",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const listConversationMessages = query({
+  args: { conversationId: v.id("conversations"), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 40;
+    const messages = await ctx.db
+      .query("conversationMessages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .order("desc")
+      .take(limit);
+    return messages.reverse();
+  },
+});
+
+export const appendUserMessage = mutation({
+  args: { conversationId: v.id("conversations"), text_he: v.string() },
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) throw new Error("Conversation not found");
+    const messageId = await ctx.db.insert("conversationMessages", {
+      conversationId: args.conversationId,
+      projectId: conversation.projectId,
+      role: "user",
+      text_he: args.text_he,
+      createdAt: Date.now(),
+    });
+    await ctx.db.patch(args.conversationId, { updatedAt: Date.now() });
+    return messageId;
+  },
+});
+
+export const appendEventMessage = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    eventType: v.string(),
+    eventPayload: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) throw new Error("Conversation not found");
+    const messageId = await ctx.db.insert("conversationMessages", {
+      conversationId: args.conversationId,
+      projectId: conversation.projectId,
+      role: "event",
+      eventType: args.eventType,
+      eventPayload: args.eventPayload,
+      createdAt: Date.now(),
+    });
+    await ctx.db.patch(args.conversationId, { updatedAt: Date.now() });
+    return messageId;
+  },
+});
+
+export const appendAssistantMessage = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    text_he: v.string(),
+    block: v.optional(v.any()),
+    changeSetId: v.optional(v.id("changeSets")),
+  },
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) throw new Error("Conversation not found");
+    const messageId = await ctx.db.insert("conversationMessages", {
+      conversationId: args.conversationId,
+      projectId: conversation.projectId,
+      role: "assistant",
+      text_he: args.text_he,
+      block: args.block,
+      changeSetId: args.changeSetId,
+      createdAt: Date.now(),
+    });
+    await ctx.db.patch(args.conversationId, { updatedAt: Date.now() });
+    return messageId;
+  },
+});
+
+export const setConversationStageV1 = mutation({
+  args: {
+    id: v.id("conversations"),
+    stage: v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN")),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { stage: args.stage, updatedAt: Date.now() });
+    return { ok: true };
+  },
+});
+
+export const setConversationMode = mutation({
+  args: {
+    id: v.id("conversations"),
+    mode: v.union(v.literal("CHAT"), v.literal("QUESTIONS"), v.literal("SUGGESTIONS")),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { mode: args.mode, updatedAt: Date.now() });
+    return { ok: true };
+  },
+});
+
+export const agentRespond = action({
+  args: {
+    conversationId: v.id("conversations"),
+    uiContext: v.optional(v.object({
+      selectedElementIds: v.optional(v.array(v.id("elements"))),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const conversation = await ctx.runQuery(api.agent.getConversation, { id: args.conversationId });
+    if (!conversation) throw new Error("Conversation not found");
+
+    const project = await ctx.runQuery(api.projects.getOverview, { id: conversation.projectId });
+    const stage = normalizeStage(conversation.stage);
+    const mode = normalizeMode(conversation.mode);
+
+    const recentMessages = await ctx.runQuery(api.agent.listConversationMessages, {
+      conversationId: args.conversationId,
+      limit: 30,
+    });
+
+    const selectedIds = args.uiContext?.selectedElementIds ?? [];
+    const selectedElements = [];
+    for (const id of selectedIds) {
+      const element = await ctx.runQuery(api.elements.getElementDetail, { elementId: id });
+      if (element?.element) {
+        selectedElements.push(element);
+      }
+    }
+
+    const recentElements = await ctx.runQuery(api.projects.getRecentElements, {
+      projectId: conversation.projectId,
+      limit: 5,
+    });
+
+    const lastUserMessage = [...recentMessages].reverse().find((msg) => msg.role === "user");
+    const lastText = String(lastUserMessage?.text_he ?? "").toLowerCase();
+    const wantsTasks = /task|משימ/.test(lastText);
+    const wantsAccounting = /cost|price|budget|quote|תקציב|מחיר/.test(lastText);
+    const wantsPrinting = /print|printing|דפוס/.test(lastText);
+
+    const taskDetails = wantsTasks
+      ? await ctx.runQuery(api.projects.getTasksForElements, {
+        projectId: conversation.projectId,
+        elementIds: selectedIds,
+      })
+      : [];
+    const accountingDetails = wantsAccounting
+      ? await ctx.runQuery(api.projects.getAccountingForElements, {
+        projectId: conversation.projectId,
+        elementIds: selectedIds,
+      })
+      : [];
+    const printDetails = wantsPrinting
+      ? await ctx.runQuery(api.projects.getPrintPartsForElements, {
+        projectId: conversation.projectId,
+        elementIds: selectedIds,
+      })
+      : [];
+
+    const contextPayload = {
+      project,
+      stage,
+      mode,
+      promptVersion: AGENT_PROMPT_VERSION,
+      conversation: recentMessages.map((msg) => ({
+        role: msg.role,
+        text_he: msg.text_he,
+        eventType: msg.eventType,
+        eventPayload: msg.eventPayload,
+      })),
+      selectedElements,
+      recentElements,
+      tasks: taskDetails,
+      accounting: accountingDetails,
+      printing: printDetails,
+    };
+
+    let responseText = "There was an error generating a response.";
+
+    if (process.env.OPENAI_API_KEY) {
+      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const completion = await client.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: DEVELOPER_PROMPT },
+          { role: "system", content: STAGE_MODULES[stage] ?? "" },
+          { role: "system", content: MODE_NUDGES[mode] ?? "" },
+          { role: "user", content: `Context JSON:\\n${JSON.stringify(contextPayload)}` },
+        ],
+        temperature: 0.2,
+      });
+
+      responseText = completion.choices[0]?.message?.content ?? responseText;
+    } else {
+      responseText = "{\"assistantText_he\":\"OpenAI API key missing.\",\"block\":null}";
+    }
+
+    const parsed = safeParseAgentResponse(responseText);
+    if (!parsed) {
+      await ctx.runMutation(api.agent.appendEventMessage, {
+        conversationId: args.conversationId,
+        eventType: "agent_response_invalid",
+        eventPayload: { raw: responseText },
+      });
+      const fallbackId = await ctx.runMutation(api.agent.appendAssistantMessage, {
+        conversationId: args.conversationId,
+        text_he: responseText,
+      });
+      return { messageId: fallbackId };
+    }
+
+    let block = parsed.block;
+    let changeSetId: any = undefined;
+    if (block?.type === "ChangeSetBlock" && block.proposedChangeSet) {
+      const proposed = block.proposedChangeSet;
+      changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+        projectId: conversation.projectId,
+        stage,
+        ops: proposed.ops ?? [],
+        reason_he: proposed.reason_he,
+        base: proposed.base,
+      });
+      const { proposedChangeSet, ...rest } = block;
+      block = { ...rest };
+    }
+
+    const messageId = await ctx.runMutation(api.agent.appendAssistantMessage, {
+      conversationId: args.conversationId,
+      text_he: parsed.assistantText_he,
+      block,
+      changeSetId,
+    });
+
+    return { messageId, changeSetId };
+  },
+});
+
 export const getOrCreateConversation = mutation({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {

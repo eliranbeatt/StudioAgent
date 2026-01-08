@@ -1,1218 +1,691 @@
-"use client";
+﻿"use client";
 
-import { useMutation, useQuery, useAction } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
-import { useState, useEffect, useRef, use, useMemo } from "react";
-import {
-  Send,
-  ListChecks,
-  MessageSquare,
-  Bug,
-  Loader2,
-  Layers,
-} from "lucide-react";
 import { Id } from "../../../../../convex/_generated/dataModel";
+import { use, useEffect, useMemo, useState } from "react";
+import { Loader2, Plus, Send } from "lucide-react";
+import { ACTIVE_AGENT_PROMPT_ID } from "../../../../lib/agentPrompts";
+
+type Stage = "IDEATION" | "QUOTE" | "BREAKDOWN";
+type Mode = "CHAT" | "QUESTIONS" | "SUGGESTIONS";
+
+type ConversationMessage = {
+  _id: Id<"conversationMessages">;
+  role: "user" | "assistant" | "event";
+  text_he?: string;
+  block?: any;
+  eventType?: string;
+  eventPayload?: any;
+  changeSetId?: Id<"changeSets">;
+  createdAt: number;
+};
 
 export default function StudioAgentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const projectId = id as Id<"projects">;
 
+  const [activeConversationId, setActiveConversationId] = useState<Id<"conversations"> | null>(null);
   const [input, setInput] = useState("");
-  const [model, setModel] = useState<string>("gpt-5.2");
-  const [channel, setChannel] = useState<"structured" | "free">("structured");
-  const [debugDraftId, setDebugDraftId] = useState<string | null>(null);
-  const [selectedDraftId, setSelectedDraftId] = useState<string>("");
-  const [selectedDraftType, setSelectedDraftType] = useState<"element" | "projectCost">("element");
-  const [baseRevisionNumber, setBaseRevisionNumber] = useState<number>(1);
-  const [patchOpsText, setPatchOpsText] = useState<string>("[]");
-  const [applyStatus, setApplyStatus] = useState<string>("");
-  const [applyResult, setApplyResult] = useState<any>(null);
-  const [previewError, setPreviewError] = useState<string>("");
-  const [stageSelection, setStageSelection] = useState<"ideation" | "planning" | "solutioning">("ideation");
-  const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
-  const [answersStatus, setAnswersStatus] = useState<string>("");
-  const [taskTargetElementId, setTaskTargetElementId] = useState<string>("");
+  const [selectedElementIds, setSelectedElementIds] = useState<Id<"elements">[]>([]);
+  const [isWaiting, setIsWaiting] = useState(false);
 
-  const [newElementTitle, setNewElementTitle] = useState<string>("");
-  const [newElementType, setNewElementType] = useState<string>("build");
-  const [selectedElementDetailId, setSelectedElementDetailId] = useState<string | null>(null);
+  const conversations = useQuery(api.agent.listConversations, { projectId });
+  const messages = useQuery(
+    api.agent.listConversationMessages,
+    activeConversationId ? { conversationId: activeConversationId, limit: 60 } : "skip"
+  ) as ConversationMessage[] | undefined;
+  const overview = useQuery(api.projects.getOverview, { id: projectId });
 
-  // State for conversation ID since we need to fetch/create it via mutation
-  const [conversationId, setConversationId] = useState<Id<"conversations"> | null>(null);
+  const createConversation = useMutation(api.agent.createConversation);
+  const setConversationStage = useMutation(api.agent.setConversationStageV1);
+  const setConversationMode = useMutation(api.agent.setConversationMode);
+  const appendUserMessage = useMutation(api.agent.appendUserMessage);
+  const appendEventMessage = useMutation(api.agent.appendEventMessage);
+  const applyChangeSet = useMutation(api.changeSets.applyChangeSet);
+  const discardChangeSet = useMutation(api.changeSets.discardChangeSet);
+  const agentRespond = useAction(api.agent.agentRespond);
 
-
-
-  // Mutations
-  const getOrCreateConversation = useMutation(api.agent.getOrCreateConversation);
-  const setConversationStage = useMutation(api.agent.setConversationStage);
-  const saveStructuredAnswers = useMutation(api.agent.saveStructuredAnswers);
-  const createElementFromStructured = useMutation(api.agent.createElementFromStructured);
-  const generateTaskPatchOps = useMutation(api.agent.generateTaskPatchOps);
-
-  const approveElementDraft = useMutation(api.elements.approveElementDraft);
-  const approveSuggestedElement = useMutation(api.suggestions.approveSuggestedElement);
-  const rejectSuggestedElement = useMutation(api.suggestions.rejectSuggestedElement);
+  const activeConversation = useMemo(() => {
+    if (!conversations || !activeConversationId) return null;
+    return conversations.find((item) => item._id === activeConversationId) ?? null;
+  }, [conversations, activeConversationId]);
 
   useEffect(() => {
-    if (projectId) {
-      getOrCreateConversation({ projectId })
-        .then((id) => setConversationId(id))
-        .catch((error) => console.error("Failed to get/create conversation:", error));
+    if (!conversations) return;
+    if (activeConversationId) return;
+    if (conversations.length > 0) {
+      setActiveConversationId(conversations[0]._id);
+      return;
     }
-  }, [projectId]);
-
-  // Data Fetching
-  const messages = useQuery(api.agent.listMessages, conversationId ? { conversationId } : "skip");
-  const conversation = useQuery(api.agent.getConversation, conversationId ? { id: conversationId } : "skip");
-  const drafts = useQuery(api.drafts.listOpenDrafts, projectId ? { projectId } : "skip");
-  const overview = useQuery(api.projects.getOverview, projectId ? { id: projectId } : "skip");
-  const financials = useQuery(api.financials.getFinancialSummary, projectId ? { projectId } : "skip");
-  const structuredAnswers = useQuery(
-    api.agent.getStructuredAnswers,
-    projectId ? { projectId, stage: stageSelection } : "skip"
-  );
-  const fileContext = useQuery(api.files.getProjectContext, projectId ? { projectId } : "skip");
-
-  const suggestions = useQuery(api.suggestions.listSuggested, projectId ? { projectId } : "skip");
-  const elementDetail = useQuery(
-    api.elements.getElementDetail,
-    selectedElementDetailId ? { elementId: selectedElementDetailId as any } : "skip"
-  );
-
-  // Mutations
-  const sendMessage = useAction(api.agent.sendMessage);
-  const applyChangeSet = useMutation(api.drafts.applyChangeSet);
-  const seedSimulation = useMutation(api.debug.seedSimulation);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+    createConversation({ projectId }).then((convId) => setActiveConversationId(convId));
+  }, [conversations, activeConversationId, createConversation, projectId]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  useEffect(() => {
-    if (!conversation?.stage) return;
-    setStageSelection(conversation.stage);
-  }, [conversation?.stage]);
-
-  useEffect(() => {
-    if (!structuredAnswers?.answers) return;
-    setAnswerDrafts(structuredAnswers.answers as Record<string, string>);
-  }, [structuredAnswers?.answers]);
-
-
-  useEffect(() => {
-    if (!overview?.elements || overview.elements.length === 0) return;
-    if (taskTargetElementId) return;
-    setTaskTargetElementId(overview.elements[0].id);
-  }, [overview?.elements, taskTargetElementId]);
-
+    if (!overview?.elements?.length) return;
+    if (selectedElementIds.length > 0) return;
+    setSelectedElementIds([overview.elements[0].id as Id<"elements">]);
+  }, [overview?.elements, selectedElementIds.length]);
 
   const handleSend = async () => {
-    if (!input.trim() || !conversationId) return;
-    const currentInput = input;
+    if (!input.trim() || !activeConversationId || isWaiting) return;
+    const text = input.trim();
     setInput("");
-    const result = await sendMessage({
-      conversationId,
-      content: currentInput,
-      channel,
-      model,
-    });
-  };
-
-  useEffect(() => {
-    if (!drafts || drafts.length === 0) return;
-    if (selectedDraftId) return;
-    const firstDraft = drafts[0];
-    setSelectedDraftId(firstDraft.draftId);
-    setSelectedDraftType(firstDraft.draftType);
-    setBaseRevisionNumber(firstDraft.revisionNumber);
-  }, [drafts, selectedDraftId]);
-
-  const handleSelectDraft = (value: string) => {
-    if (!drafts) return;
-    const draft = drafts.find((d) => d.draftId === value);
-    if (!draft) return;
-    setSelectedDraftId(draft.draftId);
-    setSelectedDraftType(draft.draftType);
-    setBaseRevisionNumber(draft.revisionNumber);
-  };
-
-  const parsePatchOps = () => {
+    setIsWaiting(true);
     try {
-      const parsed = JSON.parse(patchOpsText);
-      if (!Array.isArray(parsed)) {
-        return { ok: false, error: "Patch ops must be a JSON array." };
-      }
-      return { ok: true, value: parsed };
-    } catch (err) {
-      return { ok: false, error: "Invalid JSON for patch ops." };
-    }
-  };
-
-
-  const handleApplyChangeSet = async () => {
-    setApplyStatus("");
-    const parsed = parsePatchOps();
-    if (!parsed.ok) {
-      setApplyStatus(parsed.error ?? "Invalid patch ops.");
-      return;
-    }
-    if (!selectedDraftId) {
-      setApplyStatus("Select a draft before applying changes.");
-      return;
-    }
-
-    try {
-      const result = await applyChangeSet({
-        draftType: selectedDraftType,
-        draftId: selectedDraftId,
-        projectId,
-        baseRevisionNumber,
-        createdFrom: { tab: "Studio", stage: "manualPatch" },
-        patchOps: parsed.value,
+      await appendUserMessage({ conversationId: activeConversationId, text_he: text });
+      await agentRespond({
+        conversationId: activeConversationId,
+        uiContext: { selectedElementIds },
       });
-
-      setApplyResult(result);
-      const created = result?.graveyard?.createdItemIds?.length ?? 0;
-      setApplyStatus(
-        created > 0
-          ? `Applied. ${created} graveyard item(s) created.`
-          : "Applied. No graveyard items."
-      );
-      setBaseRevisionNumber(result.newRevisionNumber);
-    } catch (err: any) {
-      setApplyStatus(err?.message ?? "Failed to apply ChangeSet.");
-      setApplyResult(null);
+    } finally {
+      setIsWaiting(false);
     }
   };
 
-  const handleApproveSelectedDraft = async () => {
-    if (!selectedDraftId || selectedDraftType !== "element") {
-      setApplyStatus("Select an element draft to approve.");
-      return;
-    }
-    const draft = drafts?.find((item) => item.draftId === selectedDraftId);
-    if (!draft?.elementId) {
-      setApplyStatus("Element draft not found.");
-      return;
-    }
+  const handleEventSubmit = async (eventType: string, eventPayload: any) => {
+    if (!activeConversationId || isWaiting) return;
+    setIsWaiting(true);
     try {
-      await approveElementDraft({ elementId: draft.elementId as any });
-      setApplyStatus("Element draft approved.");
-    } catch (err: any) {
-      setApplyStatus(err?.message ?? "Failed to approve element draft.");
-    }
-  };
-
-  const handleApplyFromMessage = async (msg: any) => {
-    if (!msg?.metadata?.patchOps || !msg?.metadata?.draftId) {
-      setApplyStatus("ChangeSet metadata missing.");
-      return;
-    }
-    try {
-      const result = await applyChangeSet({
-        draftType: msg.metadata.draftType ?? "element",
-        draftId: msg.metadata.draftId,
-        projectId,
-        baseRevisionNumber: msg.metadata.baseRevisionNumber ?? 1,
-        createdFrom: { tab: "Studio", stage: "agentProposal" },
-        patchOps: msg.metadata.patchOps,
+      await appendEventMessage({
+        conversationId: activeConversationId,
+        eventType,
+        eventPayload,
       });
-      setApplyResult(result);
-      const created = result?.graveyard?.createdItemIds?.length ?? 0;
-      setApplyStatus(
-        created > 0
-          ? `Applied. ${created} graveyard item(s) created.`
-          : "Applied. No graveyard items."
-      );
-      setBaseRevisionNumber(result.newRevisionNumber);
-    } catch (err: any) {
-      setApplyStatus(err?.message ?? "Failed to apply ChangeSet.");
-    }
-  };
-
-  const structuredQuestions = getQuestions(stageSelection);
-
-
-  const handleSaveStructuredAnswers = async () => {
-    setAnswersStatus("");
-    const payload: Record<string, string> = {};
-    for (const q of structuredQuestions) {
-      const value = answerDrafts[q.id]?.trim();
-      if (!value && q.required) {
-        setAnswersStatus(`Missing required field: ${q.label}`);
-        return;
-      }
-      if (value) {
-        payload[q.id] = value;
-      }
-    }
-
-    await saveStructuredAnswers({
-      projectId,
-      stage: stageSelection,
-      answers: payload,
-    });
-
-    if (stageSelection === "ideation" && payload.elementTitle) {
-      await createElementFromStructured({
-        projectId,
-        title: payload.elementTitle,
-        type: payload.elementType,
+      await agentRespond({
+        conversationId: activeConversationId,
+        uiContext: { selectedElementIds },
       });
+    } finally {
+      setIsWaiting(false);
     }
+  };
 
-    const summary = formatStructuredAnswers(stageSelection, payload, fileContext ?? []);
-    if (conversationId) {
-      const result = await sendMessage({
-        conversationId,
-        content: summary,
-        channel: "structured",
+  const handleApplyChangeSet = async (changeSetId?: Id<"changeSets">) => {
+    if (!changeSetId || !activeConversationId || isWaiting) return;
+    setIsWaiting(true);
+    try {
+      await applyChangeSet({ changeSetId });
+      await appendEventMessage({
+        conversationId: activeConversationId,
+        eventType: "changeset_applied",
+        eventPayload: { changeSetId },
       });
-    }
-
-    setAnswersStatus("Saved structured answers.");
-  };
-
-  const handleGenerateTasks = async () => {
-    try {
-      const result = await generateTaskPatchOps({
-        projectId,
-        stage: stageSelection,
-        elementId: taskTargetElementId ? (taskTargetElementId as any) : undefined,
+      await agentRespond({
+        conversationId: activeConversationId,
+        uiContext: { selectedElementIds },
       });
-      if (conversationId) {
-        await sendMessage({
-          conversationId,
-          content: JSON.stringify(result.patchOps),
-          channel: "free",
-        });
-      }
-      setAnswersStatus(result.summary ?? "Generated task ChangeSet.");
-    } catch (err: any) {
-      setAnswersStatus(err?.message ?? "Failed to generate tasks.");
+    } finally {
+      setIsWaiting(false);
     }
   };
 
-
-  const handleCreateElementManual = async () => {
-    const title = newElementTitle.trim();
-    if (!title) return;
+  const handleDiscardChangeSet = async (changeSetId?: Id<"changeSets">) => {
+    if (!changeSetId || !activeConversationId || isWaiting) return;
+    setIsWaiting(true);
     try {
-      await createElementFromStructured({
-        projectId,
-        title,
-        type: newElementType,
+      await discardChangeSet({ changeSetId });
+      await appendEventMessage({
+        conversationId: activeConversationId,
+        eventType: "changeset_discarded",
+        eventPayload: { changeSetId },
       });
-      setNewElementTitle("");
-      setNewElementType("build");
-    } catch (err: any) {
-      setApplyStatus(err?.message ?? "Failed to create element.");
-    }
-  };
-
-  const handleApproveSuggestion = async (suggestionId: string) => {
-    try {
-      await approveSuggestedElement({ suggestionId: suggestionId as any });
-    } catch (err: any) {
-      setApplyStatus(err?.message ?? "Failed to approve suggestion.");
-    }
-  };
-
-  const handleRejectSuggestion = async (suggestionId: string) => {
-    try {
-      await rejectSuggestedElement({ suggestionId: suggestionId as any });
-    } catch (err: any) {
-      setApplyStatus(err?.message ?? "Failed to reject suggestion.");
-    }
-  };
-
-  const handleSeed = async () => {
-    const result = await seedSimulation({ projectId });
-    setDebugDraftId(result.draftId);
-  };
-
-  const handleTriggerReconciliation = async () => {
-    if (!debugDraftId) return;
-
-    try {
-      await applyChangeSet({
-        draftType: "element",
-        draftId: debugDraftId,
-        projectId,
-        baseRevisionNumber: 1,
-        createdFrom: { tab: "Studio", stage: "Debug" },
-        patchOps: [
-          { op: "remove", path: "/tasks/byId/task_1" }
-        ]
+      await agentRespond({
+        conversationId: activeConversationId,
+        uiContext: { selectedElementIds },
       });
-    } catch (e) {
-      console.error(e);
+    } finally {
+      setIsWaiting(false);
     }
   };
+
+  const stageValue = (activeConversation?.stage ?? "IDEATION") as Stage;
+  const modeValue = (activeConversation?.mode ?? "CHAT") as Mode;
 
   return (
     <div className="flex h-full bg-white">
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col border-r border-gray-100 bg-gray-50/50">
-        {/* Header */}
-        <header className="h-16 border-b border-gray-100 flex items-center justify-between px-6 bg-white shrink-0">
-          <div className="flex items-center gap-4">
-            <h2 className="font-bold text-lg tracking-tight text-gray-900">AgenticEshet</h2>
-            {conversation && (
-              <span className="px-2.5 py-1 bg-gray-100 text-gray-600 border border-gray-200 text-[11px] font-bold rounded-full uppercase tracking-wider">
-                {conversation.stage}
-              </span>
-            )}
-          </div>
+      <aside className="w-64 border-r border-gray-200 bg-gray-50">
+        <div className="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-widest text-gray-500">Conversations</div>
+          <button
+            onClick={() => createConversation({ projectId }).then((convId) => setActiveConversationId(convId))}
+            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+          >
+            <Plus size={12} /> New
+          </button>
+        </div>
+        <div className="p-3 space-y-2">
+          {!conversations ? (
+            <div className="text-xs text-gray-400">Loading...</div>
+          ) : conversations.length === 0 ? (
+            <div className="text-xs text-gray-400">No conversations yet.</div>
+          ) : (
+            conversations.map((conversation) => (
+              <button
+                key={conversation._id}
+                onClick={() => setActiveConversationId(conversation._id)}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${conversation._id === activeConversationId
+                    ? "border-gray-900 bg-white shadow"
+                    : "border-gray-200 bg-white/70 hover:border-gray-300"
+                  }`}
+              >
+                <div className="font-semibold text-gray-800">
+                  {conversation.title_he ?? "שיחה חדשה"}
+                </div>
+                <div className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
+                  {String(conversation.stage).toUpperCase()} • {String(conversation.mode ?? "CHAT").toUpperCase()}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </aside>
 
+      <main className="flex-1 flex flex-col">
+        <header className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white">
+          <div className="flex items-center gap-4">
+            <div className="text-lg font-semibold text-gray-900">Flowing Assistant</div>
+            <span className="text-[10px] uppercase tracking-widest bg-gray-100 border border-gray-200 text-gray-500 px-2 py-1 rounded-full">
+              {ACTIVE_AGENT_PROMPT_ID}
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-white font-medium"
-            >
-              <option value="gpt-5.2-thinking">GPT-5.2 Thinking</option>
-              <option value="gpt-5.2">GPT-5.2</option>
-              <option value="gpt-5-mini">GPT-5 Mini</option>
-              <option value="gpt-5-nano">GPT-5 Nano</option>
-            </select>
-            <div className="h-4 w-px bg-gray-200 mx-1" />
-            <select
-              value={stageSelection}
+              value={stageValue}
               onChange={(e) => {
-                const next = e.target.value as "ideation" | "planning" | "solutioning";
-                setStageSelection(next);
-                if (conversationId) {
-                  setConversationStage({ id: conversationId, stage: next });
+                const stage = e.target.value as Stage;
+                if (activeConversationId) {
+                  setConversationStage({ id: activeConversationId, stage });
                 }
               }}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-white"
+              className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
             >
-              <option value="ideation">Ideation</option>
-              <option value="planning">Planning</option>
-              <option value="solutioning">Solutioning</option>
+              <option value="IDEATION">Ideation</option>
+              <option value="QUOTE">Quote</option>
+              <option value="BREAKDOWN">Breakdown</option>
             </select>
-            <div className="flex bg-gray-100/80 p-1 rounded-lg">
-              <button
-                onClick={() => setChannel("structured")}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${channel === "structured"
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-                  }`}
-              >
-                <ListChecks size={14} /> Structured
-              </button>
-              <button
-                onClick={() => setChannel("free")}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${channel === "free"
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-                  }`}
-              >
-                <MessageSquare size={14} /> Free Chat
-              </button>
-            </div>
+            <select
+              value={modeValue}
+              onChange={(e) => {
+                const mode = e.target.value as Mode;
+                if (activeConversationId) {
+                  setConversationMode({ id: activeConversationId, mode });
+                }
+              }}
+              className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
+            >
+              <option value="CHAT">Chat</option>
+              <option value="QUESTIONS">Questions</option>
+              <option value="SUGGESTIONS">Suggestions</option>
+            </select>
           </div>
         </header>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-gray-50/50">
-          {channel === "structured" && (
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Structured Intake</div>
-                  <div className="text-lg font-semibold text-gray-900">Stage: {stageSelection}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={taskTargetElementId}
-                    onChange={(e) => setTaskTargetElementId(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-2 py-2 text-xs text-gray-700 bg-white"
-                  >
-                    {overview?.elements?.map((element: any) => (
-                      <option key={element.id} value={element.id}>
-                        {element.title}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleGenerateTasks}
-                    className="px-4 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-                  >
-                    Generate Tasks
-                  </button>
-                  <button
-                    onClick={handleSaveStructuredAnswers}
-                    className="px-4 py-2 text-xs font-semibold rounded-lg bg-black text-white hover:bg-gray-800"
-                  >
-                    Save Answers
-                  </button>
-                </div>
+        <div className="flex-1 overflow-y-auto bg-gray-50">
+          <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">
+            {!messages ? (
+              <div className="flex items-center justify-center text-gray-400">
+                <Loader2 size={20} className="animate-spin" />
               </div>
-              {fileContext && fileContext.length > 0 ? (
-                <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-600">
-                  <div className="text-[10px] font-semibold uppercase text-gray-400 mb-2">File Context</div>
-                  <div className="space-y-2">
-                    {fileContext.map((file) => (
-                      <div key={file.fileName}>
-                        <div className="font-semibold text-gray-700">{file.fileName}</div>
-                        <div className="text-[10px] text-gray-500">{file.summary || "No summary."}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              <div className="grid grid-cols-1 gap-4">
-                {structuredQuestions.map((question) => (
-                  <label key={question.id} className="text-xs text-gray-600">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-gray-700">{question.label}</span>
-                      {question.required ? (
-                        <span className="text-[10px] text-red-500 uppercase">Required</span>
-                      ) : null}
-                    </div>
-                    {question.multiline ? (
-                      <textarea
-                        rows={3}
-                        value={answerDrafts[question.id] ?? ""}
-                        onChange={(e) =>
-                          setAnswerDrafts((prev) => ({ ...prev, [question.id]: e.target.value }))
-                        }
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700"
-                      />
-                    ) : (
-                      <input
-                        value={answerDrafts[question.id] ?? ""}
-                        onChange={(e) =>
-                          setAnswerDrafts((prev) => ({ ...prev, [question.id]: e.target.value }))
-                        }
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700"
-                      />
-                    )}
-                  </label>
-                ))}
-              </div>
-              {answersStatus ? (
-                <div className="mt-3 text-[10px] text-gray-500">{answersStatus}</div>
-              ) : null}
-            </div>
-          )}
-          {!messages ? (
-            <div className="flex justify-center items-center h-full">
-              <Loader2 className="animate-spin text-gray-300" size={24} />
-            </div>
-          ) : (
-            <>
-              {messages.map((msg) => (
-                <div
+            ) : messages.length === 0 ? (
+              <div className="text-sm text-gray-400">Start the conversation by sending a message.</div>
+            ) : (
+              messages.map((msg) => (
+                <MessageBubble
                   key={msg._id}
-                  className={`flex w-full ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[70%] rounded-2xl px-6 py-4 shadow-sm ${msg.role === "user"
-                      ? "bg-black text-white rounded-br-none"
-                      : msg.role === "system"
-                        ? "bg-transparent border-0 shadow-none text-gray-400 text-xs font-mono text-center w-full max-w-full"
-                        : "bg-white border border-gray-100 text-gray-800 rounded-bl-none"
-                      }`}
-                  >
-                    <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
-                    {msg.type === "changeSet" && msg.metadata?.patchOps ? (
-                      <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-600">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="uppercase text-[10px] font-semibold text-gray-400">ChangeSet Proposal</span>
-                          <button
-                            onClick={() => handleApplyFromMessage(msg)}
-                            className="text-[10px] font-semibold text-white bg-black px-2 py-1 rounded-md hover:bg-gray-800"
-                          >
-                            Apply
-                          </button>
-                        </div>
-                        <div className="text-[10px] text-gray-500">
-                          Draft: {msg.metadata.draftId} - Base rev {msg.metadata.baseRevisionNumber}
-                        </div>
-                        {msg.metadata?.fileContext?.length ? (
-                          <div className="mt-2 text-[10px] text-gray-500">
-                            Context: {msg.metadata.fileContext.map((file: any) => file.fileName).join(", ")}
-                          </div>
-                        ) : null}
-                        <pre className="mt-2 text-[10px] text-gray-500 overflow-auto max-h-40">
-                          {JSON.stringify(msg.metadata.patchOps, null, 2)}
-                        </pre>
-                      </div>
-                    ) : null}
-                    {msg.type === "questions" && msg.metadata?.questions ? (
-                      <div className="mt-3 space-y-2 text-xs text-gray-600">
-                        <div className="font-semibold text-gray-500 uppercase tracking-wider">Questions</div>
-                        <ul className="space-y-1">
-                          {msg.metadata.questions.map((q: any) => (
-                            <li key={q.id} className="flex items-center gap-2">
-                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold">
-                                {q.required ? "*" : " "}
-                              </span>
-                              <span>{q.label}</span>
-                            </li>
-                          ))}
-                        </ul>
-                        {msg.metadata?.hint ? (
-                          <div className="text-[10px] text-gray-400">{msg.metadata.hint}</div>
-                        ) : null}
-                        {msg.metadata?.fileContext?.length ? (
-                          <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[10px] text-gray-500">
-                            <div className="text-[10px] font-semibold uppercase text-gray-400 mb-1">File Context</div>
-                            {msg.metadata.fileContext.map((file: any) => (
-                              <div key={file.fileName}>
-                                <span className="font-semibold text-gray-600">{file.fileName}:</span> {file.summary || "No summary."}
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {msg.metadata?.createdElementId ? (
-                      <div className="mt-3 text-[10px] text-gray-500 uppercase tracking-wider">
-                        Element created: {msg.metadata.createdElementId}
-                      </div>
-                    ) : null}
-                    {msg.skillUsed && msg.role !== 'system' && (
-                      <div className={`mt-2 text-[10px] font-medium tracking-wider uppercase opacity-60 ${msg.role === 'user' ? 'text-gray-300' : 'text-indigo-600'}`}>
-                        {msg.skillUsed}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </>
-          )}
+                  message={msg}
+                  onClarificationSubmit={handleEventSubmit}
+                  onSuggestionsSubmit={handleEventSubmit}
+                  onApplyChangeSet={handleApplyChangeSet}
+                  onDiscardChangeSet={handleDiscardChangeSet}
+                  disabled={isWaiting}
+                />
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Input */}
-        <div className="p-6 border-t border-gray-100 bg-white shrink-0">
-          <div className="relative flex items-center shadow-sm rounded-xl overflow-hidden border border-gray-200 focus-within:border-black focus-within:ring-1 focus-within:ring-black transition-all">
-            <input
-              type="text"
+        <div className="border-t border-gray-200 bg-white px-6 py-4">
+          <div className="max-w-3xl mx-auto flex items-center gap-3">
+            <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder={channel === "structured" ? "Input specific requirements..." : "Ask AgenticEshet..."}
-              className="w-full pl-5 pr-14 py-4 bg-white text-black placeholder-gray-400 focus:outline-none"
+              rows={2}
+              placeholder="כתוב כאן..."
+              className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-200"
             />
             <button
               onClick={handleSend}
-              className="absolute right-2 p-2 bg-black text-white rounded-lg hover:bg-gray-800 transition"
+              disabled={isWaiting || !input.trim()}
+              className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               <Send size={16} />
+              Send
             </button>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Right Context Panel */}
-      <div className="w-80 bg-white flex flex-col border-l border-gray-100 shrink-0">
-        <div className="h-16 border-b border-gray-100 flex items-center px-6 font-bold text-sm tracking-tight text-gray-900 bg-white">
-          Context & Status
+      <aside className="w-72 border-l border-gray-200 bg-gray-50">
+        <div className="px-4 py-4 border-b border-gray-200">
+          <div className="text-xs font-semibold uppercase tracking-widest text-gray-500">Elements</div>
         </div>
-        <div className="p-6 space-y-6">
-          <DraftStatusPanel projectId={projectId} />
-
-          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-            <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">
-              Create Element
-            </div>
-            <div className="space-y-2 text-xs text-gray-600">
-              <input
-                value={newElementTitle}
-                onChange={(e) => setNewElementTitle(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs text-gray-700 bg-white"
-                placeholder="Element title"
-              />
-              <select
-                value={newElementType}
-                onChange={(e) => setNewElementType(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs text-gray-700 bg-white"
-              >
-                <option value="build">Build</option>
-                <option value="rent">Rent</option>
-                <option value="print">Print</option>
-                <option value="transport">Transport</option>
-                <option value="install">Install</option>
-                <option value="subcontract">Subcontract</option>
-                <option value="mixed">Mixed</option>
-              </select>
-              <button
-                onClick={handleCreateElementManual}
-                className="w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition-colors bg-black text-white hover:bg-gray-800"
-              >
-                Create Element
-              </button>
-            </div>
-          </div>
-
-
-
-          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-            <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">
-              Suggested Elements
-            </div>
-            {!suggestions ? (
-              <div className="text-xs text-gray-500">Loading suggestions...</div>
-            ) : suggestions.length === 0 ? (
-              <div className="text-xs text-gray-500">No suggestions yet.</div>
-            ) : (
-              <div className="space-y-2 text-xs text-gray-600">
-                {suggestions.filter((item: any) => item.status === "pending").length === 0 ? (
-                  <div className="text-xs text-gray-500">No pending suggestions.</div>
-                ) : (
-                  suggestions
-                    .filter((item: any) => item.status === "pending")
-                    .map((item: any) => (
-                      <div key={item._id} className="border border-gray-100 rounded-lg p-2">
-                        <div className="font-semibold text-gray-800">{item.title}</div>
-                        <div className="text-[10px] text-gray-400 uppercase">{item.type}</div>
-                        <div className="mt-2 flex items-center gap-2">
-                          <button
-                            onClick={() => handleApproveSuggestion(item._id)}
-                            className="px-2 py-1 text-[10px] font-semibold rounded-md bg-black text-white hover:bg-gray-800"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => handleRejectSuggestion(item._id)}
-                            className="px-2 py-1 text-[10px] font-semibold rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="h-px bg-gray-100" />
-
-          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-            <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">
-              Project Snapshot
-            </div>
-            {!overview || !financials ? (
-              <div className="text-xs text-gray-500">Loading snapshot...</div>
-            ) : (
-              <div className="space-y-3 text-xs text-gray-600">
-                <div className="flex items-center justify-between">
-                  <span>Elements</span>
-                  <span className="font-semibold text-gray-900">
-                    {overview.counts.elementCount}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Graveyard</span>
-                  <span className="font-semibold text-gray-900">
-                    {overview.counts.graveyardCount}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Baseline</span>
-                  <span className="font-semibold text-gray-900">
-                    {Number(financials.baseline.grandTotal).toLocaleString()} NIS
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Effective Budget</span>
-                  <span className="font-semibold text-gray-900">
-                    {Number(financials.effectiveBudget.sellPrice).toLocaleString()} NIS
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Unapproved Variance</span>
-                  <span className="font-semibold text-amber-600">
-                    {Number(financials.variance.unapproved.sellPrice).toLocaleString()} NIS
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-            <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">
-              Elements
-            </div>
-            {!overview ? (
-              <div className="text-xs text-gray-500">Loading elements...</div>
-            ) : overview.elements.length === 0 ? (
-              <div className="text-xs text-gray-500">No elements yet.</div>
-            ) : (
-              <div className="space-y-2 text-xs">
-                {overview.elements.map((element: any) => (
-                  <button
-                    key={element.id}
-                    onClick={() => setSelectedElementDetailId(element.id)}
-                    className="w-full text-left flex items-center justify-between hover:bg-gray-50 rounded-md px-1 py-1"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Layers size={12} className="text-gray-400" />
-                      <span className="text-gray-700">{element.title}</span>
-                    </div>
-                    <span className="text-[10px] text-gray-400">{element.status}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="h-px bg-gray-100" />
-
-          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-            <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">
-              Pending Changes
-            </div>
-            <div className="space-y-3 text-xs text-gray-600">
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-400 uppercase mb-1">
-                  Draft
-                </label>
-                <select
-                  value={selectedDraftId}
-                  onChange={(e) => handleSelectDraft(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs text-gray-700 bg-white"
+        <div className="p-3 space-y-2">
+          {!overview?.elements ? (
+            <div className="text-xs text-gray-400">Loading...</div>
+          ) : overview.elements.length === 0 ? (
+            <div className="text-xs text-gray-400">No elements yet.</div>
+          ) : (
+            overview.elements.map((element) => {
+              const selected = selectedElementIds.includes(element.id as Id<"elements">);
+              return (
+                <label
+                  key={element.id}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${selected ? "border-gray-900 bg-white" : "border-gray-200 bg-white/70"
+                    }`}
                 >
-                  <option value="">Select a draft...</option>
-                  {drafts?.map((draft) => (
-                    <option key={draft.draftId} value={draft.draftId}>
-                      {draft.title} (rev {draft.revisionNumber})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-400 uppercase mb-1">
-                  Patch Ops (JSON)
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => {
+                      setSelectedElementIds((prev) =>
+                        selected
+                          ? prev.filter((item) => item !== element.id)
+                          : [...prev, element.id as Id<"elements">]
+                      );
+                    }}
+                  />
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-800">{element.title}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-gray-400">{element.status}</div>
+                  </div>
                 </label>
-                <textarea
-                  value={patchOpsText}
-                  onChange={(e) => setPatchOpsText(e.target.value)}
-                  rows={6}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs font-mono text-gray-700 bg-white"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const parsed = parsePatchOps();
-                  setPreviewError(parsed.ok ? "" : parsed.error ?? "Invalid patch ops.");
-                }}
-                className="w-full text-left px-3 py-2.5 text-xs font-medium rounded-lg transition-colors border border-gray-200 text-gray-700 hover:bg-gray-50"
-              >
-                Validate Patch Ops
-              </button>
-              {previewError ? (
-                <div className="text-[10px] text-red-500">{previewError}</div>
-              ) : null}
-              <button
-                onClick={handleApplyChangeSet}
-                className="w-full text-left px-3 py-2.5 text-xs font-medium rounded-lg transition-colors bg-black text-white hover:bg-gray-800"
-              >
-                Apply ChangeSet
-              </button>
-              <button
-                onClick={handleApproveSelectedDraft}
-                className="w-full text-left px-3 py-2.5 text-xs font-medium rounded-lg transition-colors border border-gray-200 text-gray-700 hover:bg-gray-50"
-              >
-                Approve Draft
-              </button>
-              {applyStatus ? (
-                <div className="text-[10px] text-gray-500">{applyStatus}</div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-            <div className="flex items-center gap-2 mb-3 text-gray-900 font-bold text-xs uppercase tracking-wider">
-              Diff & Impact
-            </div>
-            {!applyResult ? (
-              <div className="space-y-3 text-xs text-gray-500">
-                <div>Apply a ChangeSet to see reconciliation results.</div>
-                <div className="text-[10px] text-gray-400">
-                  The preview shows accepted patch ops and any money or inventory impacts.
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4 text-xs text-gray-600">
-                <div>
-                  <div className="text-[10px] font-semibold uppercase text-gray-400 mb-2">
-                    Accepted Patch Ops
-                  </div>
-                  {applyResult.acceptedPatchOps?.length ? (
-                    <div className="space-y-2">
-                      {applyResult.acceptedPatchOps.map((op: any, idx: number) => (
-                        <div key={`${op.op}-${op.path}-${idx}`} className="border border-gray-100 rounded-lg p-2">
-                          <div className="font-mono text-[11px] text-gray-800">
-                            {op.op} {op.path}
-                          </div>
-                          {"value" in op ? (
-                            <pre className="mt-1 text-[10px] text-gray-500 overflow-auto">
-                              {JSON.stringify(op.value, null, 2)}
-                            </pre>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-[10px] text-gray-400">No patch ops applied.</div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-[10px] font-semibold uppercase text-gray-400 mb-2">
-                    Impact Preview
-                  </div>
-                  {applyResult.reconciliation?.reviewRequired?.length ? (
-                    <div className="space-y-2">
-                      {applyResult.reconciliation.reviewRequired.map((item: any, idx: number) => (
-                        <div key={`${item.kind}-${idx}`} className="border border-gray-100 rounded-lg p-2">
-                          <div className="text-[11px] text-gray-700">{item.message}</div>
-                          {item.impactPreview?.moneyImpacts?.length ? (
-                            <div className="mt-2 space-y-1">
-                              {item.impactPreview.moneyImpacts.map((impact: any, impactIdx: number) => (
-                                <div key={`${impact.type}-${impactIdx}`} className="text-[10px] text-gray-500 flex justify-between">
-                                  <span>{impact.type}</span>
-                                  <span>{impact.amount} {impact.currency ?? "NIS"}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                          {item.impactPreview?.inventoryImpacts?.length ? (
-                            <div className="mt-2 space-y-1">
-                              {item.impactPreview.inventoryImpacts.map((impact: any, impactIdx: number) => (
-                                <div key={`${impact.type}-${impactIdx}`} className="text-[10px] text-gray-500 flex justify-between">
-                                  <span>{impact.type}</span>
-                                  <span>{impact.qty ?? "--"}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-[10px] text-gray-400">No impacts reported.</div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Status</span>
-                  <span className="font-semibold text-gray-900">
-                    {applyResult.reconciliation?.status ?? "unknown"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Auto fixes</span>
-                  <span>{applyResult.reconciliation?.safeFixes?.autoApplyOps?.length ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Review required</span>
-                  <span>{applyResult.reconciliation?.reviewRequired?.length ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Blockers</span>
-                  <span>{applyResult.reconciliation?.blockers?.length ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Warnings</span>
-                  <span>{applyResult.reconciliation?.warnings?.length ?? 0}</span>
-                </div>
-                {applyResult.graveyard?.createdItemIds?.length ? (
-                  <a
-                    href={`/projects/${projectId}/graveyard`}
-                    className="block text-[10px] text-red-600 hover:underline"
-                  >
-                    Open Graveyard to resolve decisions
-                  </a>
-                ) : null}
-                {applyResult.reconciliation?.warnings?.length ? (
-                  <div className="text-[10px] text-amber-600">
-                    {applyResult.reconciliation.warnings[0]?.message ?? "Warnings available."}
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </div>
-
-          <div className="h-px bg-gray-100" />
-
-          <div className="p-4 border border-gray-100 rounded-xl bg-gray-50/50">
-            <div className="flex items-center gap-2 mb-4 text-gray-900 font-bold text-xs uppercase tracking-wider">
-              <Bug size={12} /> Simulation
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={handleSeed}
-                disabled={!!debugDraftId}
-                className={`w-full text-left px-3 py-2.5 text-xs font-medium rounded-lg transition-colors ${debugDraftId ? "bg-gray-100 text-gray-400" : "bg-white border border-gray-200 text-gray-700 hover:border-gray-300 hover:shadow-sm"}`}
-              >
-                {debugDraftId ? "Seed Complete" : "Seed Test Element"}
-              </button>
-              <button
-                onClick={handleTriggerReconciliation}
-                disabled={!debugDraftId}
-                className={`w-full text-left px-3 py-2.5 text-xs font-medium rounded-lg transition-colors ${!debugDraftId ? "bg-gray-100 text-gray-400" : "bg-white border border-red-100 text-red-600 hover:bg-red-50"}`}
-              >
-                Trigger Orphan Warning
-              </button>
-            </div>
-          </div>
+              );
+            })
+          )}
         </div>
-      </div>
+      </aside>
+    </div>
+  );
+}
 
-      {selectedElementDetailId ? (
-        <ElementDetailDrawer
-          detail={elementDetail}
-          onClose={() => setSelectedElementDetailId(null)}
+function MessageBubble({
+  message,
+  onClarificationSubmit,
+  onSuggestionsSubmit,
+  onApplyChangeSet,
+  onDiscardChangeSet,
+  disabled,
+}: {
+  message: ConversationMessage;
+  onClarificationSubmit: (eventType: string, payload: any) => void;
+  onSuggestionsSubmit: (eventType: string, payload: any) => void;
+  onApplyChangeSet: (changeSetId?: Id<"changeSets">) => void;
+  onDiscardChangeSet: (changeSetId?: Id<"changeSets">) => void;
+  disabled: boolean;
+}) {
+  const isUser = message.role === "user";
+  const align = isUser ? "items-end" : "items-start";
+  const bubble = isUser ? "bg-black text-white" : "bg-white border border-gray-200 text-gray-800";
+
+  return (
+    <div className={`flex flex-col ${align} gap-3`}>
+      {message.text_he ? (
+        <div className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${bubble}`}>
+          {message.text_he}
+        </div>
+      ) : null}
+      {message.block ? (
+        <BlockRenderer
+          block={message.block}
+          changeSetId={message.changeSetId}
+          onClarificationSubmit={onClarificationSubmit}
+          onSuggestionsSubmit={onSuggestionsSubmit}
+          onApplyChangeSet={onApplyChangeSet}
+          onDiscardChangeSet={onDiscardChangeSet}
+          disabled={disabled}
         />
       ) : null}
     </div>
   );
 }
 
-type QuestionConfig = {
-  id: string;
-  label: string;
-  required?: boolean;
-  multiline?: boolean;
-};
-
-function getQuestions(stage: "ideation" | "planning" | "solutioning"): QuestionConfig[] {
-  if (stage === "planning") {
-    return [
-      { id: "dimensions", label: "Dimensions or size details", required: true },
-      { id: "materials", label: "Materials preference", required: true },
-      { id: "transport", label: "Transport constraints", multiline: true },
-      { id: "install", label: "Install constraints / access hours", multiline: true },
-      { id: "crew", label: "Crew size or roles", multiline: true },
-    ];
-  }
-
-  if (stage === "solutioning") {
-    return [
-      { id: "joinery", label: "Joinery / build method", required: true, multiline: true },
-      { id: "finish", label: "Finish / coating / print details", multiline: true },
-      { id: "tolerances", label: "Tolerances / fit requirements", multiline: true },
-      { id: "rigging", label: "Rigging / safety requirements", multiline: true },
-      { id: "sourcing", label: "Sourcing plan / lead times", multiline: true },
-    ];
-  }
-
-  return [
-    { id: "elementTitle", label: "Element title", required: true },
-    { id: "elementType", label: "Element type (build|print|install|subcontract|mixed)", required: true },
-    { id: "goal", label: "Project goal / wow factor", required: true, multiline: true },
-    { id: "brand", label: "Brand / style references", multiline: true },
-    { id: "location", label: "Location / venue", required: true },
-    { id: "audience", label: "Audience / use case", multiline: true },
-    { id: "deadline", label: "Deadline / event date", required: true },
-  ];
-}
-
-function formatStructuredAnswers(
-  stage: "ideation" | "planning" | "solutioning",
-  answers: Record<string, string>,
-  files: Array<{ fileName: string; summary?: string }>
-) {
-  const lines = [`Stage: ${stage}`];
-  for (const [key, value] of Object.entries(answers)) {
-    lines.push(`${key}: ${value}`);
-  }
-  if (files.length > 0) {
-    lines.push(
-      `files: ${files
-        .map((file) => `${file.fileName}${file.summary ? ` (${file.summary})` : ""}`)
-        .join(" | ")}`
+function BlockRenderer({
+  block,
+  changeSetId,
+  onClarificationSubmit,
+  onSuggestionsSubmit,
+  onApplyChangeSet,
+  onDiscardChangeSet,
+  disabled,
+}: {
+  block: any;
+  changeSetId?: Id<"changeSets">;
+  onClarificationSubmit: (eventType: string, payload: any) => void;
+  onSuggestionsSubmit: (eventType: string, payload: any) => void;
+  onApplyChangeSet: (changeSetId?: Id<"changeSets">) => void;
+  onDiscardChangeSet: (changeSetId?: Id<"changeSets">) => void;
+  disabled: boolean;
+}) {
+  if (!block?.type) return null;
+  if (block.type === "ClarificationBlock") {
+    return (
+      <ClarificationBlock
+        block={block}
+        onSubmit={(payload) => onClarificationSubmit("clarification_submitted", payload)}
+        disabled={disabled}
+      />
     );
   }
-  return lines.join(" | ");
+  if (block.type === "SuggestionBlock") {
+    return (
+      <SuggestionBlock
+        block={block}
+        onSubmit={(payload) => onSuggestionsSubmit("suggestions_selected", payload)}
+        disabled={disabled}
+      />
+    );
+  }
+  if (block.type === "ChangeSetBlock") {
+    return (
+      <ChangeSetBlock
+        block={block}
+        changeSetId={changeSetId}
+        onApply={onApplyChangeSet}
+        onDiscard={onDiscardChangeSet}
+        disabled={disabled}
+      />
+    );
+  }
+  return null;
 }
 
-function DraftStatusPanel({ projectId }: { projectId: Id<"projects"> }) {
-  const stats = useQuery(api.projects.getStats, { id: projectId });
-
-  return (
-    <div className="space-y-3">
-      <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Elements</span>
-          <span className="text-sm font-bold text-gray-900">{stats?.elementCount ?? "--"}</span>
-        </div>
-        <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-          <div className={`bg-black h-full rounded-full transition-all duration-500 ${stats?.elementCount ? "w-full" : "w-0"}`} />
-        </div>
-      </div>
-
-      <div className="p-4 border border-gray-100 rounded-xl bg-white shadow-sm">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Graveyard</span>
-          <span className="text-sm font-bold text-gray-900">{stats?.graveyardCount ?? "--"}</span>
-        </div>
-        <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-          <div className={`bg-gray-400 h-full rounded-full transition-all duration-500 ${stats?.graveyardCount ? "w-full" : "w-0"}`} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ElementDetailDrawer({
-  detail,
-  onClose,
+function ClarificationBlock({
+  block,
+  onSubmit,
+  disabled,
 }: {
-  detail: any;
-  onClose: () => void;
+  block: any;
+  onSubmit: (payload: any) => void;
+  disabled: boolean;
 }) {
-  const element = detail?.element;
-  const draftSnapshot = detail?.draft?.snapshot ?? null;
-  const approvedSnapshot = detail?.approved?.snapshot ?? null;
-  const draftData = buildElementPanels(draftSnapshot);
-  const approvedData = buildElementPanels(approvedSnapshot);
+  const [selections, setSelections] = useState<Record<string, string[]>>({});
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
+
+  const handleToggleOption = (
+    qid: string,
+    option: string,
+    mode: "single" | "multi" | "toggle"
+  ) => {
+    setSelections((prev) => {
+      const current = prev[qid] ?? [];
+      if (mode === "single" || mode === "toggle") {
+        // If clicking the same option in single mode, keep it (or toggle off? usually radio keeps on)
+        // Let's allow toggle off if it's the same one, or just switch. 
+        // User asked for "checkbox" behavior which implies toggleability.
+        return current.includes(option) ? { ...prev, [qid]: [] } : { ...prev, [qid]: [option] };
+      } else {
+        // multi
+        if (current.includes(option)) {
+          return { ...prev, [qid]: current.filter((x) => x !== option) };
+        } else {
+          return { ...prev, [qid]: [...current, option] };
+        }
+      }
+    });
+  };
+
+  const submit = () => {
+    const answers: Record<string, string> = {};
+    (block.questions ?? []).forEach((q: any) => {
+      const parts = [];
+      const sel = selections[q.id];
+      if (sel?.length) parts.push(sel.join(", "));
+
+      const inp = inputs[q.id];
+      if (inp) parts.push(inp);
+
+      const note = notes[q.id];
+      if (note) parts.push(note);
+
+      answers[q.id] = parts.join(" ");
+    });
+    onSubmit({ answersById: answers });
+  };
+
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white shadow-2xl">
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-[10px] uppercase font-semibold text-gray-400">Element Detail</div>
-            <div className="text-lg font-semibold text-gray-900">
-              {element?.title ?? "Loading..."}
+    <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
+      <div className="mt-3 space-y-4">
+        {(block.questions ?? []).map((question: any) => {
+          const inputType = question.inputType ?? "text";
+
+          let options: string[] = [];
+          if (inputType === "toggle") {
+            options = Array.isArray(question.options_he) && question.options_he.length > 0
+              ? question.options_he
+              : ["כן", "לא"];
+          } else if ((inputType === "single" || inputType === "multi") && Array.isArray(question.options_he)) {
+            options = question.options_he;
+          }
+
+          const hasOptions = options.length > 0;
+          const currentSelections = selections[question.id] ?? [];
+
+          return (
+            <div key={question.id} className="text-xs text-gray-600">
+              <div className="mb-2 font-semibold text-gray-700">{question.text_he}</div>
+
+              {hasOptions && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {options.map((opt) => {
+                    const isSelected = currentSelections.includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        onClick={() => handleToggleOption(question.id, opt, inputType)}
+                        className={`rounded-lg border px-3 py-1.5 transition flex items-center gap-2 ${isSelected
+                            ? "border-gray-900 bg-gray-900 text-white"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                          }`}
+                      >
+                        <div className={`w-3 h-3 rounded-sm border ${isSelected ? "border-white bg-white" : "border-gray-400"}`} />
+                        {opt}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {!hasOptions && (
+                <input
+                  type={inputType === "date" ? "date" : inputType === "number" ? "number" : "text"}
+                  value={inputs[question.id] ?? ""}
+                  onChange={(e) => setInputs(prev => ({ ...prev, [question.id]: e.target.value }))}
+                  placeholder={question.placeholder_he ?? ""}
+                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 mb-2"
+                />
+              )}
+
+              <input
+                type="text"
+                value={notes[question.id] ?? ""}
+                onChange={(e) => setNotes(prev => ({ ...prev, [question.id]: e.target.value }))}
+                placeholder={hasOptions ? (question.freeTextPrompt_he ?? `פרטים נוספים / ${options.length > 0 ? "אחר" : "הערות"}`) : "הערות..."}
+                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 bg-gray-50 focus:bg-white transition"
+              />
             </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800"
-          >
-            Close
-          </button>
-        </div>
-
-        {!detail ? (
-          <div className="mt-4 text-sm text-gray-500">Loading element detail...</div>
-        ) : (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-gray-600">
-            <SnapshotPanel title="Draft" data={draftData} />
-            <SnapshotPanel title="Approved" data={approvedData} />
-          </div>
-        )}
+          );
+        })}
       </div>
+      <button
+        onClick={submit}
+        disabled={disabled}
+        className="mt-4 w-full rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+      >
+        {block.submitLabel_he ?? "שלח"}
+      </button>
     </div>
   );
 }
 
-function SnapshotPanel({
-  title,
-  data,
+function SuggestionBlock({
+  block,
+  onSubmit,
+  disabled,
 }: {
-  title: string;
-  data: ReturnType<typeof buildElementPanels>;
+  block: any;
+  onSubmit: (payload: any) => void;
+  disabled: boolean;
 }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [note, setNote] = useState("");
+  const selectionMode = block.selectionMode ?? "single";
+
+  const toggle = (id: string) => {
+    if (selectionMode === "single") {
+      setSelected([id]);
+      return;
+    }
+    setSelected((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+
   return (
-    <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
-      <div className="text-[10px] font-semibold uppercase text-gray-400 mb-3">
-        {title} Snapshot
+    <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
+      {block.subtitle_he ? <div className="text-xs text-gray-500 mt-1">{block.subtitle_he}</div> : null}
+      <div className="mt-3 space-y-2">
+        {(block.items ?? []).map((item: any) => {
+          const active = selected.includes(item.id);
+          return (
+            <button
+              key={item.id}
+              onClick={() => toggle(item.id)}
+              className={`w-full rounded-xl border px-3 py-2 text-left text-xs transition ${active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white"
+                }`}
+            >
+              <div className="font-semibold">{item.label_he}</div>
+              <div className={`mt-1 ${active ? "text-gray-200" : "text-gray-500"}`}>{item.why_he}</div>
+              <div className={`mt-1 text-[10px] ${active ? "text-gray-300" : "text-gray-400"}`}>{item.details_he}</div>
+            </button>
+          );
+        })}
       </div>
-      {!data ? (
-        <div className="text-[11px] text-gray-500">No snapshot available.</div>
-      ) : (
-        <div className="space-y-3">
-          <PanelBlock label={`Tasks (${data.tasks.length})`}>
-            {data.tasks.length === 0 ? (
-              <div className="text-[11px] text-gray-500">No tasks.</div>
-            ) : (
-              data.tasks.map((task) => (
-                <div key={task.id} className="text-[11px] text-gray-700">
-                  {task.title}
-                </div>
-              ))
-            )}
-          </PanelBlock>
-          <PanelBlock label={`Materials (${data.materials.length})`}>
-            {data.materials.length === 0 ? (
-              <div className="text-[11px] text-gray-500">No materials.</div>
-            ) : (
-              data.materials.map((line) => (
-                <div key={line.id} className="text-[11px] text-gray-700">
-                  {line.name} · {line.qty} {line.unit} · {line.unitCost}
-                </div>
-              ))
-            )}
-          </PanelBlock>
-          <PanelBlock label={`Labor (${data.labor.length})`}>
-            {data.labor.length === 0 ? (
-              <div className="text-[11px] text-gray-500">No labor.</div>
-            ) : (
-              data.labor.map((line) => (
-                <div key={line.id} className="text-[11px] text-gray-700">
-                  {line.role} · {line.qty} · {line.rate}
-                </div>
-              ))
-            )}
-          </PanelBlock>
-        </div>
-      )}
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder={block.freeTextPrompt_he ?? "הערה חופשית"}
+        rows={2}
+        className="mt-3 w-full rounded-lg border border-gray-200 px-2 py-1 text-xs"
+      />
+      <button
+        onClick={() => onSubmit({ selectedIds: selected, note_he: note })}
+        disabled={disabled}
+        className="mt-3 w-full rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+      >
+        {block.submitLabel_he ?? "אשר"}
+      </button>
     </div>
   );
 }
 
-function PanelBlock({
-  label,
-  children,
+function ChangeSetBlock({
+  block,
+  changeSetId,
+  onApply,
+  onDiscard,
+  disabled,
 }: {
-  label: string;
-  children: React.ReactNode;
+  block: any;
+  changeSetId?: Id<"changeSets">;
+  onApply: (changeSetId?: Id<"changeSets">) => void;
+  onDiscard: (changeSetId?: Id<"changeSets">) => void;
+  disabled: boolean;
 }) {
+  const changes = block.changes ?? {};
+  const diff = block.diffPreview_he ?? {};
+
   return (
-    <div>
-      <div className="text-[10px] font-semibold uppercase text-gray-400 mb-1">
-        {label}
+    <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
+      {block.summary_he ? <div className="text-xs text-gray-500 mt-1">{block.summary_he}</div> : null}
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
+        {Object.entries(changes).map(([key, value]) => (
+          <div key={key} className="flex items-center justify-between rounded-md border border-gray-100 px-2 py-1">
+            <span>{key}</span>
+            <span className="font-semibold text-gray-700">{value as number}</span>
+          </div>
+        ))}
       </div>
-      <div className="space-y-1">{children}</div>
+      <div className="mt-3 space-y-2 text-[11px] text-gray-600">
+        {(diff.elements ?? []).length ? (
+          <div>
+            <div className="font-semibold text-gray-700">Elements</div>
+            <ul className="list-disc pl-4">
+              {diff.elements.map((line: string, idx: number) => (
+                <li key={`el-${idx}`}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {(diff.tasks ?? []).length ? (
+          <div>
+            <div className="font-semibold text-gray-700">Tasks</div>
+            <ul className="list-disc pl-4">
+              {diff.tasks.map((line: string, idx: number) => (
+                <li key={`task-${idx}`}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {(diff.accounting ?? []).length ? (
+          <div>
+            <div className="font-semibold text-gray-700">Accounting</div>
+            <ul className="list-disc pl-4">
+              {diff.accounting.map((line: string, idx: number) => (
+                <li key={`acc-${idx}`}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {(diff.printing ?? []).length ? (
+          <div>
+            <div className="font-semibold text-gray-700">Printing</div>
+            <ul className="list-disc pl-4">
+              {diff.printing.map((line: string, idx: number) => (
+                <li key={`print-${idx}`}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {(diff.purchases ?? []).length ? (
+          <div>
+            <div className="font-semibold text-gray-700">Purchases</div>
+            <ul className="list-disc pl-4">
+              {diff.purchases.map((line: string, idx: number) => (
+                <li key={`purchase-${idx}`}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={() => onApply(changeSetId)}
+          disabled={disabled}
+          className="flex-1 rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          {block.actions?.find((action: any) => action.id === "apply")?.label_he ?? "Apply"}
+        </button>
+        <button
+          onClick={() => onDiscard(changeSetId)}
+          disabled={disabled}
+          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50"
+        >
+          {block.actions?.find((action: any) => action.id === "discard")?.label_he ?? "Discard"}
+        </button>
+      </div>
     </div>
   );
-}
-
-function buildElementPanels(snapshot: any) {
-  if (!snapshot) return null;
-  const tasks = Object.values<any>(snapshot?.tasks?.byId ?? {})
-    .filter((task) => !task?.deletedAt)
-    .map((task) => ({
-      id: String(task?.id ?? ""),
-      title: String(task?.title ?? "Untitled task"),
-    }))
-    .filter((task) => task.id.length > 0);
-
-  const materials = Object.values<any>(snapshot?.materials?.byId ?? {})
-    .filter((line) => !line?.deletedAt)
-    .map((line) => ({
-      id: String(line?.id ?? ""),
-      name: String(line?.name ?? "Material"),
-      qty: Number(line?.qty ?? 0),
-      unit: String(line?.unit ?? ""),
-      unitCost: Number(line?.unitCost ?? 0),
-    }))
-    .filter((line) => line.id.length > 0);
-
-  const labor = Object.values<any>(snapshot?.labor?.byId ?? {})
-    .filter((line) => !line?.deletedAt)
-    .map((line) => ({
-      id: String(line?.id ?? ""),
-      role: String(line?.role ?? "Labor"),
-      qty: Number(line?.qty ?? 0),
-      rate: Number(line?.rate ?? 0),
-    }))
-    .filter((line) => line.id.length > 0);
-
-  return { tasks, materials, labor };
 }

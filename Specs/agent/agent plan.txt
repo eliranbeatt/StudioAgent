@@ -1,0 +1,403 @@
+Got it. Below is the **full dev plan** for the **Agent Tab (Flowing Assistant)** + a **prompts file** you can drop into the repo and wire into the runtime.
+
+**Prompts file (download):**
+[Download EmllyStudio_AgentPrompts_v1.md](sandbox:/mnt/data/EmllyStudio_AgentPrompts_v1.md)
+
+This plan assumes:
+
+* You already implemented the **Convex schema** (elements + tasks + accounting + printing + purchases/receipts + changeSets).
+* You want **one tab**, **one chat**, with **Stage + Mode selectors**, and the agent can inject **Structured Questions / Suggestions / ChangeSet Review** inline and return to free chat immediately after you respond.
+
+---
+
+# 1) Product spec: what the Agent Tab must do
+
+## 1.1 Goals
+
+* Replace the bloated “skills” system with **one assistant** that:
+
+  * listens,
+  * asks only the minimum blockers,
+  * suggests realistic options (elements / build approaches),
+  * proposes **ChangeSets** you can Apply/Discard,
+  * and keeps everything mapped to your real workflow: **Elements → Tasks → Accounting → Quote → Production**.
+
+## 1.2 Non-goals (v1)
+
+* No autonomous “full plan every turn”
+* No background automation
+* No complex multi-agent routing
+* No forced mode switching (mode is a user nudge)
+
+---
+
+# 2) UX: Single tab layout + “flowing blocks”
+
+## 2.1 Layout (single window)
+
+**Header**
+
+* Stage selector (3): **IDEATION / QUOTE / BREAKDOWN**
+* Mode selector (3): **CHAT / QUESTIONS / SUGGESTIONS**
+* Optional: “Prompt version” badge (for debugging)
+
+**Body (3 columns)**
+
+1. **Left panel: Conversations**
+
+   * Conversation list (per project)
+   * New conversation button
+2. **Center: Chat thread**
+
+   * Message stream (virtualized)
+   * Assistant messages can include **one interactive block**
+   * Composer at bottom (text input + send)
+3. **Right panel: Elements inspector**
+
+   * Approved elements list
+   * Draft elements list
+   * Selected element details (already implemented in your app, per your note)
+
+## 2.2 What “Mode” means (without breaking flow)
+
+Mode is a **hint** to the agent:
+
+* **CHAT**: normal conversation
+* **QUESTIONS**: prefer asking clarifications (render a Clarification block sooner)
+* **SUGGESTIONS**: prefer suggesting options/cards sooner
+
+**Important:** regardless of mode, the agent may render:
+
+* Clarification block (structured form)
+* Suggestion block (selectable cards)
+* ChangeSet block (Apply/Discard)
+
+## 2.3 Interactive blocks (in-chat)
+
+Exactly these 3 block types (v1):
+
+1. **ClarificationBlock**: fields + quick options + submit
+2. **SuggestionBlock**: selectable cards (single or multi) + submit
+3. **ChangeSetBlock**: diff preview + Apply/Discard
+
+After you submit a block → the chat continues normally.
+
+---
+
+# 3) Data model (Convex) needed for this tab
+
+You likely already have most tables; this is the minimal set specifically for the Agent Tab.
+
+## 3.1 Conversations
+
+**`conversations`**
+
+* `projectId`
+* `stage` (current stage for this conversation)
+* `mode` (current mode for this conversation)
+* `createdAt`, `updatedAt`
+
+**`conversationMessages`**
+
+* `conversationId`
+* `role`: `"user" | "assistant" | "event"`
+* `text_he?`
+* `block?` (JSON payload of the block, if any)
+* `eventType?`: `"clarification_submitted" | "suggestions_selected" | "changeset_applied" | "changeset_discarded"`
+* `eventPayload?` (JSON)
+* `changeSetId?` (if assistant message is about a changeset)
+* `createdAt`
+
+## 3.2 ChangeSets
+
+**`changeSets`**
+
+* `projectId`
+* `status`: `"PROPOSED" | "APPLIED" | "DISCARDED"`
+* `stage`
+* `reason_he`
+* `base`: conflict control (element ids + rev)
+* `ops[]`: ordered operation list
+* `preview_he`: UI strings
+* `createdAt`, `appliedAt`, `discardedAt`
+
+(You already implemented the apply pipeline earlier; this is the object the agent tab surfaces cleanly.)
+
+---
+
+# 4) Backend API surface (Convex functions)
+
+## 4.1 Mutations (pure DB)
+
+1. `createConversation(projectId, stage, mode)`
+2. `setConversationStage(conversationId, stage)`
+3. `setConversationMode(conversationId, mode)`
+4. `appendUserMessage(conversationId, text)`
+5. `appendEventMessage(conversationId, eventType, payload)`
+6. `createChangeSet(projectId, stage, reason_he, base, ops, preview_he)`
+7. `discardChangeSet(changeSetId)`
+8. `applyChangeSet(changeSetId)`
+
+   * atomic, with tempId mapping + validation + conflicts (you already planned this)
+
+## 4.2 Actions (LLM calls)
+
+9. `agentRespond(conversationId)` (Convex action)
+
+* Reads conversation context + project state
+* Builds prompt pack (system + developer + stage module + mode nudge)
+* Calls LLM
+* Validates response JSON
+* If response includes proposed ChangeSet → stores it (`createChangeSet`) and links it to the assistant message
+* Appends assistant message to `conversationMessages`
+
+---
+
+# 5) Agent runtime: context builder (critical to avoid bloat)
+
+## 5.1 Inputs sent to the LLM per turn
+
+Send only what helps; avoid “entire database”.
+
+**Always include**
+
+* `project`: name, stage, pricing defaults
+* `conversation`: last ~20 messages (text + event summaries)
+* `selectedElementIds` (from UI)
+* `elements`: summaries of:
+
+  * selected elements (full-ish)
+  * plus top 5 recently updated elements (thin summary)
+* `rollups` (thin):
+
+  * per selected element: estimate total, actual total, open tasks count, printing count
+
+**Include on demand**
+
+* If stage = BREAKDOWN and user asks for detailed tasking: include tasks for selected elements
+* If user asks about accounting: include accounting lines for selected elements
+* If user asks about print: include print parts for selected elements
+
+## 5.2 “Working memory” compression
+
+Store a short server-side summary per conversation (optional but recommended):
+
+* `knownFacts_he[]`
+* `openQuestions_he[]`
+* `assumptions_he[]`
+
+Update it whenever:
+
+* clarification form submitted
+* suggestions selected
+* changeset applied
+
+This keeps prompts small and avoids regressions.
+
+---
+
+# 6) LLM response contract (strict)
+
+Use the prompt pack file you downloaded. It enforces:
+
+* **one next-best action**
+* **max one block**
+* Hebrew user text, English keys
+* stage + mode aware behavior
+* ChangeSet-only writes
+
+**Implementation detail (recommended):**
+
+* LLM returns:
+
+  * `assistantText_he`
+  * optional `block`
+  * if block is ChangeSetBlock: include `proposedChangeSet` in `block` payload (or in `block.items[].payload`)
+* Server validates with Zod.
+* Server persists ChangeSet and replaces the embedded payload with `changeSetId` before writing the assistant message.
+
+That way the DB remains the source of truth for ChangeSets.
+
+---
+
+# 7) The “flowing assistant” state machine (UI)
+
+Single reducer (or XState) in the Agent Tab:
+
+**States**
+
+* `IDLE`
+* `SENDING_MESSAGE`
+* `WAITING_FOR_AGENT`
+* `WAITING_FOR_BLOCK_SUBMIT` (Clarification/Suggestion)
+* `WAITING_FOR_CHANGESET_DECISION` (Apply/Discard)
+* `ERROR`
+
+**Transitions**
+
+* user sends text → `SENDING_MESSAGE` → `WAITING_FOR_AGENT`
+* agent responds with block:
+
+  * clarification/suggestions → `WAITING_FOR_BLOCK_SUBMIT`
+  * changeset → `WAITING_FOR_CHANGESET_DECISION`
+* submit block → add event message → call `agentRespond` → back to `WAITING_FOR_AGENT`
+* apply/discard → mutation → add event message → call `agentRespond` or return to `IDLE` (your choice)
+
+Recommended: after Apply/Discard, do one short agent follow-up (“אוקיי, מה הצעד הבא?”) automatically.
+
+---
+
+# 8) Frontend components (shadcn/ui)
+
+## 8.1 Page shell
+
+* `AgentTabLayout`
+
+  * `StageSelector` (Tabs / SegmentedControl)
+  * `ModeSelector` (Tabs / SegmentedControl)
+  * `ConversationList`
+  * `ChatThread`
+  * `ElementsPanel` (existing)
+  * `ElementInspector` (existing)
+
+## 8.2 Chat message renderer
+
+* `MessageBubble`
+* `BlockRenderer`
+
+  * `ClarificationBlockForm`
+  * `SuggestionBlockPicker`
+  * `ChangeSetReviewCard`
+
+## 8.3 Block UI requirements
+
+### ClarificationBlockForm
+
+* Supports: single/multi/number/date/text/toggle
+* “Send answers” button
+* On submit: emits `eventType=clarification_submitted` + structured payload
+
+### SuggestionBlockPicker
+
+* Card list
+* Single or multi selection
+* Free-text note field
+* On submit: emits `eventType=suggestions_selected` + selected IDs + note
+
+### ChangeSetReviewCard
+
+* Summary (counts)
+* Diff preview lists (elements/tasks/accounting/printing/purchases)
+* Apply / Discard
+* On Apply: call `applyChangeSet` then emit `eventType=changeset_applied`
+* On Discard: `discardChangeSet` then emit `changeset_discarded`
+
+---
+
+# 9) Error handling & guardrails (must-have)
+
+## 9.1 LLM output invalid JSON
+
+* Server tries one “repair” pass (optional)
+* If still invalid:
+
+  * store assistant message as plain text: “הייתה שגיאה בפורמט, נסה שוב”
+  * log the raw output for debugging
+
+## 9.2 Apply conflicts (element rev mismatch)
+
+* `applyChangeSet` returns:
+
+  * `CONFLICT`
+  * list of element IDs + current rev
+* UI shows a conflict card:
+
+  * “האלמנט השתנה מאז ההצעה. לרענן הצעה?”
+* On refresh: emit an event and call agent again (it should re-propose a new changeset)
+
+## 9.3 Safety-critical flags
+
+If agent sets `safetyCritical=true`, enforce one of:
+
+* auto-add QA task: “בדיקת בטיחות/מהנדס”
+* or block apply with a warning requiring confirmation (your choice)
+
+---
+
+# 10) Observability (so you can debug fast)
+
+Store per assistant message:
+
+* `promptVersion` (e.g., `agentPromptsV1`)
+* model name
+* token counts
+* latency
+* whether it produced a ChangeSet
+* errors (validation/apply conflicts)
+
+Optional but valuable: store the final prompt input in a secure log table (without secrets).
+
+---
+
+# 11) Build plan (phased, low-risk)
+
+## Phase A — UI skeleton (no LLM yet)
+
+* Build Agent Tab layout
+* Conversations list + chat thread
+* Render static blocks (storybook-like)
+
+## Phase B — Conversation persistence
+
+* Implement `conversations` + `conversationMessages`
+* Send text and show it in thread
+
+## Phase C — ChangeSet wiring (real)
+
+* Render ChangeSetReviewCard from DB ChangeSet
+* Apply/Discard hooks to Convex mutations
+
+## Phase D — LLM loop (agentRespond action)
+
+* Implement prompt building
+* Validate response schema (Zod)
+* Persist assistant message + optional ChangeSet creation
+* End-to-end: user → agent → clarification → suggestions → changeset → apply
+
+## Phase E — Polish & guardrails
+
+* Conflict UI
+* Safety warnings
+* “Regenerate” button (re-run agentRespond without changing user text)
+* “Ask for questions” and “Give suggestions” quick nudges (just set mode + call agent)
+
+---
+
+# 12) Prompts: single source of truth
+
+Use this file as the canonical prompt pack:
+
+* System prompt
+* Developer contract (blocks + studio rules)
+* 3 stage modules
+* ChangeSet payload spec
+* Examples in your task language
+
+**File:** [EmllyStudio_AgentPrompts_v1.md](sandbox:/mnt/data/EmllyStudio_AgentPrompts_v1.md)
+
+In the code:
+
+* version it: `agentPromptsV1`
+* keep a small “Prompt Registry” so future changes don’t break old conversations
+
+---
+
+## If you want the next step
+
+Tell me what your Convex function structure looks like (folder names + existing mutations/actions), and I’ll write:
+
+* `agentRespond()` action skeleton (LLM call + validation + persistence)
+* the exact Zod schemas for the 3 blocks
+* the exact mapping from LLM “proposedChangeSet” → `changeSets.ops[]` format
+
+No extra features—just the clean v1 loop.

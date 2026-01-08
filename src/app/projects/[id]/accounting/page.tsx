@@ -759,12 +759,7 @@ function MaterialLineRow({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<MaterialLine>(line);
-
-  useEffect(() => {
-    if (!isEditing) {
-      setDraft(line);
-    }
-  }, [line, isEditing]);
+  const active = isEditing ? draft : line;
 
   const handleCancel = () => {
     setDraft(line);
@@ -776,10 +771,10 @@ function MaterialLineRow({
     setIsEditing(false);
   };
 
-  const plannedTotal = draft.qty * draft.unitCost;
+  const plannedTotal = active.qty * active.unitCost;
   const actualTotal =
-    draft.actualQty !== undefined && draft.actualUnitCost !== undefined
-      ? draft.actualQty * draft.actualUnitCost
+    active.actualQty !== undefined && active.actualUnitCost !== undefined
+      ? active.actualQty * active.actualUnitCost
       : null;
   const gapTotal =
     actualTotal !== null ? actualTotal - plannedTotal : null;
@@ -799,7 +794,7 @@ function MaterialLineRow({
           Name
         </div>
         <input
-          value={draft.name}
+          value={active.name}
           disabled={!isEditing || saving}
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
@@ -811,7 +806,7 @@ function MaterialLineRow({
         </div>
         <input
           type="number"
-          value={draft.qty}
+          value={active.qty}
           disabled={!isEditing || saving}
           onChange={(e) => setDraft({ ...draft, qty: Number(e.target.value) })}
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
@@ -823,7 +818,7 @@ function MaterialLineRow({
         </div>
         <input
           type="number"
-          value={draft.unitCost}
+          value={active.unitCost}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({ ...draft, unitCost: Number(e.target.value) })
@@ -837,7 +832,7 @@ function MaterialLineRow({
         </div>
         <input
           type="number"
-          value={draft.actualQty ?? ""}
+          value={active.actualQty ?? ""}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({
@@ -854,7 +849,7 @@ function MaterialLineRow({
         </div>
         <input
           type="number"
-          value={draft.actualUnitCost ?? ""}
+          value={active.actualUnitCost ?? ""}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({
@@ -871,7 +866,7 @@ function MaterialLineRow({
           Task Links
         </div>
         <input
-          value={draft.taskIds.join(", ")}
+          value={active.taskIds.join(", ")}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({
@@ -913,7 +908,10 @@ function MaterialLineRow({
           </>
         ) : (
           <button
-            onClick={() => setIsEditing(true)}
+            onClick={() => {
+              setDraft(line);
+              setIsEditing(true);
+            }}
             className="text-xs font-semibold text-gray-600"
           >
             Edit
@@ -935,12 +933,7 @@ function LaborLineRow({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<LaborLine>(line);
-
-  useEffect(() => {
-    if (!isEditing) {
-      setDraft(line);
-    }
-  }, [line, isEditing]);
+  const active = isEditing ? draft : line;
 
   const handleCancel = () => {
     setDraft(line);
@@ -952,10 +945,10 @@ function LaborLineRow({
     setIsEditing(false);
   };
 
-  const plannedTotal = draft.qty * draft.rate;
+  const plannedTotal = active.qty * active.rate;
   const actualTotal =
-    draft.actualQty !== undefined && draft.actualRate !== undefined
-      ? draft.actualQty * draft.actualRate
+    active.actualQty !== undefined && active.actualRate !== undefined
+      ? active.actualQty * active.actualRate
       : null;
   const gapTotal =
     actualTotal !== null ? actualTotal - plannedTotal : null;
@@ -975,7 +968,7 @@ function LaborLineRow({
           Role
         </div>
         <input
-          value={draft.role}
+          value={active.role}
           disabled={!isEditing || saving}
           onChange={(e) => setDraft({ ...draft, role: e.target.value })}
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
@@ -987,7 +980,7 @@ function LaborLineRow({
         </div>
         <input
           type="number"
-          value={draft.qty}
+          value={active.qty}
           disabled={!isEditing || saving}
           onChange={(e) => setDraft({ ...draft, qty: Number(e.target.value) })}
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
@@ -999,7 +992,7 @@ function LaborLineRow({
         </div>
         <input
           type="number"
-          value={draft.rate}
+          value={active.rate}
           disabled={!isEditing || saving}
           onChange={(e) => setDraft({ ...draft, rate: Number(e.target.value) })}
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
@@ -1011,7 +1004,7 @@ function LaborLineRow({
         </div>
         <input
           type="number"
-          value={draft.actualQty ?? ""}
+          value={active.actualQty ?? ""}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({
@@ -1028,7 +1021,7 @@ function LaborLineRow({
         </div>
         <input
           type="number"
-          value={draft.actualRate ?? ""}
+          value={active.actualRate ?? ""}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({
@@ -1044,7 +1037,7 @@ function LaborLineRow({
           Task Links
         </div>
         <input
-          value={draft.taskIds.join(", ")}
+          value={active.taskIds.join(", ")}
           disabled={!isEditing || saving}
           onChange={(e) =>
             setDraft({
@@ -1086,7 +1079,10 @@ function LaborLineRow({
           </>
         ) : (
           <button
-            onClick={() => setIsEditing(true)}
+            onClick={() => {
+              setDraft(line);
+              setIsEditing(true);
+            }}
             className="text-xs font-semibold text-gray-600"
           >
             Edit

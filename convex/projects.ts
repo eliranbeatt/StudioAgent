@@ -70,16 +70,34 @@ export const getStats = query({
 });
 
 export const getOverview = query({
-  args: { id: v.id("projects") },
+  args: { id: v.union(v.id("projects"), v.id("structuredAnswers")) },
   handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.id);
+    let projectId = args.id;
+
+    // Handle structuredAnswer ID by resolving to its project
+    const asAnswer = ctx.db.normalizeId("structuredAnswers", args.id);
+    if (asAnswer) {
+      const answer = await ctx.db.get(asAnswer);
+      if (answer) {
+        projectId = answer.projectId;
+      } else {
+        return null;
+      }
+    }
+    
+    // Now treat projectId as project ID (it might still be the original ID if normalization failed/matched project)
+    // To be safe, force cast or just use it. 
+    // If original was project ID, asAnswer is null (if table names differ).
+    // Wait, normalizeId("structuredAnswers", projId) returns null. Correct.
+
+    const project = await ctx.db.get(projectId as any);
     if (!project) {
       return null;
     }
 
     const elements = await ctx.db
       .query("elements")
-      .withIndex("by_project", (q) => q.eq("projectId", args.id))
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
       .collect();
 
 
@@ -97,6 +115,99 @@ export const getOverview = query({
         elementCount: elements.length,
       },
     };
+  },
+});
+
+export const getRecentElements = query({
+  args: { projectId: v.id("projects"), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 5;
+    const elements = await ctx.db
+      .query("elements")
+      .withIndex("by_project_updated", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .take(limit);
+
+    return elements.map((el) => ({
+      id: el._id,
+      title: el.title,
+      type: el.type,
+      status: el.status,
+      updatedAt: el.updatedAt,
+    }));
+  },
+});
+
+export const getTasksForElements = query({
+  args: { projectId: v.id("projects"), elementIds: v.array(v.id("elements")) },
+  handler: async (ctx, args) => {
+    const results: Array<{ elementId: string; tasks: any[] }> = [];
+    for (const elementId of args.elementIds) {
+      const tasks = await ctx.db
+        .query("tasks")
+        .withIndex("by_element", (q) => q.eq("elementId", elementId))
+        .collect();
+      results.push({
+        elementId,
+        tasks: tasks.map((task) => ({
+          id: task._id,
+          title: task.title,
+          status: task.status,
+          estimatedMinutes: task.estimatedMinutes,
+        })),
+      });
+    }
+    return results;
+  },
+});
+
+export const getAccountingForElements = query({
+  args: { projectId: v.id("projects"), elementIds: v.array(v.id("elements")) },
+  handler: async (ctx, args) => {
+    const results: Array<{ elementId: string; lines: any[] }> = [];
+    for (const elementId of args.elementIds) {
+      const lines = await ctx.db
+        .query("accountingLines")
+        .withIndex("by_element", (q) => q.eq("elementId", elementId))
+        .collect();
+      results.push({
+        elementId,
+        lines: lines.map((line) => ({
+          id: line._id,
+          title: line.title,
+          type: line.type,
+          total: line.total,
+          qty: line.qty,
+          unitCost: line.unitCost,
+        })),
+      });
+    }
+    return results;
+  },
+});
+
+export const getPrintPartsForElements = query({
+  args: { projectId: v.id("projects"), elementIds: v.array(v.id("elements")) },
+  handler: async (ctx, args) => {
+    const results: Array<{ elementId: string; parts: any[] }> = [];
+    for (const elementId of args.elementIds) {
+      const parts = await ctx.db
+        .query("printParts")
+        .withIndex("by_element", (q) => q.eq("elementId", elementId))
+        .collect();
+      results.push({
+        elementId,
+        parts: parts.map((part) => ({
+          id: part._id,
+          label: part.label,
+          qty: part.qty,
+          substrate: part.substrate,
+          size: part.size,
+          requiresProof: part.requiresProof,
+        })),
+      });
+    }
+    return results;
   },
 });
 
@@ -184,6 +295,163 @@ export const updateProjectSummary = mutation({
   },
 });
 
+export const listLinkedProjects = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const links = await ctx.db
+      .query("projectLinks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const results: Array<any> = [];
+    for (const link of links) {
+      const project = await ctx.db.get(link.linkedProjectId);
+      if (!project) continue;
+      const digest = await ctx.db
+        .query("projectDigests")
+        .withIndex("by_project", (q) => q.eq("projectId", link.linkedProjectId))
+        .first();
+      results.push({
+        linkId: link._id,
+        mode: link.mode,
+        project: {
+          id: project._id,
+          name: project.name,
+          status: project.status,
+        },
+        digest: digest
+          ? {
+              summary: digest.summary,
+              keyElements: digest.keyElements ?? [],
+              fileHighlights: digest.fileHighlights ?? [],
+            }
+          : null,
+      });
+    }
+
+    return results;
+  },
+});
+
+export const linkProject = mutation({
+  args: {
+    projectId: v.id("projects"),
+    linkedProjectId: v.id("projects"),
+    mode: v.union(v.literal("contextOnly"), v.literal("importSuggestions")),
+  },
+  handler: async (ctx, args) => {
+    if (args.projectId === args.linkedProjectId) {
+      throw new Error("Cannot link project to itself.");
+    }
+
+    const existing = await ctx.db
+      .query("projectLinks")
+      .withIndex("by_project_linked", (q) =>
+        q.eq("projectId", args.projectId).eq("linkedProjectId", args.linkedProjectId)
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        mode: args.mode,
+        updatedAt: Date.now(),
+      });
+      return { id: existing._id, updated: true };
+    }
+
+    const id = await ctx.db.insert("projectLinks", {
+      projectId: args.projectId,
+      linkedProjectId: args.linkedProjectId,
+      mode: args.mode,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return { id, updated: false };
+  },
+});
+
+export const unlinkProject = mutation({
+  args: {
+    projectId: v.id("projects"),
+    linkedProjectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("projectLinks")
+      .withIndex("by_project_linked", (q) =>
+        q.eq("projectId", args.projectId).eq("linkedProjectId", args.linkedProjectId)
+      )
+      .first();
+
+    if (!existing) return { ok: false };
+
+    await ctx.db.delete(existing._id);
+    return { ok: true };
+  },
+});
+
+export const generateProjectDigest = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) throw new Error("Project not found.");
+
+    const elements = await ctx.db
+      .query("elements")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const files = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .take(6);
+
+    const keyElements = elements.slice(0, 6).map((el) => ({
+      id: el._id,
+      title: el.title,
+      type: el.type,
+    }));
+
+    const fileHighlights = files.map((file) =>
+      file.summary ? `${file.fileName}: ${file.summary}` : file.fileName
+    );
+
+    const summaryParts = [
+      project.description?.trim(),
+      keyElements.length ? `Elements: ${keyElements.map((el) => el.title).join(", ")}.` : null,
+      fileHighlights.length ? `Knowledge: ${fileHighlights.join(" | ")}.` : null,
+    ].filter(Boolean);
+
+    const summary = summaryParts.length > 0 ? summaryParts.join(" ") : "No summary available.";
+
+    const existing = await ctx.db
+      .query("projectDigests")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        summary,
+        keyElements,
+        fileHighlights,
+        updatedAt: Date.now(),
+      });
+      return { id: existing._id, updated: true };
+    }
+
+    const id = await ctx.db.insert("projectDigests", {
+      projectId: args.projectId,
+      summary,
+      keyElements,
+      fileHighlights,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return { id, updated: false };
+  },
+});
 
 
 async function buildOverviewSummary({

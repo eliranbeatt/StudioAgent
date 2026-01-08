@@ -77,6 +77,7 @@ export const getElementDetail = query({
         title: element.title,
         type: element.type,
         status: element.status,
+        rev: element.rev ?? 1,
       },
       draft: draft
         ? {
