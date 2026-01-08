@@ -165,8 +165,8 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                 key={conversation._id}
                 onClick={() => setActiveConversationId(conversation._id)}
                 className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${conversation._id === activeConversationId
-                    ? "border-gray-900 bg-white shadow"
-                    : "border-gray-200 bg-white/70 hover:border-gray-300"
+                  ? "border-gray-900 bg-white shadow"
+                  : "border-gray-200 bg-white/70 hover:border-gray-300"
                   }`}
               >
                 <div className="font-semibold text-gray-800">
@@ -334,16 +334,36 @@ function MessageBubble({
   const align = isUser ? "items-end" : "items-start";
   const bubble = isUser ? "bg-black text-white" : "bg-white border border-gray-200 text-gray-800";
 
+
+  const [parsedContent, setParsedContent] = useState<{ text: string; block: any } | null>(null);
+
+  useEffect(() => {
+    if (message.text_he) {
+      const parsed = tryParseJson(message.text_he);
+      if (parsed) {
+        setParsedContent({
+          text: parsed.assistantText_he || "",
+          block: parsed.block,
+        });
+      } else {
+        setParsedContent(null);
+      }
+    }
+  }, [message.text_he]);
+
+  const displayText = parsedContent ? parsedContent.text : message.text_he;
+  const displayBlock = parsedContent ? parsedContent.block : message.block;
+
   return (
     <div className={`flex flex-col ${align} gap-3`}>
-      {message.text_he ? (
-        <div className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${bubble}`}>
-          {message.text_he}
+      {displayText ? (
+        <div className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${bubble} whitespace-pre-wrap`} dir="auto">
+          <RichTextRenderer text={displayText} />
         </div>
       ) : null}
-      {message.block ? (
+      {displayBlock ? (
         <BlockRenderer
-          block={message.block}
+          block={displayBlock}
           changeSetId={message.changeSetId}
           onClarificationSubmit={onClarificationSubmit}
           onSuggestionsSubmit={onSuggestionsSubmit}
@@ -354,6 +374,58 @@ function MessageBubble({
       ) : null}
     </div>
   );
+}
+
+function tryParseJson(text: string) {
+  try {
+    // First try: strictly inside ```json block
+    const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonBlockMatch && jsonBlockMatch[1]) {
+      const parsed = JSON.parse(jsonBlockMatch[1]);
+      if (parsed && typeof parsed === "object") return parsed;
+    }
+
+    // Second try: strictly inside ``` block
+    const codeBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+      const parsed = JSON.parse(codeBlockMatch[1]);
+      if (parsed && typeof parsed === "object") return parsed;
+    }
+
+    // Third try: just try parsing the whole thing (cleaning potential start/end markers if the regex missed)
+    const cleaned = text.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "");
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function RichTextRenderer({ text }: { text: string }) {
+  // Handle basic markdown: bold (**text**) and bullet points/numbered lists by mostly respecting newlines
+  const lines = text.split("\n");
+  return (
+    <div className="space-y-1">
+      {lines.map((line, i) => (
+        <div key={i} className="min-h-[1.2em]">
+          {renderLine(line)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function renderLine(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    return <span key={index}>{part}</span>;
+  });
 }
 
 function BlockRenderer({
@@ -492,8 +564,8 @@ function ClarificationBlock({
                         key={opt}
                         onClick={() => handleToggleOption(question.id, opt, inputType)}
                         className={`rounded-lg border px-3 py-1.5 transition flex items-center gap-2 ${isSelected
-                            ? "border-gray-900 bg-gray-900 text-white"
-                            : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                          ? "border-gray-900 bg-gray-900 text-white"
+                          : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
                           }`}
                       >
                         <div className={`w-3 h-3 rounded-sm border ${isSelected ? "border-white bg-white" : "border-gray-400"}`} />
@@ -679,7 +751,7 @@ function ChangeSetBlock({
       <div className="mt-4 flex gap-2">
         <button
           onClick={() => onApply(changeSetId)}
-          disabled={disabled}
+          disabled={disabled || !changeSetId}
           className="flex-1 rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
         >
           {block.actions?.find((action: any) => action.id === "apply")?.label_he ?? "Apply"}
@@ -691,6 +763,11 @@ function ChangeSetBlock({
         >
           {block.actions?.find((action: any) => action.id === "discard")?.label_he ?? "Discard"}
         </button>
+        {!changeSetId && (
+          <div className="absolute bottom-full mb-1 left-0 right-0 text-center text-[10px] text-red-500 bg-white border border-red-200 rounded px-1 py-0.5 shadow-sm">
+            Not saved to DB (view only)
+          </div>
+        )}
       </div>
     </div>
   );

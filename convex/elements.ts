@@ -1,6 +1,254 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+// Helper to sync snapshot data to live tables
+async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapshot: any) {
+  const projectId = (await ctx.db.get(elementId)).projectId;
+  const now = Date.now();
+
+  // --- Fetch Live Data First ---
+  const existingTasks = await ctx.db
+    .query("tasks")
+    .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
+    .collect();
+
+  const existingLines = await ctx.db
+    .query("accountingLines")
+    .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
+    .collect();
+
+  const existingParts = await ctx.db
+    .query("printParts")
+    .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
+    .collect();
+
+  // --- Check if Snapshot is Empty ---
+  const snapTasks = snapshot.tasks?.byId ?? {};
+  const snapLines = snapshot.accounting?.lines ?? snapshot.accounting?.byId ?? [];
+  const snapParts = snapshot.printing?.parts ?? snapshot.printing?.byId ?? [];
+
+  const snapHasTasks = Object.keys(snapTasks).length > 0;
+  const snapHasLines = Array.isArray(snapLines) ? snapLines.length > 0 : Object.keys(snapLines).length > 0;
+  const snapHasParts = Array.isArray(snapParts) ? snapParts.length > 0 : Object.keys(snapParts).length > 0;
+
+  const snapshotIsEmpty = !snapHasTasks && !snapHasLines && !snapHasParts;
+  const liveHasData = existingTasks.length > 0 || existingLines.length > 0 || existingParts.length > 0;
+
+  if (snapshotIsEmpty && liveHasData) {
+    console.log(`[Approve] Snapshot is empty but live data exists for element ${elementId}. Hydrating snapshot from live data.`);
+
+    // Construct snapshot from live data
+    const newSnapshot = { ...snapshot };
+
+    // Tasks
+    newSnapshot.tasks = { byId: {} };
+    for (const t of existingTasks) {
+      newSnapshot.tasks.byId[t._id] = {
+        id: t._id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: t.priority,
+        category: t.category,
+        startDate: t.startDate,
+        endDate: t.endDate,
+        estimatedMinutes: t.estimatedMinutes,
+        assignee: t.assignee,
+        dependencies: t.dependencies,
+      };
+    }
+
+    // Accounting
+    newSnapshot.accounting = { byId: {} };
+    for (const l of existingLines) {
+      newSnapshot.accounting.byId[l._id] = {
+        id: l._id,
+        taskId: l.taskId,
+        type: l.type,
+        title: l.title,
+        qty: l.qty,
+        unitCost: l.unitCost,
+        total: l.total,
+        billable: l.billable,
+      };
+    }
+
+    // Printing
+    newSnapshot.printing = { byId: {} };
+    for (const p of existingParts) {
+      newSnapshot.printing.byId[p._id] = {
+        id: p._id,
+        label: p.label,
+        substrate: p.substrate,
+        qty: p.qty,
+        size: p.size,
+        requiresProof: p.requiresProof,
+      };
+    }
+
+    return newSnapshot;
+  }
+
+  // --- Normal Flow: Snapshot -> Live ---
+
+  // --- 1. Tasks Sync ---
+  const existingTaskMap = new Map(existingTasks.map((t: any) => [t._id, t]));
+  const activeTaskIds = new Set<string>();
+
+  const snapshotTasksMap = snapshot.tasks?.byId ?? {};
+
+  // Iterate snapshot tasks
+  for (const [key, taskData] of Object.entries<any>(snapshotTasksMap)) {
+    let taskId = taskData.id;
+
+    // Check if it's a valid ID and exists
+    let existing = null;
+    if (taskId) {
+      try {
+        if (existingTaskMap.has(taskId)) {
+          existing = existingTaskMap.get(taskId);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    const s = (taskData.status || "").toLowerCase();
+    if (s === "draft" || s === "pending" || !taskData.status) {
+      taskData.status = "TODO";
+    }
+
+    const payload = {
+      projectId,
+      elementId,
+      title: taskData.title,
+      description: taskData.description,
+      status: taskData.status,
+      priority: taskData.priority,
+      category: taskData.category,
+      startDate: taskData.startDate,
+      endDate: taskData.endDate,
+      estimatedMinutes: taskData.estimatedMinutes,
+      assignee: taskData.assignee,
+      dependencies: taskData.dependencies,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, payload);
+      activeTaskIds.add(existing._id);
+    } else {
+      const newId = await ctx.db.insert("tasks", {
+        ...payload,
+        createdAt: now,
+      });
+      activeTaskIds.add(newId);
+      // Update snapshot with real ID
+      snapshotTasksMap[key].id = newId;
+    }
+  }
+
+  // Delete obsolete tasks
+  for (const task of existingTasks) {
+    if (!activeTaskIds.has(task._id)) {
+      await ctx.db.delete(task._id);
+    }
+  }
+
+
+  // --- 2. Accounting Lines Sync ---
+  const existingLineMap = new Map(existingLines.map((l: any) => [l._id, l]));
+  const activeLineIds = new Set<string>();
+
+  const snapshotAccounting = snapshot.accounting?.lines ?? snapshot.accounting?.byId ?? [];
+  const linesIterable = Array.isArray(snapshotAccounting)
+    ? snapshotAccounting
+    : Object.values(snapshotAccounting);
+
+  for (const lineData of linesIterable) {
+    let lineId = lineData.id;
+    let existing = null;
+    if (lineId && existingLineMap.has(lineId)) {
+      existing = existingLineMap.get(lineId);
+    }
+
+    const payload = {
+      projectId,
+      elementId,
+      taskId: lineData.taskId,
+      type: lineData.type,
+      title: lineData.title,
+      qty: lineData.qty,
+      unitCost: lineData.unitCost,
+      total: lineData.total,
+      billable: lineData.billable,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, payload);
+      activeLineIds.add(existing._id);
+    } else {
+      const newId = await ctx.db.insert("accountingLines", {
+        ...payload,
+        createdAt: now,
+      });
+      activeLineIds.add(newId);
+      lineData.id = newId;
+    }
+  }
+
+  for (const line of existingLines) {
+    if (!activeLineIds.has(line._id)) {
+      await ctx.db.delete(line._id);
+    }
+  }
+
+
+  // --- 3. Print Parts Sync ---
+  const existingPartMap = new Map(existingParts.map((p: any) => [p._id, p]));
+  const activePartIds = new Set<string>();
+
+  const snapshotPrinting = snapshot.printing?.parts ?? snapshot.printing?.byId ?? [];
+  const partsIterable = Array.isArray(snapshotPrinting)
+    ? snapshotPrinting
+    : Object.values(snapshotPrinting);
+
+  for (const partData of partsIterable) {
+    let partId = partData.id;
+    let existing = null;
+    if (partId && existingPartMap.has(partId)) {
+      existing = existingPartMap.get(partId);
+    }
+
+    const payload = {
+      projectId,
+      elementId,
+      label: partData.label,
+      substrate: partData.substrate,
+      qty: partData.qty,
+      size: partData.size,
+      requiresProof: partData.requiresProof,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, payload);
+      activePartIds.add(existing._id);
+    } else {
+      const newId = await ctx.db.insert("printParts", {
+        ...payload,
+        createdAt: now,
+      });
+      activePartIds.add(newId);
+      partData.id = newId;
+    }
+  }
+
+  for (const part of existingParts) {
+    if (!activePartIds.has(part._id)) {
+      await ctx.db.delete(part._id);
+    }
+  }
+
+  return snapshot;
+}
 
 export const approveElementDraft = mutation({
   args: {
@@ -15,14 +263,16 @@ export const approveElementDraft = mutation({
     const draft = await ctx.db.get(element.currentDraftId);
     if (!draft) throw new Error("Draft not found.");
 
-    // Idempotency: If already approved, return the existing version info.
-    if (draft.status === "approved" && draft.baseVersionId) {
-      return { ok: true, versionId: draft.baseVersionId };
-    }
+    // Idempotency: removed to allow re-approving/fixing inconsistent states.
+    // If draft.status === "approved", we allow creating a new version to ensure live tables are synced.
 
-    if (draft.status !== "open" && draft.status !== "needsReview") {
+    if (draft.status !== "open" && draft.status !== "needsReview" && draft.status !== "approved") {
       throw new Error(`Draft is not in a strictly open state (current status: ${draft.status}).`);
     }
+
+    // --- SYNC TO LIVE TABLES ---
+    // This updates the 'tasks', 'accountingLines', etc. and returns the snapshot with real IDs.
+    const updatedSnapshot = await syncSnapshotToLiveTables(ctx, args.elementId, draft.workingSnapshot ?? {});
 
     const latestVersion = await ctx.db
       .query("elementVersions")
@@ -32,8 +282,8 @@ export const approveElementDraft = mutation({
 
     const now = Date.now();
     const versionNumber = latestVersion ? latestVersion.versionNumber + 1 : 1;
-    const snapshot = draft.workingSnapshot ?? {};
 
+    // Create the version with the UPDATED snapshot (containing real IDs)
     const versionId = await ctx.db.insert("elementVersions", {
       elementId: args.elementId,
       projectId: element.projectId,
@@ -41,7 +291,7 @@ export const approveElementDraft = mutation({
       status: "approved",
       tags: element.tags ?? [],
       summary: `Approved from draft ${draft._id}`,
-      snapshot,
+      snapshot: updatedSnapshot,
       schemaVersion: draft.schemaVersion ?? 1,
       approvedBy: args.approvedBy,
       approvedAt: now,
@@ -57,6 +307,7 @@ export const approveElementDraft = mutation({
     await ctx.db.patch(draft._id, {
       status: "approved",
       baseVersionId: versionId,
+      workingSnapshot: updatedSnapshot, // Update draft with real IDs too
       updatedAt: now,
     });
 

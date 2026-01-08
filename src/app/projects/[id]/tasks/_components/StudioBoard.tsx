@@ -1,0 +1,407 @@
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverEvent,
+  closestCorners,
+} from "@dnd-kit/core";
+import { 
+    SortableContext, 
+    useSortable, 
+    verticalListSortingStrategy, 
+    arrayMove 
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Task } from "./types";
+import { useMemo, useState, useEffect } from "react";
+import { Calendar, Clock, Link2, Boxes, Wrench } from "lucide-react";
+
+type StudioBoardProps = {
+  tasks: Task[];
+  onTaskClick: (taskId: string) => void;
+  onDomainChange: (taskId: string, newDomain: string) => void;
+  savingTaskId?: string | null;
+};
+
+const STUDIO_COLUMNS = [
+  { key: "planning", label: "Planning" },
+  { key: "design", label: "Design" },
+  { key: "procurement", label: "Procurement" },
+  { key: "fabrication", label: "Fabrication" },
+  { key: "finishing", label: "Finishing" },
+  { key: "print", label: "Print" },
+  { key: "installation", label: "Installation" },
+  { key: "logistics", label: "Logistics" },
+];
+
+export function StudioBoard({ 
+    tasks, 
+    onTaskClick, 
+    onDomainChange, 
+    savingTaskId 
+}: StudioBoardProps) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  
+  // Local state for optimistic UI (order of tasks within columns)
+  // key: domain, value: array of task IDs in order
+  const [localOrder, setLocalOrder] = useState<Record<string, string[]>>({});
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    })
+  );
+
+  // Initialize/Sync local order when tasks change (but try to preserve existing order if possible)
+  useEffect(() => {
+      const newOrder: Record<string, string[]> = {};
+      
+      // Group current tasks
+      const grouped = new Map<string, Task[]>();
+      tasks.forEach(t => {
+          const d = normalizeDomain(t.domain || t.category);
+          const list = grouped.get(d) ?? [];
+          list.push(t);
+          grouped.set(d, list);
+      });
+
+      // Build order
+      STUDIO_COLUMNS.forEach(col => {
+          const domainTasks = grouped.get(col.key) ?? [];
+          // If we have a local order for this column, try to respect it
+          const existing = localOrder[col.key];
+          if (existing) {
+              // Sort domainTasks based on existing
+              const taskMap = new Map(domainTasks.map(t => [t.id, t]));
+              const sortedIds: string[] = [];
+              // 1. Add existing IDs in order if they still exist
+              existing.forEach(id => {
+                  if (taskMap.has(id)) {
+                      sortedIds.push(id);
+                      taskMap.delete(id);
+                  }
+              });
+              // 2. Append new tasks
+              taskMap.forEach((_, id) => sortedIds.push(id));
+              newOrder[col.key] = sortedIds;
+          } else {
+              newOrder[col.key] = domainTasks.map(t => t.id);
+          }
+      });
+      
+      setLocalOrder(newOrder);
+  }, [tasks]); 
+  // Note: Dependency on `tasks` means this resets on server update. 
+  // For true pure optimistic drag, we need to ignore `tasks` updates during drag, 
+  // or merge carefully. But this is better than nothing.
+
+  const columns = useMemo(() => {
+      // Reconstruct columns from localOrder + tasks lookup
+      const cols: Record<string, Task[]> = {};
+      const taskMap = new Map(tasks.map(t => [t.id, t]));
+
+      STUDIO_COLUMNS.forEach(col => {
+          const ids = localOrder[col.key] ?? [];
+          cols[col.key] = ids.map(id => taskMap.get(id)).filter(Boolean) as Task[];
+      });
+      return cols;
+  }, [tasks, localOrder]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    if (!over) return;
+
+    const activeTaskId = String(active.id);
+    const overId = String(over.id);
+
+    // Find source container
+    const activeTask = tasks.find(t => t.id === activeTaskId);
+    const sourceDomain = normalizeDomain(activeTask?.domain || activeTask?.category);
+    
+    // Find dest container
+    let destDomain = "";
+    if (STUDIO_COLUMNS.find(c => c.key === overId)) {
+        destDomain = overId;
+    } else {
+        // Find domain of the task we dropped over
+        // We look in our columns state to find which column contains overId
+        const found = Object.entries(columns).find(([key, list]) => list.some(t => t.id === overId));
+        if (found) destDomain = found[0];
+    }
+
+    if (!destDomain) return;
+
+    if (sourceDomain === destDomain) {
+        // Reordering
+        const columnIds = localOrder[sourceDomain] ?? [];
+        const oldIndex = columnIds.indexOf(activeTaskId);
+        const newIndex = columnIds.indexOf(overId);
+
+        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+            const newIds = arrayMove(columnIds, oldIndex, newIndex);
+            setLocalOrder(prev => ({
+                ...prev,
+                [sourceDomain]: newIds
+            }));
+        }
+    } else {
+        // Moving columns
+        const sourceIds = (localOrder[sourceDomain] ?? []).filter(id => id !== activeTaskId);
+        const destIds = [...(localOrder[destDomain] ?? [])];
+        
+        let insertIndex = destIds.length;
+        if (overId !== destDomain) {
+             const idx = destIds.indexOf(overId);
+             if (idx !== -1) insertIndex = idx;
+        }
+        destIds.splice(insertIndex, 0, activeTaskId);
+
+        // Optimistic update local state
+        setLocalOrder(prev => ({
+            ...prev,
+            [sourceDomain]: sourceIds,
+            [destDomain]: destIds
+        }));
+
+        // Trigger DB update
+        onDomainChange(activeTaskId, destDomain);
+    }
+  };
+
+  const activeDragTask = activeId ? tasks.find((t) => t.id === activeId) : null;
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={(e: DragStartEvent) => setActiveId(String(e.active.id))}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveId(null)}
+    >
+      <div className="flex gap-6 h-full overflow-x-auto pb-4 items-start min-w-full">
+        {STUDIO_COLUMNS.map((column) => (
+          <StudioColumn
+            key={column.key}
+            domain={column.key}
+            label={column.label}
+            count={columns[column.key]?.length ?? 0}
+            taskIds={(columns[column.key] ?? []).map(t => t.id)}
+          >
+            {(columns[column.key] ?? []).map((task) => (
+              <SortableTaskCard
+                key={task.id}
+                task={task}
+                isSaving={savingTaskId === task.id}
+                onClick={() => onTaskClick(task.id)}
+              />
+            ))}
+          </StudioColumn>
+        ))}
+      </div>
+      <DragOverlay>
+        {activeDragTask ? <TaskCardGhost task={activeDragTask} /> : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function normalizeDomain(input?: string) {
+    const val = (input ?? "planning").toLowerCase();
+    // Simple mapping if categories don't match exactly
+    if (val.includes("plan")) return "planning";
+    if (val.includes("design")) return "design";
+    if (val.includes("shop") || val.includes("buy") || val.includes("procur")) return "procurement";
+    if (val.includes("build") || val.includes("fabricat")) return "fabrication";
+    if (val.includes("finish") || val.includes("paint")) return "finishing";
+    if (val.includes("print")) return "print";
+    if (val.includes("install")) return "installation";
+    if (val.includes("logist") || val.includes("ship")) return "logistics";
+    return "planning"; // default
+}
+
+function StudioColumn({
+  domain,
+  label,
+  count,
+  taskIds,
+  children,
+}: {
+  domain: string;
+  label: string;
+  count: number;
+  taskIds: string[];
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: domain });
+  
+  return (
+    <div
+      ref={setNodeRef}
+      className={`bg-gray-50/50 border border-gray-200/60 rounded-xl flex flex-col h-full min-h-[500px] w-80 shrink-0 transition ${
+        isOver ? "ring-2 ring-black/5 bg-gray-50" : ""
+      }`}
+    >
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+         <div className="text-xs font-bold uppercase text-gray-500 tracking-wide">
+            {label}
+         </div>
+         <span className="bg-gray-200 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-medium">
+            {count}
+         </span>
+      </div>
+      <div className="p-3 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
+         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+            {children}
+         </SortableContext>
+        {count === 0 && (
+            <div className="h-20 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg">
+                <span className="text-xs text-gray-400">Drop</span>
+            </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SortableTaskCard({
+  task,
+  onClick,
+  isSaving,
+}: {
+  task: Task;
+  onClick: () => void;
+  isSaving?: boolean;
+}) {
+  const { 
+      attributes, 
+      listeners, 
+      setNodeRef, 
+      transform, 
+      transition, 
+      isDragging 
+  } = useSortable({ id: task.id });
+  
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={(e) => {
+          if (!isDragging) onClick();
+      }}
+      className={`group relative border border-gray-200 bg-white rounded-lg p-3 shadow-sm hover:shadow-md hover:border-gray-300 cursor-grab active:cursor-grabbing touch-none ${
+        isDragging ? "opacity-30" : ""
+      } ${task.isDraft ? "border-amber-200 bg-amber-50/30" : ""}`}
+    >
+      <TaskCardContent task={task} isSaving={isSaving} />
+    </div>
+  );
+}
+
+function TaskCardGhost({ task }: { task: Task }) {
+  return (
+    <div className="border border-gray-200 bg-white rounded-lg p-3 shadow-xl rotate-2 opacity-90 cursor-grabbing w-72">
+      <TaskCardContent task={task} />
+    </div>
+  );
+}
+
+function TaskCardContent({ task, isSaving }: { task: Task; isSaving?: boolean }) {
+    const deps = task.dependencies?.length ?? 0;
+    const checklist = task.checklist ?? [];
+    const checklistDone = checklist.filter((item) => item.done).length;
+    const checklistTotal = checklist.length;
+    const dateRange = getDateRange(task);
+    
+    return (
+      <>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">
+              {task.title}
+          </div>
+          {isSaving && (
+             <div className="animate-pulse w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1" />
+          )}
+        </div>
+        
+        {task.workType ? (
+          <div className="text-[10px] text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full inline-flex">
+            {formatWorkType(task.workType)}
+          </div>
+        ) : null}
+
+        <div className="text-[10px] text-gray-400 mb-2 truncate">
+          {task.elementTitle}
+        </div>
+
+        {dateRange ? (
+          <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-2">
+            <span className="inline-flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+              <Calendar size={10} /> {dateRange}
+            </span>
+          </div>
+        ) : null}
+  
+        <div className="flex items-center gap-2 text-[10px] text-gray-500">
+           {task.estimatedMinutes ? (
+              <span className="inline-flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+              <Clock size={10} /> {formatMinutes(task.estimatedMinutes)}
+              </span>
+           ) : null}
+            {deps > 0 && <span className="flex items-center gap-0.5"><Link2 size={10} />{deps}</span>}
+        </div>
+
+        {checklistTotal > 0 ? (
+          <div className="mt-2">
+            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className="h-full bg-blue-500"
+                style={{ width: `${Math.round((checklistDone / checklistTotal) * 100)}%` }}
+              />
+            </div>
+            <div className="mt-1 text-[10px] text-gray-400">
+              Checklist {checklistDone}/{checklistTotal}
+            </div>
+          </div>
+        ) : null}
+      </>
+    );
+  }
+  
+  function formatMinutes(minutes?: number) {
+    if (!minutes || !Number.isFinite(minutes)) return "--";
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const remaining = minutes % 60;
+    return remaining > 0 ? `${hours}h ${remaining}m` : `${hours}h`;
+  }
+
+  function formatWorkType(value: string) {
+    return value.replace(/_/g, " ");
+  }
+
+  function getDateRange(task: Task) {
+    const start = task.plannedStartDate ?? task.startDate;
+    const end = task.plannedEndDate ?? task.endDate;
+    if (!start && !end) return null;
+    if (start && end) return `${formatDate(start)} - ${formatDate(end)}`;
+    return start ? formatDate(start) : formatDate(end as string);
+  }
+
+  function formatDate(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }

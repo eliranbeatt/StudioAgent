@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, usePathname } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Bot,
@@ -9,8 +9,13 @@ import {
   ListTodo,
   FileText,
   Layers,
-
+  Activity,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import { Id } from "../../../../convex/_generated/dataModel";
+import AgentActivityDrawer from "./_components/AgentActivityDrawer";
 
 export default function ProjectLayout({
   children,
@@ -19,7 +24,18 @@ export default function ProjectLayout({
 }) {
   const params = useParams();
   const pathname = usePathname();
-  const projectId = params.id as string;
+  const router = useRouter();
+  const rawId = params.id as string;
+  const resolved = useQuery(api.projects.resolveProjectId, { id: rawId });
+  const projectId = resolved?.projectId ?? null;
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+
+  useEffect(() => {
+    if (!resolved || !projectId) return;
+    if (projectId === rawId) return;
+    const nextPath = pathname.replace(`/projects/${rawId}`, `/projects/${projectId}`);
+    router.replace(nextPath);
+  }, [pathname, projectId, rawId, resolved, router]);
 
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
@@ -31,6 +47,22 @@ export default function ProjectLayout({
     { name: "Quote", href: `/projects/${projectId}/quote`, icon: FileText },
 
   ];
+
+  if (!resolved) {
+    return <div className="p-8 text-gray-500">Loading project...</div>;
+  }
+
+  if (!projectId) {
+    return (
+      <div className="p-8 text-gray-500">
+        Project not found. Please return to Projects and pick a valid project.
+      </div>
+    );
+  }
+
+  if (projectId !== rawId) {
+    return <div className="p-8 text-gray-500">Redirecting to project...</div>;
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -63,12 +95,28 @@ export default function ProjectLayout({
             );
           })}
         </nav>
+        <div className="p-4 border-t">
+          <button
+            onClick={() => setIsActivityOpen(true)}
+            className="group w-full flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all duration-200 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+          >
+            <Activity size={18} className="text-gray-400 group-hover:text-gray-600" />
+            <span className="text-sm">Agent Activity</span>
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         {children}
       </main>
+      {projectId ? (
+        <AgentActivityDrawer
+          open={isActivityOpen}
+          onClose={() => setIsActivityOpen(false)}
+          projectId={projectId as Id<"projects">}
+        />
+      ) : null}
     </div>
   );
 }

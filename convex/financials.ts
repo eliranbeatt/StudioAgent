@@ -89,211 +89,287 @@ export const approveChangeOrder = mutation({
 });
 
 export const getFinancialSummary = query({
-    args: { projectId: v.id("projects") },
-    handler: async (ctx, args) => {
-        const project = await ctx.db.get(args.projectId);
-        if(!project) return null;
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return null;
 
-        let baselineTotals = { directCost: 0, grandTotal: 0 };
-        let coAdjustments = { directCost: 0, sellPrice: 0 };
+    let baselineTotals = { directCost: 0, grandTotal: 0 };
+    let coAdjustments = { directCost: 0, sellPrice: 0 };
 
-        if(project.activeBudgetBaselineId) {
-            const baseline = await ctx.db.get(project.activeBudgetBaselineId);
-            if(baseline) {
-                baselineTotals = {
-                    directCost: baseline.planned.totals.directCost,
-                    grandTotal: baseline.planned.totals.grandTotal
-                };
-            }
-
-            const adjustments = await ctx.db
-                .query("budgetAdjustments")
-                .withIndex("by_baseline", q => q.eq("baselineId", project.activeBudgetBaselineId!))
-                .collect();
-            
-            for(const adj of adjustments) {
-                coAdjustments.directCost += adj.delta.deltaDirectCost;
-                coAdjustments.sellPrice += adj.delta.deltaSellPrice;
-            }
-        }
-
-        const draftBreakdown = await computeDraftCostBreakdown(ctx, args.projectId);
-        const forecastDirect = draftBreakdown?.totals.directCost ?? 0;
-        const forecast = applyMargins(forecastDirect, project.defaults);
-        const effectiveBudget = {
-            directCost: baselineTotals.directCost + coAdjustments.directCost,
-            sellPrice: baselineTotals.grandTotal + coAdjustments.sellPrice,
+    if (project.activeBudgetBaselineId) {
+      const baseline = await ctx.db.get(project.activeBudgetBaselineId);
+      if (baseline) {
+        baselineTotals = {
+          directCost: baseline.planned.totals.directCost,
+          grandTotal: baseline.planned.totals.grandTotal
         };
+      }
 
-        const variance = {
-            approvedCO: {
-                directCost: coAdjustments.directCost,
-                sellPrice: coAdjustments.sellPrice,
-            },
-            unapproved: {
-                directCost: forecast.directCost - effectiveBudget.directCost,
-                sellPrice: forecast.sellPrice - effectiveBudget.sellPrice,
-            },
-        };
+      const adjustments = await ctx.db
+        .query("budgetAdjustments")
+        .withIndex("by_baseline", q => q.eq("baselineId", project.activeBudgetBaselineId!))
+        .collect();
 
-        return {
-            baseline: baselineTotals,
-            approvedCO: coAdjustments,
-            effectiveBudget,
-            forecast,
-            variance,
-            breakdown: draftBreakdown,
-        }
+      for (const adj of adjustments) {
+        coAdjustments.directCost += adj.delta.deltaDirectCost;
+        coAdjustments.sellPrice += adj.delta.deltaSellPrice;
+      }
     }
+
+    const draftBreakdown = await computeDraftCostBreakdown(ctx, args.projectId);
+    const forecastDirect = draftBreakdown?.totals.directCost ?? 0;
+    const forecast = applyMargins(forecastDirect, project.defaults);
+    const effectiveBudget = {
+      directCost: baselineTotals.directCost + coAdjustments.directCost,
+      sellPrice: baselineTotals.grandTotal + coAdjustments.sellPrice,
+    };
+
+    const variance = {
+      approvedCO: {
+        directCost: coAdjustments.directCost,
+        sellPrice: coAdjustments.sellPrice,
+      },
+      unapproved: {
+        directCost: forecast.directCost - effectiveBudget.directCost,
+        sellPrice: forecast.sellPrice - effectiveBudget.sellPrice,
+      },
+    };
+
+    return {
+      baseline: baselineTotals,
+      approvedCO: coAdjustments,
+      effectiveBudget,
+      forecast,
+      variance,
+      breakdown: draftBreakdown,
+    }
+  }
 })
 
 export const getDraftCostBreakdown = query({
-    args: { projectId: v.id("projects") },
-    handler: async (ctx, args) => {
-        return await computeDraftCostBreakdown(ctx, args.projectId);
-    },
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    return await computeDraftCostBreakdown(ctx, args.projectId);
+  },
 });
 
 export const getAccountingView = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+
+    // 1. Fetch core entities
     const elements = await ctx.db
       .query("elements")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
-      
+
+    // 2. Fetch committed accounting lines (fallback/reference)
     const lines = await ctx.db
       .query("accountingLines")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
-    const linesByElement = new Map<string, typeof lines>();
+    // 3. Fetch all open drafts for this project
+    const drafts = await ctx.db
+      .query("elementDrafts")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .filter((q) =>
+        q.or(q.eq(q.field("status"), "open"), q.eq(q.field("status"), "needsReview"))
+      )
+      .collect();
+
+    // Index drafts by elementId
+    const draftByElement = new Map<string, typeof drafts[0]>();
+    for (const d of drafts) {
+      draftByElement.set(d.elementId, d);
+    }
+
+    // 4. Handle Project Cost Draft (Project Level Costs)
+    let projectCostDraft: any = null;
+    if (project?.projectCostContainerId) {
+      const container = await ctx.db.get(project.projectCostContainerId);
+      if (container?.currentDraftId) {
+        projectCostDraft = await ctx.db.get(container.currentDraftId);
+        // Ensure it's open
+        if (projectCostDraft && !["open", "needsReview"].includes(projectCostDraft.status)) {
+          projectCostDraft = null;
+        }
+      }
+    }
+
+    // Helper to process lines from snapshot or DB
+    const extractFromSnapshot = (snapshot: any, type: "materials" | "labor") => {
+      const map = snapshot?.[type]?.byId ?? {};
+      return Object.values(map).map((item: any) => ({
+        id: item.id,
+        name: item.name ?? item.role ?? "Untitled", // Handle material name vs labor role
+        title: item.name ?? item.role ?? "Untitled", // For compatibility
+        role: item.role,
+        qty: Number(item.qty ?? 0),
+        unitCost: Number(item.unitCost ?? item.rate ?? 0),
+        rate: Number(item.unitCost ?? item.rate ?? 0),
+        total: Number(item.qty ?? 0) * Number(item.unitCost ?? item.rate ?? 0),
+        actualQty: item.actualQty,
+        actualUnitCost: item.actualUnitCost,
+        actualRate: item.actualRate,
+        taskIds: item.links?.taskIds ?? [],
+      }));
+    };
+
+    const extractFromDB = (elId: string | undefined) => {
+      const relevantLines = lines.filter(l => l.elementId === elId && (!elId ? !l.elementId : true));
+
+      const materials = relevantLines.filter(l => l.type === "material").map(l => ({
+        id: l._id,
+        name: l.title,
+        qty: l.qty ?? 0,
+        unitCost: l.unitCost ?? 0,
+        total: l.total,
+        taskIds: [], // DB doesn't store array of tasks easily on line yet, or not joined here
+      }));
+
+      const labor = relevantLines.filter(l => l.type === "labor").map(l => ({
+        id: l._id,
+        role: l.title,
+        qty: l.qty ?? 0,
+        rate: l.unitCost ?? 0,
+        total: l.total,
+        taskIds: [],
+      }));
+
+      return { materials, labor };
+    };
+
     let totalMaterials = 0;
     let totalLabor = 0;
 
-    const projectCostLines: typeof lines = [];
-
-    for (const line of lines) {
-        if (line.elementId) {
-            const list = linesByElement.get(line.elementId) ?? [];
-            list.push(line);
-            linesByElement.set(line.elementId, list);
-        } else {
-            projectCostLines.push(line);
-        }
-        if (line.type === "material") totalMaterials += line.total;
-        if (line.type === "labor") totalLabor += line.total;
-    }
-
+    // Process Elements
     const elementViews = elements.map(el => {
-        const elLines = linesByElement.get(el._id) ?? [];
-        const materials = elLines.filter(l => l.type === "material").map(l => ({
-            id: l._id,
-            name: l.title,
-            qty: l.qty,
-            unitCost: l.unitCost,
-            total: l.total,
-        }));
-        const labor = elLines.filter(l => l.type === "labor").map(l => ({
-            id: l._id,
-            role: l.title,
-            qty: l.qty,
-            rate: l.unitCost,
-            total: l.total,
-        }));
-        
-        const elMatTotal = materials.reduce((s, x) => s + x.total, 0);
-        const elLabTotal = labor.reduce((s, x) => s + x.total, 0);
+      const draft = draftByElement.get(el._id);
 
-        return {
-            elementId: el._id,
-            title: el.title,
-            materials,
-            labor,
-            totals: {
-                materials: elMatTotal,
-                labor: elLabTotal,
-                total: elMatTotal + elLabTotal
-            }
-        };
+      let materials, labor;
+      let draftId, revisionNumber;
+
+      if (draft) {
+        materials = extractFromSnapshot(draft.workingSnapshot, "materials");
+        labor = extractFromSnapshot(draft.workingSnapshot, "labor");
+        draftId = draft._id;
+        revisionNumber = draft.revisionNumber;
+      } else {
+        const fromDB = extractFromDB(el._id);
+        materials = fromDB.materials;
+        labor = fromDB.labor;
+      }
+
+      const elMatTotal = materials.reduce((s: number, x: any) => s + x.total, 0);
+      const elLabTotal = labor.reduce((s: number, x: any) => s + x.total, 0);
+
+      totalMaterials += elMatTotal;
+      totalLabor += elLabTotal;
+
+      return {
+        elementId: el._id,
+        title: el.title,
+        draftId,
+        revisionNumber,
+        materials,
+        labor,
+        totals: {
+          materials: elMatTotal,
+          labor: elLabTotal,
+          total: elMatTotal + elLabTotal
+        }
+      };
     });
 
+    // Process Project Level Costs
+    let pcMaterials, pcLabor, pcDraftId, pcRevisionNumber;
+    if (projectCostDraft) {
+      pcMaterials = extractFromSnapshot(projectCostDraft.workingSnapshot, "materials");
+      pcLabor = extractFromSnapshot(projectCostDraft.workingSnapshot, "labor");
+      pcDraftId = projectCostDraft._id;
+      pcRevisionNumber = projectCostDraft.revisionNumber;
+    } else {
+      // Fallback to lines with no elementId
+      const fromDB = extractFromDB(undefined);
+      pcMaterials = fromDB.materials;
+      pcLabor = fromDB.labor;
+    }
+
+    const pcMatTotal = pcMaterials.reduce((s: number, x: any) => s + x.total, 0);
+    const pcLabTotal = pcLabor.reduce((s: number, x: any) => s + x.total, 0);
+
+    totalMaterials += pcMatTotal;
+    totalLabor += pcLabTotal;
+
     const projectCosts = {
-        materials: projectCostLines.filter(l => l.type === "material").map(l => ({
-            id: l._id,
-            name: l.title,
-            qty: l.qty,
-            unitCost: l.unitCost,
-            total: l.total,
-        })),
-        labor: projectCostLines.filter(l => l.type === "labor").map(l => ({
-            id: l._id,
-            role: l.title,
-            qty: l.qty,
-            rate: l.unitCost,
-            total: l.total,
-        })),
-        totals: {
-            materials: projectCostLines.filter(l => l.type === "material").reduce((s,x) => s + x.total, 0),
-            labor: projectCostLines.filter(l => l.type === "labor").reduce((s,x) => s + x.total, 0),
-            total: projectCostLines.reduce((s,x) => s + x.total, 0),
-        }
+      draftId: pcDraftId,
+      revisionNumber: pcRevisionNumber,
+      materials: pcMaterials,
+      labor: pcLabor,
+      totals: {
+        materials: pcMatTotal,
+        labor: pcLabTotal,
+        total: pcMatTotal + pcLabTotal,
+      }
     };
 
     return {
-        totals: {
-            materials: totalMaterials,
-            labor: totalLabor,
-            total: totalMaterials + totalLabor
-        },
-        elements: elementViews,
-        projectCosts,
+      totals: {
+        materials: totalMaterials,
+        labor: totalLabor,
+        total: totalMaterials + totalLabor
+      },
+      elements: elementViews,
+      projectCosts,
     };
   },
 });
 
 async function computeDraftCostBreakdown(ctx: any, projectId: any) {
-    const lines = await ctx.db
-        .query("accountingLines")
-        .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
-        .collect();
+  const lines = await ctx.db
+    .query("accountingLines")
+    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+    .collect();
 
-    const totals = lines.reduce(
-        (acc: any, line: any) => {
-            const cost = line.total ?? 0;
-            if (line.type === "material") acc.materials += cost;
-            else if (line.type === "labor") acc.labor += cost;
-            else if (line.type === "subcontract") acc.subcontract += cost;
-            return acc;
-        },
-        { materials: 0, labor: 0, subcontract: 0 }
-    );
+  const totals = lines.reduce(
+    (acc: any, line: any) => {
+      const cost = line.total ?? 0;
+      if (line.type === "material") acc.materials += cost;
+      else if (line.type === "labor") acc.labor += cost;
+      else if (line.type === "subcontract") acc.subcontract += cost;
+      return acc;
+    },
+    { materials: 0, labor: 0, subcontract: 0 }
+  );
 
-    const directCost = totals.materials + totals.labor + totals.subcontract;
+  const directCost = totals.materials + totals.labor + totals.subcontract;
 
-    return {
-        elementDrafts: 0, // Legacy concept
-        elementCosts: totals, // Simplified: All costs are in accountingLines
-        projectCosts: { materials: 0, labor: 0, subcontract: 0, directCost: 0 }, // If we distinguish project vs element costs later
-        totals: {
-            directCost,
-        },
-    };
+  return {
+    elementDrafts: 0, // Legacy concept
+    elementCosts: totals, // Simplified: All costs are in accountingLines
+    projectCosts: { materials: 0, labor: 0, subcontract: 0, directCost: 0 }, // If we distinguish project vs element costs later
+    totals: {
+      directCost,
+    },
+  };
 }
 
 function applyMargins(
-    directCost: number,
-    defaults: { overheadPct: number; riskPct: number; profitPct: number }
+  directCost: number,
+  defaults: { overheadPct: number; riskPct: number; profitPct: number }
 ) {
-    const overhead = directCost * defaults.overheadPct;
-    const risk = directCost * defaults.riskPct;
-    const profit = (directCost + overhead + risk) * defaults.profitPct;
-    const sellPrice = directCost + overhead + risk + profit;
-    return {
-        directCost,
-        overhead,
-        risk,
-        profit,
-        sellPrice,
-    };
+  const overhead = directCost * defaults.overheadPct;
+  const risk = directCost * defaults.riskPct;
+  const profit = (directCost + overhead + risk) * defaults.profitPct;
+  const sellPrice = directCost + overhead + risk + profit;
+  return {
+    directCost,
+    overhead,
+    risk,
+    profit,
+    sellPrice,
+  };
 }

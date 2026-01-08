@@ -1,0 +1,399 @@
+Below is a **schema adjustment proposal** + a **detailed implementation plan** to rebuild/improve your **Tasks tab** exactly as described (Kanban/Gantt/Studio/Elements, Draft editing, rich TaskModal, AI patch chat, and Trello diff-based sync). I’m aligning it to the **existing Magnetic Studio Console architecture + Convex tables/functions** you already have.   
+
+---
+
+## 1) Schema adjustments (Convex) you’ll need
+
+### 1.1 Tasks: add the fields the UI/workflows actually require
+
+Your current `tasks` table already covers a lot (status/category/priority, element link, subtasks, steps, dependencies, scheduling, AI metadata) , but to support the **exact UX** you described, I’d add these:
+
+**A) Draft editing / patch workflow**
+
+* `isDraft?: boolean`
+  If you want “draft tasks” as first-class tasks.
+* `draftOfTaskId?: Id<"tasks">`
+  If drafts are clones of canonical tasks.
+* `draftRevisionId?: Id<"taskRevisions">` *(optional)*
+  If drafts are stored as patches (recommended below).
+
+**B) Kanban stability + ordering**
+
+* `kanbanOrder?: Record<TaskStatus, string[]>` *(store on project, see 1.3)*
+  Don’t store per-task order keys if you can keep stable arrays per column.
+* If you prefer per-task ordering:
+
+  * `sortKey?: string` (already exists in your model; make sure it’s actually used by Kanban drag/drop)
+
+**C) Linking clarity (Elements + subtask of element)**
+
+* Ensure these are present (you already described them in UI):
+
+  * `elementId?: Id<"elements">`
+  * `elementSubtaskId?: string` *(or Id to an elementSubtasks table if you have one)*
+
+**D) Modal AI patch chat**
+
+* `aiThreadId?: Id<"conversations">` *(or a new table, see 1.2)*
+  So each task has its persistent right-column thread.
+
+**E) Task metadata for filtering**
+
+* `dueDate?: number` (timestamp)
+* `createdBy?: "human"|"agent"` + `createdByRunId?: Id<"agentRuns">` *(you already have agentRuns)* 
+* `updatedAt` / `createdAt` (ensure they exist and are indexed)
+
+**Indexes to add**
+
+* `by_project_status`
+* `by_project_element`
+* `by_project_assignee`
+* `by_project_updatedAt`
+* `by_project_dueDate`
+
+---
+
+### 1.2 New tables (recommended) to make Draft + AI Patch clean
+
+#### Table: `taskRevisions` (the “draft patch layer”)
+
+This is what makes “Draft Mode on/off” + Approve/Discard truly safe and predictable.
+
+**`taskRevisions`**
+
+* `projectId`
+* `taskId`
+* `baseVersionHash` (hash of the canonical task when revision started)
+* `patch` (JSON object with only changed fields: title/description/status/etc.)
+* `source` `"human" | "agent"`
+* `agentRunId?`
+* `createdAt`, `updatedAt`
+* `status`: `"draft" | "applied" | "discarded"`
+
+Why: Your UI literally behaves like “changes saved to a draftRevision patch rather than live DB immediately”. This table is the canonical way to do that. 
+
+#### Table: `taskThreads` (optional, if you don’t want to overload `conversations`)
+
+If you already have a good `conversations` table and can scope by `{entityType:"task", entityId}`, keep using it. Otherwise:
+
+**`taskThreads`**
+
+* `projectId`
+* `taskId`
+* `messages`: array (or normalized `taskMessages`)
+* `createdAt`, `updatedAt`
+
+I’d personally reuse `conversations` because you already store conversations for phases and agents. 
+
+---
+
+### 1.3 Project settings additions (for Trello + UI state)
+
+You already store Trello config in `settings` keyed per project (`project_trello_${projectId}`), and you have `trelloMappings`. 
+
+Add these settings keys:
+
+**`project_tasks_ui_${projectId}`**
+
+* `defaultView`: `"kanban"|"gantt"|"studio"|"elements"`
+* `kanbanColumnOrder`: `{ todo: taskId[], doing: taskId[], blocked: taskId[], done: taskId[] }`
+* `filtersDefaults`: last used filters/sorts (optional)
+* `draftModeEnabled`: boolean (optional; can be UI-only)
+
+---
+
+### 1.4 Trello: keep `trelloMappings`, add sync-run logs
+
+Your current mapping schema matches your described diff-based sync (taskId ↔ cardId, contentHash, listId, lastSyncedAt). 
+
+Add:
+
+**Table: `trelloSyncRuns`**
+
+* `projectId`
+* `startedAt`, `finishedAt`
+* `status`: `"running"|"success"|"failed"`
+* `summary`: `{ created, updated, moved, archived, skipped }`
+* `retryLog`: array of `{ op, cardId?, taskId?, error, attempt }`
+* `diffPlanPreview`: stored plan (optional; useful for debugging)
+
+This will make Trello syncing observable and debuggable in the UI without reading raw logs.
+
+---
+
+## 2) Detailed implementation plan (Tasks tab)
+
+### Phase 0 — Refactor goals & acceptance criteria
+
+**Must work exactly like your current spec:**
+
+* Default view: **Kanban**
+* View switcher: Kanban | Gantt | Studio | Elements
+* Draft toggle + Approve/Discard
+* Quick Add task input
+* Auto-agents: Auto-Gen (Architect), Refine (dependencies + estimates)
+* Trello: Sync + Settings modal
+* Filters: Assignee, Category, Status, Element, Accounting Section + Sort options
+* TaskModal: full form left column + AI patch chat right column + Save button enable/disable logic
+
+---
+
+### Phase 1 — Backend: Draft + Modal patching primitives
+
+#### 2.1 Draft mode plumbing
+
+Implement:
+
+* `tasks.getTask(taskId)`
+* `tasks.listByProject(projectId, filters, sorts)`
+* `taskRevisions.getByTask(taskId)`
+* `taskRevisions.upsertDraft(taskId, patch)`
+* `taskRevisions.discard(taskId)` (or revisionId)
+* `taskRevisions.apply(taskId)`:
+
+  * load canonical task
+  * validate `baseVersionHash` matches current canonical (if mismatch → conflict UI)
+  * apply patch
+  * write to `tasks.updateTask`
+  * mark revision `applied`
+
+#### 2.2 Task patch agent (TaskEditor)
+
+A Convex action like:
+
+* `agents.taskEditor.applyPatch({ taskId, message, mode: "draft"|"direct" })`
+  Behavior:
+* Reads task + (if draft mode) merges task + draft patch → “effective task”
+* LLM returns:
+
+  * `patch` (fields to update)
+  * `explanation` (hebrew, for UI)
+  * `questions` (if missing info)
+* Writes into `taskRevisions.upsertDraft(...)` if draft mode, else updates task directly.
+
+This matches your “AI Patch Chat applies patch to task fields in real-time”. 
+
+---
+
+### Phase 2 — Frontend: new Tasks page layout & state model
+
+#### 2.3 Page component hierarchy (recommended)
+
+`/app/projects/[id]/tasks/page.tsx`
+
+* `<TasksTopBar />`
+
+  * `<ViewSwitcher />`
+  * `<DraftControls />` (toggle + approve/discard)
+  * `<QuickAddTask />`
+  * `<AutoAgentsControls />` (Auto-Gen / Refine)
+  * `<TrelloControls />` (Sync + Settings modal)
+* `<TaskControlsBar />`
+
+  * filters + sort
+* `<TasksViewport />`
+
+  * `<KanbanBoard />` (default)
+  * `<GanttView />` (existing placeholder, keep but wire dates)
+  * `<StudioGroupedList />`
+  * `<ElementsGroupedList />`
+* `<TaskModal />` (portal)
+
+#### 2.4 The “effective task” concept (critical)
+
+Every component should operate on:
+
+* `effectiveTask = applyDraftPatch(task, taskRevision.patch)` **if Draft Mode ON**
+* otherwise canonical task
+
+This prevents bugs where Kanban shows one thing and Modal edits another.
+
+#### 2.5 Save button enable/disable in TaskModal
+
+* Track `localEdits` in modal form
+* Compare `localEdits` vs `effectiveTask`
+* Save writes:
+
+  * Draft mode ON → `taskRevisions.upsertDraft(patchFromDiff(localEdits, baseTask))`
+  * Draft mode OFF → `tasks.updateTask(...)`
+
+---
+
+### Phase 3 — Kanban: drag/drop + stable ordering
+
+#### 2.6 Data model for ordering
+
+Pick one (I recommend **project-level arrays**):
+
+* Store column arrays in `settings` (`kanbanColumnOrder`)
+* When tasks filtered, derive view subset but keep master order
+
+Implement:
+
+* On drag within column: reorder array
+* On move column: remove from old array, insert into new, and update task.status (draft or canonical depending on mode)
+
+This avoids brittle per-task fractional sort keys.
+
+#### 2.7 Performance
+
+* Use virtualization for long columns (react-virtual or similar)
+* Keep DnD lightweight: render a simplified drag overlay card
+
+---
+
+### Phase 4 — Filters, Sorts, and “Views” parity
+
+#### 2.8 Filtering strategy
+
+Do filtering **server-side** when possible (Convex query accepts filters), but keep “search within results” client-side.
+
+Filters:
+
+* Assignee
+* Category
+* Status
+* Element
+* Accounting Section (requires task → accounting link fields; if it’s indirect, add a denormalized `accountingSectionId?` on tasks)
+
+Sort:
+
+* Created, Updated, Priority, Due Date, Title
+
+#### 2.9 Other views
+
+* **Studio view**: grouped by `category` then `status`
+* **Elements view**: grouped by `elementId` with summary counts (todo/doing/blocked/done)
+
+---
+
+### Phase 5 — TaskModal: match your spec 1:1
+
+#### 2.10 Left column form fields
+
+Implement exactly:
+
+* Title
+* Status / Category / Priority / Quest / Est Minutes / Element / Element Subtask / Assignee
+* Description, Steps (monospace)
+* Subtasks (array with add/remove, checkbox)
+* Assets panel:
+
+  * ImageGeneratorPanel
+  * ImagePicker
+  * “Linked Element images” thumbnails
+
+*(Assets storage depends on your ingestion/files tables; wire to whatever you already use in Elements.)*
+
+#### 2.11 Right column: AI Patch Chat
+
+* `<AgentChatThread entityType="task" entityId=... />`
+* Message send triggers `agents.taskEditor.applyPatch`
+* On patch returned:
+
+  * update local form state instantly (optimistic)
+  * persist patch to draftRevision (or canonical)
+
+Also add a “Patch Preview” small diff view:
+
+* `Title: "old" → "new"`
+* `Status: todo → blocked`
+  This is a huge trust booster.
+
+---
+
+### Phase 6 — Auto-agents: Architect + Refiner
+
+#### 2.12 Auto-Gen (Architect)
+
+You already have an Architect agent that generates tasks. 
+Improvements for this tab:
+
+* Before inserting tasks, run a **duplicate detector** (title similarity + element match)
+* Support **generation into draft**:
+
+  * either create tasks with `isDraft:true`
+  * or create canonical tasks + draft revisions (less ideal)
+* Return a summary: created/skipped + “why skipped”
+
+#### 2.13 Refine agent (dependencies + estimates)
+
+Create/extend a `agents.taskRefiner.run(projectId)` that:
+
+* Reads tasks (effective tasks if draft mode)
+* Computes:
+
+  * dependency graph suggestions
+  * durationHours estimates
+  * critical path candidates
+* Writes:
+
+  * in draft mode → patches into `taskRevisions`
+  * else → updates tasks directly
+
+---
+
+### Phase 7 — Trello: replicate the exact diff-based sync UX
+
+You already have a good Trello system: config in settings, mapping table with contentHash, sync action. 
+To match your “agent-driven diff plan” spec:
+
+#### 2.14 TrelloConfigModal
+
+* Board list fetch + create board
+* Status → List mapping (Todo/Doing/Blocked/Done)
+* Save config to `trelloSync.saveConfig`
+
+#### 2.15 Sync Trello (Action)
+
+Implement `trelloSync.sync(projectId, { dryRun?: boolean })`:
+
+* Gather:
+
+  * tasks
+  * trelloMappings
+  * live Trello snapshot (lists/cards/labels/custom fields)
+* Build plan:
+
+  * CREATE_CARD (no mapping)
+  * UPDATE_CARD (hash mismatch)
+  * MOVE_CARD_TO_LIST (status change)
+  * ARCHIVE_CARD (mapped but missing)
+* Execute with retries
+* Persist mapping updates + `trelloSyncRuns` log
+
+UI:
+
+* “Sync” button runs real sync
+* Optional “Preview” shows plan before executing (super useful)
+
+---
+
+## 3) Testing plan (don’t skip—this tab breaks easily)
+
+### Backend tests (Convex)
+
+* Draft revision apply/discard
+* Conflict detection via `baseVersionHash`
+* Trello plan generation: create/update/move/archive cases
+* contentHash stability: same task → same hash
+
+### Frontend tests
+
+* Kanban drag reorder persists and remains stable after refresh
+* Draft mode ON: edits don’t touch canonical tasks until Approve
+* Approve applies all task revisions for project (or selected scope)
+* TaskModal Save button: correct enable/disable
+* Filter + drag interactions (common bug: filtered lists reorder wrong IDs)
+
+---
+
+## 4) “Small but high-impact” improvements for your studio workflow
+
+These are straight from your studio playbooks and how you actually run work: element-centric, stage-centric, and print/logistics heavy.  
+
+1. **Default grouping option: by Element** (Elements view should feel like your spreadsheets “משימות לפי אלמנט”).
+2. Add a **“QA tasks” quick generator** per element (printing proof, color test, install dry run).
+3. Add a **“Procurement list export”** (like your “איסופים” sheets): filter Category=Procurement and print a clean list.
+4. Add “Blocked reasons” as structured field (short) + show it on Kanban cards.
+

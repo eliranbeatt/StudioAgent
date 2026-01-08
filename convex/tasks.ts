@@ -1,5 +1,99 @@
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { applyChangeSetInternal } from "./drafts";
+
+export const updateTaskStatus = mutation({
+  args: {
+    projectId: v.id("projects"),
+    taskId: v.id("tasks"),
+    status: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new Error("Task not found");
+    if (!task.elementId) throw new Error("Task is not associated with an element");
+
+    const element = await ctx.db.get(task.elementId);
+    if (!element) throw new Error("Element not found");
+
+    let draftId = element.currentDraftId;
+    let baseRevisionNumber = 0;
+
+    if (!draftId) {
+      // Create new draft logic
+      let snapshot = {};
+      let schemaVersion = 1;
+      if (element.currentApprovedVersionId) {
+        const version = await ctx.db.get(element.currentApprovedVersionId);
+        if (version) {
+          snapshot = version.snapshot;
+          schemaVersion = version.schemaVersion;
+        }
+      }
+
+      draftId = await ctx.db.insert("elementDrafts", {
+        elementId: element._id,
+        projectId: args.projectId,
+        status: "open",
+        revisionNumber: 1,
+        createdFrom: { tab: "Tasks", stage: "planning" },
+        workingSnapshot: snapshot,
+        schemaVersion,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      await ctx.db.patch(element._id, {
+        currentDraftId: draftId,
+        status: "drafting",
+        updatedAt: Date.now(),
+      });
+      baseRevisionNumber = 1;
+    } else {
+      const draft = await ctx.db.get(draftId);
+      if (!draft) throw new Error("Draft not found");
+      baseRevisionNumber = draft.revisionNumber;
+    }
+
+    // Now apply change set
+    return await applyChangeSetInternal(ctx, {
+      draftType: "element",
+      draftId: draftId!,
+      projectId: args.projectId,
+      patchOps: [
+        {
+          op: "replace",
+          path: `/tasks/byId/${task._id}/status`,
+          value: args.status,
+        },
+      ],
+      baseRevisionNumber,
+      reason: "Update task status (Kanban)",
+      createdFrom: { tab: "Tasks", stage: "planning" },
+    });
+  },
+});
+
+export const getTask = query({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.taskId);
+  },
+});
+
+export const updateTask = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    patch: v.any(), // { title?: string, status?: string, ... }
+  },
+  handler: async (ctx, args) => {
+    const { taskId, patch } = args;
+    await ctx.db.patch(taskId, {
+      ...patch,
+      updatedAt: Date.now(),
+    });
+  },
+});
 
 export const listForProject = query({
   args: { projectId: v.id("projects") },
@@ -28,6 +122,13 @@ export const listForProject = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
     const draftById = new Map(allDrafts.map((d) => [d._id, d]));
+
+    // 5. Fetch Task Revisions (Drafts)
+    const draftRevisions = await ctx.db
+      .query("taskRevisions")
+      .withIndex("by_project_status", (q) => q.eq("projectId", args.projectId).eq("status", "draft"))
+      .collect();
+    const revisionByTaskId = new Map(draftRevisions.map((r) => [r.taskId, r]));
 
     // Build Maps
     const tasksByElement = new Map<string, typeof allTasks>();
@@ -68,6 +169,8 @@ export const listForProject = query({
                 rate: l.unitCost ?? 0, // Using unitCost as rate
             }));
 
+            const revision = revisionByTaskId.get(task._id);
+
             return {
                 id: task._id,
                 title: task.title,
@@ -77,11 +180,25 @@ export const listForProject = query({
                 category: task.category,
                 startDate: task.startDate,
                 endDate: task.endDate,
+                dueDate: task.dueDate,
                 estimatedMinutes: task.estimatedMinutes,
+                stage: task.stage,
+                workType: task.workType,
+                plannedStartDate: task.plannedStartDate,
+                plannedEndDate: task.plannedEndDate,
+                checklist: task.checklist,
                 assignee: task.assignee,
                 dependencies: task.dependencies,
                 materials,
                 labor,
+                // New fields
+                isDraft: task.isDraft,
+                draftOfTaskId: task.draftOfTaskId,
+                draftRevisionId: revision?._id ?? task.draftRevisionId, // Prefer active revision
+                draftPatch: revision?.patch, // The draft changes
+                elementSubtaskId: task.elementSubtaskId,
+                aiThreadId: task.aiThreadId,
+                
                 draftId: draft?._id,
                 revisionNumber: draft?.revisionNumber,
             };

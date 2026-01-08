@@ -118,6 +118,25 @@ export const getOverview = query({
   },
 });
 
+export const resolveProjectId = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    const normalizedProject = ctx.db.normalizeId("projects", args.id);
+    if (normalizedProject) {
+      const project = await ctx.db.get(normalizedProject);
+      if (project) return { projectId: normalizedProject };
+    }
+
+    const normalizedAnswer = ctx.db.normalizeId("structuredAnswers", args.id);
+    if (normalizedAnswer) {
+      const answer = await ctx.db.get(normalizedAnswer);
+      if (answer?.projectId) return { projectId: answer.projectId };
+    }
+
+    return { projectId: null };
+  },
+});
+
 export const getRecentElements = query({
   args: { projectId: v.id("projects"), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -450,6 +469,34 @@ export const generateProjectDigest = mutation({
     });
 
     return { id, updated: false };
+  },
+});
+
+export const updateTaskOrder = mutation({
+  args: {
+    projectId: v.id("projects"),
+    columnOrder: v.any(), // { todo: [taskId], ... }
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) throw new Error("Project not found");
+
+    const currentConfig = project.tasksConfiguration ?? {};
+    await ctx.db.patch(args.projectId, {
+      tasksConfiguration: {
+        ...currentConfig,
+        kanbanColumnOrder: args.columnOrder,
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const getTaskOrder = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    return project?.tasksConfiguration?.kanbanColumnOrder ?? null;
   },
 });
 

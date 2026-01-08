@@ -17,7 +17,38 @@ const draftStatus = v.union(
   v.literal("discarded")
 );
 
+const StudioWorkType = v.union(
+  v.literal("planning_production"),
+  v.literal("design_art_direction"),
+  v.literal("procurement_pickups"),
+  v.literal("vendor_management"),
+  v.literal("fabrication_metal"),
+  v.literal("fabrication_carpentry"),
+  v.literal("fabrication_foam"),
+  v.literal("fabrication_paint_finish"),
+  v.literal("fabrication_sewing_softgoods"),
+  v.literal("fabrication_assembly"),
+  v.literal("printing_graphics"),
+  v.literal("electrical_lighting"),
+  v.literal("rigging_hanging"),
+  v.literal("qa_safety"),
+  v.literal("packing_crating"),
+  v.literal("transport_logistics"),
+  v.literal("install_on_site"),
+  v.literal("teardown_returns"),
+  v.literal("accounting_admin")
+);
 
+const TaskChecklistItem = v.object({
+  id: v.string(),
+  title: v.string(),
+  description: v.optional(v.string()),
+  workType: v.optional(StudioWorkType),
+  estimatedMinutes: v.optional(v.number()),
+  order: v.number(),
+  done: v.boolean(),
+  dependsOnItemIds: v.optional(v.array(v.string())),
+});
 
 
 
@@ -72,6 +103,12 @@ export default defineSchema({
     }),
     projectCostContainerId: v.optional(v.id("projectCostContainers")),
     activeBudgetBaselineId: v.optional(v.id("budgetBaselines")),
+    tasksConfiguration: v.optional(v.object({
+      defaultView: v.optional(v.string()),
+      kanbanColumnOrder: v.optional(v.any()), // { todo: taskId[], ... }
+      filtersDefaults: v.optional(v.any()),
+      draftModeEnabled: v.optional(v.boolean()),
+    })),
     createdBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -118,14 +155,93 @@ export default defineSchema({
     category: v.optional(v.string()),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
+    dueDate: v.optional(v.number()),
     estimatedMinutes: v.optional(v.number()),
     assignee: v.optional(v.string()),
     dependencies: v.optional(v.array(v.string())), // Task IDs
+
+    // NEW V3 Fields
+    stage: v.optional(v.union(
+      v.literal("clarification"),
+      v.literal("quote"),
+      v.literal("procurement"),
+      v.literal("build"),
+      v.literal("install"),
+      v.literal("teardown"),
+      v.literal("accounting")
+    )),
+    workType: v.optional(StudioWorkType),
+    plannedStartDate: v.optional(v.string()), // "YYYY-MM-DD"
+    plannedEndDate: v.optional(v.string()),
+    checklist: v.optional(v.array(TaskChecklistItem)),
+
+    // New fields for Tasks Tab v2
+    isDraft: v.optional(v.boolean()),
+    draftOfTaskId: v.optional(v.id("tasks")),
+    draftRevisionId: v.optional(v.id("taskRevisions")),
+    elementSubtaskId: v.optional(v.string()),
+    aiThreadId: v.optional(v.id("conversations")),
+
+    // Metadata
+    createdBy: v.optional(v.union(v.literal("human"), v.literal("agent"))),
+    createdByRunId: v.optional(v.string()), // changed from v.id("agentRuns") as table is missing
+
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"])
-    .index("by_element", ["elementId"]),
+    .index("by_element", ["elementId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_project_element", ["projectId", "elementId"])
+    .index("by_project_assignee", ["projectId", "assignee"])
+    .index("by_project_updatedAt", ["projectId", "updatedAt"])
+    .index("by_project_dueDate", ["projectId", "dueDate"])
+    .index("by_project_workType", ["projectId", "workType"])
+    .index("by_project_plannedStart", ["projectId", "plannedStartDate"]),
+
+  // Task Revisions (Draft Patch Layer)
+  taskRevisions: defineTable({
+    projectId: v.id("projects"),
+    taskId: v.id("tasks"),
+    baseVersionHash: v.string(),
+    patch: v.any(), // JSON object with changed fields
+    source: v.union(v.literal("human"), v.literal("agent")),
+    agentRunId: v.optional(v.string()), // ID or string
+    status: v.union(v.literal("draft"), v.literal("applied"), v.literal("discarded")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_task", ["taskId"])
+    .index("by_project_status", ["projectId", "status"]),
+
+  // Trello Sync Runs
+  trelloSyncRuns: defineTable({
+    projectId: v.id("projects"),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    status: v.union(v.literal("running"), v.literal("success"), v.literal("failed")),
+    summary: v.optional(v.object({
+      created: v.number(),
+      updated: v.number(),
+      moved: v.number(),
+      archived: v.number(),
+      skipped: v.number(),
+    })),
+    retryLog: v.optional(v.array(v.any())),
+    diffPlanPreview: v.optional(v.any()),
+  }).index("by_project", ["projectId"]),
+
+  // Trello Mappings
+  trelloMappings: defineTable({
+    projectId: v.id("projects"),
+    taskId: v.id("tasks"),
+    trelloCardId: v.string(),
+    trelloListId: v.optional(v.string()),
+    contentHash: v.string(),
+    lastSyncedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_task", ["taskId"])
+    .index("by_card", ["trelloCardId"]),
 
   // Accounting Lines (Materials, Labor, Subcontract)
   accountingLines: defineTable({
@@ -138,6 +254,27 @@ export default defineSchema({
     unitCost: v.optional(v.number()),
     total: v.number(),
     billable: v.optional(v.boolean()),
+
+    // NEW V3 Fields (BOM + Labor Metadata)
+    itemName: v.optional(v.string()),
+    spec: v.optional(v.string()),
+    unit: v.optional(v.string()),
+    unitCostEstimate: v.optional(v.number()),
+    wastePct: v.optional(v.number()),
+    vendorId: v.optional(v.id("vendors")),
+    vendorSku: v.optional(v.string()),
+    vendorUrl: v.optional(v.string()),
+    leadTimeDays: v.optional(v.number()),
+    
+    workType: v.optional(StudioWorkType),
+    hours: v.optional(v.number()),
+    crewSize: v.optional(v.number()),
+    ratePerHour: v.optional(v.number()),
+    
+    source: v.optional(v.string()),
+    confidence: v.optional(v.number()),
+    notes: v.optional(v.string()),
+
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     createdAt: v.number(),
   }).index("by_project", ["projectId"])
@@ -202,6 +339,73 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_element_version", ["elementId", "versionNumber"]),
 
+  // Project Cost Containers
+  projectCostContainers: defineTable({
+    projectId: v.id("projects"),
+    currentDraftId: v.optional(v.id("elementDrafts")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"]),
+
+  // Project Cost Versions
+  projectCostVersions: defineTable({
+    projectId: v.id("projects"),
+    status: v.optional(v.string()),
+    snapshot: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"]),
+
+  // Quote Versions
+  quoteVersions: defineTable({
+    projectId: v.id("projects"),
+    status: v.string(),
+    sourceElementVersionIds: v.array(v.id("elementVersions")),
+    sourceProjectCostVersionId: v.optional(v.id("projectCostVersions")),
+    language: v.optional(v.string()),
+    sections: v.optional(v.any()),
+    totals: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"]),
+
+  // Budget Baselines
+  budgetBaselines: defineTable({
+    projectId: v.id("projects"),
+    quoteVersionId: v.optional(v.id("quoteVersions")),
+    status: v.string(),
+    sourceElementVersionIds: v.optional(v.array(v.id("elementVersions"))),
+    sourceProjectCostVersionId: v.optional(v.id("projectCostVersions")),
+    planned: v.optional(v.any()),
+    approvedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"]),
+
+  // Change Orders
+  changeOrders: defineTable({
+    projectId: v.id("projects"),
+    title: v.string(),
+    status: v.string(),
+    financials: v.any(),
+    approvedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"]),
+
+  // Budget Adjustments
+  budgetAdjustments: defineTable({
+    projectId: v.id("projects"),
+    baselineId: v.id("budgetBaselines"),
+    changeOrderId: v.optional(v.id("changeOrders")),
+    delta: v.any(),
+    approvedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_baseline", ["baselineId"]),
+
 
 
   // Change Sets (Refactored)
@@ -252,7 +456,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     title: v.string(),
     description: v.optional(v.string()),
-    
+
     // The "dead" item causing this entry (e.g. an element being deleted, or a high-value purchase being voided)
     sourceRef: v.optional(v.object({
       id: v.string(),
@@ -264,7 +468,7 @@ export default defineSchema({
       id: v.string(), // "keep", "discard", "archive"
       label: v.string(),
       // If chosen, these ops are applied as a new ChangeSet
-      patchOps: v.optional(v.array(v.any())), 
+      patchOps: v.optional(v.array(v.any())),
     })),
 
     status: v.union(v.literal("pending"), v.literal("resolved"), v.literal("dismissed")),
@@ -285,6 +489,18 @@ export default defineSchema({
 
 
   // Suggested Elements
+  suggestedElements: defineTable({
+    projectId: v.id("projects"),
+    title: v.string(),
+    type: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected")),
+    approvedElementId: v.optional(v.id("elements")),
+    sourceMessageId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"]),
 
 
   // Element Snapshot Index (Analytics/Search)
