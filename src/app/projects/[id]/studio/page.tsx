@@ -358,7 +358,7 @@ function MessageBubble({
   const bubble = isUser ? "bg-black text-white" : "bg-white border border-gray-200 text-gray-800";
 
   const normalized =
-    message.role === "assistant" ? normalizeStructuredMessage(message.text_he) : { text: message.text_he };
+    message.role === "assistant" ? normalizeStructuredMessage(message.text_he) : { text: message.text_he, block: undefined };
   const displayText = normalized.text ?? message.text_he;
   const displayBlock = message.block ?? (message.role === "assistant" ? normalized.block : undefined);
 
@@ -785,6 +785,21 @@ function ChangeSetBlock({
   const changesList = Array.isArray(rawChanges) 
     ? rawChanges 
     : Object.entries(rawChanges).map(([key, value]) => ({ label: key, value }));
+  const formatChangeValue = (value: unknown) => {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (typeof value === "object") {
+      if ("patch" in (value as Record<string, unknown>)) return "patch";
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return "[object]";
+      }
+    }
+    return String(value);
+  };
 
   return (
     <div
@@ -798,7 +813,7 @@ function ChangeSetBlock({
         {changesList.map((item: any, idx: number) => (
           <div key={idx} className="flex items-center justify-between rounded-md border border-gray-100 px-2 py-1">
             <span>{item.label}</span>
-            <span className="font-semibold text-gray-700">{item.value as number}</span>
+            <span className="font-semibold text-gray-700">{formatChangeValue(item.value)}</span>
           </div>
         ))}
       </div>

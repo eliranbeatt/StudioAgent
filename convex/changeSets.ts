@@ -6,6 +6,8 @@ type ElementId = Id<"elements">;
 type TaskId = Id<"tasks">;
 type VendorId = Id<"vendors">;
 type PurchaseId = Id<"purchases">;
+type MaterialLineId = Id<"materialLines">;
+type WorkLineId = Id<"workLines">;
 
 type TempMap<T> = Map<string, T>;
 
@@ -29,6 +31,13 @@ const studioWorkTypes = new Set([
   "install_on_site",
   "teardown_returns",
   "accounting_admin",
+  "carpentry",
+  "metal_fab",
+  "paint_finish",
+  "props_sculpt",
+  "rigging_install",
+  "purchasing",
+  "management",
 ]);
 
 const taskStages = new Set([
@@ -70,6 +79,36 @@ function normalizeChecklist(list: any) {
         ? item.dependsOnItemIds.map((id: any) => String(id))
         : undefined,
     }));
+}
+
+function normalizeAccountingLinks(
+  list: any,
+  materialLineTempMap: TempMap<MaterialLineId>,
+  workLineTempMap: TempMap<WorkLineId>
+) {
+  if (!Array.isArray(list)) return undefined;
+  return list
+    .filter((item) => item && (item.lineType === "material" || item.lineType === "work"))
+    .map((item) => {
+      const lineType = item.lineType === "material" ? "material" : "work";
+      const rawLineId = String(item.lineId ?? "");
+      if (!rawLineId) return null;
+      const resolvedLineId =
+        lineType === "material"
+          ? resolveFromTemp(rawLineId, materialLineTempMap)
+          : resolveFromTemp(rawLineId, workLineTempMap);
+      if (!resolvedLineId) return null;
+      return {
+        lineType,
+        lineId: resolvedLineId,
+        relation:
+          item.relation === "primary" || item.relation === "supporting"
+            ? item.relation
+            : undefined,
+        note: item.note ? String(item.note) : undefined,
+      };
+    })
+    .filter(Boolean);
 }
 
 function toOptional<T>(value: T | null | undefined) {
@@ -152,6 +191,8 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
   const taskTempMap: TempMap<TaskId> = new Map();
   const vendorTempMap: TempMap<VendorId> = new Map();
   const purchaseTempMap: TempMap<PurchaseId> = new Map();
+  const materialLineTempMap: TempMap<MaterialLineId> = new Map();
+  const workLineTempMap: TempMap<WorkLineId> = new Map();
   const elementsToBump = new Set<string>();
 
   const resolveElementId = (ref: any): ElementId | null => {
@@ -310,6 +351,11 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         plannedStartDate: toOptional(fields?.plannedStartDate),
         plannedEndDate: toOptional(fields?.plannedEndDate),
         checklist: normalizeChecklist(fields?.checklist),
+        accountingLinks: normalizeAccountingLinks(
+          fields?.accountingLinks,
+          materialLineTempMap,
+          workLineTempMap
+        ),
         updatedAt: now,
       });
     } else {
@@ -333,6 +379,11 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         plannedStartDate: toOptional(fields?.plannedStartDate),
         plannedEndDate: toOptional(fields?.plannedEndDate),
         checklist: normalizeChecklist(fields?.checklist),
+        accountingLinks: normalizeAccountingLinks(
+          fields?.accountingLinks,
+          materialLineTempMap,
+          workLineTempMap
+        ),
 
         createdFromChangeSetId: cs._id,
         createdAt: now,
@@ -347,6 +398,95 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (deps.length > 0) {
       pendingDeps.push({ taskId, deps });
     }
+  }
+
+  for (const item of pendingDeps) {
+    const resolved: string[] = [];
+    for (const dep of item.deps) {
+      if (taskTempMap.has(dep)) {
+        resolved.push(taskTempMap.get(dep) as string);
+      } else {
+        resolved.push(String(dep));
+      }
+    }
+    await ctx.db.patch(item.taskId, { dependencies: resolved });
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "materialLine.create") continue;
+    const { tempId, elementTempOrId, taskTempOrId, elementId: directElementId, fields } =
+      op.payload ?? {};
+    if (!fields?.itemName) throw new Error("materialLine.create requires fields.itemName");
+
+    const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
+    const taskId = resolveFromTemp(taskTempOrId, taskTempMap) ?? undefined;
+    const rawVendorId =
+      resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
+      fields.vendorId;
+    const resolvedVendorId = rawVendorId
+      ? ctx.db.normalizeId("vendors", rawVendorId)
+      : undefined;
+
+    const lineId = await ctx.db.insert("materialLines", {
+      projectId: cs.projectId,
+      elementId,
+      taskId,
+      workType: normalizeWorkType(fields.workType),
+      workTypeLabelHe: fields.workTypeLabelHe ?? undefined,
+      itemName: fields.itemName ?? undefined,
+      spec: fields.spec ?? undefined,
+      quantity: fields.quantity ?? undefined,
+      unit: fields.unit ?? undefined,
+      wastePct: fields.wastePct ?? undefined,
+      plannedUnitCost: fields.plannedUnitCost ?? undefined,
+      plannedTotalCost: fields.plannedTotalCost ?? undefined,
+      vendorId: resolvedVendorId ?? undefined,
+      vendorName: fields.vendorName ?? undefined,
+      leadTimeDays: fields.leadTimeDays ?? undefined,
+      procurement: fields.procurement ?? undefined,
+      notes: fields.notes ?? undefined,
+      source: fields.source ?? undefined,
+      confidence: fields.confidence ?? undefined,
+      checklistItemId: fields.checklistItemId ?? undefined,
+      createdFromChangeSetId: cs._id,
+      createdAt: now,
+    });
+
+    if (tempId) materialLineTempMap.set(tempId, lineId);
+    if (elementId) elementsToBump.add(elementId);
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "workLine.create") continue;
+    const { tempId, elementTempOrId, taskTempOrId, elementId: directElementId, fields } =
+      op.payload ?? {};
+    if (!fields?.roleHe) throw new Error("workLine.create requires fields.roleHe");
+
+    const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
+    const taskId = resolveFromTemp(taskTempOrId, taskTempMap) ?? undefined;
+
+    const lineId = await ctx.db.insert("workLines", {
+      projectId: cs.projectId,
+      elementId,
+      taskId,
+      workType: normalizeWorkType(fields.workType),
+      workTypeLabelHe: fields.workTypeLabelHe ?? undefined,
+      roleHe: fields.roleHe ?? undefined,
+      rateType: fields.rateType ?? undefined,
+      crewSize: fields.crewSize ?? undefined,
+      plannedQuantity: fields.plannedQuantity ?? undefined,
+      plannedUnitCost: fields.plannedUnitCost ?? undefined,
+      plannedTotalCost: fields.plannedTotalCost ?? undefined,
+      isManagement: fields.isManagement ?? undefined,
+      notes: fields.notes ?? undefined,
+      source: fields.source ?? undefined,
+      confidence: fields.confidence ?? undefined,
+      createdFromChangeSetId: cs._id,
+      createdAt: now,
+    });
+
+    if (tempId) workLineTempMap.set(tempId, lineId);
+    if (elementId) elementsToBump.add(elementId);
   }
 
   for (const op of cs.ops) {
@@ -386,20 +526,18 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       patch.checklist =
         fields.checklist === null ? undefined : normalizeChecklist(fields.checklist);
     }
+    if ("accountingLinks" in fields) {
+      patch.accountingLinks =
+        fields.accountingLinks === null
+          ? undefined
+          : normalizeAccountingLinks(
+            fields.accountingLinks,
+            materialLineTempMap,
+            workLineTempMap
+          );
+    }
 
     await ctx.db.patch(resolvedTaskId, { ...patch, updatedAt: now });
-  }
-
-  for (const item of pendingDeps) {
-    const resolved: string[] = [];
-    for (const dep of item.deps) {
-      if (taskTempMap.has(dep)) {
-        resolved.push(taskTempMap.get(dep) as string);
-      } else {
-        resolved.push(String(dep));
-      }
-    }
-    await ctx.db.patch(item.taskId, { dependencies: resolved });
   }
 
   for (const op of cs.ops) {

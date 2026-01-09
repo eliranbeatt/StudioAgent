@@ -178,7 +178,7 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
   
   5. element.create / element.patch / vendor.create / purchase.create (standard)`;
 
-: Record<string, string> = {
+const STAGE_MODULES: Record<string, string> = {
   IDEATION: `Stage = IDEATION. Objective: Turn brief into 5–10 feasible element ideas. Rough budget + lead time range + key risks.
   V3 addition: Identify major workstreams early (Metal? Print? Rent?).`,
 
@@ -565,6 +565,13 @@ export const agentRespond = action({
     }
 
     const parsed = safeParseAgentResponse(responseText);
+    const hasJsonFence = /```/i.test(responseText);
+    console.log("Agent response length:", responseText.length);
+    console.log("Agent response preview:", responseText.slice(0, 400));
+    console.log("Agent response tail:", responseText.slice(-400));
+    if (hasJsonFence && !parsed.block) {
+      console.warn("Agent JSON parse failed; block is null.");
+    }
     
     // If we have a structured block, handle it (creating ChangeSets, etc.)
     let block = parsed.block;
@@ -577,14 +584,27 @@ export const agentRespond = action({
         // But ops is usually structured. 'base' might be the issue if it has dynamic keys?
         // Actually, the error likely came from 'changes' or 'base' having Hebrew keys.
         // Let's sanitize 'block' fully before saving.
-        
-        changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
-          projectId: conversation.projectId,
-          stage,
-          ops: proposed.ops ?? [],
-          reason_he: proposed.reason_he,
-          base: proposed.base,
-        });
+
+        const invalidOriginal = findInvalidFieldNames({ ops: proposed.ops, base: proposed.base });
+        if (invalidOriginal.length > 0) {
+          console.warn("Invalid field names in proposed ChangeSet:", invalidOriginal.slice(0, 50));
+        }
+
+        const sanitizedOps = sanitizeForConvex(proposed.ops ?? []);
+        const sanitizedBase = sanitizeForConvex(proposed.base);
+        const invalidSanitized = findInvalidFieldNames({ ops: sanitizedOps, base: sanitizedBase });
+
+        if (invalidSanitized.length > 0) {
+          console.error("Sanitized ChangeSet still has invalid fields:", invalidSanitized.slice(0, 50));
+        } else {
+          changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+            projectId: conversation.projectId,
+            stage,
+            ops: sanitizedOps,
+            reason_he: proposed.reason_he,
+            base: sanitizedBase,
+          });
+        }
         const { proposedChangeSet, ...rest } = block;
         block = { ...rest };
       } catch (e) {
@@ -610,20 +630,60 @@ export const agentRespond = action({
 });
 
 function sanitizeBlockForConvex(block: any): any {
-  if (!block || typeof block !== 'object') return block;
+  if (!block || typeof block !== "object") return block;
 
   // Specific handling for ChangeSetBlock.changes which often has Hebrew keys
-  if (block.type === 'ChangeSetBlock' && block.changes && !Array.isArray(block.changes)) {
-     const newChanges = Object.entries(block.changes).map(([key, value]) => ({
-       label: key,
-       value: value
-     }));
-     return { ...block, changes: newChanges };
+  if (block.type === "ChangeSetBlock" && block.changes && !Array.isArray(block.changes)) {
+    const newChanges = Object.entries(block.changes).map(([key, value]) => ({
+      label: key,
+      value,
+    }));
+    return sanitizeForConvex({ ...block, changes: newChanges });
   }
 
-  // General recursion to fix any other Hebrew keys? 
-  // For now, just fix 'changes' as that's the known culprit.
-  return block;
+  return sanitizeForConvex(block);
+}
+
+function sanitizeForConvex(value: any): any {
+  if (Array.isArray(value)) return value.map(sanitizeForConvex);
+  if (!value || typeof value !== "object") return value;
+
+  const result: Record<string, any> = {};
+  const invalidFields: Array<{ key: string; value: any }> = [];
+
+  for (const [key, val] of Object.entries(value)) {
+    if (isValidConvexFieldName(key)) {
+      result[key] = sanitizeForConvex(val);
+    } else {
+      invalidFields.push({ key, value: sanitizeForConvex(val) });
+    }
+  }
+
+  if (invalidFields.length > 0) {
+    result._invalidFields = invalidFields;
+  }
+
+  return result;
+}
+
+function isValidConvexFieldName(name: string) {
+  return /^[\x20-\x7E]+$/.test(name);
+}
+
+function findInvalidFieldNames(value: any, path: string[] = []): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => findInvalidFieldNames(item, [...path, String(index)]));
+  }
+  if (!value || typeof value !== "object") return [];
+
+  const invalid: string[] = [];
+  for (const [key, val] of Object.entries(value)) {
+    if (!isValidConvexFieldName(key)) {
+      invalid.push([...path, key].join("."));
+    }
+    invalid.push(...findInvalidFieldNames(val, [...path, key]));
+  }
+  return invalid;
 }
 
 export const getOrCreateConversation = mutation({

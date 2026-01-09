@@ -485,19 +485,19 @@ export default function AgentActivityDrawer({
                           <div className="text-[10px] uppercase tracking-wide text-gray-400">
                             {msg.role === "user" ? "You" : "Agent"}
                           </div>
-                        <div
-                          className={`mt-1 rounded-lg px-3 py-2 border text-[11px] ${msg.role === "user"
-                            ? "bg-blue-600 text-white border-blue-600"
-                            : "bg-white border-blue-200 text-gray-800"
-                            }`}
-                          dir="auto"
-                          style={{ textAlign: "start" }}
-                        >
-                          {msg.text_he ?? "..."}
+                          <div
+                            className={`mt-1 rounded-lg px-3 py-2 border text-[11px] ${msg.role === "user"
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-white border-blue-200 text-gray-800"
+                              }`}
+                            dir="auto"
+                            style={{ textAlign: "start" }}
+                          >
+                            {msg.text_he ?? "..."}
+                          </div>
+                          {msg.block?.type === "PlanBlock" ? <PlanBlockCard block={msg.block} /> : null}
                         </div>
-                        {msg.block?.type === "PlanBlock" ? <PlanBlockCard block={msg.block} /> : null}
-                      </div>
-                    ))
+                      ))
                     )}
                   </div>
                 ) : null}
@@ -778,13 +778,13 @@ export default function AgentActivityDrawer({
 
 function tryParseJson(text: string) {
   try {
-    const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
+    const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i) || text.match(/```json\s*([\s\S]*)$/i);
     if (jsonBlockMatch && jsonBlockMatch[1]) {
       const parsed = JSON.parse(jsonBlockMatch[1]);
       if (parsed && typeof parsed === "object") return parsed;
     }
 
-    const codeBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/);
+    const codeBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*)$/);
     if (codeBlockMatch && codeBlockMatch[1]) {
       const parsed = JSON.parse(codeBlockMatch[1]);
       if (parsed && typeof parsed === "object") return parsed;
@@ -812,7 +812,7 @@ function isStructuredBlock(payload: any) {
 }
 
 function extractJsonBlock(text: string) {
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || text.match(/```(?:json)?\s*([\s\S]*)$/i);
   if (!match) return null;
   return {
     json: match[1],

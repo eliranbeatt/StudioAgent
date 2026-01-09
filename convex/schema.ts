@@ -36,7 +36,14 @@ const StudioWorkType = v.union(
   v.literal("transport_logistics"),
   v.literal("install_on_site"),
   v.literal("teardown_returns"),
-  v.literal("accounting_admin")
+  v.literal("accounting_admin"),
+  v.literal("carpentry"),
+  v.literal("metal_fab"),
+  v.literal("paint_finish"),
+  v.literal("props_sculpt"),
+  v.literal("rigging_install"),
+  v.literal("purchasing"),
+  v.literal("management")
 );
 
 const TaskChecklistItem = v.object({
@@ -49,6 +56,13 @@ const TaskChecklistItem = v.object({
   order: v.number(),
   done: v.boolean(),
   dependsOnItemIds: v.optional(v.array(v.string())),
+});
+
+const TaskAccountingLink = v.object({
+  lineType: v.union(v.literal("material"), v.literal("work")),
+  lineId: v.union(v.id("materialLines"), v.id("workLines")),
+  relation: v.optional(v.union(v.literal("primary"), v.literal("supporting"))),
+  note: v.optional(v.string()),
 });
 
 
@@ -188,6 +202,7 @@ export default defineSchema({
     plannedStartDate: v.optional(v.string()), // "YYYY-MM-DD"
     plannedEndDate: v.optional(v.string()),
     checklist: v.optional(v.array(TaskChecklistItem)),
+    accountingLinks: v.optional(v.array(TaskAccountingLink)),
 
     // New fields for Tasks Tab v2
     isDraft: v.optional(v.boolean()),
@@ -287,6 +302,59 @@ export default defineSchema({
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     createdAt: v.number(),
   }).index("by_project", ["projectId"])
+    .index("by_element", ["elementId"])
+    .index("by_task", ["taskId"]),
+
+  // Material Lines (linked to tasks)
+  materialLines: defineTable({
+    projectId: v.id("projects"),
+    elementId: v.optional(v.id("elements")),
+    taskId: v.optional(v.id("tasks")),
+    workType: v.optional(StudioWorkType),
+    workTypeLabelHe: v.optional(v.string()),
+    itemName: v.optional(v.string()),
+    spec: v.optional(v.string()),
+    quantity: v.optional(v.number()),
+    unit: v.optional(v.string()),
+    wastePct: v.optional(v.number()),
+    plannedUnitCost: v.optional(v.number()),
+    plannedTotalCost: v.optional(v.number()),
+    vendorId: v.optional(v.id("vendors")),
+    vendorName: v.optional(v.string()),
+    leadTimeDays: v.optional(v.number()),
+    procurement: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    source: v.optional(v.string()),
+    confidence: v.optional(v.number()),
+    checklistItemId: v.optional(v.string()),
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_element", ["elementId"])
+    .index("by_task", ["taskId"]),
+
+  // Work Lines (linked to tasks)
+  workLines: defineTable({
+    projectId: v.id("projects"),
+    elementId: v.optional(v.id("elements")),
+    taskId: v.optional(v.id("tasks")),
+    workType: v.optional(StudioWorkType),
+    workTypeLabelHe: v.optional(v.string()),
+    roleHe: v.optional(v.string()),
+    rateType: v.optional(v.string()),
+    crewSize: v.optional(v.number()),
+    plannedQuantity: v.optional(v.number()),
+    plannedUnitCost: v.optional(v.number()),
+    plannedTotalCost: v.optional(v.number()),
+    isManagement: v.optional(v.boolean()),
+    notes: v.optional(v.string()),
+    source: v.optional(v.string()),
+    confidence: v.optional(v.number()),
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
     .index("by_element", ["elementId"])
     .index("by_task", ["taskId"]),
 

@@ -1,5 +1,5 @@
-# Emlly Studio — Agent Prompts v5 (Delta)
-**Topic:** Task↔Accounting linked generation + task sizing + checklist rules + Hebrew-first prose
+# Emlly Studio - Agent Prompts v5 (Delta)
+**Topic:** Task↔Accounting linkage + task sizing + checklist rules + Hebrew-first prose
 
 > This file is meant to be pasted into your agent skills/prompt system.  
 > All user-facing content must be Hebrew unless a brand/material code requires English.
@@ -12,142 +12,131 @@
 2. Allowed English only for:
    - product/brand names, model numbers, supplier SKUs, material standards, URLs, filenames.
 3. Forbidden in prose: `Workstreams`, `Lead time`, `Install`, `Teardown`, `Transport`, `Printing/Graphics`, etc.
-   - Replace with Hebrew:  
-     - Workstreams → **תחומי עבודה**  
-     - Lead time → **זמן אספקה / זמן ייצור**  
-     - Install → **התקנה**  
-     - Teardown/Returns → **פירוק/החזרות**  
-     - Transport → **הובלה/לוגיסטיקה**  
-     - Printing/Graphics → **הדפסות/גרפיקה**
-4. Never display enum keys. Always render Hebrew labels.
+   - Replace with Hebrew:
+     - Workstreams → **תחומי עבודה**
+     - Lead time → **זמן אספקה / זמן ייצור**
+     - Install → **התקנה**
+     - Teardown/Returns → **פירוק/החזרות**
+     - Transport → **הובלה/לוגיסטיקה**
+     - Printing/Graphics → **דפוס/גרפיקה**
+4. Never display enum keys. Always render Hebrew labels (`workTypeLabelHe`).
 
 ---
 
 ## 2) Task sizing + checklist breakdown rules (hard constraints)
 
 ### Task duration buckets
-- **משימה קטנה:** 1–4 שעות (60–240 דק')
-- **משימה גדולה:** חצי יום עד יומיים (240–960 דק')
-- אם נדרש יותר מיומיים → חייבים לפצל לכמה משימות.
+- **משימה קצרה:** 1-4 שעות (60-240 דק')
+- **משימה ארוכה:** 4-16 שעות (240-960 דק')
+- מעל 16 שעות → לפצל למשימות נפרדות.
 
 ### Checklist atomicity
-- כל סעיף צ’ק-ליסט הוא פעולה שניתן לבצע בלי “להמציא” שלבים.
-- יעד לכל סעיף: 5–30 דק' (מותר 45–90 רק אם אין חלופה הגיונית).
-- למשימה קטנה: 3-6 סעיפים
-- למשימה גדולה: 6–12 סעיפים
-- סכום הזמנים בצ’ק-ליסט צריך להיות בערך 80–120% מזמן המשימה.
+- כל צ'ק־ליסט הוא פעולה אחת, כלי/פעולה ברורים, ומבחן סיום ברור.
+- זמן לפריט צ'ק־ליסט: 5-30 דק' (מותר 45-90 דק' רק אם יש סיבה טכנית).
+- משימה קצרה: 3-6 פריטים.
+- משימה ארוכה: 6-12 פריטים.
+- סכום דקות הצ'ק־ליסט צריך להיות 80-120% מהערכת המשימה.
 
 ---
 
 ## 3) Task ↔ Accounting linkage rules (must-do)
 
 ### Core rule
-כל משימה שמייצרת עלות צריכה להיות מחוברת ל־Accounting:
-- **עבודה** → `workLine` עם `taskId`
-- **חומרים** → `materialLine`(ים) עם `taskId`
-- ואז `task.accountingLinks[]` מצביע לכל השורות שנוצרו.
+כל משימה עם עלות חייבת להיות מקושרת ל־`materialLines`/`workLines` דרך `taskId`
+וגם לרשום את הקשר ב־`task.accountingLinks[]`.
 
 ### Labor task creation
-For every labor-bearing task:
-1. Create `task.create` with:
-   - `workType`, `estimatedMinutes`, dates if known, checklist
-   - `isManagement` if it’s management/overhead
-2. Create `workLine.create`:
-   - `taskId`
-   - `roleHe`, `rateType` ("שעה"/"יום"/"פיקס")
-   - `crewSize`
-   - `plannedQuantity` derived from minutes + rateType
-   - `plannedUnitCost` estimate (or leave null but set notes)
-3. Patch task with `task.patch` to append `accountingLinks` pointing to the workLine.
+לכל משימת עבודה:
+1. צור `task.create` עם:
+   - `workType`, `estimatedMinutes`, תאריכים (אם ידועים), צ'ק־ליסט.
+2. צור `workLine.create`:
+   - `taskTempOrId` / `taskId`
+   - `roleHe`, `rateType`, `crewSize`, `plannedQuantity`, `plannedUnitCost`
+3. צור `task.patch` שמוסיף ל־`accountingLinks[]` את שורת העבודה.
 
 ### Materials attachment
-For every task that consumes materials:
-1. Create 1 `materialLine` per meaningful BOM item:
-   - `itemName` (Hebrew + spec)
-   - `quantity`, `unit`, `wastePct`
-   - `plannedUnitCost`, `vendor` if known, `leadTimeDays`
-2. Patch task `accountingLinks[]` to include all material line IDs.
-
-### Management exclusion
-If `isManagement = true` on task or workLine:
-- It stays visible, but direct labor cost rollups must exclude it.
+לכל משימה שצורכת חומרים:
+1. צור שורת חומר לכל פריט משמעותי:
+   - `materialLine.create`
+   - `itemName` (עברית + מפרט), `quantity`, `unit`, `wastePct`
+   - `plannedUnitCost`, `vendorName`, `leadTimeDays` אם ידוע
+2. צור `task.patch` שמוסיף ל־`accountingLinks[]` את כל שורות החומר.
 
 ---
 
 ## 4) Scheduling rules (start/end dates)
 
 ### When to set dates
-Set `plannedStartDate/plannedEndDate` only if:
-- user gave a target install/shoot/delivery date, OR
-- project has a known schedule window.
+קבע `plannedStartDate/plannedEndDate` רק אם:
+- המשתמש נתן תאריך יעד להתקנה/צילום/מסירה, או
+- יש חלון זמנים מוגדר לפרויקט.
 
-If not: leave them empty AND (only if needed) ask 1 compact question block.
+אם לא: השאר ריק ו(רק אם צריך) שאל בלוק שאלות קצר אחד.
 
 ### Lightweight scheduling heuristic (when anchors exist)
-- Schedule tasks in dependency order.
-- Assume a working day budget (default 8h) unless the project specifies otherwise.
-- Large tasks can span multiple days.
+- סדר משימות לפי תלות.
+- הנח יום עבודה של 8 שעות אלא אם צוין אחרת.
+- משימות ארוכות יכולות להתפרס על כמה ימים.
 
 ---
 
 ## 5) Studio completeness scan (must run for mall/installations)
 
-If the described deliverable is:
-- installed in a mall/store/event/field site
-Then you MUST ensure tasks/lines exist for:
+אם המוצר מותקן בקניון/חנות/אירוע/שטח:
+ודא שיש משימות/שורות עבור:
 - **הובלה/לוגיסטיקה**
 - **התקנה**
 - **פירוק/החזרות**
-- **אישורי תלייה/בטיחות / מגבלות גישה** (if relevant)
-- **אריזה/הגנות** (packing materials as materialLines)
-If missing, propose creating elements/tasks.
+- **תיאומים/בטיחות/אישורים באתר** (אם רלוונטי)
+- **אריזה/הגנות** (כחומרים ב־`accountingLines`)
+
+אם חסר — הצע ליצור אלמנטים/משימות מתאימות.
 
 ---
 
 ## 6) Output format contract (for agents)
 
-When user asks “plan tasks” or “create quote”:
-Return:
-1. **Human summary (Hebrew)**: what you created + key assumptions.
-2. **ChangeSet JSON** that includes:
-   - `task.create` ops
-   - `materialLine.create` ops
-   - `workLine.create` ops
-   - `task.patch` ops adding `accountingLinks[]`
+כאשר המשתמש מבקש "לתכנן משימות" או "להכין הצעת מחיר":
+1. **סיכום אנושי (עברית)**: מה נוצר + הנחות עיקריות.
+2. **ChangeSet JSON** שכולל:
+   - `task.create`
+   - `materialLine.create`
+   - `workLine.create`
+   - `task.patch` שמוסיף `accountingLinks[]`
 
 ---
 
-## 7) Examples (patterns only — do NOT copy verbatim)
+## 7) Examples (patterns only - do NOT copy verbatim)
 
 ### Example: metal skeleton build task (small 3h)
-- Task title: "ריתוך שלד — חיבור סופי וחיזוקים"
+- Task title: "שלד מתכת - חיתוך והרכבה בסיסית"
 - estimatedMinutes: 180
 - Checklist items:
-  1) "סידור חלקים על ג’יג + בדיקת פלס" (15)
-  2) "טאקים בכל נקודות המפגש" (20)
-  3) "בדיקת סימטריה ומידות" (10)
-  4) "ריתוך תפרים ראשיים" (60)
-  5) "הוספת חיזוקים בפינות" (30)
-  6) "ניקוי ראשוני של התפרים" (25)
-  7) "בדיקת יציבות + צילום לאישור" (20)
+  1) "מדידות וסקיצה מהירה + סימון נקודות חיתוך" (15)
+  2) "חיתוך פרופילים לפי רשימת חיתוך" (25)
+  3) "ריתוך נקודתי ובדיקת ריבוע" (20)
+  4) "ריתוך מלא וסגירת תפרים" (60)
+  5) "שיוף תפרים ובדיקת חיבורים" (30)
+  6) "בדיקת יציבות וצילום לאישור" (30)
 
 - Work line:
-  - roleHe: "מסגר"
-  - rateType: "שעה"
+  - roleHe: "מסגרות - שלד מתכת"
+  - rateType: "hour"
   - plannedQuantity: 3
   - crewSize: 1
 
 ### Example: materials attached to the same task
 - Material lines:
-  - "אלקטרודות ריתוך 2.5 מ״מ" qty 1 unit "קופסה"
-  - "דיסק השחזה 125 מ״מ" qty 2 unit "יח'"
+  - itemName: "צינור פלדה מרובע 25x25"
+  - quantity: 6
+  - unit: "m"
+  - wastePct: 0.1
 
 ---
 
 ## 8) Lint step (final self-check before sending)
 
 Before final answer:
-- Search your prose for forbidden English planning words and replace them.
-- Ensure all “תחומי עבודה / זמן אספקה” are Hebrew.
-- Ensure each cost-bearing task has at least one linked accounting line.
-- Ensure task duration buckets comply; split if needed.
+- חפש מילים באנגלית האסורות והחלף לעברית.
+- ודא שכל המשימות עם עלות מקושרות ל־`materialLines`/`workLines` וגם ל־`task.accountingLinks[]`.
+- ודא שמידת המשימה והצ'ק־ליסט תואמות לכללי הגודל.

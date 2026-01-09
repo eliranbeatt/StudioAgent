@@ -110,9 +110,13 @@ export const listForProject = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
-    // 3. Fetch AccountingLines (for materials/labor linked to tasks)
-    const allLines = await ctx.db
-      .query("accountingLines")
+    // 3. Fetch MaterialLines + WorkLines (for materials/labor linked to tasks)
+    const allMaterialLines = await ctx.db
+      .query("materialLines")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const allWorkLines = await ctx.db
+      .query("workLines")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
@@ -140,12 +144,20 @@ export const listForProject = query({
        }
     }
 
-    const linesByTask = new Map<string, typeof allLines>();
-    for (const line of allLines) {
+    const materialLinesByTask = new Map<string, typeof allMaterialLines>();
+    for (const line of allMaterialLines) {
         if (line.taskId) {
-            const list = linesByTask.get(line.taskId) ?? [];
+            const list = materialLinesByTask.get(line.taskId) ?? [];
             list.push(line);
-            linesByTask.set(line.taskId, list);
+            materialLinesByTask.set(line.taskId, list);
+        }
+    }
+    const workLinesByTask = new Map<string, typeof allWorkLines>();
+    for (const line of allWorkLines) {
+        if (line.taskId) {
+            const list = workLinesByTask.get(line.taskId) ?? [];
+            list.push(line);
+            workLinesByTask.set(line.taskId, list);
         }
     }
 
@@ -155,18 +167,19 @@ export const listForProject = query({
         const draft = element.currentDraftId ? draftById.get(element.currentDraftId) : null;
 
         const mappedTasks = elementTasks.map(task => {
-            const lines = linesByTask.get(task._id) ?? [];
-            const materials = lines.filter(l => l.type === "material").map(l => ({
+            const materialLines = materialLinesByTask.get(task._id) ?? [];
+            const workLines = workLinesByTask.get(task._id) ?? [];
+            const materials = materialLines.map(l => ({
                 id: l._id,
-                name: l.title,
-                qty: l.qty ?? 0,
-                unitCost: l.unitCost ?? 0,
+                name: l.itemName ?? "",
+                qty: l.quantity ?? 0,
+                unitCost: l.plannedUnitCost ?? 0,
             }));
-            const labor = lines.filter(l => l.type === "labor").map(l => ({
+            const labor = workLines.map(l => ({
                 id: l._id,
-                role: l.title,
-                qty: l.qty ?? 0,
-                rate: l.unitCost ?? 0, // Using unitCost as rate
+                role: l.roleHe ?? "",
+                qty: l.plannedQuantity ?? 0,
+                rate: l.plannedUnitCost ?? 0,
             }));
 
             const revision = revisionByTaskId.get(task._id);
@@ -184,9 +197,11 @@ export const listForProject = query({
                 estimatedMinutes: task.estimatedMinutes,
                 stage: task.stage,
                 workType: task.workType,
+                workTypeLabelHe: task.workTypeLabelHe,
                 plannedStartDate: task.plannedStartDate,
                 plannedEndDate: task.plannedEndDate,
                 checklist: task.checklist,
+                accountingLinks: task.accountingLinks,
                 assignee: task.assignee,
                 dependencies: task.dependencies,
                 materials,
