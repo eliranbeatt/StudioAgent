@@ -99,7 +99,7 @@ A “good studio task” has:
 When producing BOM/estimate lines, you MUST output `accountingLines` with:
 
 Material fields (when applicable):
-- `itemName`, `spec`, `qty`, `unit`, `wastePct`, `unitCostEstimate`, `vendorId/vendorName`, `vendorUrl`, `leadTimeDays`, `source`, `confidence`, `notes`
+- `itemName`, `spec`, `qty`, `unit`, `wastePct`, `unitCostEstimate`, `vendorId/vendorTempOrId`, `vendorUrl`, `leadTimeDays`, `source`, `confidence`, `notes`
 
 Labor fields (when applicable):
 - `workType`, `hours`, `crewSize`, `ratePerHour` (or reference a known rate table), `source`, `confidence`
@@ -109,43 +109,41 @@ Do NOT dump “materials: 2000₪” as one blob for build elements.
 ---
 
 ## 5) Block schemas (UI + agent outputs)
-### 5.1 QuestionsBlock
+### 5.1 ClarificationBlock
 A compact set of questions the user can answer in one go.
 Keys: English. Text: Hebrew.
 
 ```json
 {
-  "type": "QuestionsBlock",
+  "type": "ClarificationBlock",
   "title_he": "שאלות קצרות לפני פירוק משימות",
   "questions": [
     {
       "id": "installDate",
-      "question_he": "מה תאריך ההתקנה בקניון? (יום/חודש)",
-      "type": "date"
+      "text_he": "מה תאריך ההתקנה בקניון? (יום/חודש)",
+      "inputType": "date"
     }
   ]
 }
 ```
 
-### 5.2 PlanBlock (Tasks + BOM preview)
+### 5.2 SuggestionBlock (optional plan preview)
 ```json
 {
-  "type": "PlanBlock",
-  "title_he": "תכנית עבודה + BOM",
-  "summary_he": "פירוק מעשי לפסל 2 מטר + הובלה/התקנה/פירוק",
-  "tasksSummary": {
-    "taskCount": 18,
-    "hasDates": true,
-    "hasChecklists": true
-  },
-  "bomSummary": {
-    "materialLines": 26,
-    "laborLines": 8,
-    "confidenceAvg": 0.62
-  }
+  "type": "SuggestionBlock",
+  "title_he": "x�x>x�xTx� x�x`xx"x" + BOM",
+  "subtitle_he": "xxTx"xx xzx�xcxT xoxxxo 2 xzx~x" + x"xx`xox"/x"x�xxx"/xxTx"xx",
+  "selectionMode": "single",
+  "items": [
+    {
+      "id": "plan_ok",
+      "label_he": "xx\txxx? xxTx"xx",
+      "why_he": "xxTx"xx x>xxTx� xxx"xzxTx?",
+      "details_he": "Tasks: 18 | BOM lines: 34 | Confidence: 0.62"
+    }
+  ]
 }
 ```
-
 ---
 
 ## 6) ChangeSet ops (aligned to schema enhancements)
@@ -197,8 +195,7 @@ payload:
     "wastePct": 0.1,
     "unitCostEstimate": 18,
     "currency": "NIS",
-    "vendorName": "טמבור/מסגריה מקומית (דוגמה)",
-    "vendorUrl": "…",
+    "vendorId": "VENDOR_ID",\\n    "vendorTempOrId": "TEMP_VENDOR_ID",\\n    "vendorUrl": "…",
     "leadTimeDays": 2,
     "source": "estimate",
     "confidence": 0.55,
@@ -218,7 +215,7 @@ Trigger when any of these are unknown:
 - finish level (camera vs basic)
 - whether teardown is needed + storage/returns
 
-Output: one **QuestionsBlock** (max 8 questions). Then proceed.
+Output: one **ClarificationBlock** (max 8 questions). Then proceed.
 
 ### 7.2 PLAN module (elements + lifecycle)
 Goal: propose missing elements/workstreams:
@@ -227,7 +224,7 @@ Goal: propose missing elements/workstreams:
 - Install element
 - Teardown/Returns element
 - Printing element (if branding/graphics exist)
-Output: Suggestions/PlanBlock + ChangeSet with `element.create` where needed.
+Output: SuggestionBlock (optional) + ChangeSet with `element.create` where needed.
 
 ### 7.3 BREAKDOWN module (tasks with checklists)
 For each element:
@@ -310,3 +307,19 @@ Agent should produce:
    - create missing elements (transport/install/teardown)
    - create tasks with checklists + estimates + dependencies
    - create accounting lines with structured BOM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

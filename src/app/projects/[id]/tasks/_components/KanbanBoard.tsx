@@ -27,6 +27,7 @@ type KanbanBoardProps = {
   onTaskClick: (taskId: string) => void;
   onStatusChange: (taskId: string, newStatus: string) => void;
   onOrderChange: (newOrder: Record<string, string[]>) => void;
+  onChecklistToggle?: (taskId: string, itemId: string) => void;
   savingTaskId?: string | null;
 };
 
@@ -43,6 +44,7 @@ export function KanbanBoard({
     onTaskClick, 
     onStatusChange, 
     onOrderChange,
+    onChecklistToggle,
     savingTaskId 
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -202,6 +204,7 @@ export function KanbanBoard({
                 task={task}
                 isSaving={savingTaskId === task.id}
                 onClick={() => onTaskClick(task.id)}
+                onChecklistToggle={onChecklistToggle}
               />
             ))}
           </KanbanColumn>
@@ -269,10 +272,12 @@ function KanbanColumn({
 function SortableTaskCard({
   task,
   onClick,
+  onChecklistToggle,
   isSaving,
 }: {
   task: Task;
   onClick: () => void;
+  onChecklistToggle?: (taskId: string, itemId: string) => void;
   isSaving?: boolean;
 }) {
   const { 
@@ -302,7 +307,7 @@ function SortableTaskCard({
         isDragging ? "opacity-30" : ""
       } ${task.isDraft ? "border-amber-200 bg-amber-50/30" : ""}`}
     >
-      <TaskCardContent task={task} isSaving={isSaving} />
+      <TaskCardContent task={task} isSaving={isSaving} onChecklistToggle={onChecklistToggle} />
     </div>
   );
 }
@@ -315,11 +320,21 @@ function TaskCardGhost({ task }: { task: Task }) {
   );
 }
 
-function TaskCardContent({ task, isSaving }: { task: Task; isSaving?: boolean }) {
+function TaskCardContent({
+  task,
+  isSaving,
+  onChecklistToggle,
+}: {
+  task: Task;
+  isSaving?: boolean;
+  onChecklistToggle?: (taskId: string, itemId: string) => void;
+}) {
   const deps = task.dependencies?.length ?? 0;
   const materials = task.materials?.length ?? 0;
   const labor = task.labor?.length ?? 0;
   const checklist = task.checklist ?? [];
+  const sortedChecklist = [...checklist].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const previewChecklist = sortedChecklist.slice(0, 3);
   const checklistDone = checklist.filter((item) => item.done).length;
   const checklistTotal = checklist.length;
   const dateRange = getDateRange(task);
@@ -370,15 +385,36 @@ function TaskCardContent({ task, isSaving }: { task: Task; isSaving?: boolean })
       </div>
 
       {checklistTotal > 0 ? (
-        <div className="mt-2">
+        <div className="mt-2 space-y-2">
           <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full bg-blue-500"
               style={{ width: `${Math.round((checklistDone / checklistTotal) * 100)}%` }}
             />
           </div>
-          <div className="mt-1 text-[10px] text-gray-400">
+          <div className="text-[10px] text-gray-400">
             Checklist {checklistDone}/{checklistTotal}
+          </div>
+          <div className="space-y-1">
+            {previewChecklist.map((item) => (
+              <label
+                key={item.id}
+                className="flex items-center gap-2 text-[10px] text-gray-600"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={item.done}
+                  onChange={() => onChecklistToggle?.(task.id, item.id)}
+                />
+                <span className={item.done ? "line-through text-gray-400" : ""}>{item.title}</span>
+              </label>
+            ))}
+            {sortedChecklist.length > previewChecklist.length ? (
+              <div className="text-[10px] text-gray-400">
+                +{sortedChecklist.length - previewChecklist.length} more
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

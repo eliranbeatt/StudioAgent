@@ -71,6 +71,10 @@ function normalizeChecklist(list: any) {
     }));
 }
 
+function toOptional<T>(value: T | null | undefined) {
+  return value === null ? undefined : value;
+}
+
 function resolveFromTemp<T extends string>(
   value: string | undefined | null,
   tempMap: TempMap<T>
@@ -340,6 +344,46 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     }
   }
 
+  for (const op of cs.ops) {
+    if (op.kind !== "task.patch") continue;
+    const { taskTempOrId, taskId: directTaskId, fields } = op.payload ?? {};
+    const resolvedTaskId = resolveFromTemp(taskTempOrId ?? directTaskId, taskTempMap);
+    if (!resolvedTaskId) throw new Error("task.patch requires taskId or taskTempOrId");
+    if (!fields || typeof fields !== "object") continue;
+
+    const patch: any = {};
+    if ("title" in fields) patch.title = toOptional(fields.title);
+    if ("description" in fields) patch.description = toOptional(fields.description);
+    if ("status" in fields) patch.status = toOptional(fields.status);
+    if ("priority" in fields) patch.priority = toOptional(fields.priority);
+    if ("category" in fields) patch.category = toOptional(fields.category);
+    if ("startDate" in fields) patch.startDate = toOptional(fields.startDate);
+    if ("endDate" in fields) patch.endDate = toOptional(fields.endDate);
+    if ("estimatedMinutes" in fields) patch.estimatedMinutes = toOptional(fields.estimatedMinutes);
+    if ("assignee" in fields) patch.assignee = toOptional(fields.assignee);
+    if ("plannedStartDate" in fields) patch.plannedStartDate = toOptional(fields.plannedStartDate);
+    if ("plannedEndDate" in fields) patch.plannedEndDate = toOptional(fields.plannedEndDate);
+    if ("stage" in fields) {
+      const stageValue = toOptional(fields.stage);
+      patch.stage = stageValue ? normalizeStage(stageValue) : stageValue;
+    }
+    if ("workType" in fields) {
+      const workTypeValue = toOptional(fields.workType);
+      patch.workType = workTypeValue ? normalizeWorkType(workTypeValue) : workTypeValue;
+    }
+    if ("dependencies" in fields) {
+      patch.dependencies = Array.isArray(fields.dependencies)
+        ? fields.dependencies.map((dep: any) => String(dep))
+        : toOptional(fields.dependencies);
+    }
+    if ("checklist" in fields) {
+      patch.checklist =
+        fields.checklist === null ? undefined : normalizeChecklist(fields.checklist);
+    }
+
+    await ctx.db.patch(resolvedTaskId, { ...patch, updatedAt: now });
+  }
+
   for (const item of pendingDeps) {
     const resolved: string[] = [];
     for (const dep of item.deps) {
@@ -370,6 +414,9 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
     const taskId = resolveFromTemp(taskTempOrId, taskTempMap) ?? undefined;
     const type = fields.type ?? "other";
+    const resolvedVendorId =
+      resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
+      fields.vendorId;
 
     let existing = null;
     if (elementId) {
@@ -395,7 +442,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         unit: fields.unit === null ? undefined : fields.unit,
         unitCostEstimate: fields.unitCostEstimate === null ? undefined : fields.unitCostEstimate,
         wastePct: fields.wastePct === null ? undefined : fields.wastePct,
-        vendorId: fields.vendorId === null ? undefined : fields.vendorId,
+        vendorId: fields.vendorId === null ? undefined : resolvedVendorId,
         vendorSku: fields.vendorSku === null ? undefined : fields.vendorSku,
         vendorUrl: fields.vendorUrl === null ? undefined : fields.vendorUrl,
         leadTimeDays: fields.leadTimeDays === null ? undefined : fields.leadTimeDays,
@@ -424,7 +471,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         unit: fields.unit === null ? undefined : fields.unit,
         unitCostEstimate: fields.unitCostEstimate === null ? undefined : fields.unitCostEstimate,
         wastePct: fields.wastePct === null ? undefined : fields.wastePct,
-        vendorId: fields.vendorId === null ? undefined : fields.vendorId,
+        vendorId: fields.vendorId === null ? undefined : resolvedVendorId,
         vendorSku: fields.vendorSku === null ? undefined : fields.vendorSku,
         vendorUrl: fields.vendorUrl === null ? undefined : fields.vendorUrl,
         leadTimeDays: fields.leadTimeDays === null ? undefined : fields.leadTimeDays,
@@ -441,6 +488,49 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       });
     }
     if (elementId) elementsToBump.add(elementId);
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "accountingLine.patch") continue;
+    const { accountingLineId, lineId, fields } = op.payload ?? {};
+    const resolvedLineId = accountingLineId ?? lineId;
+    if (!resolvedLineId) throw new Error("accountingLine.patch requires accountingLineId");
+    if (!fields || typeof fields !== "object") continue;
+
+    const resolvedVendorId =
+      resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
+      fields.vendorId;
+
+    const patch: any = {};
+    if ("title" in fields) patch.title = toOptional(fields.title);
+    if ("type" in fields) patch.type = toOptional(fields.type);
+    if ("qty" in fields) patch.qty = toOptional(fields.qty);
+    if ("unitCost" in fields) patch.unitCost = toOptional(fields.unitCost);
+    if ("total" in fields) patch.total = toOptional(fields.total);
+    if ("billable" in fields) patch.billable = toOptional(fields.billable);
+    if ("itemName" in fields) patch.itemName = toOptional(fields.itemName);
+    if ("spec" in fields) patch.spec = toOptional(fields.spec);
+    if ("unit" in fields) patch.unit = toOptional(fields.unit);
+    if ("unitCostEstimate" in fields) patch.unitCostEstimate = toOptional(fields.unitCostEstimate);
+    if ("wastePct" in fields) patch.wastePct = toOptional(fields.wastePct);
+    if ("vendorId" in fields || "vendorTempOrId" in fields) {
+      patch.vendorId = toOptional(resolvedVendorId);
+    }
+    if ("vendorSku" in fields) patch.vendorSku = toOptional(fields.vendorSku);
+    if ("vendorUrl" in fields) patch.vendorUrl = toOptional(fields.vendorUrl);
+    if ("leadTimeDays" in fields) patch.leadTimeDays = toOptional(fields.leadTimeDays);
+    if ("workType" in fields) {
+      const workTypeValue = toOptional(fields.workType);
+      patch.workType = workTypeValue ? normalizeWorkType(workTypeValue) : workTypeValue;
+    }
+    if ("hours" in fields) patch.hours = toOptional(fields.hours);
+    if ("crewSize" in fields) patch.crewSize = toOptional(fields.crewSize);
+    if ("ratePerHour" in fields) patch.ratePerHour = toOptional(fields.ratePerHour);
+    if ("source" in fields) patch.source = toOptional(fields.source);
+    if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
+    if ("notes" in fields) patch.notes = toOptional(fields.notes);
+
+    await ctx.db.patch(resolvedLineId, { ...patch });
   }
 
   for (const op of cs.ops) {

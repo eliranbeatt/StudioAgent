@@ -64,6 +64,11 @@ export default defineSchema({
   users: defineTable({
     email: v.string(),
     displayName: v.optional(v.string()),
+    trelloCredentials: v.optional(v.object({
+      apiKey: v.string(),
+      token: v.string()
+    })),
+    preferredModel: v.optional(v.string()), // e.g. "gpt-5-mini", "gpt-5-nano"
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_email", ["email"]),
@@ -108,6 +113,13 @@ export default defineSchema({
       kanbanColumnOrder: v.optional(v.any()), // { todo: taskId[], ... }
       filtersDefaults: v.optional(v.any()),
       draftModeEnabled: v.optional(v.boolean()),
+      trelloConfig: v.optional(v.object({
+        boardId: v.optional(v.string()),
+        listMappings: v.optional(v.any()),
+        // Legacy fields - kept for migration or fallback, but ideally moved to users
+        apiKey: v.optional(v.string()),
+        token: v.optional(v.string())
+      })),
     })),
     createdBy: v.optional(v.id("users")),
     createdAt: v.number(),
@@ -219,13 +231,7 @@ export default defineSchema({
     startedAt: v.number(),
     finishedAt: v.optional(v.number()),
     status: v.union(v.literal("running"), v.literal("success"), v.literal("failed")),
-    summary: v.optional(v.object({
-      created: v.number(),
-      updated: v.number(),
-      moved: v.number(),
-      archived: v.number(),
-      skipped: v.number(),
-    })),
+    summary: v.optional(v.any()),
     retryLog: v.optional(v.array(v.any())),
     diffPlanPreview: v.optional(v.any()),
   }).index("by_project", ["projectId"]),
@@ -265,12 +271,12 @@ export default defineSchema({
     vendorSku: v.optional(v.string()),
     vendorUrl: v.optional(v.string()),
     leadTimeDays: v.optional(v.number()),
-    
+
     workType: v.optional(StudioWorkType),
     hours: v.optional(v.number()),
     crewSize: v.optional(v.number()),
     ratePerHour: v.optional(v.number()),
-    
+
     source: v.optional(v.string()),
     confidence: v.optional(v.number()),
     notes: v.optional(v.string()),
@@ -800,4 +806,9 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
+
+  appSettings: defineTable({
+    key: v.string(), // e.g. "global"
+    value: v.any(),
+  }).index("by_key", ["key"]),
 });

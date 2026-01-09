@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, Package, ShoppingCart, UserCircle, ReceiptText, Tags } from "lucide-react";
+import { Users, Package, ShoppingCart, UserCircle, ReceiptText, Tags, Settings } from "lucide-react";
 
 export default function ManagementLayout({
   children,
@@ -47,14 +47,20 @@ export default function ManagementLayout({
           >
             <UserCircle size={20} /> Employees
           </Link>
-          <div className="mt-4 pt-4 border-t">
-             <span className="px-4 text-xs font-semibold text-gray-400 uppercase">Incoming</span>
-             <Link
-            href="/management/proposed"
+          <Link
+            href="/management/settings"
             className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
           >
-            <ShoppingCart size={20} /> Proposed Queue
+            <Settings size={20} /> Settings
           </Link>
+          <div className="mt-4 pt-4 border-t">
+            <span className="px-4 text-xs font-semibold text-gray-400 uppercase">Incoming</span>
+            <Link
+              href="/management/proposed"
+              className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              <ShoppingCart size={20} /> Proposed Queue
+            </Link>
           </div>
         </nav>
       </aside>

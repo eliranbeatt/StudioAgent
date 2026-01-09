@@ -92,6 +92,20 @@ export default function AgentActivityDrawer({
       : "skip"
   ) as ConversationMessage[] | undefined;
 
+  const normalizedMessages = useMemo(() => {
+    if (!messages) return [];
+    return messages.map((msg) => {
+      if (!msg.text_he) return msg;
+      const normalized = normalizeStructuredMessage(msg.text_he);
+      if (!normalized.block && !normalized.text) return msg;
+      return {
+        ...msg,
+        text_he: normalized.text ?? msg.text_he,
+        block: msg.block ?? normalized.block,
+      };
+    });
+  }, [messages]);
+
   useEffect(() => {
     if (!conversations || !open) return;
     if (activeConversationId) return;
@@ -115,22 +129,19 @@ export default function AgentActivityDrawer({
   }, [overview?.project, editingOverview]);
 
   const activeMessages = useMemo(() => {
-    if (!messages) return [];
-    return messages.filter((msg) => msg.role !== "event");
-  }, [messages]);
+    return normalizedMessages.filter((msg) => msg.role !== "event");
+  }, [normalizedMessages]);
 
   const eventLogs = useMemo(() => {
-    if (!messages) return [];
-    return messages.filter((msg) => msg.role === "event").slice(-12).reverse();
-  }, [messages]);
+    return normalizedMessages.filter((msg) => msg.role === "event").slice(-12).reverse();
+  }, [normalizedMessages]);
 
   const latestBlockMessage = useMemo(() => {
-    if (!messages) return null;
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      if (messages[i].block) return messages[i];
+    for (let i = normalizedMessages.length - 1; i >= 0; i -= 1) {
+      if (normalizedMessages[i].block) return normalizedMessages[i];
     }
     return null;
-  }, [messages]);
+  }, [normalizedMessages]);
 
   const activeBlock = latestBlockMessage?.block;
   const activeBlockType = activeBlock?.type;
@@ -143,17 +154,17 @@ export default function AgentActivityDrawer({
         : "CHAT";
 
   const changeSetCards = useMemo(() => {
-    if (!messages) return [];
+    if (!normalizedMessages.length) return [];
     const applied = new Set<string>();
     const discarded = new Set<string>();
-    messages.forEach((msg) => {
+    normalizedMessages.forEach((msg) => {
       if (msg.role !== "event") return;
       const id = msg.eventPayload?.changeSetId;
       if (!id) return;
       if (msg.eventType === "changeset_applied") applied.add(String(id));
       if (msg.eventType === "changeset_discarded") discarded.add(String(id));
     });
-    return messages
+    return normalizedMessages
       .filter((msg) => msg.block?.type === "ChangeSetBlock" && msg.changeSetId)
       .map((msg) => ({
         id: msg.changeSetId as Id<"changeSets">,
@@ -474,16 +485,18 @@ export default function AgentActivityDrawer({
                           <div className="text-[10px] uppercase tracking-wide text-gray-400">
                             {msg.role === "user" ? "You" : "Agent"}
                           </div>
-                          <div
-                            className={`mt-1 rounded-lg px-3 py-2 border text-[11px] ${msg.role === "user"
-                              ? "bg-blue-600 text-white border-blue-600"
-                              : "bg-white border-blue-200 text-gray-800"
-                              }`}
-                          >
-                            {msg.text_he ?? "..."}
-                          </div>
+                        <div
+                          className={`mt-1 rounded-lg px-3 py-2 border text-[11px] ${msg.role === "user"
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white border-blue-200 text-gray-800"
+                            }`}
+                          dir="auto"
+                          style={{ textAlign: "start" }}
+                        >
+                          {msg.text_he ?? "..."}
                         </div>
-                      ))
+                      </div>
+                    ))
                     )}
                   </div>
                 ) : null}
@@ -760,6 +773,65 @@ export default function AgentActivityDrawer({
       </div>
     </div>
   );
+}
+
+function tryParseJson(text: string) {
+  try {
+    const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
+    if (jsonBlockMatch && jsonBlockMatch[1]) {
+      const parsed = JSON.parse(jsonBlockMatch[1]);
+      if (parsed && typeof parsed === "object") return parsed;
+    }
+
+    const codeBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+      const parsed = JSON.parse(codeBlockMatch[1]);
+      if (parsed && typeof parsed === "object") return parsed;
+    }
+
+    const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "");
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function isStructuredBlock(payload: any) {
+  return (
+    payload?.type === "ClarificationBlock" ||
+    payload?.type === "SuggestionBlock" ||
+    payload?.type === "ChangeSetBlock"
+  );
+}
+
+function extractJsonBlock(text: string) {
+  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (!match) return null;
+  return {
+    json: match[1],
+    textPart: text.slice(0, match.index ?? 0).trim(),
+  };
+}
+
+function normalizeStructuredMessage(text?: string) {
+  if (!text) return { text, block: undefined as any };
+  const fenced = extractJsonBlock(text);
+  const parsed = fenced ? tryParseJson(fenced.json) : tryParseJson(text);
+  if (!parsed) return { text, block: undefined as any };
+
+  const block = isStructuredBlock(parsed) ? parsed : parsed.block;
+  const parsedText = isStructuredBlock(parsed)
+    ? fenced?.textPart
+    : parsed.assistantText_he ?? parsed.text_he ?? parsed.text;
+
+  return {
+    text: parsedText ?? fenced?.textPart ?? text,
+    block,
+  };
 }
 
 function ClarificationPanel({

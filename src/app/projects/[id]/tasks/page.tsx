@@ -156,6 +156,22 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
     }
   };
 
+  const handleChecklistToggle = async (taskId: string, itemId: string) => {
+    const task = taskById.get(taskId);
+    if (!task?.checklist) return;
+    const nextChecklist = task.checklist.map((item) =>
+      item.id === itemId ? { ...item, done: !item.done } : item
+    );
+    try {
+      await updateTask({
+        taskId: taskId as Id<"tasks">,
+        patch: { checklist: nextChecklist },
+      });
+    } catch (e) {
+      console.error("Failed to update checklist", e);
+    }
+  };
+
   const handleEstimate = async () => {
       setIsEstimating(true);
       try {
@@ -166,6 +182,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
           setIsEstimating(false);
       }
   };
+
 
   const handleSyncTrello = async () => {
       if (!trelloConfig || !trelloConfig.boardId) {
@@ -244,6 +261,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                   onTaskClick={setSelectedTaskId}
                   onStatusChange={handleStatusChange}
                   onOrderChange={handleOrderChange}
+                  onChecklistToggle={handleChecklistToggle}
                   savingTaskId={savingTaskId}
               />
           )}
@@ -263,6 +281,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                     tasks={filteredTasks}
                     onTaskClick={setSelectedTaskId}
                     onDomainChange={handleDomainChange}
+                    onChecklistToggle={handleChecklistToggle}
                     savingTaskId={savingTaskId}
                  />
                </div>
@@ -273,6 +292,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                  <ElementsGroupedList 
                     elements={elementsWithTasks}
                     onTaskClick={setSelectedTaskId}
+                    onChecklistToggle={handleChecklistToggle}
                  />
                </div>
           )}

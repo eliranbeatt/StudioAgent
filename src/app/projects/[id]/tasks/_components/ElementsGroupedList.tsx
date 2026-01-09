@@ -10,9 +10,10 @@ type ElementsGroupedListProps = {
       tasks: Task[];
   }[];
   onTaskClick: (taskId: string) => void;
+  onChecklistToggle?: (taskId: string, itemId: string) => void;
 };
 
-export function ElementsGroupedList({ elements, onTaskClick }: ElementsGroupedListProps) {
+export function ElementsGroupedList({ elements, onTaskClick, onChecklistToggle }: ElementsGroupedListProps) {
   return (
     <div className="space-y-6">
       {elements.map((element) => (
@@ -60,7 +61,7 @@ export function ElementsGroupedList({ elements, onTaskClick }: ElementsGroupedLi
                           </span>
                         ) : null}
                       </div>
-                      {renderChecklistProgress(task)}
+                      {renderChecklistProgress(task, onChecklistToggle)}
                     </div>
                   </div>
                   <span className="text-xs text-gray-400 px-2 py-1 bg-gray-100 rounded">{task.status ?? "todo"}</span>
@@ -88,8 +89,13 @@ function formatDate(value: string) {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function renderChecklistProgress(task: Task) {
+function renderChecklistProgress(
+  task: Task,
+  onChecklistToggle?: (taskId: string, itemId: string) => void
+) {
   const checklist = task.checklist ?? [];
+  const sortedChecklist = [...checklist].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const previewChecklist = sortedChecklist.slice(0, 3);
   const done = checklist.filter((item) => item.done).length;
   const total = checklist.length;
   if (!total) return null;
@@ -101,6 +107,27 @@ function renderChecklistProgress(task: Task) {
       </div>
       <div className="mt-1 text-[10px] text-gray-400">
         Checklist {done}/{total}
+      </div>
+      <div className="mt-2 space-y-1">
+        {previewChecklist.map((item) => (
+          <label
+            key={item.id}
+            className="flex items-center gap-2 text-[10px] text-gray-600"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={item.done}
+              onChange={() => onChecklistToggle?.(task.id, item.id)}
+            />
+            <span className={item.done ? "line-through text-gray-400" : ""}>{item.title}</span>
+          </label>
+        ))}
+        {sortedChecklist.length > previewChecklist.length ? (
+          <div className="text-[10px] text-gray-400">
+            +{sortedChecklist.length - previewChecklist.length} more
+          </div>
+        ) : null}
       </div>
     </div>
   );
