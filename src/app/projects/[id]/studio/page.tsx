@@ -357,9 +357,10 @@ function MessageBubble({
   const align = isUser ? "items-end" : "items-start";
   const bubble = isUser ? "bg-black text-white" : "bg-white border border-gray-200 text-gray-800";
 
-  const normalized = normalizeStructuredMessage(message.text_he);
+  const normalized =
+    message.role === "assistant" ? normalizeStructuredMessage(message.text_he) : { text: message.text_he };
   const displayText = normalized.text ?? message.text_he;
-  const displayBlock = message.block ?? normalized.block;
+  const displayBlock = message.block ?? (message.role === "assistant" ? normalized.block : undefined);
 
   // Handle "Thinking..." state
   const isThinking = message.role === "assistant" && !displayText && !displayBlock;
@@ -429,8 +430,10 @@ function tryParseJson(text: string) {
 function isStructuredBlock(payload: any) {
   return (
     payload?.type === "ClarificationBlock" ||
+    payload?.type === "QuestionsBlock" ||
     payload?.type === "SuggestionBlock" ||
-    payload?.type === "ChangeSetBlock"
+    payload?.type === "ChangeSetBlock" ||
+    payload?.type === "PlanBlock"
   );
 }
 
@@ -511,6 +514,16 @@ function BlockRenderer({
       />
     );
   }
+  if (block.type === "QuestionsBlock") {
+    const normalizedBlock = normalizeQuestionsBlock(block);
+    return (
+      <ClarificationBlock
+        block={normalizedBlock}
+        onSubmit={(payload) => onClarificationSubmit("clarification_submitted", payload)}
+        disabled={disabled}
+      />
+    );
+  }
   if (block.type === "SuggestionBlock") {
     return (
       <SuggestionBlock
@@ -531,7 +544,27 @@ function BlockRenderer({
       />
     );
   }
+  if (block.type === "PlanBlock") {
+    return <PlanBlock block={block} />;
+  }
   return null;
+}
+
+function normalizeQuestionsBlock(block: any) {
+  if (!block || block.type !== "QuestionsBlock") return block;
+  return {
+    type: "ClarificationBlock",
+    title_he: block.title_he,
+    submitLabel_he: block.submitLabel_he,
+    questions: (block.questions ?? []).map((question: any) => ({
+      id: question.id,
+      text_he: question.question_he ?? question.text_he,
+      inputType: question.type ?? question.inputType ?? "text",
+      options_he: question.options_he,
+      placeholder_he: question.placeholder_he,
+      freeTextPrompt_he: question.freeTextPrompt_he,
+    })),
+  };
 }
 
 function ClarificationBlock({
@@ -589,7 +622,11 @@ function ClarificationBlock({
   };
 
   return (
-    <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div
+      className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+      dir="auto"
+      style={{ textAlign: "start" }}
+    >
       <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
       <div className="mt-3 space-y-4">
         {(block.questions ?? []).map((question: any) => {
@@ -686,7 +723,11 @@ function SuggestionBlock({
   };
 
   return (
-    <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div
+      className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+      dir="auto"
+      style={{ textAlign: "start" }}
+    >
       <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
       {block.subtitle_he ? <div className="text-xs text-gray-500 mt-1">{block.subtitle_he}</div> : null}
       <div className="mt-3 space-y-2">
@@ -696,7 +737,7 @@ function SuggestionBlock({
             <button
               key={item.id}
               onClick={() => toggle(item.id)}
-              className={`w-full rounded-xl border px-3 py-2 text-left text-xs transition ${active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white"
+              className={`w-full rounded-xl border px-3 py-2 text-start text-xs transition ${active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white"
                 }`}
             >
               <div className="font-semibold">{item.label_he}</div>
@@ -746,7 +787,11 @@ function ChangeSetBlock({
     : Object.entries(rawChanges).map(([key, value]) => ({ label: key, value }));
 
   return (
-    <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div
+      className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+      dir="auto"
+      style={{ textAlign: "start" }}
+    >
       <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
       {block.summary_he ? <div className="text-xs text-gray-500 mt-1">{block.summary_he}</div> : null}
       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
@@ -829,6 +874,35 @@ function ChangeSetBlock({
             Not saved to DB (view only)
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function PlanBlock({ block }: { block: any }) {
+  const tasks = block?.tasksSummary ?? {};
+  const bom = block?.bomSummary ?? {};
+  return (
+    <div
+      className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+      dir="auto"
+      style={{ textAlign: "start" }}
+    >
+      <div className="text-sm font-semibold text-gray-900">{block.title_he ?? "Plan"}</div>
+      {block.summary_he ? <div className="mt-1 text-xs text-gray-500">{block.summary_he}</div> : null}
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-gray-600">
+        <div className="rounded-md border border-gray-100 px-2 py-1">
+          <div className="font-semibold text-gray-700">Tasks</div>
+          <div>Count: {Number(tasks.taskCount ?? 0)}</div>
+          <div>Dates: {tasks.hasDates ? "Yes" : "No"}</div>
+          <div>Checklist: {tasks.hasChecklists ? "Yes" : "No"}</div>
+        </div>
+        <div className="rounded-md border border-gray-100 px-2 py-1">
+          <div className="font-semibold text-gray-700">BOM</div>
+          <div>Materials: {Number(bom.materialLines ?? 0)}</div>
+          <div>Labor: {Number(bom.laborLines ?? 0)}</div>
+          <div>Confidence: {Number(bom.confidenceAvg ?? 0).toFixed(2)}</div>
+        </div>
       </div>
     </div>
   );

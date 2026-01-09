@@ -60,6 +60,7 @@ function normalizeChecklist(list: any) {
       title: String(item.title),
       description: item.description ? String(item.description) : undefined,
       workType: normalizeWorkType(item.workType),
+      workTypeLabelHe: item.workTypeLabelHe ? String(item.workTypeLabelHe) : undefined,
       estimatedMinutes: Number.isFinite(item.estimatedMinutes)
         ? Number(item.estimatedMinutes)
         : undefined,
@@ -166,14 +167,16 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
   for (const op of cs.ops) {
     if (op.kind !== "element.create") continue;
     const { tempId, element, draft } = op.payload ?? {};
-    if (!element?.title) throw new Error("element.create requires element.title");
+
+    // Fallback to "Untitled Element" if title is missing
+    const elementTitle = element?.title || "Untitled Element";
 
     const elementId = await ctx.db.insert("elements", {
       projectId: cs.projectId,
-      title: element.title,
-      type: element.type ?? "build",
-      status: element.status ?? "drafting",
-      tags: Array.isArray(element.tags) ? element.tags : [],
+      title: elementTitle,
+      type: element?.type ?? "build",
+      status: element?.status ?? "drafting",
+      tags: Array.isArray(element?.tags) ? element.tags : [],
       rev: 1,
       hasUnapprovedChanges: true,
       createdAt: now,
@@ -292,19 +295,20 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (existingTask) {
       taskId = existingTask._id;
       await ctx.db.patch(taskId, {
-        description: fields?.description,
-        status: fields?.status,
-        priority: fields?.priority,
-        category: fields?.category,
-        startDate: fields?.startDate,
-        endDate: fields?.endDate,
-        estimatedMinutes: fields?.estimatedMinutes,
-        assignee: fields?.assignee,
+        description: toOptional(fields?.description),
+        status: toOptional(fields?.status),
+        priority: toOptional(fields?.priority),
+        category: toOptional(fields?.category),
+        startDate: toOptional(fields?.startDate),
+        endDate: toOptional(fields?.endDate),
+        estimatedMinutes: toOptional(fields?.estimatedMinutes),
+        assignee: toOptional(fields?.assignee),
         // New V3 fields
         stage: normalizeStage(fields?.stage),
         workType: normalizeWorkType(fields?.workType),
-        plannedStartDate: fields?.plannedStartDate,
-        plannedEndDate: fields?.plannedEndDate,
+        workTypeLabelHe: toOptional(fields?.workTypeLabelHe),
+        plannedStartDate: toOptional(fields?.plannedStartDate),
+        plannedEndDate: toOptional(fields?.plannedEndDate),
         checklist: normalizeChecklist(fields?.checklist),
         updatedAt: now,
       });
@@ -313,20 +317,21 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         projectId: cs.projectId,
         elementId,
         title,
-        description: fields?.description,
+        description: toOptional(fields?.description),
         status: fields?.status ?? "TODO",
-        priority: fields?.priority,
-        category: fields?.category,
-        startDate: fields?.startDate,
-        endDate: fields?.endDate,
-        estimatedMinutes: fields?.estimatedMinutes,
-        assignee: fields?.assignee,
+        priority: toOptional(fields?.priority),
+        category: toOptional(fields?.category),
+        startDate: toOptional(fields?.startDate),
+        endDate: toOptional(fields?.endDate),
+        estimatedMinutes: toOptional(fields?.estimatedMinutes),
+        assignee: toOptional(fields?.assignee),
         dependencies: undefined,
         // New V3 fields
         stage: normalizeStage(fields?.stage),
         workType: normalizeWorkType(fields?.workType),
-        plannedStartDate: fields?.plannedStartDate,
-        plannedEndDate: fields?.plannedEndDate,
+        workTypeLabelHe: toOptional(fields?.workTypeLabelHe),
+        plannedStartDate: toOptional(fields?.plannedStartDate),
+        plannedEndDate: toOptional(fields?.plannedEndDate),
         checklist: normalizeChecklist(fields?.checklist),
 
         createdFromChangeSetId: cs._id,
@@ -371,6 +376,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       const workTypeValue = toOptional(fields.workType);
       patch.workType = workTypeValue ? normalizeWorkType(workTypeValue) : workTypeValue;
     }
+    if ("workTypeLabelHe" in fields) patch.workTypeLabelHe = toOptional(fields.workTypeLabelHe);
     if ("dependencies" in fields) {
       patch.dependencies = Array.isArray(fields.dependencies)
         ? fields.dependencies.map((dep: any) => String(dep))
@@ -414,9 +420,14 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
     const taskId = resolveFromTemp(taskTempOrId, taskTempMap) ?? undefined;
     const type = fields.type ?? "other";
-    const resolvedVendorId =
+    const rawVendorId =
       resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
       fields.vendorId;
+
+    // Validate that 'rawVendorId' is actually a valid ID for 'vendors'
+    const resolvedVendorId = rawVendorId
+      ? ctx.db.normalizeId("vendors", rawVendorId)
+      : undefined;
 
     let existing = null;
     if (elementId) {
@@ -442,7 +453,8 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         unit: fields.unit === null ? undefined : fields.unit,
         unitCostEstimate: fields.unitCostEstimate === null ? undefined : fields.unitCostEstimate,
         wastePct: fields.wastePct === null ? undefined : fields.wastePct,
-        vendorId: fields.vendorId === null ? undefined : resolvedVendorId,
+        vendorId: resolvedVendorId ?? undefined,
+        vendorName: fields.vendorName === null ? undefined : fields.vendorName,
         vendorSku: fields.vendorSku === null ? undefined : fields.vendorSku,
         vendorUrl: fields.vendorUrl === null ? undefined : fields.vendorUrl,
         leadTimeDays: fields.leadTimeDays === null ? undefined : fields.leadTimeDays,
@@ -471,7 +483,8 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         unit: fields.unit === null ? undefined : fields.unit,
         unitCostEstimate: fields.unitCostEstimate === null ? undefined : fields.unitCostEstimate,
         wastePct: fields.wastePct === null ? undefined : fields.wastePct,
-        vendorId: fields.vendorId === null ? undefined : resolvedVendorId,
+        vendorId: resolvedVendorId ?? undefined,
+        vendorName: fields.vendorName === null ? undefined : fields.vendorName,
         vendorSku: fields.vendorSku === null ? undefined : fields.vendorSku,
         vendorUrl: fields.vendorUrl === null ? undefined : fields.vendorUrl,
         leadTimeDays: fields.leadTimeDays === null ? undefined : fields.leadTimeDays,
@@ -497,9 +510,14 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (!resolvedLineId) throw new Error("accountingLine.patch requires accountingLineId");
     if (!fields || typeof fields !== "object") continue;
 
-    const resolvedVendorId =
+    const rawVendorId =
       resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
       fields.vendorId;
+
+    // Validate ID
+    const resolvedVendorId = rawVendorId
+      ? ctx.db.normalizeId("vendors", rawVendorId)
+      : undefined;
 
     const patch: any = {};
     if ("title" in fields) patch.title = toOptional(fields.title);
@@ -516,6 +534,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if ("vendorId" in fields || "vendorTempOrId" in fields) {
       patch.vendorId = toOptional(resolvedVendorId);
     }
+    if ("vendorName" in fields) patch.vendorName = toOptional(fields.vendorName);
     if ("vendorSku" in fields) patch.vendorSku = toOptional(fields.vendorSku);
     if ("vendorUrl" in fields) patch.vendorUrl = toOptional(fields.vendorUrl);
     if ("leadTimeDays" in fields) patch.leadTimeDays = toOptional(fields.leadTimeDays);

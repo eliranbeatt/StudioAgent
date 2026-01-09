@@ -95,7 +95,7 @@ export default function AgentActivityDrawer({
   const normalizedMessages = useMemo(() => {
     if (!messages) return [];
     return messages.map((msg) => {
-      if (!msg.text_he) return msg;
+      if (msg.role !== "assistant" || !msg.text_he) return msg;
       const normalized = normalizeStructuredMessage(msg.text_he);
       if (!normalized.block && !normalized.text) return msg;
       return {
@@ -147,7 +147,7 @@ export default function AgentActivityDrawer({
   const activeBlockType = activeBlock?.type;
 
   const panelMode: Mode =
-    activeBlockType === "ClarificationBlock"
+    activeBlockType === "ClarificationBlock" || activeBlockType === "QuestionsBlock"
       ? "QUESTIONS"
       : activeBlockType === "SuggestionBlock" || activeBlockType === "ChangeSetBlock"
         ? "SUGGESTIONS"
@@ -451,7 +451,7 @@ export default function AgentActivityDrawer({
               <div className="flex-1 overflow-y-auto px-6 py-6">
                 {panelMode === "QUESTIONS" && activeBlock ? (
                   <ClarificationPanel
-                    block={activeBlock}
+                    block={normalizeQuestionsBlock(activeBlock)}
                     disabled={isWaiting}
                     onSubmit={(payload) => handleEventSubmit("clarification_submitted", payload)}
                   />
@@ -481,7 +481,7 @@ export default function AgentActivityDrawer({
                       <div className="text-xs text-gray-400">No messages yet.</div>
                     ) : (
                       activeMessages.map((msg) => (
-                        <div key={msg._id} className="text-xs">
+                        <div key={msg._id} className="text-xs space-y-2">
                           <div className="text-[10px] uppercase tracking-wide text-gray-400">
                             {msg.role === "user" ? "You" : "Agent"}
                           </div>
@@ -495,6 +495,7 @@ export default function AgentActivityDrawer({
                         >
                           {msg.text_he ?? "..."}
                         </div>
+                        {msg.block?.type === "PlanBlock" ? <PlanBlockCard block={msg.block} /> : null}
                       </div>
                     ))
                     )}
@@ -803,8 +804,10 @@ function tryParseJson(text: string) {
 function isStructuredBlock(payload: any) {
   return (
     payload?.type === "ClarificationBlock" ||
+    payload?.type === "QuestionsBlock" ||
     payload?.type === "SuggestionBlock" ||
-    payload?.type === "ChangeSetBlock"
+    payload?.type === "ChangeSetBlock" ||
+    payload?.type === "PlanBlock"
   );
 }
 
@@ -831,6 +834,23 @@ function normalizeStructuredMessage(text?: string) {
   return {
     text: parsedText ?? fenced?.textPart ?? text,
     block,
+  };
+}
+
+function normalizeQuestionsBlock(block: any) {
+  if (!block || block.type !== "QuestionsBlock") return block;
+  return {
+    type: "ClarificationBlock",
+    title_he: block.title_he,
+    submitLabel_he: block.submitLabel_he,
+    questions: (block.questions ?? []).map((question: any) => ({
+      id: question.id,
+      text_he: question.question_he ?? question.text_he,
+      inputType: question.type ?? question.inputType ?? "text",
+      options_he: question.options_he,
+      placeholder_he: question.placeholder_he,
+      freeTextPrompt_he: question.freeTextPrompt_he,
+    })),
   };
 }
 
@@ -880,7 +900,11 @@ function ClarificationPanel({
   };
 
   return (
-    <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+    <div
+      className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm"
+      dir="auto"
+      style={{ textAlign: "start" }}
+    >
       <div className="text-xs font-semibold text-gray-900">
         {block.title_he ?? "Questions"}
       </div>
@@ -980,7 +1004,11 @@ function SuggestionReviewPanel({
   };
 
   return (
-    <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm space-y-3">
+    <div
+      className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm space-y-3"
+      dir="auto"
+      style={{ textAlign: "start" }}
+    >
       <div>
         <div className="text-xs font-semibold text-gray-900">
           {block.title_he ?? "Suggestion Review"}
@@ -1007,7 +1035,7 @@ function SuggestionReviewPanel({
             <button
               key={item.id}
               onClick={() => toggle(item.id)}
-              className={`w-full rounded-lg border px-3 py-2 text-left text-[11px] transition ${active
+              className={`w-full rounded-lg border px-3 py-2 text-start text-[11px] transition ${active
                 ? "border-blue-500 bg-blue-600 text-white"
                 : "border-blue-200 bg-white"
                 }`}
@@ -1064,7 +1092,11 @@ function ChangeSetReviewPanel({
   const diff = block.diffPreview_he ?? {};
 
   return (
-    <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+    <div
+      className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm"
+      dir="auto"
+      style={{ textAlign: "start" }}
+    >
       <div className="text-xs font-semibold text-gray-900">{block.title_he ?? "ChangeSet"}</div>
       {block.summary_he ? <div className="text-[11px] text-gray-500 mt-1">{block.summary_he}</div> : null}
       <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-gray-500">
@@ -1122,6 +1154,35 @@ function ChangeSetReviewPanel({
         >
           {block.actions?.find((action: any) => action.id === "discard")?.label_he ?? "Discard"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function PlanBlockCard({ block }: { block: any }) {
+  const tasks = block?.tasksSummary ?? {};
+  const bom = block?.bomSummary ?? {};
+  return (
+    <div
+      className="rounded-lg border border-blue-200 bg-white p-3 text-[11px]"
+      dir="auto"
+      style={{ textAlign: "start" }}
+    >
+      <div className="font-semibold text-gray-900">{block.title_he ?? "Plan"}</div>
+      {block.summary_he ? <div className="mt-1 text-gray-500">{block.summary_he}</div> : null}
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-gray-600">
+        <div className="rounded-md border border-blue-100 px-2 py-1">
+          <div className="font-semibold text-gray-700">Tasks</div>
+          <div>Count: {Number(tasks.taskCount ?? 0)}</div>
+          <div>Dates: {tasks.hasDates ? "Yes" : "No"}</div>
+          <div>Checklist: {tasks.hasChecklists ? "Yes" : "No"}</div>
+        </div>
+        <div className="rounded-md border border-blue-100 px-2 py-1">
+          <div className="font-semibold text-gray-700">BOM</div>
+          <div>Materials: {Number(bom.materialLines ?? 0)}</div>
+          <div>Labor: {Number(bom.laborLines ?? 0)}</div>
+          <div>Confidence: {Number(bom.confidenceAvg ?? 0).toFixed(2)}</div>
+        </div>
       </div>
     </div>
   );

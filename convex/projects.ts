@@ -5,13 +5,16 @@ import { api } from "./_generated/api";
 
 export const create = mutation({
   args: {
-    name: v.string(),
+    name: v.optional(v.string()),
     clientName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    // Default name format: "YYYY-MM-DD HH:mm"
+    const fallbackName = new Date(now).toISOString().replace("T", " ").substring(0, 16);
+
     const projectId = await ctx.db.insert("projects", {
-      name: args.name,
+      name: args.name ?? fallbackName,
       clientName: args.clientName,
       status: "active",
       currency: "NIS",
@@ -84,7 +87,7 @@ export const getOverview = query({
         return null;
       }
     }
-    
+
     // Now treat projectId as project ID (it might still be the original ID if normalization failed/matched project)
     // To be safe, force cast or just use it. 
     // If original was project ID, asAnswer is null (if table names differ).
@@ -233,6 +236,7 @@ export const getPrintPartsForElements = query({
 export const updateProjectDetails = mutation({
   args: {
     id: v.id("projects"),
+    name: v.optional(v.string()),
     description: v.optional(v.string()),
     projectTypes: v.optional(v.array(v.string())),
     details: v.optional(
@@ -251,6 +255,7 @@ export const updateProjectDetails = mutation({
     }
 
     const updates: Record<string, any> = { updatedAt: Date.now() };
+    if (args.name !== undefined) updates.name = args.name;
     if (args.description !== undefined) updates.description = args.description;
     if (args.projectTypes !== undefined) updates.projectTypes = args.projectTypes;
     if (args.details !== undefined) {
@@ -340,10 +345,10 @@ export const listLinkedProjects = query({
         },
         digest: digest
           ? {
-              summary: digest.summary,
-              keyElements: digest.keyElements ?? [],
-              fileHighlights: digest.fileHighlights ?? [],
-            }
+            summary: digest.summary,
+            keyElements: digest.keyElements ?? [],
+            fileHighlights: digest.fileHighlights ?? [],
+          }
           : null,
       });
     }

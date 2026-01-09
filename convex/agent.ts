@@ -3,15 +3,20 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import OpenAI from "openai";
 
-const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV3";
+const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV4_1";
 
 const SYSTEM_PROMPT = `You are an AI studio producer for "Emlly Studio" in Tel Aviv (set design + fabrication + installs + rentals + printing).
-Your outputs must be practical (buildable, priceable, installable) — not demo-level.
-You work inside a Product Console with Projects → Elements → Tasks → Accounting → Purchases/Receipts.
+Your outputs must be practical (buildable, priceable, installable) - not demo-level.
+You work inside a Product Console with Projects + Elements + Tasks + Accounting + Purchases/Receipts.
+
+Language policy (STRICT):
+- Instructions in English.
+- All user-facing prose must be in Hebrew (except product/brand names, material codes/specs, tool model numbers, file names, URLs, and JSON keys).
+- Never print internal enum keys (e.g., "printing_graphics") in prose; use Hebrew labels.
 
 Hard rules:
 1. No generic tasks. Every task must be executable and tool-aware.
-2. Always cover the full lifecycle when relevant: build → finish → pack → transport → install → teardown/returns.
+2. Always cover the full lifecycle when relevant: build + finish + pack + transport + install + teardown/returns.
 3. Time estimates are required (minutes or hours) and must be consistent with the checklist.
 4. Dependencies are required when a task cannot start without another.
 5. Dates must not be invented. Use known anchors (install date / shoot date / delivery date). If missing, ask one compact question block or leave dates null.
@@ -19,17 +24,18 @@ Hard rules:
 7. When the deliverable leaves the studio (mall / set / event), create:
    - a Transport element (or tasks under a transport workstream),
    - an Install element,
-   - a Teardown/Returns element.`;
+   - a Teardown/Returns element.
+8. Always set workType + workTypeLabelHe on tasks, and on checklist items when relevant.`;
 
 const DEVELOPER_PROMPT = `
 Output format:
 1. First, write your response in Hebrew (plain text).
-2. Then, if you need to provide a structured block (Clarification, Suggestion, or ChangeSet), output it inside a JSON code block.
+2. Then, if you need to provide a structured block, output it inside a JSON code block.
 
 Example:
-הנה התשובה שלי...
+????? ??????...
 \`\`\`json
-{ "type": "ClarificationBlock", ... }
+{ "type": "QuestionsBlock", ... }
 \`\`\`
 
 Only ONE block per turn.
@@ -40,14 +46,21 @@ Mode is one of: CHAT | QUESTIONS | SUGGESTIONS (hint only).
 Next-best-action policy (choose exactly one): ANSWER | ASK | SUGGEST | PROPOSE_CHANGESET.
 Anti-bloat: if you are about to output > 12 bullets, stop and choose a smaller next step.
 
-## Block schemas
-Use the same block schemas as V1/V2 with V3 field upgrades.
-
-ClarificationBlock:
+## Block schemas (preferred)
+QuestionsBlock:
 {
-  "type": "ClarificationBlock",
+  "type": "QuestionsBlock",
   "title_he": "...",
-  "questions": [ { "id": "...", "text_he": "...", "inputType": "..." } ]
+  "questions": [ { "id": "...", "question_he": "...", "type": "text|date|number|single|multi|toggle" } ]
+}
+
+PlanBlock:
+{
+  "type": "PlanBlock",
+  "title_he": "...",
+  "summary_he": "...",
+  "tasksSummary": { "taskCount": 0, "hasDates": true, "hasChecklists": true },
+  "bomSummary": { "materialLines": 0, "laborLines": 0, "confidenceAvg": 0.0 }
 }
 
 SuggestionBlock:
@@ -72,6 +85,13 @@ ChangeSetBlock:
   "actions": [ { "id": "apply", "label_he": "..." }, { "id": "discard", "label_he": "..." } ]
 }
 
+Legacy ClarificationBlock (still supported):
+{
+  "type": "ClarificationBlock",
+  "title_he": "...",
+  "questions": [ { "id": "...", "text_he": "...", "inputType": "..." } ]
+}
+
 Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
 
 1. task.create payload:
@@ -83,12 +103,13 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     "description": "...",
     "stage": "build"|"install"|"...",
     "workType": "fabrication_metal"|"printing_graphics"|"...",
+    "workTypeLabelHe": "...",
     "plannedStartDate": "YYYY-MM-DD",
     "plannedEndDate": "YYYY-MM-DD",
     "estimatedMinutes": 180,
     "dependencies": ["taskIdA", "taskIdB"],
     "checklist": [
-      { "id":"c1","title":"...","order":0,"done":false,"estimatedMinutes":30 }
+      { "id":"c1","title":"...","order":0,"done":false,"estimatedMinutes":30,"workType":"...","workTypeLabelHe":"..." }
     ]
   }
 }
@@ -101,12 +122,13 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
       "description": "...",
       "stage": "build"|"install"|"...",
       "workType": "fabrication_metal"|"printing_graphics"|"...",
+      "workTypeLabelHe": "...",
       "plannedStartDate": "YYYY-MM-DD",
       "plannedEndDate": "YYYY-MM-DD",
       "estimatedMinutes": 180,
       "dependencies": ["taskIdA", "taskIdB"],
       "checklist": [
-        { "id":"c1","title":"...","order":0,"done":false,"estimatedMinutes":30 }
+        { "id":"c1","title":"...","order":0,"done":false,"estimatedMinutes":30,"workType":"...","workTypeLabelHe":"..." }
       ]
     }
   }
@@ -125,6 +147,7 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
       "unitCostEstimate": 18,
       "vendorId": "...",
       "vendorTempOrId": "...",
+      "vendorName": "...",
       "leadTimeDays": 2,
       "source": "estimate",
       "confidence": 0.55,
@@ -144,6 +167,7 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
       "unitCostEstimate": 18,
       "vendorId": "...",
       "vendorTempOrId": "...",
+      "vendorName": "...",
       "leadTimeDays": 2,
       "source": "estimate",
       "confidence": 0.55,
@@ -154,7 +178,7 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
   
   5. element.create / element.patch / vendor.create / purchase.create (standard)`;
 
-const STAGE_MODULES: Record<string, string> = {
+: Record<string, string> = {
   IDEATION: `Stage = IDEATION. Objective: Turn brief into 5–10 feasible element ideas. Rough budget + lead time range + key risks.
   V3 addition: Identify major workstreams early (Metal? Print? Rent?).`,
 
@@ -174,7 +198,7 @@ const STAGE_MODULES: Record<string, string> = {
 
 const MODE_NUDGES: Record<string, string> = {
   CHAT: "Mode = CHAT. Default to plain text unless a block is clearly better.",
-  QUESTIONS: "Mode = QUESTIONS. Prefer a ClarificationBlock if blocked.",
+  QUESTIONS: "Mode = QUESTIONS. Prefer a QuestionsBlock if blocked.",
   SUGGESTIONS: "Mode = SUGGESTIONS. Prefer a SuggestionBlock early.",
 };
 
@@ -195,17 +219,17 @@ function normalizeMode(mode?: string): "CHAT" | "QUESTIONS" | "SUGGESTIONS" {
 }
 
 function safeParseAgentResponse(raw: string) {
-  // New format: Text then optional ```json ... ```
+  // New format: Text then optional ```json ... ``` (or ``` ... ```)
   try {
-    const jsonStart = raw.indexOf("```json");
-    if (jsonStart === -1) {
+    const blockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (!blockMatch) {
       // No block, just text
       return { assistantText_he: raw.trim(), block: null };
     }
 
-    const textPart = raw.substring(0, jsonStart).trim();
-    const jsonPart = raw.substring(jsonStart).replace(/```json\s*/, "").replace(/```\s*$/, "");
-    
+    const textPart = raw.slice(0, blockMatch.index ?? 0).trim();
+    const jsonPart = blockMatch[1]?.trim() ?? "";
+
     let block = null;
     try {
       const parsed = JSON.parse(jsonPart);

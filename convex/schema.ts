@@ -44,6 +44,7 @@ const TaskChecklistItem = v.object({
   title: v.string(),
   description: v.optional(v.string()),
   workType: v.optional(StudioWorkType),
+  workTypeLabelHe: v.optional(v.string()),
   estimatedMinutes: v.optional(v.number()),
   order: v.number(),
   done: v.boolean(),
@@ -183,6 +184,7 @@ export default defineSchema({
       v.literal("accounting")
     )),
     workType: v.optional(StudioWorkType),
+    workTypeLabelHe: v.optional(v.string()),
     plannedStartDate: v.optional(v.string()), // "YYYY-MM-DD"
     plannedEndDate: v.optional(v.string()),
     checklist: v.optional(v.array(TaskChecklistItem)),
@@ -268,6 +270,7 @@ export default defineSchema({
     unitCostEstimate: v.optional(v.number()),
     wastePct: v.optional(v.number()),
     vendorId: v.optional(v.id("vendors")),
+    vendorName: v.optional(v.string()),
     vendorSku: v.optional(v.string()),
     vendorUrl: v.optional(v.string()),
     leadTimeDays: v.optional(v.number()),
