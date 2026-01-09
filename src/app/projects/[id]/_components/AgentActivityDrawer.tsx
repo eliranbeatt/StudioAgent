@@ -1142,14 +1142,14 @@ function ChangeSetReviewPanel({
       <div className="mt-4 flex gap-2">
         <button
           onClick={() => onApply(changeSetId)}
-          disabled={disabled}
+          disabled={disabled || !changeSetId}
           className="flex-1 rounded-md bg-green-600 px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-50"
         >
           {block.actions?.find((action: any) => action.id === "apply")?.label_he ?? "Approve"}
         </button>
         <button
           onClick={() => onDiscard(changeSetId)}
-          disabled={disabled}
+          disabled={disabled || !changeSetId}
           className="flex-1 rounded-md border border-blue-200 px-3 py-2 text-[11px] font-semibold text-gray-600 disabled:opacity-50"
         >
           {block.actions?.find((action: any) => action.id === "discard")?.label_he ?? "Discard"}

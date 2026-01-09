@@ -383,7 +383,7 @@ function MessageBubble({
           <RichTextRenderer text={displayText} />
         </div>
       ) : null}
-      
+
       {displayBlock ? (
         <BlockRenderer
           block={displayBlock}
@@ -782,8 +782,8 @@ function ChangeSetBlock({
   const diff = block.diffPreview_he ?? {};
 
   // Normalize changes to array of { label, value }
-  const changesList = Array.isArray(rawChanges) 
-    ? rawChanges 
+  const changesList = Array.isArray(rawChanges)
+    ? rawChanges
     : Object.entries(rawChanges).map(([key, value]) => ({ label: key, value }));
   const formatChangeValue = (value: unknown) => {
     if (value === null || value === undefined) return "";
@@ -803,7 +803,7 @@ function ChangeSetBlock({
 
   return (
     <div
-      className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+      className="relative max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
       dir="auto"
       style={{ textAlign: "start" }}
     >

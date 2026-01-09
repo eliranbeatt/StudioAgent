@@ -275,7 +275,7 @@ function normalizeMode(mode?: string): "CHAT" | "QUESTIONS" | "SUGGESTIONS" {
 function safeParseAgentResponse(raw: string) {
   // New format: Text then optional ```json ... ``` (or ``` ... ```)
   try {
-    const blockMatch = raw.match(/```(?: json) ?\s * ([\s\S] *?) \s * ```/i);
+    const blockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
     if (!blockMatch) {
       // No block, just text
       return { assistantText_he: raw.trim(), block: null };
@@ -644,25 +644,75 @@ export const agentRespond = action({
           console.warn("Invalid field names in proposed ChangeSet:", invalidOriginal.slice(0, 50));
         }
 
-        const sanitizedOps = sanitizeForConvex(proposed.ops ?? []);
+        // Ensure ops is an array
+        let opsPayload = sanitizeForConvex(proposed.ops ?? []);
+        if (!Array.isArray(opsPayload)) {
+          if (opsPayload && typeof opsPayload === "object") opsPayload = [opsPayload];
+          else opsPayload = [];
+        }
+
+        // Deep normalization of ops to ensure { kind, payload } structure
+        opsPayload = opsPayload
+          .map((op: any) => {
+            if (!op || typeof op !== "object") return null;
+
+            let kind = op.kind;
+            let payload = op.payload;
+
+            // 1. Fallback: 'type' instead of 'kind'
+            if (!kind && op.type && typeof op.type === "string") {
+              kind = op.type;
+            }
+
+            // 2. Fallback: Single-key object pattern e.g. { "task.create": { ... } }
+            if (!kind) {
+              const keys = Object.keys(op).filter((k) => k !== "_invalidFields");
+              if (keys.length === 1) {
+                const potentialKind = keys[0];
+                if (typeof op[potentialKind] === "object") {
+                  kind = potentialKind;
+                  payload = op[potentialKind];
+                }
+              }
+            }
+
+            if (typeof kind !== "string") return null; // Drop if we still can't find a string kind
+
+            return {
+              kind,
+              payload: payload ?? {},
+            };
+          })
+          .filter((op: any) => op !== null);
+
         const sanitizedBase = sanitizeForConvex(proposed.base);
-        const invalidSanitized = findInvalidFieldNames({ ops: sanitizedOps, base: sanitizedBase });
+        const invalidSanitized = findInvalidFieldNames({ ops: opsPayload, base: sanitizedBase });
 
         if (invalidSanitized.length > 0) {
           console.error("Sanitized ChangeSet still has invalid fields:", invalidSanitized.slice(0, 50));
         } else {
-          changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
-            projectId: conversation.projectId,
-            stage,
-            ops: sanitizedOps,
-            reason_he: proposed.reason_he,
-            base: sanitizedBase,
-          });
+          try {
+            changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+              projectId: conversation.projectId,
+              stage,
+              ops: opsPayload,
+              reason_he: proposed.reason_he || undefined, // undefined if null/empty
+              preview_he: proposed.preview_he || undefined,
+              base: sanitizedBase,
+            });
+          } catch (createError: any) {
+            console.error("Failed to CREATE ChangeSet mutation:", createError);
+            console.error("Proposed Reason:", proposed.reason_he);
+            console.error("Ops count:", opsPayload.length);
+            // Re-throw or handle? If we re-throw, the message won't be saved?
+            // Existing logic swallows it. Let's keep swallowing but log better.
+          }
         }
+
         const { proposedChangeSet, ...rest } = block;
         block = { ...rest };
       } catch (e) {
-        console.error("Failed to create ChangeSet:", e);
+        console.error("Failed to process ChangeSet block:", e);
       }
     }
 
