@@ -18,30 +18,13 @@ const draftStatus = v.union(
 );
 
 const StudioWorkType = v.union(
-  v.literal("planning_production"),
-  v.literal("design_art_direction"),
-  v.literal("procurement_pickups"),
-  v.literal("vendor_management"),
-  v.literal("fabrication_metal"),
-  v.literal("fabrication_carpentry"),
-  v.literal("fabrication_foam"),
-  v.literal("fabrication_paint_finish"),
-  v.literal("fabrication_sewing_softgoods"),
-  v.literal("fabrication_assembly"),
-  v.literal("printing_graphics"),
-  v.literal("electrical_lighting"),
-  v.literal("rigging_hanging"),
-  v.literal("qa_safety"),
-  v.literal("packing_crating"),
-  v.literal("transport_logistics"),
-  v.literal("install_on_site"),
-  v.literal("teardown_returns"),
-  v.literal("accounting_admin"),
   v.literal("carpentry"),
   v.literal("metal_fab"),
   v.literal("paint_finish"),
+  v.literal("printing_graphics"),
   v.literal("props_sculpt"),
   v.literal("rigging_install"),
+  v.literal("transport_logistics"),
   v.literal("purchasing"),
   v.literal("management")
 );
@@ -53,14 +36,14 @@ const TaskChecklistItem = v.object({
   workType: v.optional(StudioWorkType),
   workTypeLabelHe: v.optional(v.string()),
   estimatedMinutes: v.optional(v.number()),
-  order: v.number(),
-  done: v.boolean(),
+  order: v.optional(v.number()),
+  done: v.optional(v.boolean()),
   dependsOnItemIds: v.optional(v.array(v.string())),
 });
 
 const TaskAccountingLink = v.object({
   lineType: v.union(v.literal("material"), v.literal("work")),
-  lineId: v.union(v.id("materialLines"), v.id("workLines")),
+  lineId: v.string(),
   relation: v.optional(v.union(v.literal("primary"), v.literal("supporting"))),
   note: v.optional(v.string()),
 });
@@ -201,6 +184,7 @@ export default defineSchema({
     workTypeLabelHe: v.optional(v.string()),
     plannedStartDate: v.optional(v.string()), // "YYYY-MM-DD"
     plannedEndDate: v.optional(v.string()),
+    durationBucket: v.optional(v.union(v.literal("small"), v.literal("large"))),
     checklist: v.optional(v.array(TaskChecklistItem)),
     accountingLinks: v.optional(v.array(TaskAccountingLink)),
 
@@ -271,6 +255,9 @@ export default defineSchema({
     projectId: v.id("projects"),
     elementId: v.optional(v.id("elements")),
     taskId: v.optional(v.id("tasks")),
+    sectionId: v.optional(v.id("accountingSections")),
+    sectionKey: v.optional(v.string()),
+    sectionLabelHe: v.optional(v.string()),
     type: v.union(v.literal("material"), v.literal("labor"), v.literal("subcontract"), v.literal("other")),
     title: v.string(),
     qty: v.optional(v.number()),
@@ -305,16 +292,44 @@ export default defineSchema({
     .index("by_element", ["elementId"])
     .index("by_task", ["taskId"]),
 
+  // Accounting Sections (canonical keys for routing)
+  accountingSections: defineTable({
+    projectId: v.id("projects"),
+    key: v.string(),
+    labelHe: v.string(),
+    sortOrder: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "key"]),
+
   // Material Lines (linked to tasks)
   materialLines: defineTable({
     projectId: v.id("projects"),
     elementId: v.optional(v.id("elements")),
     taskId: v.optional(v.id("tasks")),
+    sectionId: v.optional(v.id("accountingSections")),
+    sectionKey: v.optional(v.string()),
+    sectionLabelHe: v.optional(v.string()),
     workType: v.optional(StudioWorkType),
     workTypeLabelHe: v.optional(v.string()),
     itemName: v.optional(v.string()),
     spec: v.optional(v.string()),
     quantity: v.optional(v.number()),
+    unitCode: v.optional(
+      v.union(
+        v.literal("ea"),
+        v.literal("m"),
+        v.literal("sqm"),
+        v.literal("kg"),
+        v.literal("l"),
+        v.literal("set"),
+        v.literal("box"),
+        v.literal("roll")
+      )
+    ),
+    unitLabelHe: v.optional(v.string()),
     unit: v.optional(v.string()),
     wastePct: v.optional(v.number()),
     plannedUnitCost: v.optional(v.number()),
@@ -322,8 +337,26 @@ export default defineSchema({
     vendorId: v.optional(v.id("vendors")),
     vendorName: v.optional(v.string()),
     leadTimeDays: v.optional(v.number()),
+    procurementCode: v.optional(
+      v.union(
+        v.literal("in_stock"),
+        v.literal("local_buy"),
+        v.literal("import"),
+        v.literal("rental")
+      )
+    ),
+    procurementLabelHe: v.optional(v.string()),
     procurement: v.optional(v.string()),
     notes: v.optional(v.string()),
+    sourceCode: v.optional(
+      v.union(
+        v.literal("agent_estimate"),
+        v.literal("vendor_quote"),
+        v.literal("invoice"),
+        v.literal("manual")
+      )
+    ),
+    sourceLabelHe: v.optional(v.string()),
     source: v.optional(v.string()),
     confidence: v.optional(v.number()),
     checklistItemId: v.optional(v.string()),
@@ -339,9 +372,16 @@ export default defineSchema({
     projectId: v.id("projects"),
     elementId: v.optional(v.id("elements")),
     taskId: v.optional(v.id("tasks")),
+    sectionId: v.optional(v.id("accountingSections")),
+    sectionKey: v.optional(v.string()),
+    sectionLabelHe: v.optional(v.string()),
     workType: v.optional(StudioWorkType),
     workTypeLabelHe: v.optional(v.string()),
     roleHe: v.optional(v.string()),
+    rateTypeCode: v.optional(
+      v.union(v.literal("hour"), v.literal("day"), v.literal("flat"))
+    ),
+    rateTypeLabelHe: v.optional(v.string()),
     rateType: v.optional(v.string()),
     crewSize: v.optional(v.number()),
     plannedQuantity: v.optional(v.number()),
@@ -349,6 +389,15 @@ export default defineSchema({
     plannedTotalCost: v.optional(v.number()),
     isManagement: v.optional(v.boolean()),
     notes: v.optional(v.string()),
+    sourceCode: v.optional(
+      v.union(
+        v.literal("agent_estimate"),
+        v.literal("vendor_quote"),
+        v.literal("invoice"),
+        v.literal("manual")
+      )
+    ),
+    sourceLabelHe: v.optional(v.string()),
     source: v.optional(v.string()),
     confidence: v.optional(v.number()),
     createdFromChangeSetId: v.optional(v.id("changeSets")),
@@ -483,8 +532,6 @@ export default defineSchema({
   })
     .index("by_baseline", ["baselineId"]),
 
-
-
   // Change Sets (Refactored)
   changeSets: defineTable({
     projectId: v.id("projects"),
@@ -493,12 +540,7 @@ export default defineSchema({
     reason_he: v.optional(v.string()),
 
     // Conflict control
-    base: v.optional(v.object({
-      elements: v.optional(v.array(v.object({
-        elementId: v.id("elements"),
-        rev: v.number(),
-      }))),
-    })),
+    base: v.optional(v.any()),
 
     // The ops list
     ops: v.array(v.object({
@@ -507,13 +549,7 @@ export default defineSchema({
     })),
 
     // UI preview strings
-    preview_he: v.optional(v.object({
-      elements: v.optional(v.array(v.string())),
-      tasks: v.optional(v.array(v.string())),
-      accounting: v.optional(v.array(v.string())),
-      printing: v.optional(v.array(v.string())),
-      purchases: v.optional(v.array(v.string())),
-    })),
+    preview_he: v.optional(v.any()),
 
     schemaVersion: v.optional(v.number()),
 

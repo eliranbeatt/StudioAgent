@@ -174,12 +174,17 @@ export const listForProject = query({
                 name: l.itemName ?? "",
                 qty: l.quantity ?? 0,
                 unitCost: l.plannedUnitCost ?? 0,
+                sectionKey: l.sectionKey,
+                sectionLabelHe: l.sectionLabelHe,
             }));
             const labor = workLines.map(l => ({
                 id: l._id,
                 role: l.roleHe ?? "",
                 qty: l.plannedQuantity ?? 0,
                 rate: l.plannedUnitCost ?? 0,
+                isManagement: l.isManagement ?? false,
+                sectionKey: l.sectionKey,
+                sectionLabelHe: l.sectionLabelHe,
             }));
 
             const revision = revisionByTaskId.get(task._id);

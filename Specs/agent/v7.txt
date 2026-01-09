@@ -1,0 +1,467 @@
+You’re right — we drifted way past the minimal, high-value changes you asked for, and we broke the contract between **schema ↔ changeset ↔ prompts**.
+
+Also: the exact failure you described (“agent outputs accounting lines as **חומרים / עבודה**, and the ChangeSet doesn’t know how to route them”) is a **type normalization / routing bug** in the ChangeSet layer, plus a prompt bug (it’s emitting Hebrew *type values* where the backend expects canonical codes).
+
+I can’t “analyze all uploaded files” in the strict sense right now because my file tools are erroring in this session (they’re returning `ClientResponseError`), so I can’t open `schema.ts`, `changeSets.ts`, `agent.ts`, etc. I’m not going to pretend I did.
+What I *can* do (and what will actually fix you fastest) is:
+
+1. **reset to the v4 approach** (depth + domain),
+2. introduce a **single, explicit contract** that all components follow, and
+3. add a **ChangeSet normalizer shim** that accepts Hebrew user terms (values) but always routes using English canonical codes.
+
+Below are the “end files” as copy-pasteable code blocks. You’ll drop them into your repo and then make small mechanical edits to match your actual table/op names.
+
+---
+
+## File 1 — `EmllyStudio_Contract_v1.md`
+
+This is the missing glue: canonical codes + routing rules + invariants.
+
+```md
+# Emlly Studio — Canonical Contract (Schema ↔ ChangeSet ↔ Agent)
+**Non-negotiables**
+- JSON KEYS (field names, op names) MUST be English ASCII.
+- User-facing text VALUES MUST be Hebrew (unless brand/spec/SKU/URL).
+- The ChangeSet layer MUST normalize Hebrew labels to canonical codes.
+
+---
+
+## 1) Canonical line types (what the backend routes on)
+
+### lineType (CANONICAL — in JSON)
+- "material"
+- "work"
+
+### Accepted synonyms (INPUT — agent might produce, backend MUST normalize)
+**materials → "material"**
+- "material", "materials", "חומר", "חומרים", "חומרי גלם"
+
+**labor → "work"**
+- "work", "labor", "עבודה", "עבודות", "כוח אדם"
+
+---
+
+## 2) Canonical accounting sections (recommended)
+Agent should send `sectionKey` (English), plus `sectionLabelHe` (Hebrew).  
+Backend resolves/creates sectionId by key.
+
+Common sectionKey values:
+- materials
+- labor_direct
+- labor_install
+- transport
+- install
+- teardown_returns
+- rental
+- printing_graphics
+- hardware_consumables
+- meals
+- management_overhead
+- misc
+
+Backend rule:
+- If sectionId is missing but sectionKey exists → resolve/create.
+- If neither exists → put in "misc" (not "other" as a black hole).
+
+---
+
+## 3) Task ↔ accounting connection (required behavior)
+**Minimum viable (no schema changes required):**
+- Every accounting line includes `taskId` when it belongs to a task.
+- Tasks UI shows linked costs by querying lines where `taskId == task._id`.
+
+**Optional enhancement:**
+- task.accountingLinks[] contains line references (lineType + lineId).  
+  Not required if you already query by taskId.
+
+---
+
+## 4) Management rule (do not break)
+- Work line with isManagement=true is visible but excluded from direct labor sums.
+- Same for task.isManagement if you have it.
+
+---
+
+## 5) Scheduling rule
+- Keys are English: plannedStartDate / plannedEndDate.
+- Values are ISO strings "YYYY-MM-DD".
+- Agent sets dates ONLY if an anchor exists (install / delivery / shoot date).
+
+---
+
+## 6) Task sizing contract
+- Small tasks: 1–4 hours
+- Large tasks: ½–2 days
+- Checklist items break down atomic steps accordingly.
+```
+
+---
+
+## File 2 — `EmllyStudio_AgentPrompts_v7.md`
+
+This is “v4 depth” again — but corrected: **English instructions**, **Hebrew replies**, **English JSON keys**, and **canonical codes**.
+
+````md
+# Emlly Studio — Agent Prompts v7 (Deep, v4-style, Contract-safe)
+
+## A) System / Global Prompt (EN instructions)
+You are the StudioOps agent for **Emlly Studio (אם-לי)**.
+Your job is to turn project intent into **practical studio execution**:
+- Tasks that real crew can follow
+- Correct cost lines (materials + labor)
+- Correct routing in accounting
+- Correct completeness (transport/install/teardown/packaging/safety/food/etc.)
+- Output is bilingual by layer:
+  - Human summary in Hebrew
+  - Machine ChangeSet JSON with English ASCII keys ONLY
+
+### Hard rules (do not violate)
+1) JSON keys MUST be English ASCII. Never output Hebrew keys.
+2) User-facing text VALUES MUST be Hebrew:
+   - task titles/descriptions
+   - checklist items
+   - notes
+   - sectionLabelHe, roleHe, workTypeLabelHe
+3) Allowed English inside values ONLY for brand/spec/SKU/URLs/files.
+4) Accounting routing uses canonical codes:
+   - lineType: "material" | "work"   (never "חומרים"/"עבודה" in the payload)
+   - sectionKey: English stable key
+   - sectionLabelHe: Hebrew label for UI
+5) If a deliverable leaves the studio (mall/store/event/site) you MUST include:
+   - אריזה/הגנות
+   - הובלה/לוגיסטיקה
+   - התקנה בשטח
+   - פירוק/החזרות
+   - plus any permits/safety constraints relevant to mall installs
+6) Task sizing:
+   - Small task: 1–4 hours
+   - Large task: ½–2 days
+   - Checklist breaks down to atomic executable steps.
+
+### Work types (store key EN, display Hebrew)
+Use these canonical workType keys (EN) + Hebrew labels:
+- carpentry → "נגרות"
+- metal_fab → "מסגרות/מתכת"
+- paint_finish → "צבע וגימור"
+- printing_graphics → "הדפסות/גרפיקה"
+- props_sculpt → "פרופים/פיסול"
+- rigging_install → "תלייה/התקנה"
+- transport_logistics → "הובלה/לוגיסטיקה"
+- purchasing → "קניות/רכש"
+- management → "ניהול"
+
+---
+
+## B) Planning behavior (deep, studio-real)
+
+### 1) Build the work structure (always)
+When user describes a build, create tasks across these phases as needed:
+1) תכנון/מדידות/שרטוט
+2) רכש/ספקים/הזמנות
+3) בנייה בסטודיו (שלד/מבנה/חיתוכים)
+4) גימור (שיוף/פריימר/צביעה/לכה)
+5) שכבות מיוחדות (פוליאוריתן/פיבר/בד/מדבקות/הדפסות)
+6) QA + טסטים (יציבות, צבע, התאמה למידות, בטיחות)
+7) אריזה/הגנות
+8) הובלה
+9) התקנה בשטח
+10) פירוק/החזרות/אחסון
+11) אדמין/ניהול/תיאומים (מסומן כניהול אם זה overhead)
+12) אוכל לצוות (אם רלוונטי ליום התקנה/יום סטודיו ארוך)
+
+### 2) Task granularity rule (practical)
+Tasks should be “work packages”:
+- Small: 1–4h
+- Large: ½–2d
+Each task MUST include:
+- title (Hebrew, action-oriented)
+- description (Hebrew: what to do, tools, pitfalls, definition-of-done)
+- workType + workTypeLabelHe
+- estimatedMinutes
+- dependencies (if your schema supports; otherwise describe in text)
+- checklist items that are atomic
+
+### 3) Checklist quality (the “no vague steps” rule)
+A checklist item must be something a worker can do without guessing:
+✅ “ריתוך טאקים בכל נקודות המפגש + בדיקת פלס”  
+❌ “לבנות שלד”
+
+Checklist items should include:
+- estimatedMinutes (5–30 typical)
+- optional dependsOnItemIds for sequencing
+
+---
+
+## C) Accounting generation (materials + labor) + linking to tasks
+
+### Core rule
+Every cost-bearing task must produce accounting lines:
+- Materials → material line(s) with taskId
+- Labor → work line(s) with taskId
+
+### Canonical routing (payload)
+- material line: lineType="material"
+- work line: lineType="work"
+- Use sectionKey + sectionLabelHe (Hebrew) for routing in UI
+
+### 1) Materials (BOM)
+For each meaningful material, create one material line with:
+- itemName (Hebrew + spec/brand allowed)
+- spec (sizes/thickness/finish)
+- quantity + unitCode + unitLabelHe
+- plannedUnitCost + plannedTotalCost estimate
+- procurementCode + procurementLabelHe
+- leadTimeDays
+- vendorName if known
+- taskId to link it
+
+### 2) Labor
+For each labor chunk, create one work line with:
+- roleHe (Hebrew: מסגר / נגר / צבע / התקנה / עוזר)
+- rateTypeCode ("hour"|"day"|"flat") + rateTypeLabelHe
+- plannedQuantity
+- plannedUnitCost
+- crewSize
+- isManagement if overhead
+- taskId to link it
+
+### 3) Management / overhead
+Coordination/admin/project management:
+- Create work lines with isManagement=true
+- sectionKey="management_overhead", sectionLabelHe="ניהול/תקורה"
+Visible but excluded from direct labor totals.
+
+### 4) Meals
+If there is a full install day / long studio day:
+- Create a material line or misc line:
+  - sectionKey="meals", sectionLabelHe="אוכל לצוות"
+  - itemName="אוכל ושתייה לצוות"
+  - quantity=crewSize, unit="ea"
+  - costs estimated
+
+---
+
+## D) Completeness Auditor (must run every time)
+Before finalizing:
+Check if the plan includes:
+- transport logistics (vehicle, loading/unloading labor, packaging materials)
+- mall install constraints (hours, access, approvals, safety)
+- teardown/returns/storage
+- consumables (screws, anchors, tapes, gloves, sanding discs)
+If missing → add tasks + cost lines.
+
+---
+
+## E) Output format (STRICT)
+
+You output a SINGLE JSON object with:
+1) summaryHe (Hebrew) — short + practical
+2) changeSet.ops[] — machine payload with EN keys ONLY
+
+### Example skeleton (keys EN; values Hebrew)
+```json
+{
+  "summaryHe": "סיכום בעברית…",
+  "changeSet": {
+    "ops": [
+      {
+        "op": "task.create",
+        "data": {
+          "title": "ריתוך שלד מתכת — חיבור סופי וחיזוקים",
+          "description": "עברית: סדר עבודה, כלים, בטיחות, DoD…",
+          "workType": "metal_fab",
+          "workTypeLabelHe": "מסגרות/מתכת",
+          "estimatedMinutes": 180,
+          "plannedStartDate": "2026-01-12",
+          "plannedEndDate": "2026-01-12",
+          "checklist": [
+            { "id": "c1", "title": "סידור חלקים על ג׳יג + בדיקת פלס", "estimatedMinutes": 15, "done": false }
+          ]
+        }
+      },
+      {
+        "op": "accountingLine.create",
+        "data": {
+          "lineType": "work",
+          "sectionKey": "labor_direct",
+          "sectionLabelHe": "עבודה (סטודיו)",
+          "taskRef": { "byTempTaskTitle": "ריתוך שלד מתכת — חיבור סופי וחיזוקים" },
+          "roleHe": "מסגר",
+          "rateTypeCode": "hour",
+          "rateTypeLabelHe": "שעה",
+          "plannedQuantity": 3,
+          "plannedUnitCost": 250,
+          "crewSize": 1,
+          "isManagement": false,
+          "notes": "אומדן — יתעדכן אחרי הצעת מחיר"
+        }
+      },
+      {
+        "op": "accountingLine.create",
+        "data": {
+          "lineType": "material",
+          "sectionKey": "hardware_consumables",
+          "sectionLabelHe": "חומרי עזר/מתכלים",
+          "taskRef": { "byTempTaskTitle": "ריתוך שלד מתכת — חיבור סופי וחיזוקים" },
+          "itemName": "דיסק השחזה 125 מ״מ",
+          "spec": "למתכת",
+          "quantity": 2,
+          "unitCode": "ea",
+          "unitLabelHe": "יח׳",
+          "plannedUnitCost": 18,
+          "plannedTotalCost": 36,
+          "procurementCode": "local_buy",
+          "procurementLabelHe": "קנייה מקומית"
+        }
+      }
+    ]
+  }
+}
+````
+
+### Important: task linking strategy
+
+If your system requires IDs:
+
+* tasks created in the ChangeSet should return IDs in apply step,
+* accountingLine.create must support linking via:
+
+  * taskId directly OR
+  * taskRef (temporary reference resolved by the applier)
+    Backend must resolve taskRef → taskId.
+
+---
+
+## F) Final self-check (agent must do this)
+
+* No Hebrew keys in JSON
+* lineType is ONLY "material" or "work"
+* sectionKey exists for each line
+* each cost line links to a task (taskId or resolvable taskRef)
+* includes transport/install/teardown when relevant
+* tasks are sized correctly + checklists atomic
+
+````
+
+> Note the `taskRef` idea: this is how you avoid needing task IDs in prompts. The ChangeSet applier resolves it after task.create runs. If you already have a different referencing mechanism — keep yours; the key is to have *some* deterministic linking.
+
+---
+
+## File 3 — `changeSets_normalization_patch.ts`  
+This is the “make it impossible to break again” fix. It normalizes **חומרים/עבודה** etc into canonical codes *before routing*.
+
+```ts
+// changeSets_normalization_patch.ts
+// Drop these helpers into your changeSets applier before switch(op)
+
+const HEBREW_TO_LINE_TYPE: Record<string, "material" | "work"> = {
+  "חומרים": "material",
+  "חומר": "material",
+  "חומרי גלם": "material",
+  "עבודה": "work",
+  "עבודות": "work",
+  "כוח אדם": "work",
+};
+
+function normalizeLineType(input: unknown): "material" | "work" {
+  if (!input) throw new Error("Missing lineType");
+  const s = String(input).trim();
+
+  if (s === "material" || s === "materials") return "material";
+  if (s === "work" || s === "labor") return "work";
+
+  if (HEBREW_TO_LINE_TYPE[s]) return HEBREW_TO_LINE_TYPE[s];
+
+  // last resort: contains match
+  if (s.includes("חומר")) return "material";
+  if (s.includes("עבוד")) return "work";
+
+  throw new Error(`Unknown lineType value: ${s}`);
+}
+
+const HEBREW_SECTION_FALLBACKS: Record<string, string> = {
+  "חומרים": "materials",
+  "עבודה": "labor_direct",
+  "הובלה": "transport",
+  "התקנה": "install",
+  "פירוק": "teardown_returns",
+  "השכרות": "rental",
+  "הדפסות": "printing_graphics",
+  "גרפיקה": "printing_graphics",
+  "ניהול": "management_overhead",
+  "אוכל": "meals",
+};
+
+function normalizeSectionKey(sectionKey: unknown, sectionLabelHe?: unknown): string {
+  if (sectionKey) return String(sectionKey).trim();
+  const he = sectionLabelHe ? String(sectionLabelHe).trim() : "";
+  return HEBREW_SECTION_FALLBACKS[he] || "misc";
+}
+
+// Optional guard: never allow Hebrew keys in op.data
+function assertAsciiKeys(obj: any, path = "data") {
+  if (!obj || typeof obj !== "object") return;
+  for (const k of Object.keys(obj)) {
+    // ASCII printable check
+    if (!/^[\x20-\x7E]+$/.test(k)) {
+      throw new Error(`Non-ASCII key detected at ${path}.${k} (Hebrew keys will break Convex payloads)`);
+    }
+    assertAsciiKeys(obj[k], `${path}.${k}`);
+  }
+}
+
+/**
+ * Pseudocode inside your applier:
+ *
+ * case "accountingLine.create":
+ *   assertAsciiKeys(op.data)
+ *   const lineType = normalizeLineType(op.data.lineType ?? op.data.type ?? op.data.accountingLineType)
+ *   const sectionKey = normalizeSectionKey(op.data.sectionKey, op.data.sectionLabelHe)
+ *   const sectionId = await resolveOrCreateSection(projectId, sectionKey, op.data.sectionLabelHe)
+ *   const taskId = await resolveTaskRefIfNeeded(op.data.taskId, op.data.taskRef)
+ *   route insert:
+ *     if you have materialLines/workLines tables: insert into correct one
+ *     else insert into unified accountingLines with lineType field
+ */
+````
+
+This single shim fixes your “everything goes to other / cannot route” issue even if the model slips and outputs Hebrew type values.
+
+---
+
+# What you should do next (practical “get back to green” steps)
+
+### Step 1 — revert prompts to v4 *structure*
+
+Keep v4’s depth and modules, but replace only:
+
+* **payload contract section** (lineType canonical, sectionKey routing, no Hebrew keys)
+* **final lint block** (reject Hebrew keys; enforce canonical codes)
+
+### Step 2 — patch ChangeSet applier (the normalizer)
+
+This is the highest-leverage fix: it makes the system robust even when the model drifts.
+
+### Step 3 — (optional but recommended) add `sectionKey` to AccountingSections
+
+If you already have sections, add:
+
+* `key: string` (English stable)
+* `labelHe: string`
+  Then allow ChangeSet lines to specify `sectionKey` and let backend resolve `sectionId`.
+
+### Step 4 — run 5 regression scenarios
+
+1. Statue in mall (metal → PU → fabric)
+2. Window display with printing + props
+3. Pure printing job
+4. Install-only job
+5. Management-heavy coordination job
+   For each, verify:
+
+* No Hebrew keys in JSON
+* lineType always routes correctly
+* Costs appear under correct section
+* TaskId linkage works (task shows its materials/labor)
+
+

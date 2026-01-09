@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import OpenAI from "openai";
 
-const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV4_1";
+const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV7";
 
 const SYSTEM_PROMPT = `You are an AI studio producer for "Emlly Studio" in Tel Aviv (set design + fabrication + installs + rentals + printing).
 Your outputs must be practical (buildable, priceable, installable) - not demo-level.
@@ -25,7 +25,11 @@ Hard rules:
    - a Transport element (or tasks under a transport workstream),
    - an Install element,
    - a Teardown/Returns element.
-8. Always set workType + workTypeLabelHe on tasks, and on checklist items when relevant.`;
+8. Always set workType + workTypeLabelHe on tasks, and on checklist items when relevant.
+9. For cost lines, use materialLine.create/workLine.create and include:
+   - lineType: "material" | "work"
+   - sectionKey (English) + sectionLabelHe (Hebrew)
+   - taskId or taskTempOrId to link to a task.`;
 
 const DEVELOPER_PROMPT = `
 Output format:
@@ -102,7 +106,7 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     "title": "...",
     "description": "...",
     "stage": "build"|"install"|"...",
-    "workType": "fabrication_metal"|"printing_graphics"|"...",
+    "workType": "metal_fab"|"printing_graphics"|"...",
     "workTypeLabelHe": "...",
     "plannedStartDate": "YYYY-MM-DD",
     "plannedEndDate": "YYYY-MM-DD",
@@ -121,7 +125,7 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
       "title": "...",
       "description": "...",
       "stage": "build"|"install"|"...",
-      "workType": "fabrication_metal"|"printing_graphics"|"...",
+      "workType": "metal_fab"|"printing_graphics"|"...",
       "workTypeLabelHe": "...",
       "plannedStartDate": "YYYY-MM-DD",
       "plannedEndDate": "YYYY-MM-DD",
@@ -139,6 +143,10 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     "taskTempOrId": "...",
     "fields": {
       "title": "...",
+      "type": "material" | "labor" | "subcontract" | "other",
+      "lineType": "material" | "work",
+      "sectionKey": "...",
+      "sectionLabelHe": "...",
       "itemName": "...",
       "spec": "...",
       "qty": 24,
@@ -161,6 +169,10 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     "accountingLineId": "...",
     "fields": {
       "title": "...",
+      "type": "material" | "labor" | "subcontract" | "other",
+      "lineType": "material" | "work",
+      "sectionKey": "...",
+      "sectionLabelHe": "...",
       "qty": 24,
       "unit": "m",
       "wastePct": 0.1,
@@ -176,21 +188,63 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     }
   }
   
-  5. element.create / element.patch / vendor.create / purchase.create (standard)`;
+  5. materialLine.create payload:
+  {
+    "tempId": "...",
+    "elementTempOrId": "...",
+    "taskTempOrId": "...",
+    "fields": {
+      "lineType": "material",
+      "sectionKey": "...",
+      "sectionLabelHe": "...",
+      "itemName": "...",
+      "spec": "...",
+      "quantity": 2,
+      "unitCode": "ea",
+      "unitLabelHe": "...",
+      "plannedUnitCost": 18,
+      "plannedTotalCost": 36,
+      "procurementCode": "...",
+      "procurementLabelHe": "...",
+      "leadTimeDays": 2,
+      "vendorName": "..."
+    }
+  }
+
+  6. workLine.create payload:
+  {
+    "tempId": "...",
+    "elementTempOrId": "...",
+    "taskTempOrId": "...",
+    "fields": {
+      "lineType": "work",
+      "sectionKey": "...",
+      "sectionLabelHe": "...",
+      "roleHe": "...",
+      "rateTypeCode": "hour" | "day" | "flat",
+      "rateTypeLabelHe": "...",
+      "plannedQuantity": 3,
+      "plannedUnitCost": 250,
+      "crewSize": 1,
+      "isManagement": false
+    }
+  }
+
+  7. element.create / element.patch / vendor.create / purchase.create (standard)`;
 
 const STAGE_MODULES: Record<string, string> = {
   IDEATION: `Stage = IDEATION. Objective: Turn brief into 5–10 feasible element ideas. Rough budget + lead time range + key risks.
   V3 addition: Identify major workstreams early (Metal? Print? Rent?).`,
 
-  QUOTE: `Stage = QUOTE. Objective: Convert chosen elements into a quote-ready structure.
+  QUOTE: `Stage = QUOTE.Objective: Convert chosen elements into a quote-ready structure.
   V3 rules:
-  - Generate structured BOM (accountingLines with qty/unit/spec).
+- Generate structured BOM(accountingLines with qty / unit / spec).
   - Explicit labor lines for Studio vs Install.
   - If date constraints are unknown, ask.`,
 
-  BREAKDOWN: `Stage = BREAKDOWN. Objective: Atomic tasks + dependencies + risks + shopping/pickup plan.
+  BREAKDOWN: `Stage = BREAKDOWN.Objective: Atomic tasks + dependencies + risks + shopping / pickup plan.
   V3 rules:
-  - Parent tasks (1-4h) MUST have atomic checklists.
+- Parent tasks(1 - 4h) MUST have atomic checklists.
   - Assign workType to every task.
   - Set plannedStartDate if anchors exist.
   - Verify "Studio Completeness": Transport, Install, Teardown, QA.`,
@@ -221,7 +275,7 @@ function normalizeMode(mode?: string): "CHAT" | "QUESTIONS" | "SUGGESTIONS" {
 function safeParseAgentResponse(raw: string) {
   // New format: Text then optional ```json ... ``` (or ``` ... ```)
   try {
-    const blockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const blockMatch = raw.match(/```(?: json) ?\s * ([\s\S] *?) \s * ```/i);
     if (!blockMatch) {
       // No block, just text
       return { assistantText_he: raw.trim(), block: null };
@@ -491,7 +545,7 @@ export const agentRespond = action({
     };
 
     let responseText = "";
-    
+
     // 1. Create Placeholder Message immediately (so UI shows "Thinking" or streaming)
     const agentMessageId = await ctx.runMutation(internal.agent.createPlaceholderMessage, {
       conversationId: args.conversationId,
@@ -520,7 +574,7 @@ export const agentRespond = action({
             { role: "system", content: DEVELOPER_PROMPT },
             { role: "system", content: STAGE_MODULES[stage] ?? "" },
             { role: "system", content: MODE_NUDGES[mode] ?? "" },
-            { role: "user", content: `Context JSON:\n${JSON.stringify(contextPayload)}` },
+            { role: "user", content: `Context JSON: \n${JSON.stringify(contextPayload)} ` },
           ],
           temperature: 0.2,
           stream: true, // Enable streaming
@@ -535,24 +589,24 @@ export const agentRespond = action({
 
         let lastUpdate = Date.now();
         let chunkCount = 0;
-        
+
         for await (const chunk of stream as any) {
           const content = chunk.choices[0]?.delta?.content || "";
           if (content) {
             responseText += content;
             chunkCount++;
-            
+
             // Update DB occasionally to create "streaming" effect
             // Don't update if we are inside the JSON block (crudely detected) to avoid scaring the user
             const jsonIndex = responseText.indexOf("```json");
             const isInsideBlock = jsonIndex !== -1 && jsonIndex < responseText.length - 10;
-            
+
             if (!isInsideBlock && (chunkCount % 5 === 0 || Date.now() - lastUpdate > 300)) {
-               await ctx.runMutation(internal.agent.updateMessageContent, {
-                 messageId: agentMessageId,
-                 text_he: responseText,
-               });
-               lastUpdate = Date.now();
+              await ctx.runMutation(internal.agent.updateMessageContent, {
+                messageId: agentMessageId,
+                text_he: responseText,
+              });
+              lastUpdate = Date.now();
             }
           }
         }
@@ -572,7 +626,7 @@ export const agentRespond = action({
     if (hasJsonFence && !parsed.block) {
       console.warn("Agent JSON parse failed; block is null.");
     }
-    
+
     // If we have a structured block, handle it (creating ChangeSets, etc.)
     let block = parsed.block;
     let changeSetId: any = undefined;
@@ -614,7 +668,7 @@ export const agentRespond = action({
 
     // Sanitize block for Convex storage (no Hebrew keys)
     if (block) {
-       block = sanitizeBlockForConvex(block);
+      block = sanitizeBlockForConvex(block);
     }
 
     // Finalize the message
