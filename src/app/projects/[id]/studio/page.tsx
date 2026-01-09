@@ -29,6 +29,14 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [input, setInput] = useState("");
   const [selectedElementIds, setSelectedElementIds] = useState<Id<"elements">[]>([]);
   const [isWaiting, setIsWaiting] = useState(false);
+  const [model, setModel] = useState<string>("gpt-4o");
+  const user = useQuery(api.users.getViewer);
+
+  useEffect(() => {
+    if (user?.preferredModel) {
+      setModel(user.preferredModel);
+    }
+  }, [user]);
 
   const conversations = useQuery(api.agent.listConversations, { projectId });
   const messages = useQuery(
@@ -77,6 +85,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       await agentRespond({
         conversationId: activeConversationId,
         uiContext: { selectedElementIds },
+        model,
       });
     } finally {
       setIsWaiting(false);
@@ -95,6 +104,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       await agentRespond({
         conversationId: activeConversationId,
         uiContext: { selectedElementIds },
+        model,
       });
     } finally {
       setIsWaiting(false);
@@ -114,6 +124,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       await agentRespond({
         conversationId: activeConversationId,
         uiContext: { selectedElementIds },
+        model,
       });
     } finally {
       setIsWaiting(false);
@@ -133,6 +144,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       await agentRespond({
         conversationId: activeConversationId,
         uiContext: { selectedElementIds },
+        model,
       });
     } finally {
       setIsWaiting(false);
@@ -190,6 +202,17 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
             </span>
           </div>
           <div className="flex items-center gap-3">
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
+            >
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-5-nano">GPT-5 Nano</option>
+              <option value="gpt-5-mini">GPT-5 Mini</option>
+              <option value="gpt-5.2">GPT-5.2</option>
+              <option value="gpt-5.2-thinking">GPT-5.2 (Thinking)</option>
+            </select>
             <select
               value={stageValue}
               onChange={(e) => {
@@ -334,33 +357,37 @@ function MessageBubble({
   const align = isUser ? "items-end" : "items-start";
   const bubble = isUser ? "bg-black text-white" : "bg-white border border-gray-200 text-gray-800";
 
+  // Backward compatibility: check if text is strictly JSON (old format)
+  const isLegacyJson = message.text_he?.trim().startsWith("{") && message.text_he?.trim().includes("assistantText_he");
+  let displayText = message.text_he;
+  let displayBlock = message.block;
 
-  const [parsedContent, setParsedContent] = useState<{ text: string; block: any } | null>(null);
-
-  useEffect(() => {
-    if (message.text_he) {
-      const parsed = tryParseJson(message.text_he);
-      if (parsed) {
-        setParsedContent({
-          text: parsed.assistantText_he || "",
-          block: parsed.block,
-        });
-      } else {
-        setParsedContent(null);
-      }
+  if (isLegacyJson && message.text_he) {
+    const parsed = tryParseJson(message.text_he);
+    if (parsed) {
+      displayText = parsed.assistantText_he;
+      displayBlock = parsed.block;
     }
-  }, [message.text_he]);
+  }
 
-  const displayText = parsedContent ? parsedContent.text : message.text_he;
-  const displayBlock = parsedContent ? parsedContent.block : message.block;
+  // Handle "Thinking..." state
+  const isThinking = message.role === "assistant" && !displayText && !displayBlock;
 
   return (
     <div className={`flex flex-col ${align} gap-3`}>
+      {isThinking ? (
+        <div className="flex items-center gap-2 text-xs text-gray-400 animate-pulse px-2">
+          <Loader2 size={12} className="animate-spin" />
+          <span>Thinking...</span>
+        </div>
+      ) : null}
+
       {displayText ? (
         <div className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${bubble} whitespace-pre-wrap`} dir="auto">
           <RichTextRenderer text={displayText} />
         </div>
       ) : null}
+      
       {displayBlock ? (
         <BlockRenderer
           block={displayBlock}

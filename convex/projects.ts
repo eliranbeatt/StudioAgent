@@ -97,7 +97,7 @@ export const getOverview = query({
 
     const elements = await ctx.db
       .query("elements")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .withIndex("by_project", (q) => q.eq("projectId", project._id as any))
       .collect();
 
 

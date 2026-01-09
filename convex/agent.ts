@@ -19,16 +19,17 @@ Hard rules:
 7. When the deliverable leaves the studio (mall / set / event), create:
    - a Transport element (or tasks under a transport workstream),
    - an Install element,
-   - a Teardown/Returns element,
-   unless they already exist.`;
+   - a Teardown/Returns element.`;
 
-const DEVELOPER_PROMPT = `Return ONE JSON object:
+const DEVELOPER_PROMPT = `
+Output format:
+1. First, write your response in Hebrew (plain text).
+2. Then, if you need to provide a structured block (Clarification, Suggestion, or ChangeSet), output it inside a JSON code block.
 
+Example:
+הנה התשובה שלי...
 \`\`\`json
-{
-  "assistantText_he": "...",
-  "block": null | ClarificationBlock | SuggestionBlock | ChangeSetBlock
-}
+{ "type": "ClarificationBlock", ... }
 \`\`\`
 
 Only ONE block per turn.
@@ -92,28 +93,66 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
   }
 }
 
-2. accountingLine.create payload:
-{
-  "elementTempOrId": "...",
-  "taskTempOrId": "...",
-  "fields": {
-    "title": "...",
-    "itemName": "...",
-    "spec": "...",
-    "qty": 24,
-    "unit": "m",
-    "wastePct": 0.1,
-    "unitCostEstimate": 18,
-    "vendorName": "...",
-    "leadTimeDays": 2,
-    "source": "estimate",
-    "confidence": 0.55,
-    "notes": "...",
-    "workType": "..." (for labor)
+  2. task.patch payload:
+  {
+    "taskId": "...",
+    "fields": {
+      "title": "...",
+      "description": "...",
+      "stage": "build"|"install"|"...",
+      "workType": "fabrication_metal"|"printing_graphics"|"...",
+      "plannedStartDate": "YYYY-MM-DD",
+      "plannedEndDate": "YYYY-MM-DD",
+      "estimatedMinutes": 180,
+      "dependencies": ["taskIdA", "taskIdB"],
+      "checklist": [
+        { "id":"c1","title":"...","order":0,"done":false,"estimatedMinutes":30 }
+      ]
+    }
   }
-}
 
-3. element.create / element.patch / vendor.create / purchase.create (standard)`;
+  3. accountingLine.create payload:
+  {
+    "elementTempOrId": "...",
+    "taskTempOrId": "...",
+    "fields": {
+      "title": "...",
+      "itemName": "...",
+      "spec": "...",
+      "qty": 24,
+      "unit": "m",
+      "wastePct": 0.1,
+      "unitCostEstimate": 18,
+      "vendorId": "...",
+      "vendorTempOrId": "...",
+      "leadTimeDays": 2,
+      "source": "estimate",
+      "confidence": 0.55,
+      "notes": "...",
+      "workType": "..." (for labor)
+    }
+  }
+
+  4. accountingLine.patch payload:
+  {
+    "accountingLineId": "...",
+    "fields": {
+      "title": "...",
+      "qty": 24,
+      "unit": "m",
+      "wastePct": 0.1,
+      "unitCostEstimate": 18,
+      "vendorId": "...",
+      "vendorTempOrId": "...",
+      "leadTimeDays": 2,
+      "source": "estimate",
+      "confidence": 0.55,
+      "notes": "...",
+      "workType": "..."
+    }
+  }
+  
+  5. element.create / element.patch / vendor.create / purchase.create (standard)`;
 
 const STAGE_MODULES: Record<string, string> = {
   IDEATION: `Stage = IDEATION. Objective: Turn brief into 5–10 feasible element ideas. Rough budget + lead time range + key risks.
@@ -156,16 +195,30 @@ function normalizeMode(mode?: string): "CHAT" | "QUESTIONS" | "SUGGESTIONS" {
 }
 
 function safeParseAgentResponse(raw: string) {
+  // New format: Text then optional ```json ... ```
   try {
-    const cleaned = raw.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "");
-    const parsed = JSON.parse(cleaned);
-    if (!parsed || typeof parsed !== "object") return null;
-    if (typeof parsed.assistantText_he !== "string") return null;
-    const block = parsed.block ?? null;
-    if (block !== null && typeof block !== "object") return null;
-    return { assistantText_he: parsed.assistantText_he, block };
+    const jsonStart = raw.indexOf("```json");
+    if (jsonStart === -1) {
+      // No block, just text
+      return { assistantText_he: raw.trim(), block: null };
+    }
+
+    const textPart = raw.substring(0, jsonStart).trim();
+    const jsonPart = raw.substring(jsonStart).replace(/```json\s*/, "").replace(/```\s*$/, "");
+    
+    let block = null;
+    try {
+      const parsed = JSON.parse(jsonPart);
+      if (parsed && typeof parsed === "object") {
+        block = parsed;
+      }
+    } catch (e) {
+      console.error("Failed to parse JSON block", e);
+    }
+
+    return { assistantText_he: textPart, block };
   } catch {
-    return null;
+    return { assistantText_he: raw, block: null };
   }
 }
 
@@ -338,6 +391,7 @@ export const setConversationStatus = mutation({
 export const agentRespond = action({
   args: {
     conversationId: v.id("conversations"),
+    model: v.optional(v.string()),
     uiContext: v.optional(v.object({
       selectedElementIds: v.optional(v.array(v.id("elements"))),
     })),
@@ -412,64 +466,112 @@ export const agentRespond = action({
       printing: printDetails,
     };
 
-    let responseText = "There was an error generating a response.";
+    let responseText = "";
+    
+    // 1. Create Placeholder Message immediately (so UI shows "Thinking" or streaming)
+    const agentMessageId = await ctx.runMutation(internal.agent.createPlaceholderMessage, {
+      conversationId: args.conversationId,
+      projectId: conversation.projectId,
+    });
 
-    if (process.env.OPENAI_API_KEY) {
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const completion = await client.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "system", content: DEVELOPER_PROMPT },
-          { role: "system", content: STAGE_MODULES[stage] ?? "" },
-          { role: "system", content: MODE_NUDGES[mode] ?? "" },
-          { role: "user", content: `Context JSON:\\n${JSON.stringify(contextPayload)}` },
-        ],
-        temperature: 0.2,
-      });
+    try {
+      if (process.env.OPENAI_API_KEY) {
+        const user = await ctx.runQuery(api.users.getViewer);
+        const requestedModel = args.model || user?.preferredModel || "gpt-4o";
 
-      responseText = completion.choices[0]?.message?.content ?? responseText;
-    } else {
-      responseText = "{\"assistantText_he\":\"OpenAI API key missing.\",\"block\":null}";
+        let targetModel = requestedModel;
+        let reasoningEffort: "medium" | "high" | undefined = undefined;
+
+        if (requestedModel === "gpt-5.2-thinking") {
+          targetModel = "gpt-5.2";
+          reasoningEffort = "medium";
+        }
+
+        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        const payload: any = {
+          model: targetModel,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: DEVELOPER_PROMPT },
+            { role: "system", content: STAGE_MODULES[stage] ?? "" },
+            { role: "system", content: MODE_NUDGES[mode] ?? "" },
+            { role: "user", content: `Context JSON:\n${JSON.stringify(contextPayload)}` },
+          ],
+          temperature: 0.2,
+          stream: true, // Enable streaming
+        };
+
+        if (reasoningEffort) {
+          payload.reasoning_effort = reasoningEffort;
+          delete payload.temperature;
+        }
+
+        const stream = await client.chat.completions.create(payload);
+
+        let lastUpdate = Date.now();
+        let chunkCount = 0;
+        
+        for await (const chunk of stream as any) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+            responseText += content;
+            chunkCount++;
+            
+            // Update DB occasionally to create "streaming" effect
+            // Don't update if we are inside the JSON block (crudely detected) to avoid scaring the user
+            const jsonIndex = responseText.indexOf("```json");
+            const isInsideBlock = jsonIndex !== -1 && jsonIndex < responseText.length - 10;
+            
+            if (!isInsideBlock && (chunkCount % 5 === 0 || Date.now() - lastUpdate > 300)) {
+               await ctx.runMutation(internal.agent.updateMessageContent, {
+                 messageId: agentMessageId,
+                 text_he: responseText,
+               });
+               lastUpdate = Date.now();
+            }
+          }
+        }
+      } else {
+        responseText = "OpenAI API key missing.";
+      }
+    } catch (e: any) {
+      console.error("Agent Streaming Error:", e);
+      responseText += "\n(Error generating response: " + e.message + ")";
     }
 
     const parsed = safeParseAgentResponse(responseText);
-    if (!parsed) {
-      await ctx.runMutation(api.agent.appendEventMessage, {
-        conversationId: args.conversationId,
-        eventType: "agent_response_invalid",
-        eventPayload: { raw: responseText },
-      });
-      const fallbackId = await ctx.runMutation(api.agent.appendAssistantMessage, {
-        conversationId: args.conversationId,
-        text_he: responseText,
-      });
-      return { messageId: fallbackId };
-    }
-
+    
+    // If we have a structured block, handle it (creating ChangeSets, etc.)
     let block = parsed.block;
     let changeSetId: any = undefined;
+
     if (block?.type === "ChangeSetBlock" && block.proposedChangeSet) {
-      const proposed = block.proposedChangeSet;
-      changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
-        projectId: conversation.projectId,
-        stage,
-        ops: proposed.ops ?? [],
-        reason_he: proposed.reason_he,
-        base: proposed.base,
-      });
-      const { proposedChangeSet, ...rest } = block;
-      block = { ...rest };
+      try {
+        const proposed = block.proposedChangeSet;
+        changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+          projectId: conversation.projectId,
+          stage,
+          ops: proposed.ops ?? [],
+          reason_he: proposed.reason_he,
+          base: proposed.base,
+        });
+        const { proposedChangeSet, ...rest } = block;
+        block = { ...rest };
+      } catch (e) {
+        console.error("Failed to create ChangeSet:", e);
+      }
     }
 
-    const messageId = await ctx.runMutation(api.agent.appendAssistantMessage, {
-      conversationId: args.conversationId,
+    // Finalize the message
+    await ctx.runMutation(internal.agent.finalizeMessage, {
+      messageId: agentMessageId,
       text_he: parsed.assistantText_he,
       block,
       changeSetId,
     });
 
-    return { messageId, changeSetId };
+    return { messageId: agentMessageId, changeSetId };
   },
 });
 
@@ -506,8 +608,53 @@ export const listMessages = query({
 });
 
 // ---------------------------------------------------------
-// Internal Mutations for Message Processing
+// Internal Mutations for Streaming
 // ---------------------------------------------------------
+
+export const createPlaceholderMessage = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const messageId = await ctx.db.insert("conversationMessages", {
+      conversationId: args.conversationId,
+      projectId: args.projectId,
+      role: "assistant",
+      text_he: "", // Empty initially
+      createdAt: Date.now(),
+    });
+    return messageId;
+  },
+});
+
+export const updateMessageContent = internalMutation({
+  args: {
+    messageId: v.id("conversationMessages"),
+    text_he: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.messageId, {
+      text_he: args.text_he,
+    });
+  },
+});
+
+export const finalizeMessage = internalMutation({
+  args: {
+    messageId: v.id("conversationMessages"),
+    text_he: v.string(),
+    block: v.optional(v.any()),
+    changeSetId: v.optional(v.id("changeSets")),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.messageId, {
+      text_he: args.text_he,
+      block: args.block,
+      changeSetId: args.changeSetId,
+    });
+  },
+});
 
 export const preProcessMessage = internalMutation({
   args: {
@@ -995,7 +1142,7 @@ export const estimateTaskDependencies = mutation({
       throw new Error("No open draft found for task estimation.");
     }
 
-    const draftDoc = await ctx.db.get(draft.draftId);
+    const draftDoc = await ctx.db.get(draft.draftId) as any;
     const snapshot = draftDoc?.workingSnapshot ?? {};
     const tasksMap = snapshot?.tasks?.byId ?? {};
     const tasks = Object.values<any>(tasksMap).filter((task) => !task?.deletedAt);
