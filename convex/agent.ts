@@ -1,6 +1,7 @@
 import { mutation, query, internalMutation, action } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 import OpenAI from "openai";
 
 const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV7";
@@ -42,13 +43,19 @@ Example:
 { "type": "QuestionsBlock", ... }
 \`\`\`
 
-Only ONE block per turn.
+If you output a structured block, prefer a JSON object with:
+{
+  "blocks": [ <primary block>, <next steps SuggestionBlock> ]
+}
+You may still output a single block, but if you do NOT output a ChangeSetBlock or QuestionsBlock,
+you MUST include a SuggestionBlock with 2-3 next steps.
 
 Stage is one of: IDEATION | QUOTE | BREAKDOWN.
 Mode is one of: CHAT | QUESTIONS | SUGGESTIONS (hint only).
 
 Next-best-action policy (choose exactly one): ANSWER | ASK | SUGGEST | PROPOSE_CHANGESET.
 Anti-bloat: if you are about to output > 12 bullets, stop and choose a smaller next step.
+If you are not providing a ChangeSetBlock or QuestionsBlock, output a SuggestionBlock with 2-3 next steps.
 
 ## Block schemas (preferred)
 QuestionsBlock:
@@ -284,11 +291,19 @@ function safeParseAgentResponse(raw: string) {
     const textPart = raw.slice(0, blockMatch.index ?? 0).trim();
     const jsonPart = blockMatch[1]?.trim() ?? "";
 
-    let block = null;
+    let block: any = null;
     try {
       const parsed = JSON.parse(jsonPart);
       if (parsed && typeof parsed === "object") {
-        block = parsed;
+        if (Array.isArray(parsed)) {
+          block = parsed;
+        } else if (Array.isArray((parsed as any).blocks)) {
+          block = (parsed as any).blocks;
+        } else if ((parsed as any).block) {
+          block = (parsed as any).block;
+        } else {
+          block = parsed;
+        }
       }
     } catch (e) {
       console.error("Failed to parse JSON block", e);
@@ -552,6 +567,20 @@ export const agentRespond = action({
       projectId: conversation.projectId,
     });
 
+    const selectedAction = getSelectedActionFromEvents(recentMessages);
+    if (selectedAction) {
+      const handled = await handleSuggestionAction({
+        ctx,
+        agentMessageId,
+        projectId: conversation.projectId,
+        stage,
+        actionId: selectedAction,
+      });
+      if (handled) {
+        return { messageId: agentMessageId, changeSetId: undefined };
+      }
+    }
+
     try {
       if (process.env.OPENAI_API_KEY) {
         const user = await ctx.runQuery(api.users.getViewer);
@@ -567,6 +596,7 @@ export const agentRespond = action({
 
         const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+        const forcedAction = selectedAction ? `User selected action: ${selectedAction}. You must execute it.` : "";
         const payload: any = {
           model: targetModel,
           messages: [
@@ -574,6 +604,7 @@ export const agentRespond = action({
             { role: "system", content: DEVELOPER_PROMPT },
             { role: "system", content: STAGE_MODULES[stage] ?? "" },
             { role: "system", content: MODE_NUDGES[mode] ?? "" },
+            ...(forcedAction ? [{ role: "system", content: forcedAction }] : []),
             { role: "user", content: `Context JSON: \n${JSON.stringify(contextPayload)} ` },
           ],
           temperature: 0.2,
@@ -631,9 +662,19 @@ export const agentRespond = action({
     let block = parsed.block;
     let changeSetId: any = undefined;
 
-    if (block?.type === "ChangeSetBlock" && block.proposedChangeSet) {
+    const blocksList = Array.isArray(block) ? block.filter(Boolean) : block ? [block] : [];
+
+    if (blocksList.length === 0) {
+      block = [buildNextStepSuggestionBlock(stage)];
+    }
+
+    const changeSetBlockIndex = blocksList.findIndex(
+      (item: any) => item?.type === "ChangeSetBlock" && item?.proposedChangeSet
+    );
+    if (changeSetBlockIndex !== -1) {
+      const changeSetBlock = blocksList[changeSetBlockIndex];
       try {
-        const proposed = block.proposedChangeSet;
+        const proposed = changeSetBlock.proposedChangeSet;
         // Ensure ops and base don't have invalid keys if they are dynamic
         // But ops is usually structured. 'base' might be the issue if it has dynamic keys?
         // Actually, the error likely came from 'changes' or 'base' having Hebrew keys.
@@ -709,16 +750,20 @@ export const agentRespond = action({
           }
         }
 
-        const { proposedChangeSet, ...rest } = block;
-        block = { ...rest };
+        const { proposedChangeSet, ...rest } = changeSetBlock;
+        blocksList[changeSetBlockIndex] = { ...rest };
       } catch (e) {
         console.error("Failed to process ChangeSet block:", e);
       }
     }
 
+    if (blocksList.length > 0) {
+      block = blocksList;
+    }
+
     // Sanitize block for Convex storage (no Hebrew keys)
     if (block) {
-      block = sanitizeBlockForConvex(block);
+      block = sanitizeBlockForConvex(ensureNextStepsBlock(block, stage));
     }
 
     // Finalize the message
@@ -734,6 +779,7 @@ export const agentRespond = action({
 });
 
 function sanitizeBlockForConvex(block: any): any {
+  if (Array.isArray(block)) return block.map(sanitizeBlockForConvex).filter(Boolean);
   if (!block || typeof block !== "object") return block;
 
   // Specific handling for ChangeSetBlock.changes which often has Hebrew keys
@@ -746,6 +792,101 @@ function sanitizeBlockForConvex(block: any): any {
   }
 
   return sanitizeForConvex(block);
+}
+
+function ensureNextStepsBlock(
+  block: any,
+  stage: "IDEATION" | "QUOTE" | "BREAKDOWN"
+) {
+  const blocks = Array.isArray(block) ? block : [block];
+  const hasSuggestion = blocks.some((item) => item?.type === "SuggestionBlock");
+  const hasPrimary =
+    blocks.some((item) => item?.type === "ChangeSetBlock") ||
+    blocks.some((item) => item?.type === "QuestionsBlock") ||
+    blocks.some((item) => item?.type === "ClarificationBlock");
+
+  if (!hasSuggestion && hasPrimary) {
+    blocks.push(buildNextStepSuggestionBlock(stage));
+  }
+
+  if (blocks.length === 0) {
+    return [buildNextStepSuggestionBlock(stage)];
+  }
+
+  return blocks;
+}
+
+function buildNextStepSuggestionBlock(
+  stage: "IDEATION" | "QUOTE" | "BREAKDOWN"
+) {
+  const suggestionsByStage: Record<string, Array<{ id: string; label_he: string; why_he: string }>> = {
+    IDEATION: [
+      {
+        id: "suggest_elements",
+        label_he: "להציע 3-5 אלמנטים/קונספטים אפשריים",
+        why_he: "ממפה כיוונים ריאליים ומהיר לבחירה.",
+      },
+      {
+        id: "ask_clarifications",
+        label_he: "לנסח שאלות חידוד קצרות",
+        why_he: "סוגר חסרים לפני ירידה לפרטים.",
+      },
+      {
+        id: "rough_budget",
+        label_he: "להעריך טווח תקציב ולוחות זמנים",
+        why_he: "נותן מסגרת החלטה מוקדמת.",
+      },
+    ],
+    QUOTE: [
+      {
+        id: "create_bom",
+        label_he: "ליצור BOM בסיסי לחומרים",
+        why_he: "מסדר חומרים ועלויות למבנה הצעת מחיר.",
+      },
+      {
+        id: "generate_quote",
+        label_he: "לחשב הצעת מחיר גרסה חדשה",
+        why_he: "יוצר גרסת Quote עם סיכומי עלות.",
+      },
+      {
+        id: "estimate_tasks",
+        label_he: "להשלים זמני משימות חסרים",
+        why_he: "משלים הערכות זמן אוטומטיות.",
+      },
+    ],
+    BREAKDOWN: [
+      {
+        id: "build_tasks",
+        label_he: "לפרק למשימות עם צ׳קליסטים ותזמונים",
+        why_he: "מאפשר ביצוע בפועל וסטטוס.",
+      },
+      {
+        id: "logistics_bundle",
+        label_he: "להוסיף הובלה/התקנה/פירוק אם רלוונטי",
+        why_he: "סוגר את מחזור החיים המלא.",
+      },
+      {
+        id: "estimate_tasks",
+        label_he: "להשלים זמני משימות חסרים",
+        why_he: "משלים הערכות זמן אוטומטיות.",
+      },
+    ],
+  };
+
+  const items = suggestionsByStage[stage] ?? suggestionsByStage.IDEATION;
+
+  return {
+    type: "SuggestionBlock",
+    title_he: "הצעדים הבאים שאוכל לבצע",
+    submitLabel_he: "בוא נתקדם",
+    selectionMode: "single",
+    items: items.map((item) => ({
+      id: item.id,
+      label_he: item.label_he,
+      why_he: item.why_he,
+      payload: { action: item.id },
+    })),
+  };
 }
 
 function sanitizeForConvex(value: any): any {
@@ -788,6 +929,90 @@ function findInvalidFieldNames(value: any, path: string[] = []): string[] {
     invalid.push(...findInvalidFieldNames(val, [...path, key]));
   }
   return invalid;
+}
+
+function getSelectedActionFromEvents(messages: Array<{ role?: string; eventType?: string; eventPayload?: any }>) {
+  const lastEvent = messages.length > 0 ? messages[messages.length - 1] : null;
+  if (!lastEvent || lastEvent.role !== "event" || lastEvent.eventType !== "suggestions_selected") {
+    return null;
+  }
+  if (!lastEvent?.eventPayload) return null;
+  const payload = lastEvent.eventPayload;
+  if (payload.action) return String(payload.action);
+  if (Array.isArray(payload.selectedIds) && payload.selectedIds.length > 0) {
+    return String(payload.selectedIds[0]);
+  }
+  if (Array.isArray(payload.selectedItems) && payload.selectedItems.length > 0) {
+    return String(payload.selectedItems[0]?.payload?.action ?? payload.selectedItems[0]?.id);
+  }
+  return null;
+}
+
+async function handleSuggestionAction({
+  ctx,
+  agentMessageId,
+  projectId,
+  stage,
+  actionId,
+}: {
+  ctx: any;
+  agentMessageId: Id<"conversationMessages">;
+  projectId: Id<"projects">;
+  stage: "IDEATION" | "QUOTE" | "BREAKDOWN";
+  actionId: string;
+}) {
+  if (actionId === "estimate_tasks") {
+    const result = await ctx.runMutation(api.agent_tasks.runEstimator, { projectId });
+    const count = Number(result?.count ?? 0);
+    const text_he =
+      count > 0
+        ? `עודכנתי הערכות זמן ל-${count} משימות שחסרו הערכה.`
+        : "כל המשימות כבר כוללות הערכת זמן.";
+    const block = ensureNextStepsBlock(buildNextStepSuggestionBlock(stage), stage);
+    await ctx.runMutation(internal.agent.finalizeMessage, {
+      messageId: agentMessageId,
+      text_he,
+      block,
+    });
+    return true;
+  }
+
+  if (actionId === "generate_quote" || actionId === "draft_quote") {
+    const elements = await ctx.db
+      .query("elements")
+      .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+      .collect();
+    const versionIds = elements
+      .map((el: any) => el.currentApprovedVersionId)
+      .filter(Boolean);
+
+    if (versionIds.length === 0) {
+      const text_he =
+        "אין גרסאות אלמנטים מאושרות כדי לייצר הצעת מחיר. אשר גרסה באלמנטים ואז נייצר.";
+      const block = ensureNextStepsBlock(buildNextStepSuggestionBlock(stage), stage);
+      await ctx.runMutation(internal.agent.finalizeMessage, {
+        messageId: agentMessageId,
+        text_he,
+        block,
+      });
+      return true;
+    }
+
+    const quoteId = await ctx.runMutation(api.quotes.generateQuote, {
+      projectId,
+      elementVersionIds: versionIds,
+    });
+    const text_he = `נוצרה גרסת הצעת מחיר חדשה (מזהה: ${quoteId}). אפשר לבדוק בלשונית Quote.`;
+    const block = ensureNextStepsBlock(buildNextStepSuggestionBlock(stage), stage);
+    await ctx.runMutation(internal.agent.finalizeMessage, {
+      messageId: agentMessageId,
+      text_he,
+      block,
+    });
+    return true;
+  }
+
+  return false;
 }
 
 export const getOrCreateConversation = mutation({

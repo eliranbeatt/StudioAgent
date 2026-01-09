@@ -88,6 +88,32 @@ export const approveChangeOrder = mutation({
   },
 });
 
+export const updateProjectPricingDefaults = mutation({
+  args: {
+    projectId: v.id("projects"),
+    riskPct: v.number(),
+    overheadPct: v.number(),
+    profitPct: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.projectId, {
+      defaults: {
+        riskPct: args.riskPct,
+        overheadPct: args.overheadPct,
+        profitPct: args.profitPct,
+        excludeManagementLaborFromCost: false, // Maintain existing strictness
+      },
+      // Also update legacy location if it exists, for consistency
+      pricingDefaults: {
+        riskPct: args.riskPct,
+        overheadPct: args.overheadPct,
+        profitPct: args.profitPct,
+        excludeManagementLaborFromCost: false,
+      },
+    });
+  },
+});
+
 export const getFinancialSummary = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -142,6 +168,7 @@ export const getFinancialSummary = query({
       effectiveBudget,
       forecast,
       variance,
+      defaults: project.defaults,
       breakdown: draftBreakdown,
     }
   }
@@ -363,8 +390,9 @@ function applyMargins(
 ) {
   const overhead = directCost * defaults.overheadPct;
   const risk = directCost * defaults.riskPct;
-  const profit = (directCost + overhead + risk) * defaults.profitPct;
+  const profit = directCost * defaults.profitPct;
   const sellPrice = directCost + overhead + risk + profit;
+
   return {
     directCost,
     overhead,

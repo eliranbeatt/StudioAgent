@@ -97,11 +97,11 @@ export default function AgentActivityDrawer({
     return messages.map((msg) => {
       if (msg.role !== "assistant" || !msg.text_he) return msg;
       const normalized = normalizeStructuredMessage(msg.text_he);
-      if (!normalized.block && !normalized.text) return msg;
+      if (!normalized.blocks && !normalized.text) return msg;
       return {
         ...msg,
         text_he: normalized.text ?? msg.text_he,
-        block: msg.block ?? normalized.block,
+        block: msg.block ?? normalized.blocks,
       };
     });
   }, [messages]);
@@ -143,13 +143,14 @@ export default function AgentActivityDrawer({
     return null;
   }, [normalizedMessages]);
 
-  const activeBlock = latestBlockMessage?.block;
+  const activeBlocks = extractBlocks(latestBlockMessage?.block);
+  const activeBlock = getPrimaryBlock(activeBlocks);
   const activeBlockType = activeBlock?.type;
 
   const panelMode: Mode =
-    activeBlockType === "ClarificationBlock" || activeBlockType === "QuestionsBlock"
+    activeBlocks.some((block) => block?.type === "ClarificationBlock" || block?.type === "QuestionsBlock")
       ? "QUESTIONS"
-      : activeBlockType === "SuggestionBlock" || activeBlockType === "ChangeSetBlock"
+      : activeBlocks.some((block) => block?.type === "SuggestionBlock" || block?.type === "ChangeSetBlock")
         ? "SUGGESTIONS"
         : "CHAT";
 
@@ -165,13 +166,13 @@ export default function AgentActivityDrawer({
       if (msg.eventType === "changeset_discarded") discarded.add(String(id));
     });
     return normalizedMessages
-      .filter((msg) => msg.block?.type === "ChangeSetBlock" && msg.changeSetId)
+      .filter((msg) => extractBlocks(msg.block).some((block) => block?.type === "ChangeSetBlock") && msg.changeSetId)
       .map((msg) => ({
         id: msg.changeSetId as Id<"changeSets">,
-        title: msg.block?.title_he ?? "Draft ChangeSet",
-        summary: msg.block?.summary_he,
-        diff: msg.block?.diffPreview_he ?? {},
-        changes: msg.block?.changes ?? {},
+        title: extractBlocks(msg.block).find((block) => block?.type === "ChangeSetBlock")?.title_he ?? "Draft ChangeSet",
+        summary: extractBlocks(msg.block).find((block) => block?.type === "ChangeSetBlock")?.summary_he,
+        diff: extractBlocks(msg.block).find((block) => block?.type === "ChangeSetBlock")?.diffPreview_he ?? {},
+        changes: extractBlocks(msg.block).find((block) => block?.type === "ChangeSetBlock")?.changes ?? {},
         status: applied.has(String(msg.changeSetId))
           ? "applied"
           : discarded.has(String(msg.changeSetId))
@@ -449,30 +450,44 @@ export default function AgentActivityDrawer({
               </div>
 
               <div className="flex-1 overflow-y-auto px-6 py-6">
-                {panelMode === "QUESTIONS" && activeBlock ? (
-                  <ClarificationPanel
-                    block={normalizeQuestionsBlock(activeBlock)}
-                    disabled={isWaiting}
-                    onSubmit={(payload) => handleEventSubmit("clarification_submitted", payload)}
-                  />
-                ) : null}
+                {panelMode === "QUESTIONS"
+                  ? activeBlocks
+                      .filter((block) => block?.type === "ClarificationBlock" || block?.type === "QuestionsBlock")
+                      .map((block, index) => (
+                        <ClarificationPanel
+                          key={block?.title_he ?? index}
+                          block={normalizeQuestionsBlock(block)}
+                          disabled={isWaiting}
+                          onSubmit={(payload) => handleEventSubmit("clarification_submitted", payload)}
+                        />
+                      ))
+                  : null}
 
-                {panelMode === "SUGGESTIONS" && activeBlock ? (
-                  activeBlock.type === "SuggestionBlock" ? (
-                    <SuggestionReviewPanel
-                      block={activeBlock}
-                      disabled={isWaiting}
-                      onSubmit={(payload) => handleEventSubmit("suggestions_selected", payload)}
-                    />
-                  ) : (
-                    <ChangeSetReviewPanel
-                      block={activeBlock}
-                      changeSetId={latestBlockMessage?.changeSetId}
-                      disabled={isWaiting}
-                      onApply={handleApplyChangeSet}
-                      onDiscard={handleDiscardChangeSet}
-                    />
-                  )
+                {panelMode === "SUGGESTIONS" ? (
+                  <div className="space-y-4">
+                    {activeBlocks
+                      .filter((block) => block?.type === "ChangeSetBlock")
+                      .map((block, index) => (
+                        <ChangeSetReviewPanel
+                          key={block?.title_he ?? index}
+                          block={block}
+                          changeSetId={latestBlockMessage?.changeSetId}
+                          disabled={isWaiting}
+                          onApply={handleApplyChangeSet}
+                          onDiscard={handleDiscardChangeSet}
+                        />
+                      ))}
+                    {activeBlocks
+                      .filter((block) => block?.type === "SuggestionBlock")
+                      .map((block, index) => (
+                        <SuggestionReviewPanel
+                          key={block?.title_he ?? index}
+                          block={block}
+                          disabled={isWaiting}
+                          onSubmit={(payload) => handleEventSubmit("suggestions_selected", payload)}
+                        />
+                      ))}
+                  </div>
                 ) : null}
 
                 {panelMode === "CHAT" ? (
@@ -495,7 +510,11 @@ export default function AgentActivityDrawer({
                           >
                             {msg.text_he ?? "..."}
                           </div>
-                          {msg.block?.type === "PlanBlock" ? <PlanBlockCard block={msg.block} /> : null}
+                          {extractBlocks(msg.block)
+                            .filter((block) => block?.type === "PlanBlock")
+                            .map((block, index) => (
+                              <PlanBlockCard key={block?.title_he ?? index} block={block} />
+                            ))}
                         </div>
                       ))
                     )}
@@ -811,6 +830,20 @@ function isStructuredBlock(payload: any) {
   );
 }
 
+function extractBlocks(block: any) {
+  if (!block) return [];
+  if (Array.isArray(block)) return block;
+  if (Array.isArray(block.blocks)) return block.blocks;
+  return [block];
+}
+
+function getPrimaryBlock(block: any) {
+  const blocks = extractBlocks(block);
+  if (blocks.length === 0) return null;
+  const nonSuggestion = blocks.find((item) => item?.type !== "SuggestionBlock");
+  return nonSuggestion ?? blocks[0];
+}
+
 function extractJsonBlock(text: string) {
   const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || text.match(/```(?:json)?\s*([\s\S]*)$/i);
   if (!match) return null;
@@ -821,19 +854,28 @@ function extractJsonBlock(text: string) {
 }
 
 function normalizeStructuredMessage(text?: string) {
-  if (!text) return { text, block: undefined as any };
+  if (!text) return { text, blocks: undefined as any };
   const fenced = extractJsonBlock(text);
   const parsed = fenced ? tryParseJson(fenced.json) : tryParseJson(text);
-  if (!parsed) return { text, block: undefined as any };
+  if (!parsed) return { text, blocks: undefined as any };
 
-  const block = isStructuredBlock(parsed) ? parsed : parsed.block;
+  const blocks = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray((parsed as any).blocks)
+      ? (parsed as any).blocks
+      : isStructuredBlock(parsed)
+        ? [parsed]
+        : isStructuredBlock((parsed as any).block)
+          ? [(parsed as any).block]
+          : undefined;
+
   const parsedText = isStructuredBlock(parsed)
     ? fenced?.textPart
-    : parsed.assistantText_he ?? parsed.text_he ?? parsed.text;
+    : (parsed as any).assistantText_he ?? (parsed as any).text_he ?? (parsed as any).text;
 
   return {
     text: parsedText ?? fenced?.textPart ?? text,
-    block,
+    blocks,
   };
 }
 
@@ -1065,7 +1107,13 @@ function SuggestionReviewPanel({
       />
 
       <button
-        onClick={() => onSubmit({ selectedIds: selected, note_he: note })}
+        onClick={() =>
+          onSubmit({
+            selectedIds: selected,
+            selectedItems: (block.items ?? []).filter((item: any) => selected.includes(item.id)),
+            note_he: note,
+          })
+        }
         disabled={disabled}
         className="w-full rounded-md bg-blue-600 px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-50"
       >

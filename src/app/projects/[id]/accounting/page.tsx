@@ -53,29 +53,6 @@ export default function AccountingPage({
 
   const pendingCount = pendingGraveyard?.length ?? 0;
 
-  const stats = useMemo(() => {
-    if (!summary) return [];
-    return [
-      {
-        label: "Baseline Planned",
-        value: summary.baseline.grandTotal,
-        icon: FileCheck,
-        color: "text-blue-600",
-      },
-      {
-        label: "Approved COs",
-        value: summary.approvedCO.sellPrice,
-        icon: TrendingUp,
-        color: "text-green-600",
-      },
-      {
-        label: "Unapproved Variance",
-        value: summary.variance.unapproved.sellPrice,
-        icon: ShieldAlert,
-        color: "text-amber-600",
-      },
-    ];
-  }, [summary]);
 
   if (!summary || !accounting) {
     return <div className="p-8">Loading accounting data...</div>;
@@ -166,7 +143,12 @@ export default function AccountingPage({
       </div>
 
       {tab === "summary" ? (
-        <SummaryTab summary={summary} stats={stats} accounting={accounting} />
+        <SummaryTab
+          projectId={projectId}
+          summary={summary}
+          accounting={accounting}
+          projectDefaults={summary.defaults}
+        />
       ) : null}
 
       {tab === "materials" ? (
@@ -197,224 +179,41 @@ export default function AccountingPage({
   );
 }
 
+import { AccountingSummaryBlock } from "./AccountingSummaryBlock";
+import { ApprovedBudgetRow } from "./ApprovedBudgetRow";
+import { ElementBreakdownTable } from "./ElementBreakdownTable";
+
 function SummaryTab({
+  projectId,
   summary,
-  stats,
   accounting,
+  projectDefaults,
 }: {
+  projectId: Id<"projects">;
   summary: any;
-  stats: Array<{
-    label: string;
-    value: number;
-    icon: React.ComponentType<{ size?: number; className?: string }>;
-    color: string;
-  }>;
   accounting: any;
+  projectDefaults: any;
 }) {
-  const gapTotals = computeGapTotals(accounting);
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className={`p-2 rounded-lg bg-gray-50 ${stat.color.replace(
-                  "text-",
-                  "text-opacity-80 text-"
-                )}`}
-              >
-                <stat.icon size={20} className={stat.color} />
-              </div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                {stat.label}
-              </span>
-            </div>
-            <div className="text-3xl font-bold text-gray-900">
-              {Number(stat.value).toLocaleString()}{" "}
-              <span className="text-lg text-gray-400 font-normal">NIS</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <AccountingSummaryBlock
+        projectId={projectId}
+        summary={summary}
+        projectDefaults={projectDefaults}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <SummaryCard
-          title="Current Forecast"
-          value={summary.forecast.sellPrice}
-          subtitle="Sell price"
-        />
-        <SummaryCard
-          title="Effective Budget"
-          value={summary.effectiveBudget.sellPrice}
-          subtitle="Baseline + COs"
-        />
-        <SummaryCard
-          title="Variance"
-          value={summary.variance.unapproved.sellPrice}
-          subtitle="Forecast - budget"
-        />
-      </div>
+      <ApprovedBudgetRow summary={summary} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <SummaryCard
-          title="Materials Gap"
-          value={gapTotals.materialsGap ?? 0}
-          displayValue={
-            gapTotals.materialsGap === null
-              ? "--"
-              : formatGap(gapTotals.materialsGap)
-          }
-          subtitle={gapTotals.materialsGap === null ? "No actuals yet" : "Actual - planned"}
-          tone={gapTotals.materialsGap}
-        />
-        <SummaryCard
-          title="Labor Gap"
-          value={gapTotals.laborGap ?? 0}
-          displayValue={
-            gapTotals.laborGap === null ? "--" : formatGap(gapTotals.laborGap)
-          }
-          subtitle={gapTotals.laborGap === null ? "No actuals yet" : "Actual - planned"}
-          tone={gapTotals.laborGap}
-        />
-        <SummaryCard
-          title="Total Gap"
-          value={gapTotals.totalGap ?? 0}
-          displayValue={
-            gapTotals.totalGap === null ? "--" : formatGap(gapTotals.totalGap)
-          }
-          subtitle={gapTotals.totalGap === null ? "No actuals yet" : "Actual - planned"}
-          tone={gapTotals.totalGap}
-        />
-      </div>
-
-      <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
-          <div className="font-semibold text-gray-900">Draft cost breakdown</div>
-          <div className="text-xs text-gray-500">
-            {accounting.elements.length} elements
-          </div>
-        </div>
-        <div className="divide-y">
-          {accounting.elements.map((element: any) => {
-            const gapTotal = computeGapTotal(element.materials, element.labor);
-            return (
-              <div
-                key={element.elementId}
-                className="px-6 py-4 flex items-center justify-between text-sm"
-              >
-                <div>
-                  <div className="font-medium text-gray-900">{element.title}</div>
-                  <div className="text-xs text-gray-400">
-                    {element.tasks?.length ?? 0} tasks
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono text-gray-700">
-                    {element.totals.total.toLocaleString()} NIS
-                  </div>
-                  <div
-                    className={`text-xs font-semibold ${
-                      gapTotal === null
-                        ? "text-gray-400"
-                        : gapTotal > 0
-                          ? "text-green-600"
-                          : gapTotal < 0
-                            ? "text-red-600"
-                            : "text-gray-500"
-                    }`}
-                  >
-                    Gap: {gapTotal === null ? "--" : formatGap(gapTotal)}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {accounting.projectCosts ? (
-            (() => {
-              const gapTotal = computeGapTotal(
-                accounting.projectCosts.materials,
-                accounting.projectCosts.labor
-              );
-              return (
-                <div className="px-6 py-4 flex items-center justify-between text-sm">
-                  <div>
-                    <div className="font-medium text-gray-900">
-                      Project Level Costs
-                    </div>
-                    <div className="text-xs text-gray-400">Global overhead</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono text-gray-700">
-                      {accounting.projectCosts.totals.total.toLocaleString()} NIS
-                    </div>
-                    <div
-                      className={`text-xs font-semibold ${
-                        gapTotal === null
-                          ? "text-gray-400"
-                          : gapTotal > 0
-                            ? "text-green-600"
-                            : gapTotal < 0
-                              ? "text-red-600"
-                              : "text-gray-500"
-                      }`}
-                    >
-                      Gap: {gapTotal === null ? "--" : formatGap(gapTotal)}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()
-          ) : null}
-        </div>
-      </div>
+      <ElementBreakdownTable
+        projectId={projectId}
+        accounting={accounting}
+        margins={projectDefaults}
+      />
     </div>
   );
 }
 
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-  tone,
-  displayValue,
-}: {
-  title: string;
-  value: number;
-  subtitle: string;
-  tone?: number | null;
-  displayValue?: string;
-}) {
-  const toneClass =
-    tone === undefined || tone === null
-      ? "text-gray-900"
-      : tone > 0
-        ? "text-green-600"
-        : tone < 0
-          ? "text-red-600"
-          : "text-gray-500";
-  return (
-    <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
-      <div className="text-xs uppercase font-semibold text-gray-400 tracking-wider">
-        {title}
-      </div>
-      {displayValue ? (
-        <div className={`mt-3 text-2xl font-bold ${toneClass}`}>
-          {displayValue}
-        </div>
-      ) : (
-        <div className={`mt-3 text-2xl font-bold ${toneClass}`}>
-          {Number(value).toLocaleString()}{" "}
-          <span className="text-sm text-gray-400 font-normal">NIS</span>
-        </div>
-      )}
-      <div className="mt-1 text-xs text-gray-500">{subtitle}</div>
-    </div>
-  );
-}
+
 
 function MaterialsTab({
   accounting,
@@ -1157,71 +956,7 @@ function formatGap(amount: number) {
   return `${sign}${amount.toLocaleString()} NIS`;
 }
 
-function computeGapTotal(materials: MaterialLine[], labor: LaborLine[]) {
-  let hasActual = false;
-  let planned = 0;
-  let actual = 0;
 
-  for (const line of materials) {
-    planned += Number(line.qty) * Number(line.unitCost);
-    if (line.actualQty !== undefined && line.actualUnitCost !== undefined) {
-      actual += Number(line.actualQty) * Number(line.actualUnitCost);
-      hasActual = true;
-    }
-  }
-
-  for (const line of labor) {
-    planned += Number(line.qty) * Number(line.rate);
-    if (line.actualQty !== undefined && line.actualRate !== undefined) {
-      actual += Number(line.actualQty) * Number(line.actualRate);
-      hasActual = true;
-    }
-  }
-
-  return hasActual ? actual - planned : null;
-}
-
-function computeGapTotals(accounting: any) {
-  let materialsPlanned = 0;
-  let materialsActual = 0;
-  let laborPlanned = 0;
-  let laborActual = 0;
-  let hasMaterialsActual = false;
-  let hasLaborActual = false;
-
-  const allGroups = [
-    ...(accounting.elements ?? []),
-    ...(accounting.projectCosts ? [accounting.projectCosts] : []),
-  ];
-
-  for (const group of allGroups) {
-    for (const line of group.materials ?? []) {
-      materialsPlanned += Number(line.qty) * Number(line.unitCost);
-      if (line.actualQty !== undefined && line.actualUnitCost !== undefined) {
-        materialsActual += Number(line.actualQty) * Number(line.actualUnitCost);
-        hasMaterialsActual = true;
-      }
-    }
-    for (const line of group.labor ?? []) {
-      laborPlanned += Number(line.qty) * Number(line.rate);
-      if (line.actualQty !== undefined && line.actualRate !== undefined) {
-        laborActual += Number(line.actualQty) * Number(line.actualRate);
-        hasLaborActual = true;
-      }
-    }
-  }
-
-  const materialsGap = hasMaterialsActual ? materialsActual - materialsPlanned : null;
-  const laborGap = hasLaborActual ? laborActual - laborPlanned : null;
-  const totalGap =
-    hasMaterialsActual || hasLaborActual
-      ? (hasMaterialsActual ? materialsActual : 0) +
-        (hasLaborActual ? laborActual : 0) -
-        (materialsPlanned + laborPlanned)
-      : null;
-
-  return { materialsGap, laborGap, totalGap };
-}
 
 function TabButton({
   active,
@@ -1235,9 +970,8 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-2 text-xs font-semibold rounded-full ${
-        active ? "bg-black text-white" : "bg-gray-100 text-gray-600"
-      }`}
+      className={`px-4 py-2 text-xs font-semibold rounded-full ${active ? "bg-black text-white" : "bg-gray-100 text-gray-600"
+        }`}
     >
       {children}
     </button>

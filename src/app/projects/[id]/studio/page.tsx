@@ -358,12 +358,14 @@ function MessageBubble({
   const bubble = isUser ? "bg-black text-white" : "bg-white border border-gray-200 text-gray-800";
 
   const normalized =
-    message.role === "assistant" ? normalizeStructuredMessage(message.text_he) : { text: message.text_he, block: undefined };
+    message.role === "assistant"
+      ? normalizeStructuredMessage(message.text_he)
+      : { text: message.text_he, blocks: undefined as any };
   const displayText = normalized.text ?? message.text_he;
-  const displayBlock = message.block ?? (message.role === "assistant" ? normalized.block : undefined);
+  const displayBlocks = message.block ?? (message.role === "assistant" ? normalized.blocks : undefined);
 
   // Handle "Thinking..." state
-  const isThinking = message.role === "assistant" && !displayText && !displayBlock;
+  const isThinking = message.role === "assistant" && !displayText && !displayBlocks;
 
   return (
     <div className={`flex flex-col ${align} gap-3`}>
@@ -384,16 +386,19 @@ function MessageBubble({
         </div>
       ) : null}
 
-      {displayBlock ? (
-        <BlockRenderer
-          block={displayBlock}
-          changeSetId={message.changeSetId}
-          onClarificationSubmit={onClarificationSubmit}
-          onSuggestionsSubmit={onSuggestionsSubmit}
-          onApplyChangeSet={onApplyChangeSet}
-          onDiscardChangeSet={onDiscardChangeSet}
-          disabled={disabled}
-        />
+      {displayBlocks ? (
+        (Array.isArray(displayBlocks) ? displayBlocks : [displayBlocks]).map((block, index) => (
+          <BlockRenderer
+            key={block?.type ?? index}
+            block={block}
+            changeSetId={message.changeSetId}
+            onClarificationSubmit={onClarificationSubmit}
+            onSuggestionsSubmit={onSuggestionsSubmit}
+            onApplyChangeSet={onApplyChangeSet}
+            onDiscardChangeSet={onDiscardChangeSet}
+            disabled={disabled}
+          />
+        ))
       ) : null}
     </div>
   );
@@ -447,19 +452,28 @@ function extractJsonBlock(text: string) {
 }
 
 function normalizeStructuredMessage(text?: string) {
-  if (!text) return { text, block: undefined as any };
+  if (!text) return { text, blocks: undefined as any };
   const fenced = extractJsonBlock(text);
   const parsed = fenced ? tryParseJson(fenced.json) : tryParseJson(text);
-  if (!parsed) return { text, block: undefined as any };
+  if (!parsed) return { text, blocks: undefined as any };
 
-  const block = isStructuredBlock(parsed) ? parsed : parsed.block;
+  const blocks = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed.blocks)
+      ? parsed.blocks
+      : isStructuredBlock(parsed)
+        ? [parsed]
+        : isStructuredBlock(parsed.block)
+          ? [parsed.block]
+          : undefined;
+
   const parsedText = isStructuredBlock(parsed)
     ? fenced?.textPart
     : parsed.assistantText_he ?? parsed.text_he ?? parsed.text;
 
   return {
     text: parsedText ?? fenced?.textPart ?? text,
-    block,
+    blocks,
   };
 }
 
@@ -755,7 +769,13 @@ function SuggestionBlock({
         className="mt-3 w-full rounded-lg border border-gray-200 px-2 py-1 text-xs"
       />
       <button
-        onClick={() => onSubmit({ selectedIds: selected, note_he: note })}
+        onClick={() =>
+          onSubmit({
+            selectedIds: selected,
+            selectedItems: (block.items ?? []).filter((item: any) => selected.includes(item.id)),
+            note_he: note,
+          })
+        }
         disabled={disabled}
         className="mt-3 w-full rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
       >

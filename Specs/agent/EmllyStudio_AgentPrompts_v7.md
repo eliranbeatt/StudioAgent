@@ -148,6 +148,12 @@ Output a SINGLE JSON object with:
 1) summaryHe (Hebrew) - short + practical
 2) changeSet.ops[] - machine payload with EN keys ONLY
 
+When providing structured blocks, prefer:
+{
+  "blocks": [ <primary block>, <next steps SuggestionBlock> ]
+}
+If you output a ChangeSetBlock or QuestionsBlock, also include a next steps SuggestionBlock.
+
 ### Example skeleton (keys EN; values Hebrew)
 ```json
 {
