@@ -30,6 +30,15 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [selectedElementIds, setSelectedElementIds] = useState<Id<"elements">[]>([]);
   const [isWaiting, setIsWaiting] = useState(false);
   const [model, setModel] = useState<string>("gpt-4o");
+  const [pendingChangeSetAction, setPendingChangeSetAction] = useState<{
+    changeSetId?: Id<"changeSets">;
+    action: "apply" | "discard";
+  } | null>(null);
+  const [pendingSuggestion, setPendingSuggestion] = useState<{
+    selectedIds: string[];
+    selectedItems?: any[];
+    note_he?: string;
+  } | null>(null);
   const user = useQuery(api.users.getViewer);
 
   useEffect(() => {
@@ -75,18 +84,62 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     setSelectedElementIds([overview.elements[0].id as Id<"elements">]);
   }, [overview?.elements, selectedElementIds.length]);
 
+  const hasPendingAction = Boolean(pendingChangeSetAction || pendingSuggestion);
+
+  const submitPendingActions = async () => {
+    if (!activeConversationId) return;
+    if (pendingChangeSetAction?.changeSetId) {
+      if (pendingChangeSetAction.action === "apply") {
+        await applyChangeSet({ changeSetId: pendingChangeSetAction.changeSetId });
+        await appendEventMessage({
+          conversationId: activeConversationId,
+          eventType: "changeset_applied",
+          eventPayload: { changeSetId: pendingChangeSetAction.changeSetId },
+        });
+      } else {
+        await discardChangeSet({ changeSetId: pendingChangeSetAction.changeSetId });
+        await appendEventMessage({
+          conversationId: activeConversationId,
+          eventType: "changeset_discarded",
+          eventPayload: { changeSetId: pendingChangeSetAction.changeSetId },
+        });
+      }
+    }
+    if (pendingSuggestion) {
+      await appendEventMessage({
+        conversationId: activeConversationId,
+        eventType: "suggestions_selected",
+        eventPayload: pendingSuggestion,
+      });
+    }
+    setPendingChangeSetAction(null);
+    setPendingSuggestion(null);
+    await agentRespond({
+      conversationId: activeConversationId,
+      uiContext: { selectedElementIds },
+      model,
+    });
+  };
+
   const handleSend = async () => {
-    if (!input.trim() || !activeConversationId || isWaiting) return;
+    if (!activeConversationId || isWaiting) return;
     const text = input.trim();
+    if (!text && !hasPendingAction) return;
     setInput("");
     setIsWaiting(true);
     try {
-      await appendUserMessage({ conversationId: activeConversationId, text_he: text });
-      await agentRespond({
-        conversationId: activeConversationId,
-        uiContext: { selectedElementIds },
-        model,
-      });
+      if (text) {
+        await appendUserMessage({ conversationId: activeConversationId, text_he: text });
+        setPendingChangeSetAction(null);
+        setPendingSuggestion(null);
+        await agentRespond({
+          conversationId: activeConversationId,
+          uiContext: { selectedElementIds },
+          model,
+        });
+      } else {
+        await submitPendingActions();
+      }
     } finally {
       setIsWaiting(false);
     }
@@ -111,44 +164,9 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  const handleApplyChangeSet = async (changeSetId?: Id<"changeSets">) => {
-    if (!changeSetId || !activeConversationId || isWaiting) return;
-    setIsWaiting(true);
-    try {
-      await applyChangeSet({ changeSetId });
-      await appendEventMessage({
-        conversationId: activeConversationId,
-        eventType: "changeset_applied",
-        eventPayload: { changeSetId },
-      });
-      await agentRespond({
-        conversationId: activeConversationId,
-        uiContext: { selectedElementIds },
-        model,
-      });
-    } finally {
-      setIsWaiting(false);
-    }
-  };
-
-  const handleDiscardChangeSet = async (changeSetId?: Id<"changeSets">) => {
-    if (!changeSetId || !activeConversationId || isWaiting) return;
-    setIsWaiting(true);
-    try {
-      await discardChangeSet({ changeSetId });
-      await appendEventMessage({
-        conversationId: activeConversationId,
-        eventType: "changeset_discarded",
-        eventPayload: { changeSetId },
-      });
-      await agentRespond({
-        conversationId: activeConversationId,
-        uiContext: { selectedElementIds },
-        model,
-      });
-    } finally {
-      setIsWaiting(false);
-    }
+  const handleQueueChangeSetAction = (action: "apply" | "discard", changeSetId?: Id<"changeSets">) => {
+    if (!changeSetId) return;
+    setPendingChangeSetAction({ action, changeSetId });
   };
 
   const stageValue = (activeConversation?.stage ?? "IDEATION") as Stage;
@@ -159,12 +177,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       <aside className="w-64 border-r border-gray-200 bg-gray-50">
         <div className="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-500">Conversations</div>
-          <button
-            onClick={() => createConversation({ projectId }).then((convId) => setActiveConversationId(convId))}
-            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-          >
-            <Plus size={12} /> New
-          </button>
         </div>
         <div className="p-3 space-y-2">
           {!conversations ? (
@@ -185,7 +197,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                   {conversation.title_he ?? "שיחה חדשה"}
                 </div>
                 <div className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
-                  {String(conversation.stage).toUpperCase()} • {String(conversation.mode ?? "CHAT").toUpperCase()}
+                  {String(conversation.stage).toUpperCase()} · {String(conversation.mode ?? "CHAT").toUpperCase()}
                 </div>
               </button>
             ))
@@ -258,9 +270,15 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                   key={msg._id}
                   message={msg}
                   onClarificationSubmit={handleEventSubmit}
-                  onSuggestionsSubmit={handleEventSubmit}
-                  onApplyChangeSet={handleApplyChangeSet}
-                  onDiscardChangeSet={handleDiscardChangeSet}
+                  onSuggestionsSubmit={(eventType, payload) => {
+                    if (eventType === "suggestions_selected") {
+                      setPendingSuggestion(payload);
+                      return;
+                    }
+                    handleEventSubmit(eventType, payload);
+                  }}
+                  onApplyChangeSet={(changeSetId) => handleQueueChangeSetAction("apply", changeSetId)}
+                  onDiscardChangeSet={(changeSetId) => handleQueueChangeSetAction("discard", changeSetId)}
                   disabled={isWaiting}
                 />
               ))
@@ -285,11 +303,11 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
             />
             <button
               onClick={handleSend}
-              disabled={isWaiting || !input.trim()}
+              disabled={isWaiting || (!input.trim() && !hasPendingAction)}
               className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               <Send size={16} />
-              Send
+              שלח
             </button>
           </div>
         </div>
@@ -542,7 +560,7 @@ function BlockRenderer({
     return (
       <SuggestionBlock
         block={block}
-        onSubmit={(payload) => onSuggestionsSubmit("suggestions_selected", payload)}
+        onSelectionChange={(payload) => onSuggestionsSubmit("suggestions_selected", payload)}
         disabled={disabled}
       />
     );
@@ -717,23 +735,37 @@ function ClarificationBlock({
 
 function SuggestionBlock({
   block,
-  onSubmit,
+  onSelectionChange,
   disabled,
 }: {
   block: any;
-  onSubmit: (payload: any) => void;
+  onSelectionChange: (payload: any) => void;
   disabled: boolean;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const selectionMode = block.selectionMode ?? "single";
 
+  const emitSelection = (nextSelected: string[], nextNote: string) => {
+    onSelectionChange({
+      selectedIds: nextSelected,
+      selectedItems: (block.items ?? []).filter((item: any) => nextSelected.includes(item.id)),
+      note_he: nextNote,
+    });
+  };
+
   const toggle = (id: string) => {
     if (selectionMode === "single") {
-      setSelected([id]);
+      const next = [id];
+      setSelected(next);
+      emitSelection(next, note);
       return;
     }
-    setSelected((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+    setSelected((prev) => {
+      const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+      emitSelection(next, note);
+      return next;
+    });
   };
 
   return (
@@ -745,42 +777,32 @@ function SuggestionBlock({
       <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
       {block.subtitle_he ? <div className="text-xs text-gray-500 mt-1">{block.subtitle_he}</div> : null}
       <div className="mt-3 space-y-2">
-        {(block.items ?? []).map((item: any) => {
-          const active = selected.includes(item.id);
-          return (
-            <button
-              key={item.id}
-              onClick={() => toggle(item.id)}
-              className={`w-full rounded-xl border px-3 py-2 text-start text-xs transition ${active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white"
-                }`}
-            >
-              <div className="font-semibold">{item.label_he}</div>
-              <div className={`mt-1 ${active ? "text-gray-200" : "text-gray-500"}`}>{item.why_he}</div>
-              <div className={`mt-1 text-[10px] ${active ? "text-gray-300" : "text-gray-400"}`}>{item.details_he}</div>
-            </button>
-          );
-        })}
+      {(block.items ?? []).map((item: any) => {
+        const active = selected.includes(item.id);
+        return (
+          <button
+            key={item.id}
+            onClick={() => toggle(item.id)}
+            className={`w-full rounded-xl border px-3 py-2 text-start text-xs transition ${active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white"}`}
+          >
+            <div className="font-semibold">{item.label_he}</div>
+            <div className={`mt-1 ${active ? "text-gray-200" : "text-gray-500"}`}>{item.why_he}</div>
+            <div className={`mt-1 text-[10px] ${active ? "text-gray-300" : "text-gray-400"}`}>{item.details_he}</div>
+          </button>
+        );
+      })}
       </div>
       <textarea
         value={note}
-        onChange={(e) => setNote(e.target.value)}
+        onChange={(e) => {
+          const nextNote = e.target.value;
+          setNote(nextNote);
+          emitSelection(selected, nextNote);
+        }}
         placeholder={block.freeTextPrompt_he ?? "הערה חופשית"}
         rows={2}
         className="mt-3 w-full rounded-lg border border-gray-200 px-2 py-1 text-xs"
       />
-      <button
-        onClick={() =>
-          onSubmit({
-            selectedIds: selected,
-            selectedItems: (block.items ?? []).filter((item: any) => selected.includes(item.id)),
-            note_he: note,
-          })
-        }
-        disabled={disabled}
-        className="mt-3 w-full rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-      >
-        {block.submitLabel_he ?? "אשר"}
-      </button>
     </div>
   );
 }

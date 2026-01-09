@@ -250,6 +250,76 @@ async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapshot: any)
   return snapshot;
 }
 
+async function captureSnapshotFromLive(ctx: any, elementId: any) {
+  // --- Fetch Live Data ---
+  const existingTasks = await ctx.db
+    .query("tasks")
+    .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
+    .collect();
+
+  const existingLines = await ctx.db
+    .query("accountingLines")
+    .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
+    .collect();
+
+  const existingParts = await ctx.db
+    .query("printParts")
+    .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
+    .collect();
+
+  // --- Construct Snapshot ---
+  const snapshot: any = {
+    tasks: { byId: {} },
+    accounting: { byId: {} },
+    printing: { byId: {} },
+  };
+
+  // Tasks
+  for (const t of existingTasks) {
+    snapshot.tasks.byId[t._id] = {
+      id: t._id,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: t.priority,
+      category: t.category,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      estimatedMinutes: t.estimatedMinutes,
+      assignee: t.assignee,
+      dependencies: t.dependencies,
+    };
+  }
+
+  // Accounting
+  for (const l of existingLines) {
+    snapshot.accounting.byId[l._id] = {
+      id: l._id,
+      taskId: l.taskId,
+      type: l.type,
+      title: l.title,
+      qty: l.qty,
+      unitCost: l.unitCost,
+      total: l.total,
+      billable: l.billable,
+    };
+  }
+
+  // Printing
+  for (const p of existingParts) {
+    snapshot.printing.byId[p._id] = {
+      id: p._id,
+      label: p.label,
+      substrate: p.substrate,
+      qty: p.qty,
+      size: p.size,
+      requiresProof: p.requiresProof,
+    };
+  }
+
+  return snapshot;
+}
+
 export const approveElementDraft = mutation({
   args: {
     elementId: v.id("elements"),
@@ -270,9 +340,41 @@ export const approveElementDraft = mutation({
       throw new Error(`Draft is not in a strictly open state (current status: ${draft.status}).`);
     }
 
-    // --- SYNC TO LIVE TABLES ---
-    // This updates the 'tasks', 'accountingLines', etc. and returns the snapshot with real IDs.
-    const updatedSnapshot = await syncSnapshotToLiveTables(ctx, args.elementId, draft.workingSnapshot ?? {});
+    // --- CAPTURE LIVE STATE AS TRUTH ---
+    // Instead of trusting the draft snapshot (which might be stale due to direct live edits),
+    // we rebuild the snapshot from the current live tables. This ensures no data loss.
+    const liveSnapshot = await captureSnapshotFromLive(ctx, args.elementId);
+
+    // --- SAFETY CHECK ---
+    // If Live state is completely empty but Draft has data, it implies the user might be working 
+    // in "Draft Only" mode (System 1) where live tables are not used until approval. 
+    // In that case, we should prefer the Draft.
+    // Otherwise, we prefer Live (System 2) to capture recent manual/agent edits.
+
+    const liveTasks = Object.keys(liveSnapshot.tasks?.byId ?? {}).length;
+    const liveLines = Object.keys(liveSnapshot.accounting?.byId ?? {}).length;
+    const liveParts = Object.keys(liveSnapshot.printing?.byId ?? {}).length;
+    const liveIsEmpty = liveTasks === 0 && liveLines === 0 && liveParts === 0;
+
+    const draftSnapshot = draft.workingSnapshot ?? {};
+    const draftTasks = Object.keys(draftSnapshot.tasks?.byId ?? {}).length;
+    const draftLines = Array.isArray(draftSnapshot.accounting?.lines)
+      ? draftSnapshot.accounting.lines.length
+      : Object.keys(draftSnapshot.accounting?.byId ?? {}).length; // Handle both formats
+    const draftParts = Array.isArray(draftSnapshot.printing?.parts)
+      ? draftSnapshot.printing.parts.length
+      : Object.keys(draftSnapshot.printing?.byId ?? {}).length;
+
+    const draftHasData = draftTasks > 0 || draftLines > 0 || draftParts > 0;
+
+    let snapshotToUse = liveSnapshot;
+    if (liveIsEmpty && draftHasData) {
+      console.log(`[Approve] Live is empty but Draft has data (${draftTasks} tasks). Preferring Draft.`);
+      snapshotToUse = draftSnapshot;
+    }
+
+    // Ensure the captured snapshot is what we use for the version AND the sync (no-op sync essentially)
+    const updatedSnapshot = await syncSnapshotToLiveTables(ctx, args.elementId, snapshotToUse);
 
     const latestVersion = await ctx.db
       .query("elementVersions")
