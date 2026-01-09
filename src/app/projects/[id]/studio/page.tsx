@@ -357,18 +357,9 @@ function MessageBubble({
   const align = isUser ? "items-end" : "items-start";
   const bubble = isUser ? "bg-black text-white" : "bg-white border border-gray-200 text-gray-800";
 
-  // Backward compatibility: check if text is strictly JSON (old format)
-  const isLegacyJson = message.text_he?.trim().startsWith("{") && message.text_he?.trim().includes("assistantText_he");
-  let displayText = message.text_he;
-  let displayBlock = message.block;
-
-  if (isLegacyJson && message.text_he) {
-    const parsed = tryParseJson(message.text_he);
-    if (parsed) {
-      displayText = parsed.assistantText_he;
-      displayBlock = parsed.block;
-    }
-  }
+  const normalized = normalizeStructuredMessage(message.text_he);
+  const displayText = normalized.text ?? message.text_he;
+  const displayBlock = message.block ?? normalized.block;
 
   // Handle "Thinking..." state
   const isThinking = message.role === "assistant" && !displayText && !displayBlock;
@@ -383,7 +374,11 @@ function MessageBubble({
       ) : null}
 
       {displayText ? (
-        <div className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${bubble} whitespace-pre-wrap`} dir="auto">
+        <div
+          className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${bubble} whitespace-pre-wrap`}
+          dir="auto"
+          style={{ textAlign: "start" }}
+        >
           <RichTextRenderer text={displayText} />
         </div>
       ) : null}
@@ -429,6 +424,40 @@ function tryParseJson(text: string) {
     return null;
   }
   return null;
+}
+
+function isStructuredBlock(payload: any) {
+  return (
+    payload?.type === "ClarificationBlock" ||
+    payload?.type === "SuggestionBlock" ||
+    payload?.type === "ChangeSetBlock"
+  );
+}
+
+function extractJsonBlock(text: string) {
+  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (!match) return null;
+  return {
+    json: match[1],
+    textPart: text.slice(0, match.index ?? 0).trim(),
+  };
+}
+
+function normalizeStructuredMessage(text?: string) {
+  if (!text) return { text, block: undefined as any };
+  const fenced = extractJsonBlock(text);
+  const parsed = fenced ? tryParseJson(fenced.json) : tryParseJson(text);
+  if (!parsed) return { text, block: undefined as any };
+
+  const block = isStructuredBlock(parsed) ? parsed : parsed.block;
+  const parsedText = isStructuredBlock(parsed)
+    ? fenced?.textPart
+    : parsed.assistantText_he ?? parsed.text_he ?? parsed.text;
+
+  return {
+    text: parsedText ?? fenced?.textPart ?? text,
+    block,
+  };
 }
 
 function RichTextRenderer({ text }: { text: string }) {
@@ -708,18 +737,23 @@ function ChangeSetBlock({
   onDiscard: (changeSetId?: Id<"changeSets">) => void;
   disabled: boolean;
 }) {
-  const changes = block.changes ?? {};
+  const rawChanges = block.changes ?? {};
   const diff = block.diffPreview_he ?? {};
+
+  // Normalize changes to array of { label, value }
+  const changesList = Array.isArray(rawChanges) 
+    ? rawChanges 
+    : Object.entries(rawChanges).map(([key, value]) => ({ label: key, value }));
 
   return (
     <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
       {block.summary_he ? <div className="text-xs text-gray-500 mt-1">{block.summary_he}</div> : null}
       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
-        {Object.entries(changes).map(([key, value]) => (
-          <div key={key} className="flex items-center justify-between rounded-md border border-gray-100 px-2 py-1">
-            <span>{key}</span>
-            <span className="font-semibold text-gray-700">{value as number}</span>
+        {changesList.map((item: any, idx: number) => (
+          <div key={idx} className="flex items-center justify-between rounded-md border border-gray-100 px-2 py-1">
+            <span>{item.label}</span>
+            <span className="font-semibold text-gray-700">{item.value as number}</span>
           </div>
         ))}
       </div>

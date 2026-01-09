@@ -24,8 +24,8 @@ export const generateQuote = mutation({
         const labs = Object.values(snapshot.labor?.byId || {});
 
         const elementDirectCost = 
-            mats.reduce((sum: number, m: any) => sum + (m.qty * m.unitCost), 0) +
-            labs.reduce((sum: number, l: any) => sum + (l.qty * l.rate), 0);
+            (mats.reduce((sum: number, m: any) => sum + (m.qty * m.unitCost), 0) as number) +
+            (labs.reduce((sum: number, l: any) => sum + (l.qty * l.rate), 0) as number);
 
         totalDirectCost += elementDirectCost;
         

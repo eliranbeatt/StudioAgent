@@ -549,6 +549,11 @@ export const agentRespond = action({
     if (block?.type === "ChangeSetBlock" && block.proposedChangeSet) {
       try {
         const proposed = block.proposedChangeSet;
+        // Ensure ops and base don't have invalid keys if they are dynamic
+        // But ops is usually structured. 'base' might be the issue if it has dynamic keys?
+        // Actually, the error likely came from 'changes' or 'base' having Hebrew keys.
+        // Let's sanitize 'block' fully before saving.
+        
         changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
           projectId: conversation.projectId,
           stage,
@@ -563,6 +568,11 @@ export const agentRespond = action({
       }
     }
 
+    // Sanitize block for Convex storage (no Hebrew keys)
+    if (block) {
+       block = sanitizeBlockForConvex(block);
+    }
+
     // Finalize the message
     await ctx.runMutation(internal.agent.finalizeMessage, {
       messageId: agentMessageId,
@@ -574,6 +584,23 @@ export const agentRespond = action({
     return { messageId: agentMessageId, changeSetId };
   },
 });
+
+function sanitizeBlockForConvex(block: any): any {
+  if (!block || typeof block !== 'object') return block;
+
+  // Specific handling for ChangeSetBlock.changes which often has Hebrew keys
+  if (block.type === 'ChangeSetBlock' && block.changes && !Array.isArray(block.changes)) {
+     const newChanges = Object.entries(block.changes).map(([key, value]) => ({
+       label: key,
+       value: value
+     }));
+     return { ...block, changes: newChanges };
+  }
+
+  // General recursion to fix any other Hebrew keys? 
+  // For now, just fix 'changes' as that's the known culprit.
+  return block;
+}
 
 export const getOrCreateConversation = mutation({
   args: { projectId: v.id("projects") },
