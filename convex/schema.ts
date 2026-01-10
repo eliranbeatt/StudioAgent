@@ -862,7 +862,8 @@ export default defineSchema({
     uploadedAt: v.number(),
     warnings: v.array(v.string()),
     createdAt: v.number(),
-  }).index("by_printPart", ["printPartId"]),
+  }).index("by_printPart", ["printPartId"])
+    .index("by_project", ["projectId"]),
 
   printFileAnalyses: defineTable({
     printFileId: v.id("printFiles"),
@@ -1099,7 +1100,8 @@ export default defineSchema({
     answers: v.any(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_project_stage", ["projectId", "stage"]),
+  }).index("by_project", ["projectId"])
+    .index("by_project_stage", ["projectId", "stage"]),
 
 
 

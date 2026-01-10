@@ -10,12 +10,14 @@ import {
   FileText,
   Layers,
   Activity,
+  BrainCircuit,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
 import AgentActivityDrawer from "./_components/AgentActivityDrawer";
+import ImprovePanel from "./_components/ImprovePanel";
 
 export default function ProjectLayout({
   children,
@@ -29,6 +31,8 @@ export default function ProjectLayout({
   const resolved = useQuery(api.projects.resolveProjectId, { id: rawId });
   const projectId = resolved?.projectId ?? null;
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isImproveOpen, setIsImproveOpen] = useState(false);
+  const derivedContext = getTabContext(pathname);
 
   useEffect(() => {
     if (!resolved || !projectId) return;
@@ -40,12 +44,10 @@ export default function ProjectLayout({
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
     { name: "AgenticEshet", href: `/projects/${projectId}/studio`, icon: Bot },
-
     { name: "Elements", href: `/projects/${projectId}/elements`, icon: Layers },
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },
     { name: "Quote", href: `/projects/${projectId}/quote`, icon: FileText },
-
   ];
 
   if (!resolved) {
@@ -95,7 +97,15 @@ export default function ProjectLayout({
             );
           })}
         </nav>
-        <div className="p-4 border-t">
+        <div className="p-4 border-t space-y-2">
+          <button
+            onClick={() => setIsImproveOpen(true)}
+            className="group w-full flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all duration-200 text-gray-500 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 hover:text-blue-700"
+          >
+            <BrainCircuit size={18} className="text-gray-400 group-hover:text-blue-600" />
+            <span className="text-sm">AI Improver</span>
+          </button>
+
           <button
             onClick={() => setIsActivityOpen(true)}
             className="group w-full flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all duration-200 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
@@ -110,13 +120,32 @@ export default function ProjectLayout({
       <main className="flex-1 overflow-auto">
         {children}
       </main>
+
       {projectId ? (
-        <AgentActivityDrawer
-          open={isActivityOpen}
-          onClose={() => setIsActivityOpen(false)}
-          projectId={projectId as Id<"projects">}
-        />
+        <>
+          <AgentActivityDrawer
+            open={isActivityOpen}
+            onClose={() => setIsActivityOpen(false)}
+            projectId={projectId as Id<"projects">}
+          />
+          <ImprovePanel
+            open={isImproveOpen}
+            onClose={() => setIsImproveOpen(false)}
+            projectId={projectId as Id<"projects">}
+            currentTabContext={derivedContext}
+          />
+        </>
       ) : null}
     </div>
   );
+}
+
+// Simple helper to guess context from path
+function getTabContext(pathname: string): string {
+  if (pathname.includes("/tasks")) return "tasks";
+  if (pathname.includes("/accounting")) return "accounting";
+  if (pathname.includes("/elements")) return "elements";
+  if (pathname.includes("/quote")) return "quote";
+  if (pathname.includes("/overview")) return "project";
+  return "tasks"; // default
 }

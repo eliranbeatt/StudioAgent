@@ -166,14 +166,14 @@ export const runImproveAgent = action({
         const project = await ctx.runQuery(api.projects.getOverview, { id: args.projectId });
         // TODO: Fetch scoped data based on args.scope and args.tabContext
         // For now, we fetch a broad context (can be optimized later)
-        const tasks = await ctx.runQuery(api.projects.getTasks, { projectId: args.projectId });
-        const elements = await ctx.runQuery(api.projects.getElements, { projectId: args.projectId });
+        const tasks = await ctx.runQuery(api.tasks.listForProject, { projectId: args.projectId });
+        const elements = await ctx.runQuery(api.elements.listByProject, { projectId: args.projectId });
         // const accounting = await ctx.runQuery(api.projects.getAccounting, { projectId: args.projectId }); // Assuming exist or similar
 
         const contextPayload = {
             project,
-            tasks: tasks.slice(0, 50), // Limit for token budget
-            elements: elements.slice(0, 20),
+            tasks: tasks?.slice(0, 50) ?? [], // Limit for token budget
+            elements: elements?.slice(0, 20) ?? [],
             // accounting: accounting.slice(0, 50),
             runConfig: args.runConfig
         };

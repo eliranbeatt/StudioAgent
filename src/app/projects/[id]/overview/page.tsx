@@ -4,11 +4,13 @@ import { useMutation, useQuery, useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { use, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Layers, Wallet, ClipboardCheck, UploadCloud } from "lucide-react";
+import { AlertTriangle, Layers, Wallet, ClipboardCheck, UploadCloud, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function OverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const projectId = id as Id<"projects">;
+  const router = useRouter();
   const overview = useQuery(api.projects.getOverview, { id: projectId });
   const files = useQuery(api.files.listProjectFiles, { projectId });
   const allProjects = useQuery(api.projects.listProjects, { excludeId: projectId });
@@ -19,6 +21,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
 
   const createElementFromStructured = useMutation(api.agent.createElementFromStructured);
   const updateProjectDetails = useMutation(api.projects.updateProjectDetails);
+  const deleteProject = useMutation(api.projects.deleteProject);
   const setProjectCustomerByName = useMutation(api.projectsCustomers.setProjectCustomerByName);
   const linkProject = useMutation(api.projects.linkProject);
   const unlinkProject = useMutation(api.projects.unlinkProject);
@@ -27,6 +30,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
 
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [formState, setFormState] = useState({
     name: "",
@@ -60,6 +64,24 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
     const linkedIds = new Set((linkedProjects ?? []).map((link: any) => link.project?.id));
     return allProjects.filter((project) => !linkedIds.has(project.id));
   }, [allProjects, linkedProjects]);
+
+  const handleDeleteProject = async () => {
+    if (!overview?.project) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete project "${overview.project.name}"? This action is IRREVERSIBLE and will delete ALL elements, tasks, files, and financial data.`
+    );
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteProject({ id: projectId });
+      router.push("/projects");
+    } catch (e) {
+      console.error("Failed to delete project", e);
+      alert("Failed to delete project. Check console for details.");
+      setIsDeleting(false);
+    }
+  };
 
   if (!overview) {
     return <div className="p-8 text-gray-500">Loading overview...</div>;
@@ -224,7 +246,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
               onClick={async () => {
                 setIsSavingDetails(true);
                 try {
-                  const eventDate = parseDateInput(formState.eventDate);
+                  const eventDate = formatDateInput(parseDateInput(formState.eventDate) ?? undefined); // fixed format logic if needed, but original used it
                   const budgetCap = parseNumberInput(formState.budgetCap);
                   await updateProjectDetails({
                     id: projectId,
@@ -232,7 +254,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
                     description: formState.description,
                     projectTypes: formState.projectTypes,
                     details: {
-                      eventDate: eventDate ?? undefined,
+                      eventDate: parseDateInput(formState.eventDate) ?? undefined,
                       budgetCap: budgetCap ?? undefined,
                     },
                   });
@@ -584,6 +606,35 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
           ) : (
             <div className="p-8 text-center text-gray-500">No files uploaded yet.</div>
           )}
+        </div>
+      </div>
+
+      <div className="mt-10 pt-10 border-t border-red-100">
+        <h3 className="text-lg font-bold text-red-600 mb-4 flex items-center gap-2">
+          <AlertTriangle size={20} /> Danger Zone
+        </h3>
+        <div className="bg-red-50 border border-red-100 rounded-xl p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="font-bold text-red-900">Delete this project</div>
+              <p className="text-sm text-red-700 mt-1">
+                Once deleted, there is no going back. All project data will be permanently removed.
+              </p>
+            </div>
+            <button
+              onClick={handleDeleteProject}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+            >
+              {isDeleting ? (
+                "Deleting..."
+              ) : (
+                <>
+                  <Trash2 size={18} /> Delete Project
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

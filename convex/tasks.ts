@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { api } from "./_generated/api";
 import { v } from "convex/values";
 import { applyChangeSetInternal } from "./drafts";
 
@@ -56,7 +57,7 @@ export const updateTaskStatus = mutation({
     }
 
     // Now apply change set
-    return await applyChangeSetInternal(ctx, {
+    const result = await applyChangeSetInternal(ctx, {
       draftType: "element",
       draftId: draftId!,
       projectId: args.projectId,
@@ -71,6 +72,10 @@ export const updateTaskStatus = mutation({
       reason: "Update task status (Kanban)",
       createdFrom: { tab: "Tasks", stage: "planning" },
     });
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, {
+      projectId: args.projectId,
+    });
+    return result;
   },
 });
 
@@ -88,9 +93,14 @@ export const updateTask = mutation({
   },
   handler: async (ctx, args) => {
     const { taskId, patch } = args;
+    const task = await ctx.db.get(taskId);
+    if (!task) throw new Error("Task not found");
     await ctx.db.patch(taskId, {
       ...patch,
       updatedAt: Date.now(),
+    });
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, {
+      projectId: task.projectId,
     });
   },
 });

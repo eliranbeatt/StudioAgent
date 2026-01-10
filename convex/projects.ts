@@ -497,6 +497,149 @@ export const updateTaskOrder = mutation({
   },
 });
 
+export const deleteProject = mutation({
+  args: { id: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.id);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const projectId = args.id;
+
+    // 1. Delete records with direct projectId and by_project index (or simple query)
+    const tablesWithProjectIndex = [
+      "elements",
+      "tasks",
+      "trelloSyncRuns",
+      "trelloMappings",
+      "accountingLines",
+      "accountingSections",
+      "materialLines",
+      "workLines",
+      "printParts",
+      "receipts",
+      "elementDrafts",
+      "elementVersions",
+      "projectCostContainers",
+      "projectCostVersions",
+      "quoteVersions",
+      "budgetBaselines",
+      "changeOrders",
+      "changeSets",
+      "auditLogs",
+      "graveyardItems",
+      "suggestedElements",
+      "shareLinks",
+      "printFiles",
+      "elementImages",
+      "projectFiles",
+      "inventoryReservations",
+      "conversations",
+      "conversationMessages",
+      "structuredAnswers",
+      "memoryDocs",
+      "qaPairs",
+      "projectDigests",
+    ];
+
+    for (const table of tablesWithProjectIndex) {
+      const records = await ctx.db
+        .query(table as any)
+        .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+        .collect();
+      
+      // Special handling for nested children or storage
+      if (table === "receipts") {
+        for (const receipt of records) {
+          const items = await ctx.db
+            .query("receiptItems")
+            .withIndex("by_receipt", (q: any) => q.eq("receiptId", receipt._id))
+            .collect();
+          for (const item of items) await ctx.db.delete(item._id);
+        }
+      }
+
+      if (table === "printFiles") {
+        for (const pf of records) {
+          const analyses = await ctx.db
+            .query("printFileAnalyses")
+            .withIndex("by_printFile", (q: any) => q.eq("printFileId", pf._id))
+            .collect();
+          for (const analysis of analyses) await ctx.db.delete(analysis._id);
+        }
+      }
+
+      if (table === "conversations") {
+        for (const conv of records) {
+          const legacyMessages = await ctx.db
+            .query("messages")
+            .withIndex("by_conversation", (q: any) => q.eq("conversationId", conv._id))
+            .collect();
+          for (const msg of legacyMessages) await ctx.db.delete(msg._id);
+        }
+      }
+
+      if (table === "projectFiles") {
+        for (const file of records) {
+          if (file.storageId) {
+            try {
+              await ctx.storage.delete(file.storageId);
+            } catch (e) {
+              console.error(`Failed to delete storage file ${file.storageId}`, e);
+            }
+          }
+        }
+      }
+
+      for (const record of records) {
+        await ctx.db.delete(record._id);
+      }
+    }
+
+    // 2. Delete from tables containing projectId but without by_project index
+    
+    // purchases
+    const purchases = await ctx.db
+      .query("purchases")
+      .filter((q) => q.eq(q.field("projectId"), projectId))
+      .collect();
+    for (const p of purchases) await ctx.db.delete(p._id);
+
+    // budgetAdjustments
+    const budgetAdjustments = await ctx.db
+      .query("budgetAdjustments")
+      .filter((q) => q.eq(q.field("projectId"), projectId))
+      .collect();
+    for (const ba of budgetAdjustments) await ctx.db.delete(ba._id);
+
+    // taskRevisions (Index is by_task or by_project_status)
+    const taskRevisions = await ctx.db
+      .query("taskRevisions")
+      .withIndex("by_project_status", (q: any) => q.eq("projectId", projectId))
+      .collect();
+    for (const tr of taskRevisions) await ctx.db.delete(tr._id);
+
+    // 3. Project Links (both directions)
+    const linksAsSource = await ctx.db
+      .query("projectLinks")
+      .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+      .collect();
+    for (const link of linksAsSource) await ctx.db.delete(link._id);
+
+    const linksAsTarget = await ctx.db
+      .query("projectLinks")
+      .withIndex("by_project_linked", (q: any) => q.eq("linkedProjectId", projectId))
+      .collect();
+    for (const link of linksAsTarget) await ctx.db.delete(link._id);
+
+    // 4. Finally delete the project itself
+    await ctx.db.delete(projectId);
+
+    return { success: true };
+  },
+});
+
 export const getTaskOrder = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {

@@ -46,9 +46,9 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     activeConversationId ? { conversationId: activeConversationId, limit: 60 } : "skip"
   ) as ConversationMessage[] | undefined;
   const overview = useQuery(api.projects.getOverview, { id: projectId });
+  const resolvedStage = useQuery(api.projectsStage.resolveStage, { projectId });
 
   const createConversation = useMutation(api.agent.createConversation);
-  const setConversationStage = useMutation(api.agent.setConversationStageV1);
   const setConversationMode = useMutation(api.agent.setConversationMode);
   const appendUserMessage = useMutation(api.agent.appendUserMessage);
     const appendEventMessage = useMutation(api.agent.appendEventMessage);
@@ -69,8 +69,10 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
         setActiveConversationId(conversations[0]._id);
         return;
       }
-      createConversation({ projectId }).then((convId) => setActiveConversationId(convId));
-    }, [conversations, activeConversationId, createConversation, projectId]);
+      createConversation({ projectId, stage: resolvedStage?.stage }).then((convId) =>
+        setActiveConversationId(convId)
+      );
+    }, [conversations, activeConversationId, createConversation, projectId, resolvedStage]);
   
     useEffect(() => {
       if (!overview?.elements?.length) return;
@@ -99,7 +101,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       setIsCreatingConversation(true);
       setCreateConversationError(null);
       try {
-        const convId = await createConversation({ projectId });
+        const convId = await createConversation({ projectId, stage: resolvedStage?.stage });
         setActiveConversationId(convId);
         setInput("");
       } catch (err) {
@@ -200,7 +202,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       }
     };
   
-    const stageValue = (activeConversation?.stage ?? "IDEATION") as Stage;
+    const stageValue = (resolvedStage?.stage ?? "IDEATION") as Stage;
     const modeValue = (activeConversation?.mode ?? "CHAT") as Mode;
   
     return (
@@ -240,7 +242,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                     {conversation.title_he ?? "שיחה חדשה"}
                   </div>
                   <div className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
-                    {String(conversation.stage).toUpperCase()} · {String(conversation.mode ?? "CHAT").toUpperCase()}
+                    {stageValue} · {String(conversation.mode ?? "CHAT").toUpperCase()}
                   </div>
                 </button>
               ))
@@ -268,20 +270,12 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                 <option value="gpt-5.2">GPT-5.2</option>
                 <option value="gpt-5.2-thinking">GPT-5.2 (Thinking)</option>
               </select>
-              <select
-                value={stageValue}
-                onChange={(e) => {
-                  const stage = e.target.value as Stage;
-                  if (activeConversationId) {
-                    setConversationStage({ id: activeConversationId, stage });
-                  }
-                }}
-                className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
+              <span
+                title={resolvedStage?.reasonHe ?? "Auto-resolved based on project status"}
+                className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-600 bg-gray-50 uppercase tracking-wider"
               >
-                <option value="IDEATION">Ideation</option>
-                <option value="QUOTE">Quote</option>
-                <option value="BREAKDOWN">Breakdown</option>
-              </select>
+                {stageValue}
+              </span>
               <select
                 value={modeValue}
                 onChange={(e) => {

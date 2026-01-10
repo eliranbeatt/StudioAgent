@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { captureSnapshotFromLive } from "./elements";
@@ -205,20 +205,42 @@ export const createChangeSet = mutation({
   args: {
     projectId: v.id("projects"),
     stage: v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN")),
-    ops: v.array(v.object({ kind: v.string(), payload: v.any() })),
+    // Legacy / Compat
+    ops: v.optional(v.array(v.object({ kind: v.string(), payload: v.any() }))),
     reason_he: v.optional(v.string()),
     preview_he: v.optional(v.any()),
     base: v.optional(v.any()),
+
+    // V2
+    scope: v.optional(v.any()), // v.union(...) too verbose to repeat, lenient for now
+    runConfig: v.optional(v.any()),
+    report_he: v.optional(v.any()),
+    gaps: v.optional(v.any()),
+    links: v.optional(v.any()),
+    generatedImages: v.optional(v.any()),
+    changeGroups: v.optional(v.any()),
+    createdBy: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("changeSets", {
       projectId: args.projectId,
       stage: args.stage,
       status: "PROPOSED",
-      ops: args.ops,
+
+      ops: args.ops ?? [],
       reason_he: args.reason_he,
       preview_he: args.preview_he,
       base: args.base,
+
+      scope: args.scope,
+      runConfig: args.runConfig,
+      report_he: args.report_he,
+      gaps: args.gaps,
+      links: args.links,
+      generatedImages: args.generatedImages,
+      changeGroups: args.changeGroups,
+      createdBy: args.createdBy,
+
       createdAt: Date.now(),
     });
   },
@@ -933,76 +955,76 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       : undefined;
 
     const patch: any = {};
-    
+
     // Common fields
     if ("notes" in fields) patch.notes = toOptional(fields.notes);
-    
+
     // Vendor handling
     if ("vendorId" in fields || "vendorTempOrId" in fields) {
-        patch.vendorId = toOptional(resolvedVendorId);
+      patch.vendorId = toOptional(resolvedVendorId);
     }
     if ("vendorName" in fields) patch.vendorName = toOptional(fields.vendorName);
 
     if (isMaterial) {
-        if ("qty" in fields || "quantity" in fields) patch.quantity = toOptional(fields.quantity ?? fields.qty);
-        if ("unitCost" in fields || "plannedUnitCost" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.unitCost);
-        if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
-        if ("itemName" in fields || "title" in fields) patch.itemName = toOptional(fields.itemName ?? fields.title);
-        if ("spec" in fields) patch.spec = toOptional(fields.spec);
-        if ("unit" in fields) patch.unit = toOptional(fields.unit);
-        if ("unitCode" in fields) patch.unitCode = normalizeUnitCode(fields.unitCode);
-        // ... match other materialLines fields
-        if ("actualUnitCost" in fields) patch.actualUnitCost = toOptional(fields.actualUnitCost);
-        if ("actualTotalCost" in fields) patch.actualTotalCost = toOptional(fields.actualTotalCost);
+      if ("qty" in fields || "quantity" in fields) patch.quantity = toOptional(fields.quantity ?? fields.qty);
+      if ("unitCost" in fields || "plannedUnitCost" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.unitCost);
+      if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
+      if ("itemName" in fields || "title" in fields) patch.itemName = toOptional(fields.itemName ?? fields.title);
+      if ("spec" in fields) patch.spec = toOptional(fields.spec);
+      if ("unit" in fields) patch.unit = toOptional(fields.unit);
+      if ("unitCode" in fields) patch.unitCode = normalizeUnitCode(fields.unitCode);
+      // ... match other materialLines fields
+      if ("actualUnitCost" in fields) patch.actualUnitCost = toOptional(fields.actualUnitCost);
+      if ("actualTotalCost" in fields) patch.actualTotalCost = toOptional(fields.actualTotalCost);
     } else if (isLabor) {
-        if ("qty" in fields || "plannedQuantity" in fields) patch.plannedQuantity = toOptional(fields.plannedQuantity ?? fields.qty);
-        if ("unitCost" in fields || "plannedUnitCost" in fields || "rate" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.rate ?? fields.unitCost);
-        if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
-        if ("roleHe" in fields || "title" in fields) patch.roleHe = toOptional(fields.roleHe ?? fields.title);
-        // ... match other workLines fields
+      if ("qty" in fields || "plannedQuantity" in fields) patch.plannedQuantity = toOptional(fields.plannedQuantity ?? fields.qty);
+      if ("unitCost" in fields || "plannedUnitCost" in fields || "rate" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.rate ?? fields.unitCost);
+      if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
+      if ("roleHe" in fields || "title" in fields) patch.roleHe = toOptional(fields.roleHe ?? fields.title);
+      // ... match other workLines fields
     } else {
-        // Assume accountingLines
-        if ("title" in fields) patch.title = toOptional(fields.title);
-        if ("type" in fields) patch.type = toOptional(fields.type);
-        if ("lineType" in fields) {
-            const normalized = normalizeLineType(fields.lineType);
-            patch.type = normalized === "work" ? "labor" : normalized ?? patch.type;
-        }
-        if ("sectionKey" in fields || "sectionLabelHe" in fields) {
-            const sectionKey = normalizeSectionKey(fields.sectionKey, fields.sectionLabelHe);
-            const sectionLabelHe = toOptional(fields.sectionLabelHe);
-            patch.sectionKey = sectionKey;
-            patch.sectionLabelHe = sectionLabelHe;
-            patch.sectionId = await resolveOrCreateSectionId(
-                ctx,
-                cs.projectId,
-                sectionKey,
-                sectionLabelHe,
-                now
-            );
-        }
-        if ("qty" in fields) patch.qty = toOptional(fields.qty);
-        if ("unitCost" in fields) patch.unitCost = toOptional(fields.unitCost);
-        if ("total" in fields) patch.total = toOptional(fields.total);
-        if ("billable" in fields) patch.billable = toOptional(fields.billable);
-        if ("itemName" in fields) patch.itemName = toOptional(fields.itemName);
-        if ("spec" in fields) patch.spec = toOptional(fields.spec);
-        if ("unit" in fields) patch.unit = toOptional(fields.unit);
-        if ("unitCostEstimate" in fields) patch.unitCostEstimate = toOptional(fields.unitCostEstimate);
-        if ("wastePct" in fields) patch.wastePct = toOptional(fields.wastePct);
-        
-        if ("vendorSku" in fields) patch.vendorSku = toOptional(fields.vendorSku);
-        if ("vendorUrl" in fields) patch.vendorUrl = toOptional(fields.vendorUrl);
-        if ("leadTimeDays" in fields) patch.leadTimeDays = toOptional(fields.leadTimeDays);
-        if ("workType" in fields) {
-            const workTypeValue = toOptional(fields.workType);
-            patch.workType = workTypeValue ? normalizeWorkType(workTypeValue) : workTypeValue;
-        }
-        if ("hours" in fields) patch.hours = toOptional(fields.hours);
-        if ("crewSize" in fields) patch.crewSize = toOptional(fields.crewSize);
-        if ("ratePerHour" in fields) patch.ratePerHour = toOptional(fields.ratePerHour);
-        if ("source" in fields) patch.source = toOptional(fields.source);
-        if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
+      // Assume accountingLines
+      if ("title" in fields) patch.title = toOptional(fields.title);
+      if ("type" in fields) patch.type = toOptional(fields.type);
+      if ("lineType" in fields) {
+        const normalized = normalizeLineType(fields.lineType);
+        patch.type = normalized === "work" ? "labor" : normalized ?? patch.type;
+      }
+      if ("sectionKey" in fields || "sectionLabelHe" in fields) {
+        const sectionKey = normalizeSectionKey(fields.sectionKey, fields.sectionLabelHe);
+        const sectionLabelHe = toOptional(fields.sectionLabelHe);
+        patch.sectionKey = sectionKey;
+        patch.sectionLabelHe = sectionLabelHe;
+        patch.sectionId = await resolveOrCreateSectionId(
+          ctx,
+          cs.projectId,
+          sectionKey,
+          sectionLabelHe,
+          now
+        );
+      }
+      if ("qty" in fields) patch.qty = toOptional(fields.qty);
+      if ("unitCost" in fields) patch.unitCost = toOptional(fields.unitCost);
+      if ("total" in fields) patch.total = toOptional(fields.total);
+      if ("billable" in fields) patch.billable = toOptional(fields.billable);
+      if ("itemName" in fields) patch.itemName = toOptional(fields.itemName);
+      if ("spec" in fields) patch.spec = toOptional(fields.spec);
+      if ("unit" in fields) patch.unit = toOptional(fields.unit);
+      if ("unitCostEstimate" in fields) patch.unitCostEstimate = toOptional(fields.unitCostEstimate);
+      if ("wastePct" in fields) patch.wastePct = toOptional(fields.wastePct);
+
+      if ("vendorSku" in fields) patch.vendorSku = toOptional(fields.vendorSku);
+      if ("vendorUrl" in fields) patch.vendorUrl = toOptional(fields.vendorUrl);
+      if ("leadTimeDays" in fields) patch.leadTimeDays = toOptional(fields.leadTimeDays);
+      if ("workType" in fields) {
+        const workTypeValue = toOptional(fields.workType);
+        patch.workType = workTypeValue ? normalizeWorkType(workTypeValue) : workTypeValue;
+      }
+      if ("hours" in fields) patch.hours = toOptional(fields.hours);
+      if ("crewSize" in fields) patch.crewSize = toOptional(fields.crewSize);
+      if ("ratePerHour" in fields) patch.ratePerHour = toOptional(fields.ratePerHour);
+      if ("source" in fields) patch.source = toOptional(fields.source);
+      if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
     }
 
     await ctx.db.patch(resolvedLineId, { ...patch });
@@ -1123,3 +1145,97 @@ export const applyChangeSet = mutation({
     return await applyChangeSetInternalLogic(ctx, args);
   },
 });
+
+// New V2 Mutation for partial application
+export const applyChangeGroups = mutation({
+  args: {
+    changeSetId: v.id("changeSets"),
+    groupIds: v.array(v.string())
+  },
+  handler: async (ctx, args) => {
+    const cs = await ctx.db.get(args.changeSetId);
+    if (!cs) throw new Error("ChangeSet not found");
+    if (!cs.changeGroups) throw new Error("No changeGroups in ChangeSet");
+
+    // Filter ops from selected groups
+    const selectedGroups = cs.changeGroups.filter((g: any) => args.groupIds.includes(g.id));
+    if (selectedGroups.length === 0) throw new Error("No valid groups selected");
+
+    // Gather all ops
+    const allOps: any[] = [];
+    for (const group of selectedGroups) {
+      if (cs.appliedGroupIds?.includes(group.id)) {
+        continue; // Already applied
+      }
+      if (group.operations) allOps.push(...group.operations);
+    }
+
+    if (allOps.length === 0) {
+      return { status: "no_new_ops" };
+    }
+
+    // Capture snapshot for concurrency check? 
+    // Ideally we re-check element versions if they are in the ops.
+    // For now we trust the apply logic to handle conflicts or we just overwrite.
+
+    // Reuse applyChangeSetInternalLogic but we must modify it to take explicit ops.
+    // Hack: Create temporary ChangeSet
+    await applyOpsList(ctx, { projectId: cs.projectId, ops: allOps, stage: cs.stage });
+
+    // Update ChangeSet state
+    const previousApplied = cs.appliedGroupIds ?? [];
+    const newApplied = [...previousApplied, ...selectedGroups.map((g: any) => g.id)];
+
+    // De-duplicate
+    const uniqueApplied = Array.from(new Set(newApplied));
+
+    const allGroupIds = cs.changeGroups.map((g: any) => g.id);
+    const allApplied = allGroupIds.every((id: any) => uniqueApplied.includes(id));
+
+    await ctx.db.patch(args.changeSetId, {
+      appliedGroupIds: uniqueApplied,
+      status: allApplied ? "APPLIED" : "PARTIALLY_APPLIED",
+      appliedAt: Date.now()
+    });
+
+    // Audit Log (Best effort)
+    try {
+      // Check if auditLogs table exists implicitly by context? schema check skipped.
+      if (selectedGroups.length > 0) {
+        for (const group of selectedGroups) {
+          await ctx.db.insert("auditLogs", {
+            projectId: cs.projectId,
+            changeSetId: cs._id,
+            groupId: group.id,
+            operation: "applyGroup",
+            entityRef: "group:" + group.id,
+            appliedAt: Date.now(),
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Audit log failed", e);
+    }
+  }
+});
+
+// Helper for applying a list of Ops (derived from applying a whole changeset)
+async function applyOpsList(ctx: any, args: { projectId: Id<"projects">, ops: any[], stage: string }) {
+  // Hack: create temp changeset to reuse logic
+  const tempId = await ctx.db.insert("changeSets", {
+    projectId: args.projectId,
+    stage: args.stage as any,
+    status: "PROPOSED", // Must be proposed to apply
+    ops: args.ops,
+    reason_he: "Partial Apply Temp",
+    createdAt: Date.now()
+  });
+
+  await applyChangeSetInternalLogic(ctx, { changeSetId: tempId });
+
+  await ctx.db.patch(tempId, {
+    status: "APPLIED",
+    appliedAt: Date.now(),
+    reason_he: "Partial application of group(s)"
+  });
+}

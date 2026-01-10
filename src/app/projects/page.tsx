@@ -4,12 +4,13 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Folder, Database, Pencil, Check, X } from "lucide-react";
+import { Plus, Folder, Database, Pencil, Check, X, Trash2 } from "lucide-react";
 
 export default function ProjectsPage() {
   const projects = useQuery(api.projects.list);
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.updateProjectDetails);
+  const deleteProject = useMutation(api.projects.deleteProject);
   const setProjectCustomerByName = useMutation(api.projectsCustomers.setProjectCustomerByName);
 
   const [newProjectName, setNewProjectName] = useState("");
@@ -32,6 +33,14 @@ export default function ProjectsPage() {
     }
     setNewProjectName("");
     setNewCustomerName("");
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: any, name: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm(`Are you sure you want to delete project "${name}"? This will delete ALL associated data and cannot be undone.`)) {
+      await deleteProject({ id });
+    }
   };
 
   const startEditing = (e: React.MouseEvent, project: any) => {
@@ -137,13 +146,22 @@ export default function ProjectsPage() {
                   <h2 className="font-bold text-lg text-gray-900 truncate pr-2">
                     {project.name}
                   </h2>
-                  <button
-                    onClick={(e) => startEditing(e, project)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 transition-opacity"
-                    title="Rename Project"
-                  >
-                    <Pencil size={14} />
-                  </button>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => startEditing(e, project)}
+                      className="p-1 text-gray-400 hover:text-blue-600"
+                      title="Rename Project"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => handleDelete(e, project._id, project.name)}
+                      className="p-1 text-gray-400 hover:text-red-600"
+                      title="Delete Project"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </>
               )}
             </div>
