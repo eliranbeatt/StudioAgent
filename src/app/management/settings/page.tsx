@@ -16,12 +16,15 @@ export default function SettingsPage() {
     const updateModel = useMutation(api.users.updatePreferredModel);
     const [selected, setSelected] = useState("gpt-4o");
     const [isSaving, setIsSaving] = useState(false);
+    const [initialized, setInitialized] = useState(false);
 
     useEffect(() => {
-        if (user?.preferredModel) {
+        if (user?.preferredModel && !initialized) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSelected(user.preferredModel);
+            setInitialized(true);
         }
-    }, [user]);
+    }, [user, initialized]);
 
     const handleChange = async (val: string) => {
         setSelected(val);
@@ -55,7 +58,7 @@ export default function SettingsPage() {
                         </select>
                         <div className="flex items-center justify-between mt-2">
                             <p className="text-xs text-gray-500">
-                                "Thinking" models use medium reasoning effort but may be slower.
+                                &quot;Thinking&quot; models use medium reasoning effort but may be slower.
                             </p>
                             {isSaving && <span className="text-xs text-green-600 font-medium">Saved</span>}
                         </div>

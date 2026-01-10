@@ -38,11 +38,11 @@ const STATUS_COLUMNS = [
   { key: "done", label: "Done" },
 ];
 
-export function KanbanBoard({ 
-    tasks, 
-    columnOrder, 
-    onTaskClick, 
-    onStatusChange, 
+export function KanbanBoard({
+    tasks,
+    columnOrder,
+    onTaskClick,
+    onStatusChange,
     onOrderChange,
     onChecklistToggle,
     savingTaskId 
@@ -51,15 +51,11 @@ export function KanbanBoard({
   
   // Local state for optimistic UI
   const [localOrder, setLocalOrder] = useState<Record<string, string[]>>({});
+  const [prevTasks, setPrevTasks] = useState(tasks);
+  const [prevColumnOrder, setPrevColumnOrder] = useState(columnOrder);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    })
-  );
-
-  // Sync local order with props (initially and on server updates)
-  useEffect(() => {
+  // Sync local order with props (derived state pattern)
+  if (tasks !== prevTasks || columnOrder !== prevColumnOrder) {
       const newOrder: Record<string, string[]> = {};
       
       // Group current tasks
@@ -75,13 +71,15 @@ export function KanbanBoard({
       STATUS_COLUMNS.forEach(col => {
           const statusTasks = grouped.get(col.key) ?? [];
           const propOrder = columnOrder?.[col.key]; // Order from DB
-          const currentLocal = localOrder[col.key]; // Order from local state (if any)
           
-          // Strategy: Use propOrder (DB) as source of truth, but if we have localOrder that matches the set of IDs, keep it?
-          // Actually, just use DB order + append new tasks.
-          // If we want drag to not "snap back" during save, we should be careful.
-          // But here we re-init on tasks change.
-          
+          // Use current localOrder if available to preserve drag state? 
+          // No, if server tasks change, we usually want to re-incorporate. 
+          // But purely replacing it resets drag. 
+          // Since we are in render loop, this will run on update.
+          // If we are dragging, tasks prop usually doesn't update unless we trigger it.
+          // For now, simple re-calc.
+          const currentLocal = localOrder[col.key]; 
+
           const sourceOrder = propOrder ?? currentLocal ?? [];
           
           const taskMap = new Map(statusTasks.map(t => [t.id, t]));
@@ -101,7 +99,15 @@ export function KanbanBoard({
       });
       
       setLocalOrder(newOrder);
-  }, [tasks, columnOrder]); // Dependency on tasks ensures we pick up new tasks
+      setPrevTasks(tasks);
+      setPrevColumnOrder(columnOrder);
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    })
+  );
 
   const columns = useMemo(() => {
       const cols: Record<string, Task[]> = {};

@@ -40,10 +40,10 @@ const STUDIO_COLUMNS = [
   { key: "logistics", label: "Logistics" },
 ];
 
-export function StudioBoard({ 
-    tasks, 
-    onTaskClick, 
-    onDomainChange, 
+export function StudioBoard({
+    tasks,
+    onTaskClick,
+    onDomainChange,
     onChecklistToggle,
     savingTaskId 
 }: StudioBoardProps) {
@@ -52,15 +52,10 @@ export function StudioBoard({
   // Local state for optimistic UI (order of tasks within columns)
   // key: domain, value: array of task IDs in order
   const [localOrder, setLocalOrder] = useState<Record<string, string[]>>({});
+  const [prevTasks, setPrevTasks] = useState(tasks);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    })
-  );
-
-  // Initialize/Sync local order when tasks change (but try to preserve existing order if possible)
-  useEffect(() => {
+  // Initialize/Sync local order when tasks change (derived state pattern)
+  if (tasks !== prevTasks) {
       const newOrder: Record<string, string[]> = {};
       
       // Group current tasks
@@ -97,10 +92,14 @@ export function StudioBoard({
       });
       
       setLocalOrder(newOrder);
-  }, [tasks]); 
-  // Note: Dependency on `tasks` means this resets on server update. 
-  // For true pure optimistic drag, we need to ignore `tasks` updates during drag, 
-  // or merge carefully. But this is better than nothing.
+      setPrevTasks(tasks);
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    })
+  );
 
   const columns = useMemo(() => {
       // Reconstruct columns from localOrder + tasks lookup

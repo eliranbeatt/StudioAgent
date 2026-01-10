@@ -19,14 +19,15 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant", content: string }>>([
     { role: "assistant", content: "Hi! I can help you edit this task. Try saying 'change status to blocked' or 'add a subtask'." }
   ]);
-
-  useEffect(() => {
-    // Reset form data when task changes, but deep copy to avoid mutations
-    // For now we just track changed fields in formData.
+  
+  // Reset state when task changes (pattern: derive state from props)
+  const [prevTaskId, setPrevTaskId] = useState(task.id);
+  if (task.id !== prevTaskId) {
     setFormData({});
     setHasChanges(false);
     setMessages([{ role: "assistant", content: "Hi! I can help you edit this task. Try saying 'change status to blocked' or 'add a subtask'." }]);
-  }, [task.id]);
+    setPrevTaskId(task.id);
+  }
 
   const handleChange = (field: keyof Task, value: any) => {
     setFormData((prev) => {

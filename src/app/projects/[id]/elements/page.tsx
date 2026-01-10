@@ -525,18 +525,6 @@ function ElementMetaEditor({
   });
   const [descriptionDraft, setDescriptionDraft] = useState(description);
 
-  useEffect(() => {
-    setMetaDraft({
-      title: element.title,
-      type: element.type,
-      tags: element.tags.join(", "),
-    });
-  }, [element.tags, element.title, element.type]);
-
-  useEffect(() => {
-    setDescriptionDraft(description);
-  }, [description]);
-
   return (
     <div className="mt-6 space-y-6">
       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
@@ -560,11 +548,6 @@ function ElementMetaEditor({
               </button>
               <button
                 onClick={() => {
-                  setMetaDraft({
-                    title: element.title,
-                    type: element.type,
-                    tags: element.tags.join(", "),
-                  });
                   setIsEditingMeta(false);
                 }}
                 disabled={disabled}
@@ -575,7 +558,14 @@ function ElementMetaEditor({
             </div>
           ) : (
             <button
-              onClick={() => setIsEditingMeta(true)}
+              onClick={() => {
+                setMetaDraft({
+                  title: element.title,
+                  type: element.type,
+                  tags: element.tags.join(", "),
+                });
+                setIsEditingMeta(true);
+              }}
               disabled={disabled}
               className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600"
             >
@@ -640,7 +630,6 @@ function ElementMetaEditor({
               </button>
               <button
                 onClick={() => {
-                  setDescriptionDraft(description);
                   setIsEditingDescription(false);
                 }}
                 disabled={disabled}
@@ -652,7 +641,10 @@ function ElementMetaEditor({
           ) : (
             <div className="flex items-center gap-3 text-xs">
               <button
-                onClick={() => setIsEditingDescription(true)}
+                onClick={() => {
+                  setDescriptionDraft(description);
+                  setIsEditingDescription(true);
+                }}
                 disabled={disabled}
                 className="inline-flex items-center gap-1 font-semibold text-gray-600"
               >
@@ -897,15 +889,6 @@ function SnapshotTaskRow({
     description: String((item as any).description ?? ""),
   });
 
-  useEffect(() => {
-    setDraft({
-      title: item.title ?? "",
-      domain: item.domain ?? "",
-      status: item.status ?? "",
-      description: String((item as any).description ?? ""),
-    });
-  }, [item.domain, item.status, item.title, (item as any).description]);
-
   const handleSave = async () => {
     if (!item.id) return;
     await onSave(item.id, draft);
@@ -917,21 +900,21 @@ function SnapshotTaskRow({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 space-y-2">
           <input
-            value={draft.title}
+            value={isEditing ? draft.title : item.title}
             disabled={!isEditing || !canEdit}
             onChange={(event) => setDraft({ ...draft, title: event.target.value })}
             className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <input
-              value={draft.domain}
+              value={isEditing ? draft.domain : item.domain}
               disabled={!isEditing || !canEdit}
               onChange={(event) => setDraft({ ...draft, domain: event.target.value })}
               className="w-full rounded-md border border-gray-200 px-3 py-2 text-xs"
               placeholder="Domain"
             />
             <input
-              value={draft.status}
+              value={isEditing ? draft.status : item.status}
               disabled={!isEditing || !canEdit}
               onChange={(event) => setDraft({ ...draft, status: event.target.value })}
               className="w-full rounded-md border border-gray-200 px-3 py-2 text-xs"
@@ -939,7 +922,7 @@ function SnapshotTaskRow({
             />
           </div>
           <textarea
-            value={draft.description}
+            value={isEditing ? draft.description : String((item as any).description ?? "")}
             disabled={!isEditing || !canEdit}
             onChange={(event) => setDraft({ ...draft, description: event.target.value })}
             className="w-full rounded-md border border-gray-200 px-3 py-2 text-xs"
@@ -966,7 +949,15 @@ function SnapshotTaskRow({
           ) : (
             <>
               <button
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  setDraft({
+                    title: item.title ?? "",
+                    domain: item.domain ?? "",
+                    status: item.status ?? "",
+                    description: String((item as any).description ?? ""),
+                  });
+                  setIsEditing(true);
+                }}
                 disabled={!canEdit}
                 className="inline-flex items-center gap-1 font-semibold text-gray-600"
               >
@@ -1038,14 +1029,6 @@ function SnapshotMaterialRow({
     unitCost: item.unitCost ?? 0,
   });
 
-  useEffect(() => {
-    setDraft({
-      name: item.name ?? item.title ?? "",
-      qty: item.qty ?? 0,
-      unitCost: item.unitCost ?? 0,
-    });
-  }, [item.name, item.qty, item.unitCost, item.title]);
-
   const handleSave = async () => {
     if (!item.id) return;
     await onSave(item.id, draft);
@@ -1057,7 +1040,7 @@ function SnapshotMaterialRow({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
           <input
-            value={draft.name}
+            value={isEditing ? draft.name : (item.name ?? item.title ?? "")}
             disabled={!isEditing || !canEdit}
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -1065,7 +1048,7 @@ function SnapshotMaterialRow({
           />
           <input
             type="number"
-            value={draft.qty}
+            value={isEditing ? draft.qty : (item.qty ?? 0)}
             disabled={!isEditing || !canEdit}
             onChange={(event) => setDraft({ ...draft, qty: Number(event.target.value) })}
             className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -1073,7 +1056,7 @@ function SnapshotMaterialRow({
           />
           <input
             type="number"
-            value={draft.unitCost}
+            value={isEditing ? draft.unitCost : (item.unitCost ?? 0)}
             disabled={!isEditing || !canEdit}
             onChange={(event) => setDraft({ ...draft, unitCost: Number(event.target.value) })}
             className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -1100,7 +1083,14 @@ function SnapshotMaterialRow({
           ) : (
             <>
               <button
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  setDraft({
+                    name: item.name ?? item.title ?? "",
+                    qty: item.qty ?? 0,
+                    unitCost: item.unitCost ?? 0,
+                  });
+                  setIsEditing(true);
+                }}
                 disabled={!canEdit}
                 className="inline-flex items-center gap-1 font-semibold text-gray-600"
               >
@@ -1172,14 +1162,6 @@ function SnapshotLaborRow({
     rate: item.rate ?? 0,
   });
 
-  useEffect(() => {
-    setDraft({
-      role: item.role ?? item.title ?? "",
-      qty: item.qty ?? 0,
-      rate: item.rate ?? 0,
-    });
-  }, [item.qty, item.rate, item.role, item.title]);
-
   const handleSave = async () => {
     if (!item.id) return;
     await onSave(item.id, draft);
@@ -1191,7 +1173,7 @@ function SnapshotLaborRow({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
           <input
-            value={draft.role}
+            value={isEditing ? draft.role : (item.role ?? item.title ?? "")}
             disabled={!isEditing || !canEdit}
             onChange={(event) => setDraft({ ...draft, role: event.target.value })}
             className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -1199,7 +1181,7 @@ function SnapshotLaborRow({
           />
           <input
             type="number"
-            value={draft.qty}
+            value={isEditing ? draft.qty : (item.qty ?? 0)}
             disabled={!isEditing || !canEdit}
             onChange={(event) => setDraft({ ...draft, qty: Number(event.target.value) })}
             className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -1207,7 +1189,7 @@ function SnapshotLaborRow({
           />
           <input
             type="number"
-            value={draft.rate}
+            value={isEditing ? draft.rate : (item.rate ?? 0)}
             disabled={!isEditing || !canEdit}
             onChange={(event) => setDraft({ ...draft, rate: Number(event.target.value) })}
             className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -1234,7 +1216,14 @@ function SnapshotLaborRow({
           ) : (
             <>
               <button
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  setDraft({
+                    role: item.role ?? item.title ?? "",
+                    qty: item.qty ?? 0,
+                    rate: item.rate ?? 0,
+                  });
+                  setIsEditing(true);
+                }}
                 disabled={!canEdit}
                 className="inline-flex items-center gap-1 font-semibold text-gray-600"
               >

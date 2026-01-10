@@ -1,0 +1,514 @@
+Below is an expanded **Epic B — AI Thinking Improver** plan that adds:
+
+* **Checkbox-based “improvement modules” UI** (run one module, many modules, or “Run All”)
+* **Tab-scoped** improvement (default) + **optional cross-scope** if you explicitly check it
+* **Step-by-step apply** (apply one suggestion/change-group at a time)
+* A **deep “Finalize Plan”** preset/button that uses **GPT-5.2 Thinking High + Internet search**, with multi-pass critique + research + risk + rewrite
+* Full **prompts + schemas + flows** aligned with **Emlly Studio (אם-לי)** task/pricing language (Hebrew output; JSON keys English)
+
+---
+
+# Epic B — AI Thinking Improver
+
+**Goal:** Add an “AI Improve” capability that can harden any tab (Tasks/Accounting/Elements/Quote/Project/Knowledge) without mutating canonical data directly. It always returns a **report + ChangeSet**, and you can **apply changes incrementally**.
+
+---
+
+## B0 — Core mechanic: ChangeSet v2 (grouped + incremental apply)
+
+### Why v2
+
+Your minimal plan has `changeSets.proposedOps[]`. To support **“apply each suggestion one at a time”**, we need **grouping** (changeGroups) and **partial apply**.
+
+### Data model
+
+**changeSets**
+
+```ts
+changeSets: {
+  _id,
+  projectId,
+  scope: "tasks" | "accounting" | "elements" | "quote" | "knowledge" | "project" | "multi",
+  status: "draft" | "partially_applied" | "applied" | "discarded",
+  createdBy: { type: "agent" | "user", agentName?: string, userId?: string },
+  baseSnapshot: {
+    // minimal references for safe apply
+    projectVersion: string,
+    elementsVersion: string,
+    tasksVersion: string,
+    accountingVersion: string,
+    quoteVersion: string
+  },
+  runConfig: {
+    modelPreset: "gpt-5-mini-thinking" | "gpt-5.2-thinking-high",
+    allowWeb: boolean,
+    createImages: boolean,
+    selectedModules: string[],     // e.g. ["critique","risks","tasks","accounting"]
+    tabContext: string             // e.g. "TasksTab"
+  },
+
+  // Results
+  report_he: any,                 // structured report payload (Hebrew strings)
+  gaps: any,                      // counts + bullets
+  links: { title: string, url: string, domain: string, publishedAt?: string|null, usedFor_he: string }[],
+  generatedImages: { elementId?: string, kind: "technical"|"client", imageRef: string, caption_he: string }[],
+
+  // NEW: suggestions grouped, each can be applied independently
+  changeGroups: {
+    id: string,
+    title_he: string,
+    scope: "tasks"|"accounting"|"elements"|"quote"|"project"|"knowledge",
+    rationale_he: string,
+    riskLevel: "low"|"medium"|"high",
+    requiresUserApproval: boolean,     // e.g. scope changes, deletions, safety-critical
+    operations: ProposedOp[]
+  }[],
+
+  appliedGroupIds: string[],      // for partial apply
+  auditLogIds: string[],
+
+  createdAt,
+  updatedAt
+}
+```
+
+**ProposedOp**
+
+```ts
+type ProposedOp =
+  | { op: "create", entity: EntityRef, value: any }
+  | { op: "update", entity: EntityRef, patch: any }
+  | { op: "softDelete", entity: EntityRef, reason_he: string }
+  | { op: "link", from: EntityRef, to: EntityRef, linkType: string, meta?: any };
+
+type EntityRef = {
+  entityType: "task"|"accountingLine"|"element"|"quote"|"project"|"knowledgeDoc",
+  id?: string,                 // absent for create
+  naturalKey?: string,         // for create de-dup safety ("Element:LogoWall:Task:Cut MDF")
+};
+```
+
+### Apply engine rules (deterministic + reversible)
+
+* Apply only **selected `changeGroupIds`** in a single transaction.
+* Enforce **optimistic locking** using `baseSnapshot.*Version`:
+
+  * If versions drift: mark ChangeSet as stale → require rerun or “rebase” mode.
+* **Soft delete by default**. Hard delete only if user explicitly enables.
+* Write **auditLogs** with before/after for each operation.
+* After apply:
+
+  * If all groups applied → `status="applied"`
+  * Else → `status="partially_applied"`
+
+---
+
+# B1 — “AI Improve” button on every tab (tab-scoped by default)
+
+### UI placement
+
+Each tab header gets: **✨ AI Improve**
+
+### Default behavior
+
+* Scope defaults to the current tab:
+
+  * Tasks tab → `scope="tasks"`
+  * Accounting tab → `scope="accounting"`
+  * Elements tab → `scope="elements"`
+  * Quote tab → `scope="quote"`
+* The improver **must not propose ops outside scope unless you explicitly check extra modules/scopes.**
+
+---
+
+# B2 — Run Configuration UI (checkbox modules + presets)
+
+A right-side panel (or modal) opens with:
+
+### A) Presets (one-click)
+
+* **Quick Improve (Scoped)**
+  Model: GPT-5-mini Thinking
+  Modules: Critique + Gap detection + Tab module
+  Web: Off (default)
+* **Deep Improve (Scoped + Web)**
+  Model: GPT-5-mini Thinking
+  Modules: Critique + Gap + Tab module + Risks
+  Web: On
+* **Finalize Plan (Global Hardening)** *(new)*
+  Model: **GPT-5.2 Thinking High**
+  Modules: **All** (Critique, Gaps, Elements completeness, Tasks, Accounting/Pricing, Risks, Suggestions, QA gates, Logistics)
+  Web: On
+  Images: Optional
+
+### B) Checkboxes (modules)
+
+You can select any combination:
+
+**Always available**
+
+* ☐ Critique (quality/clarity)
+* ☐ Gap detection (missing items vs lifecycle)
+* ☐ Risks & mitigations (risk register)
+* ☐ Suggestions (options / alternates / cost-saving / upgrades)
+
+**Tab-related**
+
+* ☐ Tasks hardening (dependencies, durations, QA tasks)
+* ☐ Accounting & pricing gaps (missing lines, vendor/qty/unit/lead-time, buffers)
+* ☐ Elements completeness (dimensions, materials, print parts, install method, safety flags)
+* ☐ Quote hygiene (scope boundaries, assumptions, options, buffers)
+* ☐ Knowledge enrichment (extract facts, add missing references)
+
+**Tool toggles**
+
+* ☐ Allow internet search
+* ☐ Create images (per element)
+
+  * ☐ Technical drawing (engineering-style)
+  * ☐ Client illustration/mockup
+
+### C) “Apply mode”
+
+* ☐ **Apply step-by-step (recommended)**
+  → results are grouped into changeGroups and you apply individually
+* ☐ Apply all (still requires explicit click; default off)
+
+---
+
+# B3 — Execution flow (single run, multi-pass, streamed progress)
+
+### Flow overview
+
+1. **Collect context** (scoped + optional extra)
+2. **Pass 1: Diagnose** (brief current snapshot + gaps)
+3. **Pass 2: Critique** (prioritized issues)
+4. **Pass 3: Improve per selected modules**
+5. *(Optional)* **Web research loop** for only the questions that materially improve the plan
+6. *(Optional)* **Image generation** per element (if toggled)
+7. **Package results** → report + gaps + changeGroups + sources
+
+### Progress stream events
+
+Emit events like:
+
+* `context.loaded`
+* `diagnosis.done`
+* `critique.done`
+* `module.tasks.done`
+* `module.accounting.done`
+* `web.search.query`
+* `web.search.done`
+* `images.generated`
+* `changeset.built`
+* `run.completed`
+
+---
+
+# B4 — Results UI (report + grouped suggestions + incremental apply)
+
+### Results sections (panel)
+
+1. **“What I would change”** (Hebrew, readable)
+2. **Gaps report** (counts + bullets)
+3. **Change Groups** (apply individually)
+
+   * Each group card:
+
+     * Checkbox select
+     * Title + rationale
+     * Risk level badge
+     * Preview diff (mini)
+     * Button: **Apply this group**
+4. **Sources / Links** (if web enabled)
+5. **Generated images** (if enabled)
+
+### Apply actions
+
+* **Apply selected groups**
+* **Apply one group**
+* **Discard ChangeSet**
+* **Edit before apply**
+
+  * opens a staging editor for the entities in that group
+  * saves edits as `userEdits` inside the ChangeSet and updates ops accordingly
+
+---
+
+# B5 — New: “Finalize Plan” (deep hardening button)
+
+This is your “takes time” step.
+
+### Where
+
+* A dedicated button on the **Agent page** and/or **Planning tab**:
+  **🧠 Finalize Plan (Deep Hardening + Web)**
+
+### What it does differently
+
+* Forces **multi-pass** critique + research + risk + rewrite
+* Encourages cross-scope improvements, but still returns **grouped changes** so you can apply selectively
+* Uses **GPT-5.2 Thinking High** preset by default
+
+---
+
+# B6 — Image generation per element (two modes)
+
+If you check “Create images”, the run can produce image requests per element:
+
+* **Technical drawing**: clean, dimension-friendly, assembly cues
+* **Client mockup**: vibe/visual illustration for approval
+
+Images are never auto-applied; they attach to the ChangeSet and can be saved to the element only if approved.
+
+---
+
+# B7 — Behavior rules (enforced by prompt + validators)
+
+* **No direct mutation** of canonical data.
+* **No guessing** critical info (dimensions, deadlines, venue constraints, safety). Ask questions instead.
+* **Soft delete default.**
+* **Approved Elements are the source of truth**. Any scope change becomes an **optional add-on** group with `requiresUserApproval=true`.
+* Always cover Emlly Studio lifecycle language:
+
+  * שאלות → תמחור → משימות → איסופים → פירוק עבודה → הקמה/יום צילום → פירוק/החזרות → עלויות סופיות
+
+---
+
+# Acceptance criteria (updated)
+
+Every run produces:
+
+* `changeSet` with `changeGroups[]`
+* `report_he` + `gaps`
+* `links` (if web enabled)
+* `generatedImages` (if enabled)
+
+Apply/discard:
+
+* deterministic order
+* reversible via audit log
+* supports partial apply
+
+---
+
+## PROMPTS (full, production-ready)
+
+## 1) Shared SYSTEM prompt (used by all improver runs)
+
+```text
+SYSTEM:
+You are the “AI Thinking Improver” for Emlly Studio (אם-לי), running inside a studio operations console.
+
+Language rules:
+- All human-facing text must be in Hebrew.
+- All JSON keys/structure must be in English ASCII only.
+
+Mission:
+Given the current project state and a run configuration (selected modules + scope), produce:
+1) A clear Hebrew report: critique, gaps, risks, and what you recommend changing.
+2) A ChangeSet with grouped operations (changeGroups) that the user can apply one group at a time.
+You MUST NOT directly mutate canonical data.
+
+Studio reality (non-negotiable):
+- Work is organized by Elements (אלמנטים). Every task and cost line should link to exactly one Element (or Project only if truly global).
+- Typical lifecycle: שאלות → תמחור → משימות → איסופים → פירוק עבודה → הקמה/יום צילום/אירוע → פירוק/החזרות → עלויות סופיות.
+- Tasks must be written like real studio tasks: outcome definition, inputs/files, tools/process, dependencies, time+crew estimate, and risks/notes.
+- Task granularity: usually 30–180 minutes per person per task. Split when switching location (vendor/studio/site), skill type, or a blocking dependency.
+- Always add explicit QA tasks for anything visible on camera or client-facing.
+- Procurement notes must include approvals when needed (e.g. “בינתיים לא לרכוש”), and “צילום לאישור” when relevant.
+- Accounting lines must include qty, unit, unit price (or estimate), vendor, lead time, and justification.
+- Separate studio labor vs install labor, and include friction hours (setup/cleanup/loading/unloading/waiting for glue/cure).
+
+Safety triggers (must be flagged, never assumed safe):
+- load-bearing, overhead hanging, electricity, ladders, public interaction, child-facing interaction.
+If safety-triggered: create a safety/QA group with explicit tasks and require human approval.
+
+No-guessing rule:
+If critical info is missing (dimensions, deadlines, venue constraints, access hours, power points, hanging points), do NOT invent.
+Instead:
+- Add “openQuestions_he” and/or “assumptions_he” with confidence (high/med/low).
+- Create a “Questions” changeGroup only if it creates structured questions records (otherwise put in report).
+
+Scope discipline:
+- Default is tab-scoped. Do not propose operations outside the allowed scopes unless runConfig.selectedModules explicitly include them.
+- If you detect an out-of-scope problem, mention it in the report under “מחוץ להיקף” without creating ops.
+
+Web research tool:
+If allowWeb=true, use targeted searches only for facts that materially improve the plan (materials specs, typical drying times, installation methods, lead-time norms).
+Capture sources in the output (title, domain, url, publishedAt if known, and “usedFor_he”).
+
+Deletions:
+Never hard delete. Use softDelete recommendations unless the user explicitly allowed hard deletes (you will not assume that).
+
+Output requirements:
+Return STRICT JSON only, matching the schema provided in the USER message.
+No extra commentary outside JSON.
+```
+
+---
+
+## 2) Shared USER prompt template (the app injects all context + config)
+
+```text
+USER:
+Build a ChangeSet and report based on this run configuration and project state.
+
+runConfig:
+{
+  "tabContext": "{tabContext}",
+  "scope": "{scope}",
+  "modelPreset": "{modelPreset}",
+  "allowWeb": {allowWeb},
+  "createImages": {createImages},
+  "imageModes": {imageModes}, 
+  "selectedModules": {selectedModules},
+  "applyMode": "{applyMode}" 
+}
+
+projectContext:
+{
+  "project": {projectSnapshot},
+  "currentTabData": {tabScopedDataSnapshot},
+  "approvedElements": {approvedElementsSnapshot},
+  "draftElements": {draftElementsSnapshot},
+  "tasks": {tasksSnapshot},
+  "accounting": {accountingSnapshot},
+  "quote": {quoteSnapshot},
+  "knowledgeSummaries": {knowledgeSummaries},
+  "recentConversation": {recentConversation},
+  "previousQuestionsAndAnswers": {qaLogRaw}
+}
+
+Return STRICT JSON matching this schema:
+
+{
+  "meta": {
+    "scope": string,
+    "tabContext": string,
+    "includesWebResearch": boolean,
+    "selectedModules": string[]
+  },
+  "report_he": {
+    "whatIWouldChange": string[],
+    "gaps": string[],
+    "risks": string[],
+    "outOfScopeNotes": string[],
+    "openQuestions": string[],
+    "assumptions": { "text_he": string, "confidence": "high"|"medium"|"low" }[]
+  },
+  "gaps": {
+    "counts": { "tasksMissing": number, "accountingLinesMissing": number, "elementsMissingFields": number, "qaTasksMissing": number },
+    "bullets_he": string[]
+  },
+  "links": { "title": string, "domain": string, "url": string, "publishedAt": string|null, "usedFor_he": string }[],
+  "generatedImages": { "elementId": string|null, "kind": "technical"|"client", "imagePrompt_he": string, "caption_he": string }[],
+  "changeGroups": {
+    "id": string,
+    "title_he": string,
+    "scope": "tasks"|"accounting"|"elements"|"quote"|"project"|"knowledge",
+    "rationale_he": string,
+    "riskLevel": "low"|"medium"|"high",
+    "requiresUserApproval": boolean,
+    "operations": any[]
+  }[]
+}
+```
+
+---
+
+## 3) Module-specific “internal instructions” (within the same run)
+
+These are not separate calls; they are constraints the model follows based on selectedModules.
+
+### A) Module: Tasks hardening
+
+* Ensure every task links to an elementId (or projectId).
+* Add missing tasks for:
+
+  * QA, packing, loading/unloading, approvals, “צילום לאישור”, cure/dry time, install sequencing, teardown/returns.
+* Add dependencies (must-have blockers).
+* Time estimates: 30–180 minutes tasks; group bigger work into multiple tasks rather than one monster.
+* Add tags/stage: משימות / איסופים / פירוק עבודה / הקמה / פירוק / עלויות סופיות.
+
+### B) Module: Accounting & pricing gaps
+
+* For each element: ensure buckets exist: Materials, Vendors, Labor (Studio), Labor (Install), Transport, Rentals.
+* If missing info: mark as estimate + confidence + assumed vendor type.
+* Flag missing “friction costs” and buffers.
+* Recommend keeping “Last paid” vs “Current quote” if your schema supports it; otherwise note it in report.
+
+### C) Module: Elements completeness
+
+* Identify missing: dimensions, substrate/material, finish, installation method, print parts, safety trigger, references/files.
+* Propose structured patches + open questions.
+
+### D) Module: Risks
+
+* Create risk register bullets inside report; optionally also produce a dedicated changeGroup if you store risks.
+* Always include: printing iteration risk, supplier lead time risk, install window risk, safety risk, budget overrun risk.
+
+### E) Module: Suggestions
+
+* Output optional add-ons / alternates as separate changeGroups (not mixed with core fixes).
+* Mark `requiresUserApproval=true` for any scope increase.
+
+### F) Module: Web research
+
+* Only if allowWeb=true
+* Only for actionable improvements (materials spec, drying times, recommended install methods)
+* Store sources in `links[]`
+
+---
+
+# 4) Prompt: “Finalize Plan (Deep Hardening + Web)” preset
+
+Use this when the user hits the dedicated Finalize Plan button (or picks the preset).
+
+```text
+SYSTEM:
+You are the “Finalize Plan” agent for Emlly Studio (אם-לי).
+This is a deep hardening run: multi-pass critique + research + risk + rewrite.
+Same rules as Improver:
+- Hebrew outputs, English JSON keys.
+- No guessing critical facts.
+- No direct mutations: produce grouped ChangeSet only.
+- Approved Elements are source of truth. Scope changes must be optional groups with explicit approval.
+
+You MUST follow these passes:
+PASS 1 (Diagnose): summarize current plan state and find gaps across the full lifecycle.
+PASS 2 (Critique): list blockers/high/medium/low issues and why they matter.
+PASS 3 (Research agenda): create targeted web questions, then search only what materially improves the plan.
+PASS 4 (Risks): produce a practical risk register with mitigations and early warning signs.
+PASS 5 (Rewrite): propose an improved production-grade plan (Hebrew) with phases, milestones, QA gates, and critical path.
+PASS 6 (Package): output changeGroups that implement the improvements safely and incrementally.
+
+Output STRICT JSON using the same schema as the Improver, plus:
+- report_he.improvedPlanSummary (bullets)
+- changeGroups must be organized by phase (תמחור/משימות/איסופים/פירוק עבודה/הקמה/פירוק/עלויות סופיות).
+```
+
+---
+
+# Implementation breakdown (what you actually build)
+
+## Backend
+
+1. **changeSets v2** table + validators
+2. **applyChangeGroups(changeSetId, groupIds[])** mutation
+3. **auditLogs** table (before/after per op)
+4. **agentRuns** events for progress stream
+
+## Frontend
+
+1. Add ✨ **AI Improve** button to each tab header
+2. Build **ImprovePanel**
+
+   * presets + checkboxes + toggles
+   * Run button
+3. Build **Results view**
+
+   * report + gaps
+   * changeGroups list with per-group apply
+   * sources + images
+4. Add **Finalize Plan** button and route to same panel with preset selected
