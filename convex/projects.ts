@@ -629,7 +629,7 @@ export const deleteProject = mutation({
 
     const linksAsTarget = await ctx.db
       .query("projectLinks")
-      .withIndex("by_project_linked", (q: any) => q.eq("linkedProjectId", projectId))
+      .withIndex("by_linked_project", (q: any) => q.eq("linkedProjectId", projectId))
       .collect();
     for (const link of linksAsTarget) await ctx.db.delete(link._id);
 

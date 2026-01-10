@@ -623,7 +623,7 @@ export const agentRespond = action({
     try {
       if (process.env.OPENAI_API_KEY) {
         const user = await ctx.runQuery(api.users.getViewer);
-        const requestedModel = args.model || user?.preferredModel || "gpt-4o";
+        const requestedModel = args.model || user?.preferredModel || "gpt-5-mini";
 
         let targetModel = requestedModel;
         let reasoningEffort: "medium" | "high" | undefined = undefined;

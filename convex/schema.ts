@@ -1174,7 +1174,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
-    .index("by_project_linked", ["projectId", "linkedProjectId"]),
+    .index("by_project_linked", ["projectId", "linkedProjectId"])
+    .index("by_linked_project", ["linkedProjectId"]),
 
   projectDigests: defineTable({
     projectId: v.id("projects"),

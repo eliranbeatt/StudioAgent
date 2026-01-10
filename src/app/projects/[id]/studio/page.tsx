@@ -31,14 +31,8 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [isWaiting, setIsWaiting] = useState(false);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [createConversationError, setCreateConversationError] = useState<string | null>(null);
-  const [model, setModel] = useState<string>("gpt-4o");
   const user = useQuery(api.users.getViewer);
-
-  useEffect(() => {
-    if (user?.preferredModel) {
-      setModel(user.preferredModel);
-    }
-  }, [user]);
+  const model = user?.preferredModel ?? "gpt-5-mini";
 
   const conversations = useQuery(api.agent.listConversations, { projectId });
   const messages = useQuery(
@@ -259,17 +253,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
-              >
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="gpt-5-nano">GPT-5 Nano</option>
-                <option value="gpt-5-mini">GPT-5 Mini</option>
-                <option value="gpt-5.2">GPT-5.2</option>
-                <option value="gpt-5.2-thinking">GPT-5.2 (Thinking)</option>
-              </select>
               <span
                 title={resolvedStage?.reasonHe ?? "Auto-resolved based on project status"}
                 className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-600 bg-gray-50 uppercase tracking-wider"

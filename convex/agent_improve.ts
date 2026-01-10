@@ -145,6 +145,8 @@ Never hard delete. Use softDelete recommendations unless the user explicitly all
 
 Output requirements:
 Return STRICT JSON only, matching the provided schema.
+If you recommend ANY changes in the report, you MUST include them as populated "changeGroups".
+Do not return empty changeGroups if you have recommendations.
 No extra commentary outside JSON.
 `;
 
@@ -166,15 +168,36 @@ export const runImproveAgent = action({
         const project = await ctx.runQuery(api.projects.getOverview, { id: args.projectId });
         // TODO: Fetch scoped data based on args.scope and args.tabContext
         // For now, we fetch a broad context (can be optimized later)
-        const tasks = await ctx.runQuery(api.tasks.listForProject, { projectId: args.projectId });
-        const elements = await ctx.runQuery(api.elements.listByProject, { projectId: args.projectId });
-        // const accounting = await ctx.runQuery(api.projects.getAccounting, { projectId: args.projectId }); // Assuming exist or similar
+        const tasksRes = await ctx.runQuery(api.tasks.listForProject, { projectId: args.projectId });
+        const elementsRes = await ctx.runQuery(api.elements.listByProject, { projectId: args.projectId });
+        const accounting = await ctx.runQuery(api.financials.getAccountingView, { projectId: args.projectId });
+
+        // Flatten accounting for context
+        const accountingRows: any[] = [];
+        if (accounting?.elements) {
+            for (const el of accounting.elements) {
+                if (el.materials) {
+                    for (const m of el.materials) accountingRows.push({ ...m, elementTitle: el.title, type: "material" });
+                }
+                if (el.labor) {
+                    for (const l of el.labor) accountingRows.push({ ...l, elementTitle: el.title, type: "labor" });
+                }
+            }
+        }
+        if (accounting?.projectCosts) {
+            if (accounting.projectCosts.materials) {
+                for (const m of accounting.projectCosts.materials) accountingRows.push({ ...m, elementTitle: "Project Costs", type: "material" });
+            }
+            if (accounting.projectCosts.labor) {
+                for (const l of accounting.projectCosts.labor) accountingRows.push({ ...l, elementTitle: "Project Costs", type: "labor" });
+            }
+        }
 
         const contextPayload = {
             project,
-            tasks: tasks?.slice(0, 50) ?? [], // Limit for token budget
-            elements: elements?.slice(0, 20) ?? [],
-            // accounting: accounting.slice(0, 50),
+            tasks: tasksRes?.tasks?.slice(0, 50) ?? [],
+            elements: elementsRes?.elements?.slice(0, 20) ?? [],
+            accounting: accountingRows.slice(0, 50),
             runConfig: args.runConfig
         };
 
@@ -182,8 +205,9 @@ export const runImproveAgent = action({
         const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
         let model = args.runConfig.modelPreset;
-        if (model === "gpt-5-mini-thinking") model = "gpt-4o-mini"; // Fallback mapping for now if 'thinking' not avail
-        if (model === "gpt-5.2-thinking-high") model = "gpt-4o";     // Fallback
+        if (model === "gpt-5-nano") model = "gpt-5-mini";
+        if (model === "gpt-5-mini-thinking") model = "gpt-5-mini";
+        if (model === "gpt-5.2-thinking-high") model = "gpt-5.2";
 
         const systemMsg = SYSTEM_PROMPT;
         const userMsg = `
@@ -208,7 +232,8 @@ export const runImproveAgent = action({
                     { role: "system", content: systemMsg },
                     { role: "user", content: userMsg }
                 ],
-                response_format: { type: "json_object" }
+                response_format: { type: "json_object" },
+                reasoning_effort: "medium"
             });
 
             const raw = completion.choices[0].message.content;
@@ -220,7 +245,6 @@ export const runImproveAgent = action({
             const changeSetId = await ctx.runMutation(internal.changeSets.createChangeSet, {
                 projectId: args.projectId,
                 stage: project?.stage ?? "BREAKDOWN",
-                status: "PROPOSED",
 
                 // V2 Fields
                 scope: args.scope as any,

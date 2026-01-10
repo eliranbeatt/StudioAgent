@@ -4,9 +4,9 @@ import { api } from "../../../../convex/_generated/api";
 import { useState, useEffect } from "react";
 
 const MODELS = [
-    { id: "gpt-4o", label: "GPT-4o (Default)" },
+    { id: "gpt-5-mini", label: "GPT-5 Mini (Default)" },
     { id: "gpt-5-nano", label: "GPT-5 Nano" },
-    { id: "gpt-5-mini", label: "GPT-5 Mini" },
+    { id: "gpt-4o", label: "GPT-4o" },
     { id: "gpt-5.2", label: "GPT-5.2" },
     { id: "gpt-5.2-thinking", label: "GPT-5.2 (Thinking/Reasoning)" },
 ];
@@ -14,7 +14,7 @@ const MODELS = [
 export default function SettingsPage() {
     const user = useQuery(api.users.getViewer);
     const updateModel = useMutation(api.users.updatePreferredModel);
-    const [selected, setSelected] = useState("gpt-4o");
+    const [selected, setSelected] = useState("gpt-5-mini");
     const [isSaving, setIsSaving] = useState(false);
     const [initialized, setInitialized] = useState(false);
 

@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { captureSnapshotFromLive } from "./elements";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 type ElementId = Id<"elements">;
 type TaskId = Id<"tasks">;
@@ -243,6 +243,13 @@ export const createChangeSet = mutation({
 
       createdAt: Date.now(),
     });
+  },
+});
+
+export const get = query({
+  args: { id: v.id("changeSets") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
   },
 });
 
@@ -1134,7 +1141,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     appliedAt: Date.now(),
   });
 
-  await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: cs.projectId });
+  await ctx.scheduler.runAfter(0, internal.projectsStage.recomputeStage, { projectId: cs.projectId });
 }
 
 export const applyChangeSet = mutation({
