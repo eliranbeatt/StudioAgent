@@ -1,0 +1,244 @@
+Here’s an end-to-end implementation plan to **remove the Stage selector from the chat UI** and make stage **auto-resolved** from project state (draft/approved elements, quotes/baseline, tasks, accounting).
+
+I’m assuming your canonical stages are the ones already in your schema: **`IDEATION | QUOTE | BREAKDOWN`** (project + changeSets), and you want the chat/agent to follow that automatically.
+
+---
+
+## Goal
+
+* Remove manual **stage selection** from the chat UI.
+* Stage becomes a **derived value** computed from “signals” in the DB:
+
+  * elements exist? draft? approvedForQuote?
+  * quoteVersions exist?
+  * activeBudgetBaseline exists?
+  * tasks exist?
+  * (optional) accounting lines exist?
+* Stage is used for:
+
+  * the chat header badge
+  * skill suggestions / agent routing
+  * changeSets stage default
+  * conversation stage field (for new threads)
+
+---
+
+## Stage signals (the “few parameters”)
+
+We’ll compute these booleans fast using indexes (only `first()` queries; no big scans):
+
+| Signal                                  | How to detect (your schema)                                            |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| `hasAnyElements`                        | `elements.by_project` first()                                          |
+| `hasDraftElements`                      | `elements.by_project_status` where status=`drafting` first()           |
+| `hasApprovedForQuoteElements`           | `elements.by_project_status` where status=`approvedForQuote` first()   |
+| `hasQuoteVersions`                      | `quoteVersions.by_project` first()                                     |
+| `hasActiveBaseline`                     | `projects.activeBudgetBaselineId != null`                              |
+| `hasTasks`                              | `tasks.by_project` first()                                             |
+| `hasAccountingLines` (optional)         | `materialLines.by_project` first() OR `workLines.by_project` first()   |
+| `hasInProductionOrDelivered` (optional) | `elements.by_project_status` status=`inProduction`/`delivered` first() |
+
+Keep it simple: you asked specifically for **draft/approved elements + quote + tasks**, so those are the primary ones. Baseline is a strong “quote approved” indicator.
+
+---
+
+## Stage resolution rules (deterministic + monotonic)
+
+### Primary mapping (simple)
+
+1. **IDEATION**
+
+* `!hasAnyElements`
+  (there is nothing to quote/break down yet)
+
+2. **QUOTE**
+
+* `hasAnyElements` AND **NOT** (`hasTasks` OR `hasActiveBaseline`)
+  (this means: we have things, but we’re not in execution yet)
+
+3. **BREAKDOWN**
+
+* `hasTasks` OR `hasActiveBaseline`
+  (tasks exist → execution breakdown started; baseline exists → quote approved / execution planning)
+
+### Optional refinements (if you want)
+
+* If `hasQuoteVersions` but no baseline/tasks → still **QUOTE**
+* If `hasInProductionOrDelivered` → **BREAKDOWN** (even if tasks deleted)
+
+### Monotonic behavior (recommended)
+
+Stage should **not go backwards automatically** (prevents weird regressions if someone deletes tasks):
+
+* Store `projects.stage` as “last committed stage”
+* Resolver returns `computedStage`
+* Final stage = `max(project.stage, computedStage)` using ordering:
+
+  * IDEATION < QUOTE < BREAKDOWN
+
+So if you ever reached BREAKDOWN, you stay BREAKDOWN unless an admin explicitly overrides.
+
+---
+
+## Backend implementation
+
+### 1) Add a stage resolver query (single source of truth)
+
+Create:
+
+**`convex/projectsStage.ts`**
+
+* `projects.getStageSignals(projectId)` → returns booleans + rationale
+* `projects.resolveStage(projectId)` → returns `{ stage, signals, reasonHe }`
+
+**Reason/rationale** example (for UI tooltip/debug):
+
+* “BREAKDOWN because tasks exist”
+* “QUOTE because elements exist but no tasks/baseline”
+* “IDEATION because no elements exist”
+
+**Performance**
+Use only indexed `.first()` checks:
+
+* `elements.by_project`
+* `elements.by_project_status`
+* `tasks.by_project`
+* `quoteVersions.by_project`
+* etc.
+
+### 2) Keep `projects.stage` updated automatically (so everything else can trust it)
+
+Add internal mutation:
+
+**`projects._recomputeStage(projectId)`**
+
+* reads signals
+* computes stage
+* patches `projects.stage` if it needs to advance
+
+Call this `_recomputeStage` at the end of mutations that change signals:
+
+* elements:
+
+  * create element
+  * update element status
+  * approve element (draft → approvedForQuote)
+* quote:
+
+  * create quoteVersion
+  * set activeBudgetBaselineId
+* tasks:
+
+  * create task
+  * bulk create tasks
+  * delete tasks (won’t regress due to monotonic rule, so safe)
+* optionally:
+
+  * when applying changeSets that create any of these
+
+This avoids relying on the UI to “calculate stage”.
+
+### 3) Conversation stage field strategy (no breaking migration required)
+
+Your `conversations.stage` union is messy (lowercase + uppercase). Don’t fight it right now.
+
+**New rule**
+
+* When creating a new conversation: set `conversations.stage = resolvedStage` (uppercase).
+* For existing conversations: ignore stored stage in UI; display resolved stage from project.
+
+Optional later migration:
+
+* normalize conversation stages to uppercase
+
+---
+
+## Frontend implementation
+
+### 1) Remove stage selector from Chat UI
+
+* Delete/disable the Stage dropdown/tabs in the chat header.
+* Replace with:
+
+  * A **read-only stage badge**: `IDEATION / QUOTE / BREAKDOWN`
+  * Tooltip: “why” (from `resolveStage.reasonHe`)
+
+### 2) Ensure all chat/agent actions use resolved stage
+
+Wherever you currently read stage from UI state:
+
+* replace with `resolvedStage` from `projects.resolveStage(projectId)` or from project doc (if you keep `projects.stage` updated)
+
+Use it for:
+
+* skill suggestions
+* agent router stage
+* default stage for new changeSets and structured blocks
+
+### 3) Edge UI behavior
+
+* When stage changes (e.g., user creates first element), chat header badge updates automatically on next query refresh.
+* No user input needed.
+
+---
+
+## Acceptance criteria
+
+1. Chat UI has **no stage selector**.
+2. Chat header shows a **stage badge** that matches project state.
+3. Stage flips:
+
+* No elements → IDEATION
+* Any elements (draft or approvedForQuote) + no tasks/baseline → QUOTE
+* Tasks exist OR activeBudgetBaselineId exists → BREAKDOWN
+
+4. Stage does **not regress** automatically (optional but strongly recommended).
+5. Skills + agent behavior follow this stage without manual overrides.
+
+---
+
+## Testing plan
+
+### Resolver unit tests (fast)
+
+Test combinations:
+
+* empty project → IDEATION
+* draft element added → QUOTE
+* approvedForQuote element → QUOTE
+* quoteVersion exists → QUOTE
+* activeBudgetBaselineId set → BREAKDOWN
+* tasks exist → BREAKDOWN
+* delete tasks after reaching BREAKDOWN → stays BREAKDOWN (monotonic)
+
+### Integration smoke tests
+
+* Create project → stage IDEATION
+* Add element → stage QUOTE
+* Generate quoteVersion → stage QUOTE
+* Set baseline (approve) → stage BREAKDOWN
+* Auto tasks generation → stage BREAKDOWN
+
+---
+
+## Rollout plan (safe)
+
+1. Ship backend resolver + `_recomputeStage` calls
+2. Update UI to display resolved stage badge (still keep selector hidden behind feature flag for a moment if you want)
+3. Remove selector entirely
+4. Optional later: normalize old conversation stage values
+
+---
+
+## What I’d implement first (1–2 hours, high impact)
+
+* `projects.resolveStage` query
+* UI: replace selector with badge
+* Route skill suggestions by resolved stage
+
+Then same day:
+
+* `_recomputeStage` + hook into element/task/quote mutations (makes it robust)
+
+---
+

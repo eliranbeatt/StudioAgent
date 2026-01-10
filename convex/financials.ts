@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
+import { api } from "./_generated/api";
 
 export const approveQuoteAsBaseline = mutation({
   args: {
@@ -46,6 +47,8 @@ export const approveQuoteAsBaseline = mutation({
     await ctx.db.patch(args.quoteId, {
       status: "approved",
     });
+
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: args.projectId });
 
     return baselineId;
   },
@@ -292,6 +295,47 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
     .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
     .collect();
 
+  const receipts = await ctx.db
+    .query("receipts")
+    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+    .collect();
+  const receiptItems: any[] = [];
+  for (const receipt of receipts) {
+    const items = await ctx.db
+      .query("receiptItems")
+      .withIndex("by_receipt", (q: any) => q.eq("receiptId", receipt._id))
+      .collect();
+    receiptItems.push(...items);
+  }
+
+  const draftMaterialActuals = new Map<string, { total: number; qty: number }>();
+  const draftWorkActuals = new Map<string, { total: number; qty: number }>();
+
+  for (const item of receiptItems) {
+    const qty = item.qty ?? 0;
+    const total = item.total ?? (item.unitPrice ?? 0) * (item.qty ?? 0);
+
+    if (item.mappedDraftMaterialId) {
+      const entry = draftMaterialActuals.get(item.mappedDraftMaterialId) ?? {
+        total: 0,
+        qty: 0,
+      };
+      entry.total += total;
+      entry.qty += qty;
+      draftMaterialActuals.set(item.mappedDraftMaterialId, entry);
+    }
+
+    if (item.mappedDraftWorkId) {
+      const entry = draftWorkActuals.get(item.mappedDraftWorkId) ?? {
+        total: 0,
+        qty: 0,
+      };
+      entry.total += total;
+      entry.qty += qty;
+      draftWorkActuals.set(item.mappedDraftWorkId, entry);
+    }
+  }
+
   const drafts = await ctx.db
     .query("elementDrafts")
     .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
@@ -329,8 +373,16 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
     let draftId, revisionNumber;
 
     if (draft) {
-      materials = extractFromSnapshot(draft.workingSnapshot, "materials");
-      labor = extractFromSnapshot(draft.workingSnapshot, "labor");
+      materials = extractFromSnapshot(
+        draft.workingSnapshot,
+        "materials",
+        draftMaterialActuals
+      );
+      labor = extractFromSnapshot(
+        draft.workingSnapshot,
+        "labor",
+        draftWorkActuals
+      );
       draftId = draft._id;
       revisionNumber = draft.revisionNumber;
     } else {
@@ -375,8 +427,16 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
 
   let pcMaterials, pcLabor, pcDraftId, pcRevisionNumber;
   if (projectCostDraft) {
-    pcMaterials = extractFromSnapshot(projectCostDraft.workingSnapshot, "materials");
-    pcLabor = extractFromSnapshot(projectCostDraft.workingSnapshot, "labor");
+    pcMaterials = extractFromSnapshot(
+      projectCostDraft.workingSnapshot,
+      "materials",
+      draftMaterialActuals
+    );
+    pcLabor = extractFromSnapshot(
+      projectCostDraft.workingSnapshot,
+      "labor",
+      draftWorkActuals
+    );
     pcDraftId = projectCostDraft._id;
     pcRevisionNumber = projectCostDraft.revisionNumber;
   } else {
@@ -430,9 +490,15 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
   };
 }
 
-function extractFromSnapshot(snapshot: any, type: "materials" | "labor") {
+function extractFromSnapshot(
+  snapshot: any,
+  type: "materials" | "labor",
+  actuals: Map<string, { total: number; qty: number }>
+) {
   const map = snapshot?.[type]?.byId ?? {};
-  return Object.values(map).map((item: any) => ({
+  return Object.values(map)
+    .filter((item: any) => !item.deletedAt)
+    .map((item: any) => ({
     id: item.id,
     name: item.name ?? item.role ?? "Untitled",
     title: item.name ?? item.role ?? "Untitled",
@@ -441,13 +507,21 @@ function extractFromSnapshot(snapshot: any, type: "materials" | "labor") {
     unitCost: Number(item.unitCost ?? item.rate ?? 0),
     rate: Number(item.unitCost ?? item.rate ?? 0),
     total: Number(item.qty ?? 0) * Number(item.unitCost ?? item.rate ?? 0),
-    actualQty: item.actualQty,
-    actualUnitCost: item.actualUnitCost,
-    actualRate: item.actualRate,
+    actualQty: actuals.get(item.id)?.qty ?? item.actualQty,
+    actualUnitCost:
+      actuals.get(item.id)?.qty
+        ? actuals.get(item.id)!.total / actuals.get(item.id)!.qty
+        : item.actualUnitCost,
+    actualRate:
+      actuals.get(item.id)?.qty
+        ? actuals.get(item.id)!.total / actuals.get(item.id)!.qty
+        : item.actualRate,
     actualTotal:
-      item.actualQty !== undefined && (item.actualUnitCost !== undefined || item.actualRate !== undefined)
+      actuals.get(item.id)?.total ??
+      (item.actualQty !== undefined &&
+      (item.actualUnitCost !== undefined || item.actualRate !== undefined)
         ? Number(item.actualQty ?? 0) * Number(item.actualUnitCost ?? item.actualRate ?? 0)
-        : undefined,
+        : undefined),
     taskIds: item.links?.taskIds ?? [],
   }));
 }
@@ -493,8 +567,8 @@ function extractFromDB(
 }
 
 function computeSnapshotTotals(snapshot: any) {
-  const mats = Object.values(snapshot?.materials?.byId ?? {});
-  const labs = Object.values(snapshot?.labor?.byId ?? {});
+  const mats = Object.values(snapshot?.materials?.byId ?? {}).filter((line: any) => !line.deletedAt);
+  const labs = Object.values(snapshot?.labor?.byId ?? {}).filter((line: any) => !line.deletedAt);
   const materials = mats.reduce(
     (sum: number, line: any) =>
       sum + Number(line.qty ?? 0) * Number(line.unitCost ?? line.rate ?? 0),

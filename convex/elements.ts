@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { api } from "./_generated/api";
 
 // Helper to sync snapshot data to live tables
 export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapshot: any) {
@@ -34,6 +35,8 @@ export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapsho
   const snapshotTasksMap = snapshot.tasks?.byId ?? {};
 
   for (const [key, taskData] of Object.entries<any>(snapshotTasksMap)) {
+    if (taskData.deletedAt) continue; // Skip deleted items
+
     let taskId = taskData.id;
     let existing = null;
     if (taskId) {
@@ -85,6 +88,8 @@ export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapsho
   const matsIterable = Object.values<any>(snapshotMaterials);
 
   for (const matData of matsIterable) {
+    if (matData.deletedAt) continue; // Skip deleted items
+
     let lineId = matData.id;
     let existing = null;
     if (lineId && existingMatMap.has(lineId)) {
@@ -125,6 +130,8 @@ export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapsho
   const laborIterable = Object.values<any>(snapshotLabor);
 
   for (const laborData of laborIterable) {
+    if (laborData.deletedAt) continue; // Skip deleted items
+
     let lineId = laborData.id;
     let existing = null;
     if (lineId && existingWorkMap.has(lineId)) {
@@ -162,9 +169,11 @@ export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapsho
   const snapshotPrinting = snapshot.printing?.parts ?? snapshot.printing?.byId ?? [];
   const partsIterable = Array.isArray(snapshotPrinting)
     ? snapshotPrinting
-    : Object.values<any>(snapshotPrinting);
+    : Object.values(snapshotPrinting);
 
   for (const partData of partsIterable) {
+    if (partData.deletedAt) continue; // Skip deleted items
+
     let partId = partData.id;
     let existing = null;
     if (partId && existingPartMap.has(partId)) {
@@ -382,6 +391,8 @@ export const approveElementDraft = mutation({
       workingSnapshot: updatedSnapshot, // Update draft with real IDs too
       updatedAt: now,
     });
+
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: element.projectId });
 
     return { ok: true, versionId };
   },
@@ -738,6 +749,9 @@ export const deleteElement = mutation({
     }
 
     await ctx.db.delete(args.elementId);
+    
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: element.projectId });
+    
     return { ok: true };
   },
 });

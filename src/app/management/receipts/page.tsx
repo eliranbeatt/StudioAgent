@@ -11,6 +11,8 @@ type ReceiptItemDraft = {
   unit: string
   unitPrice: string
   total: string
+  mappedDraftMaterialId?: string
+  mappedDraftWorkId?: string
   mappedAccountingLineId?: Id<'accountingLines'>
   mappedMaterialLineId?: Id<'materialLines'>
   mappedWorkLineId?: Id<'workLines'>
@@ -29,6 +31,10 @@ export default function ManagementReceiptsPage() {
   )
   const files = useQuery(
     api.files.listProjectFiles,
+    selectedProjectId ? { projectId } : 'skip'
+  )
+  const accounting = useQuery(
+    api.financials.getAccountingView,
     selectedProjectId ? { projectId } : 'skip'
   )
   const lineOptions = useQuery(
@@ -81,6 +87,47 @@ export default function ManagementReceiptsPage() {
     })
   }, [receipts])
 
+  const draftMaterialOptions = useMemo(() => {
+    if (!accounting) return []
+    const options: Array<{ id: string; label: string }> = []
+    accounting.elements.forEach((element: any) => {
+      element.materials.forEach((line: any) => {
+        options.push({
+          id: line.id,
+          label: `${element.title} / ${line.name}`,
+        })
+      })
+    })
+    if (accounting.projectCosts?.materials?.length) {
+      accounting.projectCosts.materials.forEach((line: any) => {
+        options.push({ id: line.id, label: `Project / ${line.name}` })
+      })
+    }
+    return options
+  }, [accounting])
+
+  const draftWorkOptions = useMemo(() => {
+    if (!accounting) return []
+    const options: Array<{ id: string; label: string }> = []
+    accounting.elements.forEach((element: any) => {
+      element.labor.forEach((line: any) => {
+        options.push({
+          id: line.id,
+          label: `${element.title} / ${line.role ?? line.title ?? 'Labor'}`,
+        })
+      })
+    })
+    if (accounting.projectCosts?.labor?.length) {
+      accounting.projectCosts.labor.forEach((line: any) => {
+        options.push({
+          id: line.id,
+          label: `Project / ${line.role ?? line.title ?? 'Labor'}`,
+        })
+      })
+    }
+    return options
+  }, [accounting])
+
   const selectedReceipt = receiptsSorted.find(
     (entry) => entry.receipt._id === selectedReceiptId
   )
@@ -108,6 +155,8 @@ export default function ManagementReceiptsPage() {
         unit: item.unit ?? '',
         unitPrice: item.unitPrice !== undefined ? String(item.unitPrice) : '',
         total: item.total !== undefined ? String(item.total) : '',
+        mappedDraftMaterialId: item.mappedDraftMaterialId ?? undefined,
+        mappedDraftWorkId: item.mappedDraftWorkId ?? undefined,
         mappedAccountingLineId: item.mappedAccountingLineId ?? undefined,
         mappedMaterialLineId: item.mappedMaterialLineId ?? undefined,
         mappedWorkLineId: item.mappedWorkLineId ?? undefined,
@@ -219,6 +268,8 @@ export default function ManagementReceiptsPage() {
             unit: draft.unit || undefined,
             unitPrice: unitPrice ?? undefined,
             total: total ?? (qty !== null && unitPrice !== null ? qty * unitPrice : undefined),
+            mappedDraftMaterialId: draft.mappedDraftMaterialId,
+            mappedDraftWorkId: draft.mappedDraftWorkId,
             mappedAccountingLineId: draft.mappedAccountingLineId,
             mappedMaterialLineId: draft.mappedMaterialLineId,
             mappedWorkLineId: draft.mappedWorkLineId,
@@ -577,7 +628,39 @@ export default function ManagementReceiptsPage() {
                                 }
                               />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_2fr_auto] gap-2 mt-2">
+                            <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_2fr_2fr_2fr_auto] gap-2 mt-2">
+                              <select
+                                className="border border-gray-200 rounded px-2 py-1 text-xs"
+                                value={item.mappedDraftMaterialId ?? ''}
+                                onChange={(event) =>
+                                  updateItemDraft(index, {
+                                    mappedDraftMaterialId: event.target.value || undefined,
+                                  })
+                                }
+                              >
+                                <option value="">Map draft material</option>
+                                {draftMaterialOptions.map((line) => (
+                                  <option key={line.id} value={line.id}>
+                                    {line.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                className="border border-gray-200 rounded px-2 py-1 text-xs"
+                                value={item.mappedDraftWorkId ?? ''}
+                                onChange={(event) =>
+                                  updateItemDraft(index, {
+                                    mappedDraftWorkId: event.target.value || undefined,
+                                  })
+                                }
+                              >
+                                <option value="">Map draft labor</option>
+                                {draftWorkOptions.map((line) => (
+                                  <option key={line.id} value={line.id}>
+                                    {line.label}
+                                  </option>
+                                ))}
+                              </select>
                               <select
                                 className="border border-gray-200 rounded px-2 py-1 text-xs"
                                 value={item.mappedAccountingLineId ?? ''}
@@ -654,6 +737,16 @@ export default function ManagementReceiptsPage() {
                       <div className="mt-2 text-xs text-gray-500">
                         No material lines found yet. Create material lines in Project Accounting,
                         then refresh.
+                      </div>
+                    )}
+                    {draftMaterialOptions.length === 0 && (
+                      <div className="mt-2 text-xs text-gray-500">
+                        No draft material lines found in the Accounting view.
+                      </div>
+                    )}
+                    {draftWorkOptions.length === 0 && (
+                      <div className="mt-2 text-xs text-gray-500">
+                        No draft labor lines found in the Accounting view.
                       </div>
                     )}
                     <div className="mt-3 text-xs text-gray-500">

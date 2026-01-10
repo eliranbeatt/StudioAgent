@@ -1,7 +1,7 @@
 import OpenAI from "openai";
-import { action, mutation, query } from "./_generated/server";
+import { action, mutation, query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 export const generateQuote = mutation({
   args: {
@@ -63,6 +63,8 @@ export const generateQuote = mutation({
       createdAt: Date.now(),
     });
 
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: args.projectId });
+
     return quoteId;
   },
 });
@@ -112,6 +114,8 @@ export const createDraftFromUi = mutation({
         grandTotal: 0,
       },
     });
+
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: args.projectId });
 
     return quoteId;
   },
@@ -410,12 +414,10 @@ export const generateQuoteV2 = action({
 
     const previousQuote =
       quote.previousQuoteId ??
-      (await ctx.db
-        .query("quoteVersions")
-        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-        .order("desc")
-        .filter((q) => q.neq(q.field("_id"), args.quoteId))
-        .first())?._id ??
+      (await ctx.runQuery(internal.quotes.findLatestQuote, {
+        projectId: args.projectId,
+        excludeQuoteId: args.quoteId,
+      })) ??
       undefined;
 
     await ctx.runMutation(api.quotes.updateQuote, {
@@ -784,3 +786,24 @@ function mergeQuoteBlocks(candidate: any, fallback: any) {
 
   return result;
 }
+
+export const findLatestQuote = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    excludeQuoteId: v.optional(v.id("quoteVersions")),
+  },
+  handler: async (ctx, args) => {
+    let query = ctx.db
+      .query("quoteVersions")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc");
+    
+    if (args.excludeQuoteId) {
+      query = query.filter((q) => q.neq(q.field("_id"), args.excludeQuoteId));
+    }
+
+    const latest = await query.first();
+    return latest?._id;
+  },
+});
+

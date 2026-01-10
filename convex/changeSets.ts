@@ -2,6 +2,7 @@ import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { captureSnapshotFromLive } from "./elements";
+import { api } from "./_generated/api";
 
 type ElementId = Id<"elements">;
 type TaskId = Id<"tasks">;
@@ -919,6 +920,9 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (!resolvedLineId) throw new Error("accountingLine.patch requires accountingLineId");
     if (!fields || typeof fields !== "object") continue;
 
+    const isMaterial = !!ctx.db.normalizeId("materialLines", resolvedLineId);
+    const isLabor = !!ctx.db.normalizeId("workLines", resolvedLineId);
+
     const rawVendorId =
       resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
       fields.vendorId;
@@ -929,51 +933,77 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       : undefined;
 
     const patch: any = {};
-    if ("title" in fields) patch.title = toOptional(fields.title);
-    if ("type" in fields) patch.type = toOptional(fields.type);
-    if ("lineType" in fields) {
-      const normalized = normalizeLineType(fields.lineType);
-      patch.type = normalized === "work" ? "labor" : normalized ?? patch.type;
-    }
-    if ("sectionKey" in fields || "sectionLabelHe" in fields) {
-      const sectionKey = normalizeSectionKey(fields.sectionKey, fields.sectionLabelHe);
-      const sectionLabelHe = toOptional(fields.sectionLabelHe);
-      patch.sectionKey = sectionKey;
-      patch.sectionLabelHe = sectionLabelHe;
-      patch.sectionId = await resolveOrCreateSectionId(
-        ctx,
-        cs.projectId,
-        sectionKey,
-        sectionLabelHe,
-        now
-      );
-    }
-    if ("qty" in fields) patch.qty = toOptional(fields.qty);
-    if ("unitCost" in fields) patch.unitCost = toOptional(fields.unitCost);
-    if ("total" in fields) patch.total = toOptional(fields.total);
-    if ("billable" in fields) patch.billable = toOptional(fields.billable);
-    if ("itemName" in fields) patch.itemName = toOptional(fields.itemName);
-    if ("spec" in fields) patch.spec = toOptional(fields.spec);
-    if ("unit" in fields) patch.unit = toOptional(fields.unit);
-    if ("unitCostEstimate" in fields) patch.unitCostEstimate = toOptional(fields.unitCostEstimate);
-    if ("wastePct" in fields) patch.wastePct = toOptional(fields.wastePct);
+    
+    // Common fields
+    if ("notes" in fields) patch.notes = toOptional(fields.notes);
+    
+    // Vendor handling
     if ("vendorId" in fields || "vendorTempOrId" in fields) {
-      patch.vendorId = toOptional(resolvedVendorId);
+        patch.vendorId = toOptional(resolvedVendorId);
     }
     if ("vendorName" in fields) patch.vendorName = toOptional(fields.vendorName);
-    if ("vendorSku" in fields) patch.vendorSku = toOptional(fields.vendorSku);
-    if ("vendorUrl" in fields) patch.vendorUrl = toOptional(fields.vendorUrl);
-    if ("leadTimeDays" in fields) patch.leadTimeDays = toOptional(fields.leadTimeDays);
-    if ("workType" in fields) {
-      const workTypeValue = toOptional(fields.workType);
-      patch.workType = workTypeValue ? normalizeWorkType(workTypeValue) : workTypeValue;
+
+    if (isMaterial) {
+        if ("qty" in fields || "quantity" in fields) patch.quantity = toOptional(fields.quantity ?? fields.qty);
+        if ("unitCost" in fields || "plannedUnitCost" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.unitCost);
+        if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
+        if ("itemName" in fields || "title" in fields) patch.itemName = toOptional(fields.itemName ?? fields.title);
+        if ("spec" in fields) patch.spec = toOptional(fields.spec);
+        if ("unit" in fields) patch.unit = toOptional(fields.unit);
+        if ("unitCode" in fields) patch.unitCode = normalizeUnitCode(fields.unitCode);
+        // ... match other materialLines fields
+        if ("actualUnitCost" in fields) patch.actualUnitCost = toOptional(fields.actualUnitCost);
+        if ("actualTotalCost" in fields) patch.actualTotalCost = toOptional(fields.actualTotalCost);
+    } else if (isLabor) {
+        if ("qty" in fields || "plannedQuantity" in fields) patch.plannedQuantity = toOptional(fields.plannedQuantity ?? fields.qty);
+        if ("unitCost" in fields || "plannedUnitCost" in fields || "rate" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.rate ?? fields.unitCost);
+        if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
+        if ("roleHe" in fields || "title" in fields) patch.roleHe = toOptional(fields.roleHe ?? fields.title);
+        // ... match other workLines fields
+    } else {
+        // Assume accountingLines
+        if ("title" in fields) patch.title = toOptional(fields.title);
+        if ("type" in fields) patch.type = toOptional(fields.type);
+        if ("lineType" in fields) {
+            const normalized = normalizeLineType(fields.lineType);
+            patch.type = normalized === "work" ? "labor" : normalized ?? patch.type;
+        }
+        if ("sectionKey" in fields || "sectionLabelHe" in fields) {
+            const sectionKey = normalizeSectionKey(fields.sectionKey, fields.sectionLabelHe);
+            const sectionLabelHe = toOptional(fields.sectionLabelHe);
+            patch.sectionKey = sectionKey;
+            patch.sectionLabelHe = sectionLabelHe;
+            patch.sectionId = await resolveOrCreateSectionId(
+                ctx,
+                cs.projectId,
+                sectionKey,
+                sectionLabelHe,
+                now
+            );
+        }
+        if ("qty" in fields) patch.qty = toOptional(fields.qty);
+        if ("unitCost" in fields) patch.unitCost = toOptional(fields.unitCost);
+        if ("total" in fields) patch.total = toOptional(fields.total);
+        if ("billable" in fields) patch.billable = toOptional(fields.billable);
+        if ("itemName" in fields) patch.itemName = toOptional(fields.itemName);
+        if ("spec" in fields) patch.spec = toOptional(fields.spec);
+        if ("unit" in fields) patch.unit = toOptional(fields.unit);
+        if ("unitCostEstimate" in fields) patch.unitCostEstimate = toOptional(fields.unitCostEstimate);
+        if ("wastePct" in fields) patch.wastePct = toOptional(fields.wastePct);
+        
+        if ("vendorSku" in fields) patch.vendorSku = toOptional(fields.vendorSku);
+        if ("vendorUrl" in fields) patch.vendorUrl = toOptional(fields.vendorUrl);
+        if ("leadTimeDays" in fields) patch.leadTimeDays = toOptional(fields.leadTimeDays);
+        if ("workType" in fields) {
+            const workTypeValue = toOptional(fields.workType);
+            patch.workType = workTypeValue ? normalizeWorkType(workTypeValue) : workTypeValue;
+        }
+        if ("hours" in fields) patch.hours = toOptional(fields.hours);
+        if ("crewSize" in fields) patch.crewSize = toOptional(fields.crewSize);
+        if ("ratePerHour" in fields) patch.ratePerHour = toOptional(fields.ratePerHour);
+        if ("source" in fields) patch.source = toOptional(fields.source);
+        if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
     }
-    if ("hours" in fields) patch.hours = toOptional(fields.hours);
-    if ("crewSize" in fields) patch.crewSize = toOptional(fields.crewSize);
-    if ("ratePerHour" in fields) patch.ratePerHour = toOptional(fields.ratePerHour);
-    if ("source" in fields) patch.source = toOptional(fields.source);
-    if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
-    if ("notes" in fields) patch.notes = toOptional(fields.notes);
 
     await ctx.db.patch(resolvedLineId, { ...patch });
 
@@ -1081,6 +1111,8 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     status: "APPLIED",
     appliedAt: Date.now(),
   });
+
+  await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: cs.projectId });
 }
 
 export const applyChangeSet = mutation({

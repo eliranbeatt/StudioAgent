@@ -10,7 +10,9 @@ const receiptItemArgs = v.object({
   vendorId: v.optional(v.id('vendors')),
   mappedAccountingLineId: v.optional(v.id('accountingLines')),
   mappedMaterialLineId: v.optional(v.id('materialLines')),
+  mappedDraftMaterialId: v.optional(v.string()),
   mappedWorkLineId: v.optional(v.id('workLines')),
+  mappedDraftWorkId: v.optional(v.string()),
   mappedTaskId: v.optional(v.id('tasks')),
   mappedElementId: v.optional(v.id('elements')),
 })

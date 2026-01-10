@@ -24,6 +24,7 @@ type MaterialLine = {
   unitCost: number;
   actualQty?: number;
   actualUnitCost?: number;
+  actualTotal?: number;
   taskIds: string[];
 };
 
@@ -34,6 +35,7 @@ type LaborLine = {
   rate: number;
   actualQty?: number;
   actualRate?: number;
+  actualTotal?: number;
   taskIds: string[];
 };
 
@@ -851,12 +853,13 @@ function MaterialLineRow({
   };
 
   const plannedTotal = active.qty * active.unitCost;
-  const actualTotal =
+  const computedActualTotal =
     active.actualQty !== undefined && active.actualUnitCost !== undefined
       ? active.actualQty * active.actualUnitCost
       : null;
-  const gapTotal =
-    actualTotal !== null ? actualTotal - plannedTotal : null;
+  const actualTotal =
+    active.actualTotal !== undefined ? active.actualTotal : computedActualTotal;
+  const gapTotal = actualTotal !== null && actualTotal !== undefined ? actualTotal - plannedTotal : null;
   const gapClass =
     gapTotal === null
       ? "text-gray-400"
@@ -988,7 +991,13 @@ function MaterialLineRow({
         )}
       </div>
       <div className="md:col-span-1 text-xs text-gray-500">
-        <div className="uppercase font-semibold text-gray-400">Gap</div>
+        <div className="uppercase font-semibold text-gray-400">Actual</div>
+        <div className="font-mono text-gray-700">
+          {actualTotal === null || actualTotal === undefined
+            ? "--"
+            : `${Math.round(actualTotal).toLocaleString()} NIS`}
+        </div>
+        <div className="mt-2 uppercase font-semibold text-gray-400">Variance</div>
         <div className={`font-mono ${gapClass}`}>
           {gapTotal === null ? "--" : formatGap(gapTotal)}
         </div>
@@ -1074,12 +1083,13 @@ function LaborLineRow({
   };
 
   const plannedTotal = active.qty * active.rate;
-  const actualTotal =
+  const computedActualTotal =
     active.actualQty !== undefined && active.actualRate !== undefined
       ? active.actualQty * active.actualRate
       : null;
-  const gapTotal =
-    actualTotal !== null ? actualTotal - plannedTotal : null;
+  const actualTotal =
+    active.actualTotal !== undefined ? active.actualTotal : computedActualTotal;
+  const gapTotal = actualTotal !== null && actualTotal !== undefined ? actualTotal - plannedTotal : null;
   const gapClass =
     gapTotal === null
       ? "text-gray-400"
@@ -1208,7 +1218,13 @@ function LaborLineRow({
         )}
       </div>
       <div className="md:col-span-1 text-xs text-gray-500">
-        <div className="uppercase font-semibold text-gray-400">Gap</div>
+        <div className="uppercase font-semibold text-gray-400">Actual</div>
+        <div className="font-mono text-gray-700">
+          {actualTotal === null || actualTotal === undefined
+            ? "--"
+            : `${Math.round(actualTotal).toLocaleString()} NIS`}
+        </div>
+        <div className="mt-2 uppercase font-semibold text-gray-400">Variance</div>
         <div className={`font-mono ${gapClass}`}>
           {gapTotal === null ? "--" : formatGap(gapTotal)}
         </div>

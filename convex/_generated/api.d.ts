@@ -31,6 +31,7 @@ import type * as patch from "../patch.js";
 import type * as printing from "../printing.js";
 import type * as projects from "../projects.js";
 import type * as projectsCustomers from "../projectsCustomers.js";
+import type * as projectsStage from "../projectsStage.js";
 import type * as quotePdf from "../quotePdf.js";
 import type * as quotes from "../quotes.js";
 import type * as receipts from "../receipts.js";
@@ -73,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   printing: typeof printing;
   projects: typeof projects;
   projectsCustomers: typeof projectsCustomers;
+  projectsStage: typeof projectsStage;
   quotePdf: typeof quotePdf;
   quotes: typeof quotes;
   receipts: typeof receipts;

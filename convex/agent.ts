@@ -654,29 +654,42 @@ export const agentRespond = action({
         let lastUpdate = Date.now();
         let chunkCount = 0;
 
-        for await (const chunk of stream as any) {
-          const content = chunk.choices[0]?.delta?.content || "";
-          if (content) {
-            responseText += content;
-            chunkCount++;
+        try {
+          for await (const chunk of stream as any) {
+            const content = chunk.choices[0]?.delta?.content || "";
+            if (content) {
+              responseText += content;
+              chunkCount++;
 
-            // Update DB occasionally to create "streaming" effect
-            // Don't update if we are inside the JSON block (crudely detected) to avoid scaring the user
-            const jsonIndex = responseText.indexOf("```json");
-            const isInsideBlock = jsonIndex !== -1 && jsonIndex < responseText.length - 10;
+              // Update DB occasionally to create "streaming" effect
+              // Don't update if we are inside the JSON block (crudely detected) to avoid scaring the user
+              const jsonIndex = responseText.indexOf("```json");
+              const isInsideBlock = jsonIndex !== -1 && jsonIndex < responseText.length - 10;
 
-            if (!isInsideBlock && (chunkCount % 5 === 0 || Date.now() - lastUpdate > 300)) {
-              const updateResult = await ctx.runMutation(internal.agent.updateMessageContent, {
-                messageId: agentMessageId,
-                text_he: responseText,
-              });
-              if (updateResult?.cancelled) {
-                responseText += " (Cancelled)";
-                stream.controller.abort(); // Attempt to abort OpenAI stream if possible, or just break
-                break; 
+              if (!isInsideBlock && (chunkCount % 5 === 0 || Date.now() - lastUpdate > 300)) {
+                const updateResult = await ctx.runMutation(internal.agent.updateMessageContent, {
+                  messageId: agentMessageId,
+                  text_he: responseText,
+                });
+                if (updateResult?.cancelled) {
+                  responseText += " (Cancelled)";
+                  try {
+                    // Attempt to abort OpenAI stream if possible
+                    if ((stream as any).controller) (stream as any).controller.abort();
+                  } catch (e) {
+                    // Ignore abort errors
+                  }
+                  break;
+                }
+                lastUpdate = Date.now();
               }
-              lastUpdate = Date.now();
             }
+          }
+        } catch (iterErr: any) {
+          if (iterErr?.message && /permits close/i.test(iterErr.message)) {
+            console.warn("Ignored stream close error:", iterErr.message);
+          } else {
+            throw iterErr;
           }
         }
       } else {
