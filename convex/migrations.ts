@@ -1,6 +1,7 @@
-import { action, internalMutation } from "./_generated/server";
+import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { normalizeName, newBusinessId } from "./lib/normalize";
+import { Id } from "./_generated/dataModel";
 
 export const backfillElementRevs = internalMutation({
   args: {},
@@ -17,7 +18,7 @@ export const backfillElementRevs = internalMutation({
   },
 });
 
-export const migrateProjectsClientNameToCustomers = action({
+export const migrateProjectsClientNameToCustomers = mutation({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }) => {
     const dry = !!dryRun;
@@ -80,12 +81,12 @@ export const migrateProjectsClientNameToCustomers = action({
   },
 });
 
-export const migrateTasksAssigneeToEmployeeIds = action({
+export const migrateTasksAssigneeToEmployeeIds = mutation({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }) => {
     const dry = !!dryRun;
     const employees = await ctx.db.query("employees").take(10000);
-    const map = new Map<string, string>();
+    const map = new Map<string, Id<"employees">>();
     for (const employee of employees) {
       map.set(normalizeName(employee.displayName), employee._id);
     }
@@ -120,7 +121,7 @@ export const migrateTasksAssigneeToEmployeeIds = action({
   },
 });
 
-export const backfillQuoteVersionsCustomerFromProject = action({
+export const backfillQuoteVersionsCustomerFromProject = mutation({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }) => {
     const dry = !!dryRun;

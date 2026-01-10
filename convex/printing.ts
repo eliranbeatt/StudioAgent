@@ -23,6 +23,8 @@ export const attachPrintFile = mutation({
       kind: args.kind,
       originalFilename: args.originalFilename,
       uploadedAt: Date.now(),
+      warnings: [],
+      createdAt: Date.now(),
     })
   },
 })

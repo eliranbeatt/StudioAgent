@@ -620,29 +620,88 @@ export default defineSchema({
   })
     .index("by_baseline", ["baselineId"]),
 
-  // Change Sets (Refactored)
+  // Change Sets (Refactored for v2)
   changeSets: defineTable({
     projectId: v.id("projects"),
+    // Common fields
     stage: v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN")),
-    status: v.union(v.literal("PROPOSED"), v.literal("APPLIED"), v.literal("DISCARDED")),
-    reason_he: v.optional(v.string()),
+    status: v.union(
+      v.literal("PROPOSED"),
+      v.literal("APPLIED"),
+      v.literal("PARTIALLY_APPLIED"),
+      v.literal("DISCARDED")
+    ),
 
-    // Conflict control
-    base: v.optional(v.any()),
-
-    // The ops list
-    ops: v.array(v.object({
-      kind: v.string(), // e.g. "element.create", "task.create"
-      payload: v.any(),
+    // v2: Scope & Configuration
+    scope: v.optional(v.union(
+      v.literal("tasks"),
+      v.literal("accounting"),
+      v.literal("elements"),
+      v.literal("quote"),
+      v.literal("knowledge"),
+      v.literal("project"),
+      v.literal("multi")
+    )),
+    runConfig: v.optional(v.object({
+      modelPreset: v.string(),
+      allowWeb: v.boolean(),
+      createImages: v.boolean(),
+      selectedModules: v.array(v.string()), // e.g. ["critique", "risks"]
+      tabContext: v.optional(v.string()),
+      applyMode: v.optional(v.string())
     })),
 
-    // UI preview strings
+    // v2: Results
+    report_he: v.optional(v.any()), // Structured report payload
+    gaps: v.optional(v.any()),      // structured gaps payload
+    links: v.optional(v.array(v.object({
+      title: v.string(),
+      url: v.string(),
+      domain: v.string(),
+      publishedAt: v.optional(v.string()),
+      usedFor_he: v.string()
+    }))),
+    generatedImages: v.optional(v.array(v.object({
+      elementId: v.optional(v.string()),
+      kind: v.string(), // "technical" | "client"
+      imageRef: v.string(),
+      caption_he: v.string()
+    }))),
+
+    // v2: Grouped suggestions
+    changeGroups: v.optional(v.array(v.object({
+      id: v.string(),
+      title_he: v.string(),
+      scope: v.string(),
+      rationale_he: v.string(),
+      riskLevel: v.string(), // "low"|"medium"|"high"
+      requiresUserApproval: v.boolean(),
+      operations: v.array(v.any()) // The ops
+    }))),
+
+    appliedGroupIds: v.optional(v.array(v.string())),
+    auditLogIds: v.optional(v.array(v.string())),
+
+    // Legacy / Flat Ops (kept for backward compatibility or simple runs)
+    reason_he: v.optional(v.string()),
+    base: v.optional(v.any()),
+    ops: v.optional(v.array(v.object({
+      kind: v.string(),
+      payload: v.any(),
+    }))),
     preview_he: v.optional(v.any()),
 
     schemaVersion: v.optional(v.number()),
 
     createdAt: v.number(),
-    createdBy_he: v.optional(v.string()),
+    createdBy: v.optional(v.object({
+      type: v.union(v.literal("agent"), v.literal("user")),
+      agentName: v.optional(v.string()),
+      userId: v.optional(v.string())
+    })),
+    createdBy_he: v.optional(v.string()), // legacy simple string
+
+    updatedAt: v.optional(v.number()),
     appliedAt: v.optional(v.number()),
     appliedBy_he: v.optional(v.string()),
     discardedAt: v.optional(v.number()),
@@ -651,6 +710,22 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"])
     .index("by_project_stage", ["projectId", "stage"]),
+
+  // Audit Logs (New)
+  auditLogs: defineTable({
+    projectId: v.id("projects"),
+    changeSetId: v.id("changeSets"),
+    groupId: v.optional(v.string()),
+    operation: v.string(), // "create", "update", "softDelete", "link"
+    entityRef: v.string(), // e.g. "task:123"
+    before: v.optional(v.any()),
+    after: v.optional(v.any()),
+    appliedBy: v.optional(v.id("users")),
+    appliedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_changeSet", ["changeSetId"]),
+
 
   // Graveyard Items
   graveyardItems: defineTable({
@@ -785,9 +860,9 @@ export default defineSchema({
     ),
     originalFilename: v.optional(v.string()),
     uploadedAt: v.number(),
-  })
-    .index("by_printPart", ["printPartId"])
-    .index("by_project", ["projectId"]),
+    warnings: v.array(v.string()),
+    createdAt: v.number(),
+  }).index("by_printPart", ["printPartId"]),
 
   printFileAnalyses: defineTable({
     printFileId: v.id("printFiles"),

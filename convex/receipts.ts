@@ -1,5 +1,6 @@
 import { mutation, query } from './_generated/server'
 import { v } from 'convex/values'
+import { Id } from './_generated/dataModel'
 
 const receiptItemArgs = v.object({
   nameRaw: v.string(),
@@ -84,11 +85,11 @@ export const approveReceipt = mutation({
 
     const materialMap = new Map<
       string,
-      { total: number; qty: number; receiptItemIds: string[] }
+      { total: number; qty: number; receiptItemIds: Id<"receiptItems">[] }
     >()
     const workMap = new Map<
       string,
-      { total: number; qty: number; receiptItemIds: string[] }
+      { total: number; qty: number; receiptItemIds: Id<"receiptItems">[] }
     >()
 
     for (const item of items) {
@@ -124,7 +125,7 @@ export const approveReceipt = mutation({
 
     const accountingMap = new Map<
       string,
-      { total: number; receiptItemIds: string[] }
+      { total: number; receiptItemIds: Id<"receiptItems">[] }
     >()
     for (const item of items) {
       if (!item.mappedAccountingLineId) continue

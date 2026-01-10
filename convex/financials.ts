@@ -569,12 +569,12 @@ function extractFromDB(
 function computeSnapshotTotals(snapshot: any) {
   const mats = Object.values(snapshot?.materials?.byId ?? {}).filter((line: any) => !line.deletedAt);
   const labs = Object.values(snapshot?.labor?.byId ?? {}).filter((line: any) => !line.deletedAt);
-  const materials = mats.reduce(
+  const materials: number = mats.reduce<number>(
     (sum: number, line: any) =>
       sum + Number(line.qty ?? 0) * Number(line.unitCost ?? line.rate ?? 0),
     0
   );
-  const labor = labs.reduce(
+  const labor: number = labs.reduce<number>(
     (sum: number, line: any) =>
       sum + Number(line.qty ?? 0) * Number(line.rate ?? line.unitCost ?? 0),
     0
@@ -583,8 +583,8 @@ function computeSnapshotTotals(snapshot: any) {
 }
 
 async function computeApprovedBreakdown(ctx: any, quote: any) {
-  let materials = 0;
-  let labor = 0;
+  let materials: number = 0;
+  let labor: number = 0;
 
   const elementVersionIds = quote?.sourceElementVersionIds ?? [];
   for (const versionId of elementVersionIds) {

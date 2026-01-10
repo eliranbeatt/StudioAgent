@@ -10,6 +10,7 @@
 
 import type * as adminHealth from "../adminHealth.js";
 import type * as agent from "../agent.js";
+import type * as agent_improve from "../agent_improve.js";
 import type * as agent_tasks from "../agent_tasks.js";
 import type * as changeSets from "../changeSets.js";
 import type * as customers from "../customers.js";
@@ -53,6 +54,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   adminHealth: typeof adminHealth;
   agent: typeof agent;
+  agent_improve: typeof agent_improve;
   agent_tasks: typeof agent_tasks;
   changeSets: typeof changeSets;
   customers: typeof customers;

@@ -607,22 +607,22 @@ function diffNumbers(prev: any, next: any) {
 
   const names = new Set([...nextMap.keys(), ...prevMap.keys()]);
   for (const name of names) {
-    const before = prevMap.get(name) ?? 0;
-    const after = nextMap.get(name) ?? 0;
+    const before = Number(prevMap.get(name) ?? 0);
+    const after = Number(nextMap.get(name) ?? 0);
     if (before !== after) {
       breakdownDiffs.push({ name, before, after, delta: after - before });
     }
   }
 
   const subtotalBeforeVat = {
-    before: prev.totals.subtotalBeforeVat,
-    after: next.totals.subtotalBeforeVat,
-    delta: next.totals.subtotalBeforeVat - prev.totals.subtotalBeforeVat,
+    before: Number(prev.totals.subtotalBeforeVat),
+    after: Number(next.totals.subtotalBeforeVat),
+    delta: Number(next.totals.subtotalBeforeVat) - Number(prev.totals.subtotalBeforeVat),
   };
   const total = {
-    before: prev.totals.total,
-    after: next.totals.total,
-    delta: next.totals.total - prev.totals.total,
+    before: Number(prev.totals.total),
+    after: Number(next.totals.total),
+    delta: Number(next.totals.total) - Number(prev.totals.total),
   };
 
   return {
