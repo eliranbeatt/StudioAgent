@@ -595,6 +595,12 @@ export const agentRespond = action({
         }
 
         const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const supportsTemperature = (model: string) =>
+          !model.startsWith("gpt-5") && !model.startsWith("o1");
+        const isUnsupportedTemperatureError = (err: any) => {
+          const message = String(err?.message ?? "");
+          return /temperature/i.test(message) && /unsupported/i.test(message);
+        };
 
         const forcedAction = selectedAction ? `User selected action: ${selectedAction}. You must execute it.` : "";
         const payload: any = {
@@ -607,16 +613,28 @@ export const agentRespond = action({
             ...(forcedAction ? [{ role: "system", content: forcedAction }] : []),
             { role: "user", content: `Context JSON: \n${JSON.stringify(contextPayload)} ` },
           ],
-          temperature: 0.2,
           stream: true, // Enable streaming
         };
 
         if (reasoningEffort) {
           payload.reasoning_effort = reasoningEffort;
-          delete payload.temperature;
+        } else if (supportsTemperature(targetModel)) {
+          // Only add custom temperature for models that support it.
+          payload.temperature = 0.2;
         }
 
-        const stream = await client.chat.completions.create(payload);
+        let stream;
+        try {
+          stream = await client.chat.completions.create(payload);
+        } catch (err: any) {
+          if (payload.temperature !== undefined && isUnsupportedTemperatureError(err)) {
+            const retryPayload = { ...payload };
+            delete retryPayload.temperature;
+            stream = await client.chat.completions.create(retryPayload);
+          } else {
+            throw err;
+          }
+        }
 
         let lastUpdate = Date.now();
         let chunkCount = 0;
@@ -849,9 +867,9 @@ function buildNextStepSuggestionBlock(
         why_he: "יוצר גרסת Quote עם סיכומי עלות.",
       },
       {
-        id: "estimate_tasks",
-        label_he: "להשלים זמני משימות חסרים",
-        why_he: "משלים הערכות זמן אוטומטיות.",
+        id: "ask_clarifications",
+        label_he: "לשאול שאלות להשלמת פרטים",
+        why_he: "מוודא שכל הנתונים קיימים לפני התמחור.",
       },
     ],
     BREAKDOWN: [
@@ -866,9 +884,9 @@ function buildNextStepSuggestionBlock(
         why_he: "סוגר את מחזור החיים המלא.",
       },
       {
-        id: "estimate_tasks",
-        label_he: "להשלים זמני משימות חסרים",
-        why_he: "משלים הערכות זמן אוטומטיות.",
+        id: "ask_clarifications",
+        label_he: "לשאול שאלות להשלמת פרטים",
+        why_he: "מוודא שהביצוע ברור וללא חורים.",
       },
     ],
   };

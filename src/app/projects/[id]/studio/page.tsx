@@ -30,15 +30,6 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [selectedElementIds, setSelectedElementIds] = useState<Id<"elements">[]>([]);
   const [isWaiting, setIsWaiting] = useState(false);
   const [model, setModel] = useState<string>("gpt-4o");
-  const [pendingChangeSetAction, setPendingChangeSetAction] = useState<{
-    changeSetId?: Id<"changeSets">;
-    action: "apply" | "discard";
-  } | null>(null);
-  const [pendingSuggestion, setPendingSuggestion] = useState<{
-    selectedIds: string[];
-    selectedItems?: any[];
-    note_he?: string;
-  } | null>(null);
   const user = useQuery(api.users.getViewer);
 
   useEffect(() => {
@@ -84,62 +75,19 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     setSelectedElementIds([overview.elements[0].id as Id<"elements">]);
   }, [overview?.elements, selectedElementIds.length]);
 
-  const hasPendingAction = Boolean(pendingChangeSetAction || pendingSuggestion);
-
-  const submitPendingActions = async () => {
-    if (!activeConversationId) return;
-    if (pendingChangeSetAction?.changeSetId) {
-      if (pendingChangeSetAction.action === "apply") {
-        await applyChangeSet({ changeSetId: pendingChangeSetAction.changeSetId });
-        await appendEventMessage({
-          conversationId: activeConversationId,
-          eventType: "changeset_applied",
-          eventPayload: { changeSetId: pendingChangeSetAction.changeSetId },
-        });
-      } else {
-        await discardChangeSet({ changeSetId: pendingChangeSetAction.changeSetId });
-        await appendEventMessage({
-          conversationId: activeConversationId,
-          eventType: "changeset_discarded",
-          eventPayload: { changeSetId: pendingChangeSetAction.changeSetId },
-        });
-      }
-    }
-    if (pendingSuggestion) {
-      await appendEventMessage({
-        conversationId: activeConversationId,
-        eventType: "suggestions_selected",
-        eventPayload: pendingSuggestion,
-      });
-    }
-    setPendingChangeSetAction(null);
-    setPendingSuggestion(null);
-    await agentRespond({
-      conversationId: activeConversationId,
-      uiContext: { selectedElementIds },
-      model,
-    });
-  };
-
   const handleSend = async () => {
     if (!activeConversationId || isWaiting) return;
     const text = input.trim();
-    if (!text && !hasPendingAction) return;
+    if (!text) return;
     setInput("");
     setIsWaiting(true);
     try {
-      if (text) {
-        await appendUserMessage({ conversationId: activeConversationId, text_he: text });
-        setPendingChangeSetAction(null);
-        setPendingSuggestion(null);
-        await agentRespond({
-          conversationId: activeConversationId,
-          uiContext: { selectedElementIds },
-          model,
-        });
-      } else {
-        await submitPendingActions();
-      }
+      await appendUserMessage({ conversationId: activeConversationId, text_he: text });
+      await agentRespond({
+        conversationId: activeConversationId,
+        uiContext: { selectedElementIds },
+        model,
+      });
     } finally {
       setIsWaiting(false);
     }
@@ -164,9 +112,47 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  const handleQueueChangeSetAction = (action: "apply" | "discard", changeSetId?: Id<"changeSets">) => {
-    if (!changeSetId) return;
-    setPendingChangeSetAction({ action, changeSetId });
+  const handleImmediateChangeSetAction = async (action: "apply" | "discard", changeSetId?: Id<"changeSets">) => {
+    if (!changeSetId || !activeConversationId) return;
+
+    try {
+      if (action === "apply") {
+        await applyChangeSet({ changeSetId });
+        await appendEventMessage({
+          conversationId: activeConversationId,
+          eventType: "changeset_applied",
+          eventPayload: { changeSetId },
+        });
+      } else {
+        await discardChangeSet({ changeSetId });
+        await appendEventMessage({
+          conversationId: activeConversationId,
+          eventType: "changeset_discarded",
+          eventPayload: { changeSetId },
+        });
+      }
+    } catch (e) {
+      console.error("Failed to apply/discard changeset", e);
+    }
+  };
+
+  const handleSuggestionSubmit = async (payload: any) => {
+    if (!activeConversationId || isWaiting) return;
+    setIsWaiting(true);
+    try {
+      await appendEventMessage({
+        conversationId: activeConversationId,
+        eventType: "suggestions_selected",
+        eventPayload: payload,
+      });
+      await agentRespond({
+        conversationId: activeConversationId,
+        uiContext: { selectedElementIds },
+        model,
+      });
+    } finally {
+      setIsWaiting(false);
+    }
   };
 
   const stageValue = (activeConversation?.stage ?? "IDEATION") as Stage;
@@ -270,15 +256,9 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                   key={msg._id}
                   message={msg}
                   onClarificationSubmit={handleEventSubmit}
-                  onSuggestionsSubmit={(eventType, payload) => {
-                    if (eventType === "suggestions_selected") {
-                      setPendingSuggestion(payload);
-                      return;
-                    }
-                    handleEventSubmit(eventType, payload);
-                  }}
-                  onApplyChangeSet={(changeSetId) => handleQueueChangeSetAction("apply", changeSetId)}
-                  onDiscardChangeSet={(changeSetId) => handleQueueChangeSetAction("discard", changeSetId)}
+                  onSuggestionsSubmit={handleSuggestionSubmit}
+                  onApplyChangeSet={(changeSetId) => handleImmediateChangeSetAction("apply", changeSetId)}
+                  onDiscardChangeSet={(changeSetId) => handleImmediateChangeSetAction("discard", changeSetId)}
                   disabled={isWaiting}
                 />
               ))
@@ -303,7 +283,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
             />
             <button
               onClick={handleSend}
-              disabled={isWaiting || (!input.trim() && !hasPendingAction)}
+              disabled={isWaiting || !input.trim()}
               className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               <Send size={16} />
@@ -366,7 +346,7 @@ function MessageBubble({
 }: {
   message: ConversationMessage;
   onClarificationSubmit: (eventType: string, payload: any) => void;
-  onSuggestionsSubmit: (eventType: string, payload: any) => void;
+  onSuggestionsSubmit: (payload: any) => void;
   onApplyChangeSet: (changeSetId?: Id<"changeSets">) => void;
   onDiscardChangeSet: (changeSetId?: Id<"changeSets">) => void;
   disabled: boolean;
@@ -531,7 +511,7 @@ function BlockRenderer({
   block: any;
   changeSetId?: Id<"changeSets">;
   onClarificationSubmit: (eventType: string, payload: any) => void;
-  onSuggestionsSubmit: (eventType: string, payload: any) => void;
+  onSuggestionsSubmit: (payload: any) => void;
   onApplyChangeSet: (changeSetId?: Id<"changeSets">) => void;
   onDiscardChangeSet: (changeSetId?: Id<"changeSets">) => void;
   disabled: boolean;
@@ -560,7 +540,7 @@ function BlockRenderer({
     return (
       <SuggestionBlock
         block={block}
-        onSelectionChange={(payload) => onSuggestionsSubmit("suggestions_selected", payload)}
+        onSubmit={onSuggestionsSubmit}
         disabled={disabled}
       />
     );
@@ -735,36 +715,32 @@ function ClarificationBlock({
 
 function SuggestionBlock({
   block,
-  onSelectionChange,
+  onSubmit,
   disabled,
 }: {
   block: any;
-  onSelectionChange: (payload: any) => void;
+  onSubmit: (payload: any) => void;
   disabled: boolean;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const selectionMode = block.selectionMode ?? "single";
 
-  const emitSelection = (nextSelected: string[], nextNote: string) => {
-    onSelectionChange({
-      selectedIds: nextSelected,
-      selectedItems: (block.items ?? []).filter((item: any) => nextSelected.includes(item.id)),
-      note_he: nextNote,
-    });
-  };
-
   const toggle = (id: string) => {
     if (selectionMode === "single") {
-      const next = [id];
-      setSelected(next);
-      emitSelection(next, note);
+      setSelected([id]);
       return;
     }
     setSelected((prev) => {
-      const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
-      emitSelection(next, note);
-      return next;
+      return prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+    });
+  };
+
+  const handleSubmit = () => {
+    onSubmit({
+      selectedIds: selected,
+      selectedItems: (block.items ?? []).filter((item: any) => selected.includes(item.id)),
+      note_he: note,
     });
   };
 
@@ -794,15 +770,18 @@ function SuggestionBlock({
       </div>
       <textarea
         value={note}
-        onChange={(e) => {
-          const nextNote = e.target.value;
-          setNote(nextNote);
-          emitSelection(selected, nextNote);
-        }}
+        onChange={(e) => setNote(e.target.value)}
         placeholder={block.freeTextPrompt_he ?? "הערה חופשית"}
         rows={2}
         className="mt-3 w-full rounded-lg border border-gray-200 px-2 py-1 text-xs"
       />
+      <button
+        onClick={handleSubmit}
+        disabled={disabled || selected.length === 0}
+        className="mt-3 w-full rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+      >
+        {block.submitLabel_he ?? "שלח בחירה"}
+      </button>
     </div>
   );
 }

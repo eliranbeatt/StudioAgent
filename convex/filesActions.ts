@@ -120,14 +120,18 @@ async function extractStructuredInfo(text: string, fileName: string) {
         "- Facts should be short bullet-like statements.",
     ].join("\n");
 
-    const completion = await client.chat.completions.create({
+    const completionPayload: any = {
         model: STRUCTURED_MODEL,
         messages: [
             { role: "system", content: prompt },
             { role: "user", content: `File: ${fileName}\n\n${text.slice(0, MAX_EXTRACTED_CHARS)}` },
         ],
-        temperature: 0.1,
-    });
+    };
+    if (!STRUCTURED_MODEL.startsWith("gpt-5") && !STRUCTURED_MODEL.startsWith("o1")) {
+        completionPayload.temperature = 0.1;
+    }
+
+    const completion = await client.chat.completions.create(completionPayload);
 
     const raw = completion.choices[0]?.message?.content ?? "";
     try {
