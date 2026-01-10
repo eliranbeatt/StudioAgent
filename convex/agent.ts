@@ -237,7 +237,13 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     }
   }
 
-  7. element.create / element.patch / vendor.create / purchase.create (standard)`;
+  7. element.create / element.patch / vendor.create / purchase.create (standard)
+
+  8. Deletion ops:
+  - "task.delete": { "taskId": "..." }
+  - "materialLine.delete": { "lineId": "..." }
+  - "workLine.delete": { "lineId": "..." }
+  - "accountingLine.delete": { "lineId": "..." }`;
 
 const STAGE_MODULES: Record<string, string> = {
   IDEATION: `Stage = IDEATION. Objective: Turn brief into 5–10 feasible element ideas. Rough budget + lead time range + key risks.

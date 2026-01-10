@@ -665,6 +665,66 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     await ctx.db.patch(resolvedTaskId, { ...patch, updatedAt: now });
   }
 
+  // DELETE Handlers
+  for (const op of cs.ops) {
+    if (op.kind !== "task.delete") continue;
+    const { taskId, taskTempOrId } = op.payload ?? {};
+    const id = resolveFromTemp(taskTempOrId ?? taskId, taskTempMap);
+    if (!id) throw new Error("task.delete requires taskId or taskTempOrId");
+    
+    // Check if task exists before deleting to be safe, or just delete (idempotent if already gone?)
+    // Convex delete throws if not found? No, check docs. Usually better to check.
+    // However, for bulk ops, maybe we just try. 
+    // Let's rely on standard Convex behavior: delete(id) works if id is valid.
+    // If we resolved it, it's an ID.
+    const existing = await ctx.db.get(id);
+    if (existing) {
+        await ctx.db.delete(id);
+        // Should we cleanup links? For now, raw delete as requested.
+        // Elements that owned this task might need bumping?
+        if (existing.elementId) elementsToBump.add(existing.elementId);
+    }
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "materialLine.delete") continue;
+    const { lineId, materialLineId, tempId } = op.payload ?? {};
+    const id = resolveFromTemp(tempId ?? materialLineId ?? lineId, materialLineTempMap);
+    if (!id) throw new Error("materialLine.delete requires lineId");
+    
+    const existing = await ctx.db.get(id);
+    if (existing) {
+        await ctx.db.delete(id);
+        if (existing.elementId) elementsToBump.add(existing.elementId);
+    }
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "workLine.delete") continue;
+    const { lineId, workLineId, tempId } = op.payload ?? {};
+    const id = resolveFromTemp(tempId ?? workLineId ?? lineId, workLineTempMap);
+    if (!id) throw new Error("workLine.delete requires lineId");
+    
+    const existing = await ctx.db.get(id);
+    if (existing) {
+        await ctx.db.delete(id);
+        if (existing.elementId) elementsToBump.add(existing.elementId);
+    }
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "accountingLine.delete") continue;
+    const { lineId, accountingLineId } = op.payload ?? {};
+    const id = accountingLineId ?? lineId; // Accounting lines rarely use tempIds in current flows?
+    if (!id) throw new Error("accountingLine.delete requires lineId");
+    
+    const existing = await ctx.db.get(id);
+    if (existing) {
+        await ctx.db.delete(id);
+        if (existing.elementId) elementsToBump.add(existing.elementId);
+    }
+  }
+
   for (const op of cs.ops) {
     if (op.kind !== "accountingLine.create") continue;
     const { elementTempOrId, taskTempOrId, elementId: directElementId, fields } = op.payload ?? {};
