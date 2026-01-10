@@ -213,6 +213,7 @@ export const createChangeSet = mutation({
 
     // V2
     scope: v.optional(v.any()), // v.union(...) too verbose to repeat, lenient for now
+    baseSnapshot: v.optional(v.any()),
     runConfig: v.optional(v.any()),
     report_he: v.optional(v.any()),
     gaps: v.optional(v.any()),
@@ -233,6 +234,7 @@ export const createChangeSet = mutation({
       base: args.base,
 
       scope: args.scope,
+      baseSnapshot: args.baseSnapshot,
       runConfig: args.runConfig,
       report_he: args.report_he,
       gaps: args.gaps,
@@ -250,6 +252,13 @@ export const get = query({
   args: { id: v.id("changeSets") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
+  },
+});
+
+export const getBaseSnapshotForProject = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    return await loadBaseSnapshot(ctx, args.projectId);
   },
 });
 
@@ -296,10 +305,114 @@ function normalizeUnitCode(
   return undefined;
 }
 
+function maxNumber(values: Array<number | undefined | null>) {
+  const numeric = values.filter((value): value is number => Number.isFinite(value));
+  if (numeric.length === 0) return undefined;
+  return Math.max(...numeric);
+}
+
+async function loadLatestUpdatedAt(
+  ctx: any,
+  table: string,
+  indexName: string,
+  projectId: Id<"projects">
+) {
+  const rows = await ctx.db
+    .query(table)
+    .withIndex(indexName, (q: any) => q.eq("projectId", projectId))
+    .order("desc")
+    .take(1);
+  const row = rows?.[0];
+  if (!row) return undefined;
+  return row.updatedAt ?? row.createdAt;
+}
+
+async function loadBaseSnapshot(ctx: any, projectId: Id<"projects">) {
+  const project = await ctx.db.get(projectId);
+  const elementsUpdatedAt = await loadLatestUpdatedAt(ctx, "elements", "by_project_updated", projectId);
+  const tasksUpdatedAt = await loadLatestUpdatedAt(ctx, "tasks", "by_project_updatedAt", projectId);
+  const accountingUpdatedAt = maxNumber([
+    await loadLatestUpdatedAt(ctx, "accountingLines", "by_project_updatedAt", projectId),
+    await loadLatestUpdatedAt(ctx, "materialLines", "by_project_updatedAt", projectId),
+    await loadLatestUpdatedAt(ctx, "workLines", "by_project_updatedAt", projectId),
+  ]);
+  const quoteRows = await ctx.db
+    .query("quoteVersions")
+    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+    .order("desc")
+    .take(1);
+  const quoteUpdatedAt = quoteRows?.[0]?.createdAt;
+
+  return {
+    projectUpdatedAt: project?.updatedAt,
+    elementsUpdatedAt,
+    tasksUpdatedAt,
+    accountingUpdatedAt,
+    quoteUpdatedAt,
+  };
+}
+
+async function assertBaseSnapshotFresh(
+  ctx: any,
+  projectId: Id<"projects">,
+  baseSnapshot?: {
+    projectUpdatedAt?: number;
+    elementsUpdatedAt?: number;
+    tasksUpdatedAt?: number;
+    accountingUpdatedAt?: number;
+    quoteUpdatedAt?: number;
+  }
+) {
+  if (!baseSnapshot) return;
+  const current = await loadBaseSnapshot(ctx, projectId);
+  if (baseSnapshot.projectUpdatedAt && current.projectUpdatedAt && current.projectUpdatedAt > baseSnapshot.projectUpdatedAt) {
+    throw new Error("ChangeSet is stale: project updated");
+  }
+  if (baseSnapshot.elementsUpdatedAt && current.elementsUpdatedAt && current.elementsUpdatedAt > baseSnapshot.elementsUpdatedAt) {
+    throw new Error("ChangeSet is stale: elements updated");
+  }
+  if (baseSnapshot.tasksUpdatedAt && current.tasksUpdatedAt && current.tasksUpdatedAt > baseSnapshot.tasksUpdatedAt) {
+    throw new Error("ChangeSet is stale: tasks updated");
+  }
+  if (baseSnapshot.accountingUpdatedAt && current.accountingUpdatedAt && current.accountingUpdatedAt > baseSnapshot.accountingUpdatedAt) {
+    throw new Error("ChangeSet is stale: accounting updated");
+  }
+  if (baseSnapshot.quoteUpdatedAt && current.quoteUpdatedAt && current.quoteUpdatedAt > baseSnapshot.quoteUpdatedAt) {
+    throw new Error("ChangeSet is stale: quote updated");
+  }
+}
+
+async function recordAudit(
+  ctx: any,
+  args: {
+    projectId: Id<"projects">;
+    changeSetId: Id<"changeSets">;
+    groupId?: string;
+    operation: string;
+    entityRef: string;
+    before?: any;
+    after?: any;
+    appliedAt: number;
+  }
+) {
+  await ctx.db.insert("auditLogs", {
+    projectId: args.projectId,
+    changeSetId: args.changeSetId,
+    groupId: args.groupId,
+    operation: args.operation,
+    entityRef: args.entityRef,
+    before: args.before,
+    after: args.after,
+    appliedAt: args.appliedAt,
+  });
+}
+
 export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId: Id<"changeSets"> }) {
   const cs = await ctx.db.get(args.changeSetId);
   if (!cs) throw new Error("ChangeSet not found");
   if (cs.status !== "PROPOSED" && cs.status !== "APPLIED") throw new Error(`ChangeSet is ${cs.status}`);
+  await assertBaseSnapshotFresh(ctx, cs.projectId, cs.baseSnapshot);
+  const sourceChangeSetId = cs.sourceChangeSetId ?? cs._id;
 
   if (cs.base?.elements) {
     for (const check of cs.base.elements) {
@@ -457,7 +570,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         qty: Number(fields.qty ?? 1),
         size: fields.size,
         requiresProof: fields.requiresProof,
-        createdFromChangeSetId: cs._id,
+        createdFromChangeSetId: sourceChangeSetId,
         createdAt: now,
       });
     }
@@ -536,7 +649,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
           workLineTempMap
         ),
 
-        createdFromChangeSetId: cs._id,
+        createdFromChangeSetId: sourceChangeSetId,
         createdAt: now,
         updatedAt: now,
       });
@@ -621,11 +734,12 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       sourceCode: fields.sourceCode ?? undefined,
       sourceLabelHe: fields.sourceLabelHe ?? undefined,
       source: fields.source ?? undefined,
-      confidence: fields.confidence ?? undefined,
-      checklistItemId: fields.checklistItemId ?? undefined,
-      createdFromChangeSetId: cs._id,
-      createdAt: now,
-    });
+        confidence: fields.confidence ?? undefined,
+        checklistItemId: fields.checklistItemId ?? undefined,
+        createdFromChangeSetId: sourceChangeSetId,
+        createdAt: now,
+        updatedAt: now,
+      });
 
     if (tempId) materialLineTempMap.set(tempId, lineId);
     if (elementId) elementsToBump.add(elementId);
@@ -675,11 +789,12 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       notes: fields.notes ?? undefined,
       sourceCode: fields.sourceCode ?? undefined,
       sourceLabelHe: fields.sourceLabelHe ?? undefined,
-      source: fields.source ?? undefined,
-      confidence: fields.confidence ?? undefined,
-      createdFromChangeSetId: cs._id,
-      createdAt: now,
-    });
+        source: fields.source ?? undefined,
+        confidence: fields.confidence ?? undefined,
+        createdFromChangeSetId: sourceChangeSetId,
+        createdAt: now,
+        updatedAt: now,
+      });
 
     if (tempId) workLineTempMap.set(tempId, lineId);
     if (elementId) elementsToBump.add(elementId);
@@ -933,11 +1048,12 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         ratePerHour: fields.ratePerHour === null ? undefined : fields.ratePerHour,
         source: fields.source === null ? undefined : fields.source,
         confidence: fields.confidence === null ? undefined : fields.confidence,
-        notes: fields.notes === null ? undefined : fields.notes,
+          notes: fields.notes === null ? undefined : fields.notes,
 
-        createdFromChangeSetId: cs._id,
-        createdAt: now,
-      });
+          createdFromChangeSetId: sourceChangeSetId,
+          createdAt: now,
+          updatedAt: now,
+        });
     }
     if (elementId) elementsToBump.add(elementId);
   }
@@ -1034,6 +1150,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
     }
 
+    patch.updatedAt = now;
     await ctx.db.patch(resolvedLineId, { ...patch });
 
     // Fetch line to identify element for bumping
@@ -1058,7 +1175,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       status: fields?.status ?? "recorded",
       lineItems: Array.isArray(fields?.lineItems) ? fields.lineItems : [],
       notes: fields?.notes,
-      createdFromChangeSetId: cs._id,
+      createdFromChangeSetId: sourceChangeSetId,
       createdAt: now,
       updatedAt: now,
     });
@@ -1076,7 +1193,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       projectId: cs.projectId,
       purchaseId: purchaseId ?? undefined,
       fileId,
-      createdFromChangeSetId: cs._id,
+      createdFromChangeSetId: sourceChangeSetId,
       createdAt: now,
     });
   }
@@ -1153,6 +1270,136 @@ export const applyChangeSet = mutation({
   },
 });
 
+function normalizeChangeGroupOps(ops: any[]) {
+  const normalized: any[] = [];
+  for (const op of ops ?? []) {
+    if (!op) continue;
+    if (op.kind) {
+      normalized.push(op);
+      continue;
+    }
+    if (!op.op || !op.entity) {
+      throw new Error("Unsupported changeGroup operation format");
+    }
+
+    const entityType = op.entity.entityType;
+    const entityId = op.entity.id;
+    const naturalKey = op.entity.naturalKey;
+
+    if (op.op === "create") {
+      const value = op.value ?? {};
+      if (entityType === "task") {
+        const { elementId, elementTempOrId, ...fields } = value ?? {};
+        normalized.push({
+          kind: "task.create",
+          payload: {
+            tempId: naturalKey,
+            elementId,
+            elementTempOrId,
+            fields,
+          },
+        });
+      } else if (entityType === "accountingLine") {
+        const { elementId, elementTempOrId, taskTempOrId, taskId, ...fields } = value ?? {};
+        normalized.push({
+          kind: "accountingLine.create",
+          payload: {
+            elementId,
+            elementTempOrId,
+            taskTempOrId: taskTempOrId ?? taskId,
+            fields,
+          },
+        });
+      } else if (entityType === "element") {
+        const { element, draft } = value ?? {};
+        normalized.push({
+          kind: "element.create",
+          payload: {
+            tempId: naturalKey,
+            element: element ?? value,
+            draft,
+          },
+        });
+      } else {
+        throw new Error(`Unsupported create entityType: ${entityType}`);
+      }
+      continue;
+    }
+
+    if (op.op === "update") {
+      const patch = op.patch ?? op.value ?? {};
+      if (entityType === "task") {
+        normalized.push({
+          kind: "task.patch",
+          payload: {
+            taskId: entityId,
+            taskTempOrId: naturalKey,
+            fields: patch,
+          },
+        });
+      } else if (entityType === "accountingLine") {
+        normalized.push({
+          kind: "accountingLine.patch",
+          payload: {
+            accountingLineId: entityId,
+            lineId: entityId,
+            fields: patch,
+          },
+        });
+      } else if (entityType === "element") {
+        normalized.push({
+          kind: "element.patch",
+          payload: {
+            elementId: entityId,
+            elementTempOrId: naturalKey,
+            patch,
+          },
+        });
+      } else {
+        throw new Error(`Unsupported update entityType: ${entityType}`);
+      }
+      continue;
+    }
+
+    if (op.op === "softDelete") {
+      if (entityType === "task") {
+        normalized.push({
+          kind: "task.patch",
+          payload: {
+            taskId: entityId,
+            taskTempOrId: naturalKey,
+            fields: { status: "archived" },
+          },
+        });
+      } else if (entityType === "element") {
+        normalized.push({
+          kind: "element.patch",
+          payload: {
+            elementId: entityId,
+            elementTempOrId: naturalKey,
+            patch: { status: "archived" },
+          },
+        });
+      } else if (entityType === "accountingLine") {
+        normalized.push({
+          kind: "accountingLine.patch",
+          payload: {
+            accountingLineId: entityId,
+            lineId: entityId,
+            fields: { billable: false, notes: "archived" },
+          },
+        });
+      } else {
+        throw new Error(`Unsupported softDelete entityType: ${entityType}`);
+      }
+      continue;
+    }
+
+    throw new Error(`Unsupported operation: ${op.op}`);
+  }
+  return normalized;
+}
+
 // New V2 Mutation for partial application
 export const applyChangeGroups = mutation({
   args: {
@@ -1163,6 +1410,7 @@ export const applyChangeGroups = mutation({
     const cs = await ctx.db.get(args.changeSetId);
     if (!cs) throw new Error("ChangeSet not found");
     if (!cs.changeGroups) throw new Error("No changeGroups in ChangeSet");
+    await assertBaseSnapshotFresh(ctx, cs.projectId, cs.baseSnapshot);
 
     // Filter ops from selected groups
     const selectedGroups = cs.changeGroups.filter((g: any) => args.groupIds.includes(g.id));
@@ -1174,7 +1422,10 @@ export const applyChangeGroups = mutation({
       if (cs.appliedGroupIds?.includes(group.id)) {
         continue; // Already applied
       }
-      if (group.operations) allOps.push(...group.operations);
+      if (group.operations) {
+        const normalizedOps = normalizeChangeGroupOps(group.operations);
+        allOps.push(...normalizedOps);
+      }
     }
 
     if (allOps.length === 0) {
@@ -1187,7 +1438,7 @@ export const applyChangeGroups = mutation({
 
     // Reuse applyChangeSetInternalLogic but we must modify it to take explicit ops.
     // Hack: Create temporary ChangeSet
-    await applyOpsList(ctx, { projectId: cs.projectId, ops: allOps, stage: cs.stage });
+    await applyOpsList(ctx, { projectId: cs.projectId, ops: allOps, stage: cs.stage, sourceChangeSetId: cs._id });
 
     // Update ChangeSet state
     const previousApplied = cs.appliedGroupIds ?? [];
@@ -1227,7 +1478,7 @@ export const applyChangeGroups = mutation({
 });
 
 // Helper for applying a list of Ops (derived from applying a whole changeset)
-async function applyOpsList(ctx: any, args: { projectId: Id<"projects">, ops: any[], stage: string }) {
+async function applyOpsList(ctx: any, args: { projectId: Id<"projects">, ops: any[], stage: string, sourceChangeSetId?: Id<"changeSets"> }) {
   // Hack: create temp changeset to reuse logic
   const tempId = await ctx.db.insert("changeSets", {
     projectId: args.projectId,
@@ -1235,6 +1486,7 @@ async function applyOpsList(ctx: any, args: { projectId: Id<"projects">, ops: an
     status: "PROPOSED", // Must be proposed to apply
     ops: args.ops,
     reason_he: "Partial Apply Temp",
+    sourceChangeSetId: args.sourceChangeSetId,
     createdAt: Date.now()
   });
 

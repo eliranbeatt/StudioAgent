@@ -12,7 +12,10 @@ import {
     Loader2,
     Sparkles,
     X,
-    Zap
+    Zap,
+    ExternalLink,
+    Image as ImageIcon,
+    Download
 } from "lucide-react";
 
 type ImprovePanelProps = {
@@ -28,6 +31,8 @@ const SCOPES = [
     { id: "tasks", label: "Tasks" },
     { id: "accounting", label: "Accounting" },
     { id: "elements", label: "Elements" },
+    { id: "quote", label: "Quote" },
+    { id: "knowledge", label: "Knowledge" },
     { id: "project", label: "Project Wide" },
 ];
 
@@ -52,16 +57,38 @@ export default function ImprovePanel({
     const [allowWeb, setAllowWeb] = useState(false);
     const [createImages, setCreateImages] = useState(false);
     const [modelPreset, setModelPreset] = useState("gpt-5-nano"); // default fast
+    const [applyMode, setApplyMode] = useState("step");
     const [resultChangeSetId, setResultChangeSetId] = useState<Id<"changeSets"> | null>(null);
 
     const runAgent = useAction(api.agent_improve.runImproveAgent);
     const applyGroups = useMutation(api.changeSets.applyChangeGroups);
+    const discardChangeSet = useMutation(api.changeSets.discardChangeSet);
+    const saveImage = useMutation(api.elementImages.addElementImage);
 
     // Fetch result if available
     const changeSet = useQuery(api.changeSets.get, resultChangeSetId ? { id: resultChangeSetId } : "skip");
 
     const [appliedGroupIds, setAppliedGroupIds] = useState<string[]>([]);
+    const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
     const [applying, setApplying] = useState(false);
+    const [savedImages, setSavedImages] = useState<Set<string>>(new Set());
+
+    const handleSaveImage = async (img: any) => {
+        if (!img.elementId) return;
+        try {
+            await saveImage({
+                projectId,
+                elementId: img.elementId as Id<"elements">,
+                url: img.imageRef,
+                type: img.kind === "technical" ? "engineering" : "illustration",
+                caption: img.caption_he,
+                createdFromChangeSetId: resultChangeSetId ?? undefined
+            });
+            setSavedImages(prev => new Set(prev).add(img.imageRef));
+        } catch (e) {
+            console.error("Failed to save image", e);
+        }
+    };
 
     const handleRun = async () => {
         setStep("running");
@@ -74,7 +101,8 @@ export default function ImprovePanel({
                     allowWeb,
                     createImages,
                     selectedModules,
-                    tabContext: currentTabContext
+                    tabContext: currentTabContext,
+                    applyMode
                 }
             });
             if (res.changeSetId) {
@@ -114,6 +142,32 @@ export default function ImprovePanel({
             setAppliedGroupIds(allIds);
         } finally {
             setApplying(false);
+        }
+    };
+
+    const handleApplySelected = async () => {
+        if (!resultChangeSetId || selectedGroupIds.length === 0) return;
+        setApplying(true);
+        try {
+            await applyGroups({
+                changeSetId: resultChangeSetId,
+                groupIds: selectedGroupIds
+            });
+            setAppliedGroupIds(prev => [...prev, ...selectedGroupIds]);
+            setSelectedGroupIds([]);
+        } finally {
+            setApplying(false);
+        }
+    };
+
+    const handleDiscardChangeSet = async () => {
+        if (!resultChangeSetId) return;
+        try {
+            await discardChangeSet({ changeSetId: resultChangeSetId });
+            setResultChangeSetId(null);
+            setStep("config");
+        } catch (e) {
+            console.error("Failed to discard changeSet", e);
         }
     };
 
@@ -218,6 +272,36 @@ export default function ImprovePanel({
                 </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-gray-500">Apply Mode</label>
+                    <div className="space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                name="applyMode"
+                                value="step"
+                                checked={applyMode === "step"}
+                                onChange={(e) => setApplyMode(e.target.value)}
+                                className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                            />
+                            <span className="text-sm text-gray-700">Apply step-by-step</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                name="applyMode"
+                                value="all"
+                                checked={applyMode === "all"}
+                                onChange={(e) => setApplyMode(e.target.value)}
+                                className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                            />
+                            <span className="text-sm text-gray-700">Apply all at once</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
             <div className="pt-4 border-t border-gray-100 flex justify-end">
                 <button
                     onClick={handleRun}
@@ -251,6 +335,7 @@ export default function ImprovePanel({
         const links = changeSet.links || [];
 
         const appliedSet = new Set([...(changeSet.appliedGroupIds ?? []), ...appliedGroupIds]);
+        const selectedSet = new Set(selectedGroupIds);
 
         return (
             <div className="space-y-6 h-full flex flex-col">
@@ -283,6 +368,65 @@ export default function ImprovePanel({
                     </div>
                 </div>
 
+                {/* Sources & Links */}
+                {links.length > 0 && (
+                    <div className="border rounded-lg p-3 bg-slate-50 border-slate-200">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-2">
+                            <ExternalLink size={12} /> Sources Consulted
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {links.map((link: any, i: number) => (
+                                <a
+                                    key={i}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 p-2 bg-white rounded border border-gray-200 hover:border-blue-300 transition-colors text-xs text-blue-600 hover:underline"
+                                >
+                                    <div className="shrink-0 w-4 h-4 rounded bg-gray-100 flex items-center justify-center text-[8px] font-bold text-gray-500 uppercase">
+                                        {link.domain.slice(0, 2)}
+                                    </div>
+                                    <div className="truncate flex-1">
+                                        <div className="truncate font-medium">{link.title}</div>
+                                        <div className="text-[10px] text-gray-400 truncate">{link.domain}</div>
+                                    </div>
+                                    <ExternalLink size={10} className="text-gray-400" />
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Generated Images */}
+                {changeSet.generatedImages && changeSet.generatedImages.length > 0 && (
+                    <div className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-2">
+                            <ImageIcon size={14} /> Generated Visuals
+                        </h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {changeSet.generatedImages.map((img: any, i: number) => {
+                                const isSaved = savedImages.has(img.imageRef);
+                                return (
+                                    <div key={i} className="group relative aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                                        <img src={img.imageRef} alt={img.caption_he} className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
+                                            <p className="text-[10px] text-white line-clamp-2 mb-2">{img.caption_he}</p>
+                                            <button
+                                                onClick={() => handleSaveImage(img)}
+                                                disabled={isSaved || !img.elementId}
+                                                className={`w-full py-1.5 rounded text-[10px] font-bold flex items-center justify-center gap-1 ${isSaved ? "bg-green-500 text-white" : "bg-white text-gray-900 hover:bg-gray-100"}`}
+                                            >
+                                                {isSaved ? <Check size={10} /> : <Download size={10} />}
+                                                {isSaved ? "Saved" : "Save to Element"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Change Groups */}
                 <div className="flex-1 overflow-y-auto space-y-4 pr-2">
                     <h4 className="text-sm font-semibold uppercase tracking-wider text-gray-500">Proposed Improvements</h4>
@@ -290,9 +434,25 @@ export default function ImprovePanel({
                         <div className="text-center py-8 text-gray-400">No changes proposed.</div>
                     ) : groups.map((group: any) => {
                         const isApplied = appliedSet.has(group.id);
+                        const isSelected = selectedSet.has(group.id);
                         return (
                             <div key={group.id} className={`border rounded-lg p-4 transition-all ${isApplied ? "bg-green-50 border-green-200 opacity-75" : "bg-white border-blue-100 hover:border-blue-300"}`}>
                                 <div className="flex items-start justify-between gap-4">
+                                    <div className="pt-1">
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            disabled={isApplied}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setSelectedGroupIds(prev => [...prev, group.id]);
+                                                } else {
+                                                    setSelectedGroupIds(prev => prev.filter(id => id !== group.id));
+                                                }
+                                            }}
+                                            className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                        />
+                                    </div>
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2">
                                             <h5 className="font-bold text-gray-900">{group.title_he}</h5>
@@ -309,8 +469,8 @@ export default function ImprovePanel({
                                         onClick={() => handleApplyGroup(group.id)}
                                         disabled={isApplied || applying}
                                         className={`px-4 py-2 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-colors ${isApplied
-                                                ? "bg-green-100 text-green-700 cursor-default"
-                                                : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+                                            ? "bg-green-100 text-green-700 cursor-default"
+                                            : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
                                             }`}
                                     >
                                         {isApplied ? <><Check size={14} /> Applied</> : "Apply"}
@@ -327,7 +487,20 @@ export default function ImprovePanel({
                         Start Over
                     </button>
                     <div className="flex gap-3">
+                        <button
+                            onClick={handleDiscardChangeSet}
+                            className="text-rose-600 px-4 py-2 rounded hover:bg-rose-50"
+                        >
+                            Discard ChangeSet
+                        </button>
                         <button onClick={onClose} className="text-gray-600 px-4 py-2 rounded hover:bg-gray-100">Close</button>
+                        <button
+                            onClick={handleApplySelected}
+                            disabled={applying || selectedGroupIds.length === 0}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold shadow flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Check size={16} /> Apply Selected
+                        </button>
                         <button
                             onClick={handleApplyAll}
                             disabled={applying || groups.every((g: any) => appliedSet.has(g.id))}

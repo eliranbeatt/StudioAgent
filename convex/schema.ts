@@ -315,13 +315,15 @@ export default defineSchema({
     confidence: v.optional(v.number()),
     notes: v.optional(v.string()),
     actualTotalCost: v.optional(v.number()),
-    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
+      receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
 
-    createdFromChangeSetId: v.optional(v.id("changeSets")),
-    createdAt: v.number(),
-  }).index("by_project", ["projectId"])
-    .index("by_element", ["elementId"])
-    .index("by_task", ["taskId"]),
+      createdFromChangeSetId: v.optional(v.id("changeSets")),
+      createdAt: v.number(),
+      updatedAt: v.optional(v.number()),
+    }).index("by_project", ["projectId"])
+      .index("by_element", ["elementId"])
+      .index("by_task", ["taskId"])
+      .index("by_project_updatedAt", ["projectId", "updatedAt"]),
 
   // Accounting Sections (canonical keys for routing)
   accountingSections: defineTable({
@@ -394,14 +396,16 @@ export default defineSchema({
     confidence: v.optional(v.number()),
     actualUnitCost: v.optional(v.number()),
     actualTotalCost: v.optional(v.number()),
-    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
-    checklistItemId: v.optional(v.string()),
-    createdFromChangeSetId: v.optional(v.id("changeSets")),
-    createdAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_element", ["elementId"])
-    .index("by_task", ["taskId"]),
+      receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
+      checklistItemId: v.optional(v.string()),
+      createdFromChangeSetId: v.optional(v.id("changeSets")),
+      createdAt: v.number(),
+      updatedAt: v.optional(v.number()),
+    })
+      .index("by_project", ["projectId"])
+      .index("by_element", ["elementId"])
+      .index("by_task", ["taskId"])
+      .index("by_project_updatedAt", ["projectId", "updatedAt"]),
 
   // Work Lines (linked to tasks)
   workLines: defineTable({
@@ -437,13 +441,15 @@ export default defineSchema({
     source: v.optional(v.string()),
     confidence: v.optional(v.number()),
     actualTotalCost: v.optional(v.number()),
-    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
-    createdFromChangeSetId: v.optional(v.id("changeSets")),
-    createdAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_element", ["elementId"])
-    .index("by_task", ["taskId"]),
+      receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
+      createdFromChangeSetId: v.optional(v.id("changeSets")),
+      createdAt: v.number(),
+      updatedAt: v.optional(v.number()),
+    })
+      .index("by_project", ["projectId"])
+      .index("by_element", ["elementId"])
+      .index("by_task", ["taskId"])
+      .index("by_project_updatedAt", ["projectId", "updatedAt"]),
 
   // Print Parts
   printParts: defineTable({
@@ -633,16 +639,23 @@ export default defineSchema({
     ),
 
     // v2: Scope & Configuration
-    scope: v.optional(v.union(
-      v.literal("tasks"),
-      v.literal("accounting"),
-      v.literal("elements"),
-      v.literal("quote"),
-      v.literal("knowledge"),
-      v.literal("project"),
-      v.literal("multi")
-    )),
-    runConfig: v.optional(v.object({
+      scope: v.optional(v.union(
+        v.literal("tasks"),
+        v.literal("accounting"),
+        v.literal("elements"),
+        v.literal("quote"),
+        v.literal("knowledge"),
+        v.literal("project"),
+        v.literal("multi")
+      )),
+      baseSnapshot: v.optional(v.object({
+        projectUpdatedAt: v.optional(v.number()),
+        elementsUpdatedAt: v.optional(v.number()),
+        tasksUpdatedAt: v.optional(v.number()),
+        accountingUpdatedAt: v.optional(v.number()),
+        quoteUpdatedAt: v.optional(v.number()),
+      })),
+      runConfig: v.optional(v.object({
       modelPreset: v.string(),
       allowWeb: v.boolean(),
       createImages: v.boolean(),
@@ -683,13 +696,14 @@ export default defineSchema({
     auditLogIds: v.optional(v.array(v.string())),
 
     // Legacy / Flat Ops (kept for backward compatibility or simple runs)
-    reason_he: v.optional(v.string()),
-    base: v.optional(v.any()),
-    ops: v.optional(v.array(v.object({
-      kind: v.string(),
-      payload: v.any(),
-    }))),
-    preview_he: v.optional(v.any()),
+      reason_he: v.optional(v.string()),
+      base: v.optional(v.any()),
+      ops: v.optional(v.array(v.object({
+        kind: v.string(),
+        payload: v.any(),
+      }))),
+      preview_he: v.optional(v.any()),
+      sourceChangeSetId: v.optional(v.id("changeSets")),
 
     schemaVersion: v.optional(v.number()),
 
@@ -882,7 +896,8 @@ export default defineSchema({
   elementImages: defineTable({
     projectId: v.id("projects"),
     elementId: v.id("elements"),
-    fileId: v.id("projectFiles"),
+    fileId: v.optional(v.id("projectFiles")),
+    url: v.optional(v.string()), // For AI/External images
     type: v.union(
       v.literal("engineering"),
       v.literal("illustration"),

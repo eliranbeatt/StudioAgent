@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   Bot,
@@ -26,6 +26,7 @@ export default function ProjectLayout({
 }) {
   const params = useParams();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const rawId = params.id as string;
   const resolved = useQuery(api.projects.resolveProjectId, { id: rawId });
@@ -33,6 +34,7 @@ export default function ProjectLayout({
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [isImproveOpen, setIsImproveOpen] = useState(false);
   const derivedContext = getTabContext(pathname);
+  const improveParam = searchParams.get("improve") === "1";
 
   useEffect(() => {
     if (!resolved || !projectId) return;
@@ -40,6 +42,21 @@ export default function ProjectLayout({
     const nextPath = pathname.replace(`/projects/${rawId}`, `/projects/${projectId}`);
     router.replace(nextPath);
   }, [pathname, projectId, rawId, resolved, router]);
+
+  useEffect(() => {
+    if (improveParam && !isImproveOpen) {
+      setIsImproveOpen(true);
+    }
+  }, [improveParam, isImproveOpen]);
+
+  const handleCloseImprove = () => {
+    setIsImproveOpen(false);
+    if (!improveParam) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("improve");
+    const next = params.toString();
+    router.replace(next ? `${pathname}?${next}` : pathname);
+  };
 
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
@@ -130,7 +147,7 @@ export default function ProjectLayout({
           />
           <ImprovePanel
             open={isImproveOpen}
-            onClose={() => setIsImproveOpen(false)}
+            onClose={handleCloseImprove}
             projectId={projectId as Id<"projects">}
             currentTabContext={derivedContext}
           />

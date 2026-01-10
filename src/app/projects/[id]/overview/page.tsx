@@ -5,12 +5,14 @@ import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { use, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Layers, Wallet, ClipboardCheck, UploadCloud, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 export default function OverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const projectId = id as Id<"projects">;
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const overview = useQuery(api.projects.getOverview, { id: projectId });
   const files = useQuery(api.files.listProjectFiles, { projectId });
   const allProjects = useQuery(api.projects.listProjects, { excludeId: projectId });
@@ -27,6 +29,12 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const unlinkProject = useMutation(api.projects.unlinkProject);
   const generateProjectDigest = useMutation(api.projects.generateProjectDigest);
   const generateOverviewSummary = useAction(api.projects.generateOverviewSummary);
+
+  const openImprove = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("improve", "1");
+    router.replace(`${pathname}?${params.toString()}`);
+  };
 
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -100,8 +108,16 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
             Status: <span className="font-medium text-gray-700">{overview.project.status}</span>
           </p>
         </div>
-        <div className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-gray-100 text-gray-600">
-          {overview.project.currency}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={openImprove}
+            className="text-xs font-semibold uppercase tracking-wider px-3 py-2 rounded-full border border-blue-200 text-blue-700 hover:bg-blue-50"
+          >
+            AI Improve
+          </button>
+          <div className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-gray-100 text-gray-600">
+            {overview.project.currency}
+          </div>
         </div>
       </div>
 

@@ -5,7 +5,8 @@ export const addElementImage = mutation({
   args: {
     projectId: v.id('projects'),
     elementId: v.id('elements'),
-    fileId: v.id('projectFiles'),
+    fileId: v.optional(v.id('projectFiles')),
+    url: v.optional(v.string()),
     type: v.union(
       v.literal('engineering'),
       v.literal('illustration'),
@@ -15,6 +16,9 @@ export const addElementImage = mutation({
     createdFromChangeSetId: v.optional(v.id('changeSets')),
   },
   handler: async (ctx, args) => {
+    if (!args.fileId && !args.url) {
+      throw new Error('Must provide either fileId or url')
+    }
     return await ctx.db.insert('elementImages', {
       ...args,
       createdAt: Date.now(),

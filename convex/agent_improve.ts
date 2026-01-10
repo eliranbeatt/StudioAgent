@@ -35,7 +35,8 @@ const IMPROVER_JSON_SCHEMA = {
                             confidence: { type: "string", enum: ["high", "medium", "low"] }
                         }
                     }
-                }
+                },
+                improvedPlanSummary: { type: "array", items: { type: "string" } }
             }
         },
         gaps: {
@@ -73,6 +74,7 @@ const IMPROVER_JSON_SCHEMA = {
                 properties: {
                     elementId: { type: "string" },
                     kind: { type: "string", enum: ["technical", "client"] },
+                    imageRef: { type: "string" },
                     imagePrompt_he: { type: "string" },
                     caption_he: { type: "string" }
                 }
@@ -112,6 +114,10 @@ Given the current project state and a run configuration (selected modules + scop
 2) A ChangeSet with grouped operations (changeGroups) that the user can apply one group at a time.
 You MUST NOT directly mutate canonical data.
 
+Operations format:
+- Each changeGroups.operations entry MUST be a legacy op object: { "kind": string, "payload": object }.
+- Do NOT output ProposedOp format here.
+
 Studio reality (non-negotiable):
 - Work is organized by Elements (אלמנטים). Every task and cost line should link to exactly one Element (or Project only if truly global).
 - Typical lifecycle: שאלות → תמחור → משימות → איסופים → פירוק עבודה → הקמה/יום צילום/אירוע → פירוק/החזרות → עלויות סופיות.
@@ -140,6 +146,10 @@ Web research tool:
 If allowWeb=true, use targeted searches only for facts that materially improve the plan (materials specs, typical drying times, installation methods, lead-time norms).
 Capture sources in the output (title, domain, url, publishedAt if known, and “usedFor_he”).
 
+Images:
+If createImages=true, include generatedImages entries with imagePrompt_he, caption_he, kind, and elementId if known.
+
+
 Deletions:
 Never hard delete. Use softDelete recommendations unless the user explicitly allowed hard deletes (you will not assume that).
 
@@ -149,6 +159,81 @@ If you recommend ANY changes in the report, you MUST include them as populated "
 Do not return empty changeGroups if you have recommendations.
 No extra commentary outside JSON.
 `;
+
+const FINALIZE_PROMPT = `
+SYSTEM:
+You are the “Finalize Plan” agent for Emlly Studio (אם-לי).
+This is a deep hardening run: multi-pass critique + research + risk + rewrite.
+Same rules as Improver:
+- Hebrew outputs, English JSON keys.
+- No guessing critical facts.
+- No direct mutations: produce grouped ChangeSet only.
+- Approved Elements are source of truth. Scope changes must be optional groups with explicit approval.
+
+You MUST follow these passes:
+PASS 1 (Diagnose): summarize current plan state and find gaps across the full lifecycle.
+PASS 2 (Critique): list blockers/high/medium/low issues and why they matter.
+PASS 3 (Research agenda): create targeted web questions, then search only what materially improves the plan.
+PASS 4 (Risks): produce a practical risk register with mitigations and early warning signs.
+PASS 5 (Rewrite): propose an improved production-grade plan (Hebrew) with phases, milestones, QA gates, and critical path.
+PASS 6 (Package): output changeGroups that implement the improvements safely and incrementally.
+
+Operations format:
+- Each changeGroups.operations entry MUST be a legacy op object: { "kind": string, "payload": object }.
+- Do NOT output ProposedOp format here.
+
+Output STRICT JSON using the same schema as the Improver, plus:
+- report_he.improvedPlanSummary (bullets)
+`;
+
+function toDomain(url: string) {
+    try {
+        const parsed = new URL(url);
+        return parsed.hostname.replace(/^www\\./, "");
+    } catch {
+        return "";
+    }
+}
+
+function buildWebQueries(args: { project?: any; elements?: any[]; scope: string }) {
+    const queries: string[] = [];
+    const projectName = args.project?.project?.name ?? args.project?.name ?? "project";
+    const elements = args.elements ?? [];
+    const topElement = elements[0]?.title;
+
+    if (topElement) {
+        queries.push(`${topElement} material specification`);
+        queries.push(`${topElement} installation method`);
+    }
+
+    if (args.scope === "accounting") {
+        queries.push(`${projectName} production cost estimate materials labor`);
+    } else if (args.scope === "quote") {
+        queries.push(`${projectName} event production quote terms`);
+    } else if (args.scope === "tasks") {
+        queries.push(`${projectName} production workflow QA checklist`);
+    }
+
+    return Array.from(new Set(queries)).slice(0, 3);
+}
+
+async function runTavilySearch(query: string, apiKey: string) {
+    const res = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            api_key: apiKey,
+            query,
+            max_results: 3,
+            include_answer: false,
+            include_images: false
+        })
+    });
+    if (!res.ok) {
+        throw new Error(`Tavily search failed: ${res.status}`);
+    }
+    return await res.json();
+}
 
 export const runImproveAgent = action({
     args: {
@@ -166,6 +251,7 @@ export const runImproveAgent = action({
     handler: async (ctx, args) => {
         // 1. Collect Context
         const project = await ctx.runQuery(api.projects.getOverview, { id: args.projectId });
+        const baseSnapshot = await ctx.runQuery(api.changeSets.getBaseSnapshotForProject, { projectId: args.projectId });
         // TODO: Fetch scoped data based on args.scope and args.tabContext
         // For now, we fetch a broad context (can be optimized later)
         const tasksRes = await ctx.runQuery(api.tasks.listForProject, { projectId: args.projectId });
@@ -209,7 +295,10 @@ export const runImproveAgent = action({
         if (model === "gpt-5-mini-thinking") model = "gpt-5-mini";
         if (model === "gpt-5.2-thinking-high") model = "gpt-5.2";
 
-        const systemMsg = SYSTEM_PROMPT;
+        const systemMsg =
+            args.runConfig.modelPreset === "gpt-5.2-thinking-high"
+                ? FINALIZE_PROMPT
+                : SYSTEM_PROMPT;
         const userMsg = `
     Build a ChangeSet and report based on this run configuration and project state.
     
@@ -241,6 +330,83 @@ export const runImproveAgent = action({
 
             const parsed = JSON.parse(raw);
 
+            let links = Array.isArray(parsed.links) ? parsed.links : [];
+            if (args.runConfig.allowWeb && links.length === 0) {
+                const tavilyKey = process.env.TAVILY_API_KEY;
+                if (tavilyKey) {
+                    try {
+                        const queries = buildWebQueries({
+                            project,
+                            elements: elementsRes?.elements ?? [],
+                            scope: args.scope
+                        });
+                        const results: any[] = [];
+                        for (const query of queries) {
+                            const data = await runTavilySearch(query, tavilyKey);
+                            if (Array.isArray(data?.results)) {
+                                results.push(...data.results);
+                            }
+                        }
+                        links = results.slice(0, 5).map((item: any) => ({
+                            title: item.title ?? item.url ?? "Source",
+                            domain: toDomain(item.url ?? ""),
+                            url: item.url ?? "",
+                            publishedAt: item.published_date ?? null,
+                            usedFor_he: "מקור רקע לתמיכה בהחלטות"
+                        })).filter((item: any) => item.url);
+                    } catch (e) {
+                        console.warn("Web search failed", e);
+                    }
+                } else {
+                    console.warn("TAVILY_API_KEY missing; skipping web search");
+                }
+            }
+
+            let generatedImages = Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [];
+            if (args.runConfig.createImages) {
+                const imageModel = "gpt-image-1";
+                const candidates = generatedImages.filter((img: any) => img.imagePrompt_he && !img.imageRef);
+                const fallback = candidates.length === 0
+                    ? (elementsRes?.elements ?? []).slice(0, 2).map((el: any) => ({
+                        elementId: el._id,
+                        kind: "technical",
+                        imagePrompt_he: `שרטוט טכני נקי של ${el.title}. פרספקטיבה ברורה, קווי מתאר, מידות משוערות.`,
+                        caption_he: `שרטוט טכני עבור ${el.title}`
+                    }))
+                    : candidates;
+
+                const generated: any[] = [];
+                for (const img of fallback) {
+                    if (!img.imagePrompt_he) continue;
+                    try {
+                        const result = await client.images.generate({
+                            model: imageModel,
+                            prompt: img.imagePrompt_he,
+                            size: "1024x1024"
+                        });
+                        const data = result?.data?.[0];
+                        let imageRef = data?.url;
+                        if (!imageRef && data?.b64_json) {
+                            imageRef = `data:image/png;base64,${data.b64_json}`;
+                        }
+                        if (imageRef) {
+                            generated.push({
+                                elementId: img.elementId ?? null,
+                                kind: img.kind ?? "technical",
+                                imageRef,
+                                caption_he: img.caption_he ?? "הדמיה"
+                            });
+                        }
+                    } catch (e) {
+                        console.warn("Image generation failed", e);
+                    }
+                }
+
+                if (generated.length > 0) {
+                    generatedImages = generated;
+                }
+            }
+
             // 4. Save Result
             const changeSetId = await ctx.runMutation(internal.changeSets.createChangeSet, {
                 projectId: args.projectId,
@@ -248,12 +414,13 @@ export const runImproveAgent = action({
 
                 // V2 Fields
                 scope: args.scope as any,
+                baseSnapshot,
                 runConfig: args.runConfig,
 
                 report_he: parsed.report_he,
                 gaps: parsed.gaps,
-                links: parsed.links,
-                generatedImages: parsed.generatedImages,
+                links,
+                generatedImages,
                 changeGroups: parsed.changeGroups,
 
                 // Legacy fields population for compatibility if needed
