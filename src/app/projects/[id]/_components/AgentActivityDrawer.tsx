@@ -55,6 +55,8 @@ export default function AgentActivityDrawer({
   const [editingOverview, setEditingOverview] = useState(false);
   const [overviewDraft, setOverviewDraft] = useState("");
   const [logsOpen, setLogsOpen] = useState(false);
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+  const [createConversationError, setCreateConversationError] = useState<string | null>(null);
 
   const conversations = useQuery(
     api.agent.listConversations,
@@ -127,6 +129,22 @@ export default function AgentActivityDrawer({
     if (editingOverview) return;
     setOverviewDraft(overview.project.overviewSummary ?? "");
   }, [overview?.project, editingOverview]);
+
+  const handleNewConversation = async () => {
+    if (isWaiting || isCreatingConversation) return;
+    setIsCreatingConversation(true);
+    setCreateConversationError(null);
+    try {
+      const convId = await createConversation({ projectId });
+      setActiveConversationId(convId);
+      setInput("");
+    } catch (err) {
+      console.error("Failed to create conversation", err);
+      setCreateConversationError("Could not create a new conversation.");
+    } finally {
+      setIsCreatingConversation(false);
+    }
+  };
 
   const activeMessages = useMemo(() => {
     return normalizedMessages.filter((msg) => msg.role !== "event");
@@ -320,14 +338,17 @@ export default function AgentActivityDrawer({
                   <div className="text-xs font-semibold text-gray-900">Sessions</div>
                 </div>
                 <button
-                  onClick={() =>
-                    createConversation({ projectId }).then((convId) => setActiveConversationId(convId))
-                  }
-                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                  type="button"
+                  onClick={handleNewConversation}
+                  disabled={isCreatingConversation}
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
                 >
                   <Plus size={12} /> New
                 </button>
               </div>
+              {createConversationError ? (
+                <div className="px-4 pb-2 text-[11px] text-red-500">{createConversationError}</div>
+              ) : null}
               <div className="px-4 pt-3 pb-2">
                 <button
                   onClick={() => setShowArchived((prev) => !prev)}

@@ -77,9 +77,16 @@ export const listBoards = action({
     handler: async (ctx, args) => {
         const key = args.creds?.apiKey || process.env.TRELLO_API_KEY;
         const token = args.creds?.token || process.env.TRELLO_TOKEN;
+        const credsSource = args.creds ? "client" : "env";
+        const hasKey = Boolean(key);
+        const hasToken = Boolean(token);
 
-        if (!key || !token) {
-            throw new Error("Missing Trello Credentials");
+        console.log("Trello listBoards creds source:", credsSource, "hasKey:", hasKey, "hasToken:", hasToken);
+
+        if (!hasKey || !hasToken) {
+            throw new Error(
+                `Missing Trello Credentials (source=${credsSource}, hasKey=${hasKey}, hasToken=${hasToken})`
+            );
         }
 
         const res = await fetch(`https://api.trello.com/1/members/me/boards?key=${key}&token=${token}&fields=name,url,shortUrl`);

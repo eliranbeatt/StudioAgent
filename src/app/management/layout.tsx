@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Users, Package, ShoppingCart, UserCircle, ReceiptText, Tags, Settings } from "lucide-react";
 
+export const dynamic = 'force-dynamic';
+
 export default function ManagementLayout({
   children,
 }: {

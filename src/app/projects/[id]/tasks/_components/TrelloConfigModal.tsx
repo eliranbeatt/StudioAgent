@@ -31,8 +31,7 @@ export function TrelloConfigModal({
     const [step, setStep] = useState<"creds" | "board" | "mapping">("creds");
 
     // State
-    const [apiKey, setApiKey] = useState(initialConfig?.apiKey ?? "");
-    const [token, setToken] = useState(initialConfig?.token ?? "");
+
     const [boards, setBoards] = useState<TrelloBoard[]>([]);
     const [lists, setLists] = useState<TrelloList[]>([]);
     const [selectedBoard, setSelectedBoard] = useState<string>(initialConfig?.boardId ?? "");
@@ -46,25 +45,17 @@ export function TrelloConfigModal({
 
     const STATUSES = ["todo", "in_progress", "blocked", "done"];
 
-    // Skip creds if already valid? Maybe force check.
-    useEffect(() => {
-        if (initialConfig?.apiKey && initialConfig?.token) {
-            // Verify
-            verifyAndLoadBoards();
-        }
-    }, []);
 
-    const getCreds = () => ({ apiKey, token });
 
     const verifyAndLoadBoards = async () => {
         setLoading(true);
         setError(null);
         try {
-            const data = await fetchBoards(getCreds());
+            const data = await fetchBoards();
             setBoards(data);
             setStep("board");
         } catch (err: any) {
-            setError("Connection failed. Check your API Key and Token.");
+            setError("Connection failed. Check your Environment Variables.");
             setStep("creds");
         } finally {
             setLoading(false);
@@ -74,7 +65,7 @@ export function TrelloConfigModal({
     const loadLists = async (boardId: string) => {
         setLoading(true);
         try {
-            const data = await fetchLists(boardId, getCreds());
+            const data = await fetchLists(boardId);
             setLists(data);
             setStep("mapping");
         } catch (err) {
@@ -88,7 +79,7 @@ export function TrelloConfigModal({
         if (!newBoardName.trim()) return;
         setIsCreatingBoard(true);
         try {
-            const newBoard = await onCreateBoard(newBoardName, getCreds());
+            const newBoard = await onCreateBoard(newBoardName);
             setBoards(prev => [newBoard, ...prev]);
             setSelectedBoard(newBoard.id);
             setNewBoardName("");
@@ -104,8 +95,8 @@ export function TrelloConfigModal({
     const handleSave = async () => {
         // Allow saving even if board not selected, just don't save board info then
         await onSave({
-            apiKey,
-            token,
+            apiKey: undefined,
+            token: undefined,
             boardId: selectedBoard || undefined,
             listMappings: mappings
         });
@@ -136,41 +127,15 @@ export function TrelloConfigModal({
                     {step === "creds" && (
                         <div className="space-y-4">
                             <p className="text-sm text-gray-600">
-                                To connect, you need an API Key and Token from Trello.
-                                <a href="https://trello.com/app-key" target="_blank" className="text-blue-600 underline ml-1">Get them here</a>.
+                                Connection is configured via Environment Variables.
                             </p>
-                            <div>
-                                <label className="block text-xs uppercase font-bold text-gray-500 mb-1">API Key</label>
-                                <div className="relative">
-                                    <Key size={14} className="absolute left-3 top-3 text-gray-400" />
-                                    <input
-                                        className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black/5"
-                                        value={apiKey}
-                                        onChange={e => setApiKey(e.target.value)}
-                                        placeholder="e.g. 384..."
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs uppercase font-bold text-gray-500 mb-1">Token</label>
-                                <div className="relative">
-                                    <Lock size={14} className="absolute left-3 top-3 text-gray-400" />
-                                    <input
-                                        className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black/5"
-                                        value={token}
-                                        onChange={e => setToken(e.target.value)}
-                                        placeholder="e.g. ATTA..."
-                                        type="password"
-                                    />
-                                </div>
-                            </div>
                             <div className="flex justify-end">
                                 <button
                                     onClick={verifyAndLoadBoards}
-                                    disabled={loading || !apiKey || !token}
+                                    disabled={loading}
                                     className="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"
                                 >
-                                    {loading ? "Connecting..." : "Test & Connect"}
+                                    {loading ? "Connecting..." : "Test Connection"}
                                 </button>
                             </div>
                         </div>
@@ -183,7 +148,7 @@ export function TrelloConfigModal({
                                     <CheckCircle size={14} /> Connected
                                 </span>
                                 <button onClick={() => setStep("creds")} className="text-xs text-gray-400 hover:text-gray-600">
-                                    Edit Creds
+                                    Re-Test
                                 </button>
                             </div>
 
@@ -268,7 +233,7 @@ export function TrelloConfigModal({
                     </button>
                     <button
                         onClick={handleSave}
-                        disabled={loading || !apiKey || !token}
+                        disabled={loading}
                         className="px-4 py-2 bg-black text-white rounded-lg text-sm font-semibold hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"
                     >
                         <Save size={16} />

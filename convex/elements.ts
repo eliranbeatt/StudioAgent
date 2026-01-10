@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 // Helper to sync snapshot data to live tables
-async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapshot: any) {
+export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapshot: any) {
   const projectId = (await ctx.db.get(elementId)).projectId;
   const now = Date.now();
 
@@ -250,7 +250,7 @@ async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapshot: any)
   return snapshot;
 }
 
-async function captureSnapshotFromLive(ctx: any, elementId: any) {
+export async function captureSnapshotFromLive(ctx: any, elementId: any) {
   // --- Fetch Live Data ---
   const existingTasks = await ctx.db
     .query("tasks")

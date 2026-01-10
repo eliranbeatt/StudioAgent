@@ -29,6 +29,8 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [input, setInput] = useState("");
   const [selectedElementIds, setSelectedElementIds] = useState<Id<"elements">[]>([]);
   const [isWaiting, setIsWaiting] = useState(false);
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+  const [createConversationError, setCreateConversationError] = useState<string | null>(null);
   const [model, setModel] = useState<string>("gpt-4o");
   const user = useQuery(api.users.getViewer);
 
@@ -90,6 +92,22 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     }
     return map;
   }, [messages]);
+
+  const handleNewConversation = async () => {
+    if (isWaiting || isCreatingConversation) return;
+    setIsCreatingConversation(true);
+    setCreateConversationError(null);
+    try {
+      const convId = await createConversation({ projectId });
+      setActiveConversationId(convId);
+      setInput("");
+    } catch (err) {
+      console.error("Failed to create conversation", err);
+      setCreateConversationError("Could not create a new conversation.");
+    } finally {
+      setIsCreatingConversation(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!activeConversationId || isWaiting) return;
@@ -179,7 +197,19 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       <aside className="w-64 border-r border-gray-200 bg-gray-50">
         <div className="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-500">Conversations</div>
+          <button
+            type="button"
+            onClick={handleNewConversation}
+            disabled={isCreatingConversation}
+            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600 hover:border-gray-300 disabled:opacity-60"
+          >
+            <Plus size={12} />
+            New
+          </button>
         </div>
+        {createConversationError ? (
+          <div className="px-4 py-2 text-[11px] text-red-500">{createConversationError}</div>
+        ) : null}
         <div className="p-3 space-y-2">
           {!conversations ? (
             <div className="text-xs text-gray-400">Loading...</div>
