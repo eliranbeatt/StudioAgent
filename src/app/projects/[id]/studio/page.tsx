@@ -889,7 +889,7 @@ function ChangeSetBlock({
     }
   }
 
-  const isResolved = status === "applied" || status === "discarded";
+  const isResolved = status === "discarded";
 
   return (
     <div

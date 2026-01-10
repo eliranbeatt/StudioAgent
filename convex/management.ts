@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { normalizeName } from "./lib/normalize";
 
 // ==========================
 // VENDORS
@@ -274,6 +275,7 @@ export const createEmployee = mutation({
     handler: async (ctx, args) => {
         return await ctx.db.insert("employees", {
             displayName: args.displayName,
+            displayNameNormalized: normalizeName(args.displayName),
             role: args.role,
             defaultDayRate: args.defaultDayRate,
             active: true,

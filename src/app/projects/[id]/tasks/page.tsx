@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
-import { use, useMemo, useState } from "react";
+import { use, useCallback, useMemo, useState } from "react";
 import { Task, TaskFilters, TaskViewMode } from "./_components/types";
 import { TasksTopBar } from "./_components/TasksTopBar";
 import { TaskControlsBar } from "./_components/TaskControlsBar";
@@ -25,6 +25,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
     const runEstimator = useMutation(api.agent_tasks.runEstimator);
     const taskOrder = useQuery(api.projects.getTaskOrder, { projectId });
     const updateTaskOrder = useMutation(api.projects.updateTaskOrder);
+    const employees = useQuery(api.management.listEmployees);
 
     // Trello
     const trelloConfig = useQuery(api.trelloSync.getConfig, { projectId });
@@ -46,6 +47,27 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
 
     // Raw Data
     const rawTasks = (data?.tasks ?? []) as Task[];
+    const employeeOptions = useMemo(
+        () =>
+            (employees ?? []).map((employee) => ({
+                id: employee._id,
+                name: employee.displayName,
+            })),
+        [employees]
+    );
+    const employeeNameById = useMemo(
+        () => new Map(employeeOptions.map((employee) => [employee.id, employee.name])),
+        [employeeOptions]
+    );
+
+    const getAssigneeLabel = useCallback((task: Task) => {
+        const ids = task.assigneeIds ?? [];
+        const names = ids
+            .map((id) => employeeNameById.get(id))
+            .filter((name): name is string => Boolean(name));
+        if (names.length > 0) return names.join(", ");
+        return task.assignee ?? "";
+    }, [employeeNameById]);
 
     // 1. Compute Effective Tasks
     const effectiveTasks = useMemo(() => {
@@ -66,12 +88,12 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
             result = result.filter(t =>
                 t.title.toLowerCase().includes(lower) ||
                 t.elementTitle.toLowerCase().includes(lower) ||
-                t.assignee?.toLowerCase().includes(lower)
+                getAssigneeLabel(t).toLowerCase().includes(lower)
             );
         }
 
         if (filters.assignee) {
-            result = result.filter(t => t.assignee === filters.assignee);
+            result = result.filter(t => getAssigneeLabel(t) === filters.assignee);
         }
 
         if (filters.category) {
@@ -83,7 +105,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
         }
 
         return result;
-    }, [effectiveTasks, filters]);
+    }, [effectiveTasks, filters, getAssigneeLabel]);
 
     // Derived Options
     const filterOptions = useMemo(() => {
@@ -91,8 +113,13 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
         const categories = new Set<string>();
 
         effectiveTasks.forEach(t => {
-            if (t.assignee) assignees.add(t.assignee);
+            const label = getAssigneeLabel(t);
+            if (label) assignees.add(label);
             if (t.category) categories.add(t.category);
+        });
+
+        employeeOptions.forEach((employee) => {
+            if (employee.name) assignees.add(employee.name);
         });
 
         return {
@@ -100,7 +127,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
             categories: Array.from(categories).sort(),
             elements: data?.elements.map(e => ({ id: e.elementId, title: e.elementTitle })) ?? []
         };
-    }, [effectiveTasks, data?.elements]);
+    }, [effectiveTasks, data?.elements, employeeOptions, getAssigneeLabel]);
 
     // Maps
     const taskById = useMemo(() => new Map(effectiveTasks.map((t) => [t.id, t])), [effectiveTasks]);
@@ -301,6 +328,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
             {selectedTask && (
                 <TaskModal
                     task={selectedTask}
+                    employees={employeeOptions}
                     onClose={() => setSelectedTaskId(null)}
                     onSave={handleTaskSave}
                     draftMode={!!selectedTask.isDraft}

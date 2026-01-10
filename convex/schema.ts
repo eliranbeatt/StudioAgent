@@ -17,6 +17,28 @@ const draftStatus = v.union(
   v.literal("discarded")
 );
 
+const customerStatus = v.union(v.literal("active"), v.literal("archived"));
+
+const receiptStatus = v.union(
+  v.literal("uploaded"),
+  v.literal("extracted"),
+  v.literal("reviewed"),
+  v.literal("approved")
+);
+
+const shareScope = v.union(
+  v.literal("projectSummary"),
+  v.literal("quote"),
+  v.literal("gallery")
+);
+
+const printQaStatus = v.union(
+  v.literal("not_started"),
+  v.literal("in_review"),
+  v.literal("pass"),
+  v.literal("fail")
+);
+
 const StudioWorkType = v.union(
   v.literal("carpentry"),
   v.literal("metal_fab"),
@@ -75,6 +97,8 @@ export default defineSchema({
   projects: defineTable({
     name: v.string(),
     clientName: v.optional(v.string()),
+    customerId: v.optional(v.id("customers")),
+    customerName: v.optional(v.string()),
     status: projectStatus,
     currency: v.string(), // Default 'NIS'
     description: v.optional(v.string()),
@@ -122,7 +146,10 @@ export default defineSchema({
     createdBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }),
+  })
+    .index("by_status", ["status"])
+    .index("by_customerId", ["customerId"])
+    .index("by_updatedAt", ["updatedAt"]),
 
 
 
@@ -130,6 +157,7 @@ export default defineSchema({
   elements: defineTable({
     projectId: v.id("projects"),
     title: v.string(),
+    description: v.optional(v.string()),
     type: v.union(
       v.literal("build"),
       v.literal("rent"),
@@ -194,6 +222,7 @@ export default defineSchema({
     draftRevisionId: v.optional(v.id("taskRevisions")),
     elementSubtaskId: v.optional(v.string()),
     aiThreadId: v.optional(v.id("conversations")),
+    assigneeIds: v.optional(v.array(v.id("employees"))),
 
     // Metadata
     createdBy: v.optional(v.union(v.literal("human"), v.literal("agent"))),
@@ -359,6 +388,9 @@ export default defineSchema({
     sourceLabelHe: v.optional(v.string()),
     source: v.optional(v.string()),
     confidence: v.optional(v.number()),
+    actualUnitCost: v.optional(v.number()),
+    actualTotalCost: v.optional(v.number()),
+    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
     checklistItemId: v.optional(v.string()),
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     createdAt: v.number(),
@@ -400,6 +432,8 @@ export default defineSchema({
     sourceLabelHe: v.optional(v.string()),
     source: v.optional(v.string()),
     confidence: v.optional(v.number()),
+    actualTotalCost: v.optional(v.number()),
+    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     createdAt: v.number(),
   })
@@ -413,21 +447,41 @@ export default defineSchema({
     elementId: v.id("elements"),
     label: v.string(),
     substrate: v.optional(v.string()),
+    finish: v.optional(v.string()),
     qty: v.number(),
     size: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    unit: v.optional(v.union(v.literal("mm"), v.literal("cm"), v.literal("m"))),
     requiresProof: v.optional(v.boolean()),
+    testPrintRequired: v.optional(v.boolean()),
+    qaStatus: v.optional(printQaStatus),
+    notes: v.optional(v.string()),
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     createdAt: v.number(),
-  }).index("by_element", ["elementId"]),
+  })
+    .index("by_element", ["elementId"])
+    .index("by_project", ["projectId"]),
 
   // Receipts
   receipts: defineTable({
     projectId: v.id("projects"),
     purchaseId: v.optional(v.id("purchases")),
     fileId: v.id("projectFiles"),
+    fileIds: v.optional(v.array(v.id("projectFiles"))),
+    vendorId: v.optional(v.id("vendors")),
+    status: v.optional(receiptStatus),
+    date: v.optional(v.number()),
+    total: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    extraction: v.optional(v.any()),
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     createdAt: v.number(),
-  }).index("by_purchase", ["purchaseId"]),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_purchase", ["purchaseId"])
+    .index("by_project", ["projectId"])
+    .index("by_vendor", ["vendorId"]),
 
   // Element Drafts (Working snapshots)
   elementDrafts: defineTable({
@@ -492,6 +546,36 @@ export default defineSchema({
     language: v.optional(v.string()),
     sections: v.optional(v.any()),
     totals: v.optional(v.any()),
+    version: v.optional(v.number()),
+    customerId: v.optional(v.id("customers")),
+    customerName: v.optional(v.string()),
+    inputs: v.optional(v.object({
+      projectDescription: v.optional(v.string()),
+      specs: v.optional(v.string()),
+      includeFlags: v.optional(v.object({
+        includeElements: v.boolean(),
+        elementsMode: v.union(v.literal("bySection"), v.literal("byElement")),
+        includeTerms: v.boolean(),
+        includeDates: v.boolean(),
+        includeAgreements: v.boolean(),
+        includeOptions: v.boolean(),
+      })),
+      validUntil: v.optional(v.string()),
+      logoFileId: v.optional(v.id("projectFiles")),
+    })),
+    margins: v.optional(v.object({
+      riskPct: v.number(),
+      overheadPct: v.number(),
+      profitPct: v.number(),
+    })),
+    currency: v.optional(v.string()),
+    priceSummary: v.optional(v.any()),
+    sellBreakdown: v.optional(v.any()),
+    quoteText_he: v.optional(v.string()),
+    quoteBlocks: v.optional(v.any()),
+    pdfFileId: v.optional(v.id("projectFiles")),
+    contentHash: v.optional(v.string()),
+    previousQuoteId: v.optional(v.id("quoteVersions")),
     createdAt: v.number(),
   })
     .index("by_project", ["projectId"]),
@@ -623,15 +707,121 @@ export default defineSchema({
   // Management Hub Tables
   // -------------------------
 
+  // Customers
+  customers: defineTable({
+    customerId: v.string(),
+    name: v.string(),
+    nameNormalized: v.string(),
+    status: customerStatus,
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_customerId", ["customerId"])
+    .index("by_nameNormalized", ["nameNormalized"])
+    .index("by_status", ["status"]),
+
+  customerContacts: defineTable({
+    customerId: v.id("customers"),
+    name: v.string(),
+    phone: v.optional(v.string()),
+    email: v.optional(v.string()),
+    role: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_customer", ["customerId"]),
+
+  // Share Links
+  shareLinks: defineTable({
+    token: v.string(),
+    projectId: v.id("projects"),
+    scope: shareScope,
+    quoteVersionId: v.optional(v.id("quoteVersions")),
+    pdfFileId: v.optional(v.id("projectFiles")),
+    expiresAt: v.optional(v.number()),
+    createdBy: v.optional(v.union(v.literal("human"), v.literal("agent"))),
+    createdByUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_project", ["projectId"]),
+
+  // Receipt Items
+  receiptItems: defineTable({
+    receiptId: v.id("receipts"),
+    nameRaw: v.string(),
+    qty: v.optional(v.number()),
+    unit: v.optional(v.string()),
+    unitPrice: v.optional(v.number()),
+    total: v.optional(v.number()),
+    vendorId: v.optional(v.id("vendors")),
+    mappedMaterialLineId: v.optional(v.id("materialLines")),
+    mappedWorkLineId: v.optional(v.id("workLines")),
+    mappedTaskId: v.optional(v.id("tasks")),
+    mappedElementId: v.optional(v.id("elements")),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_receipt", ["receiptId"])
+    .index("by_mappedMaterialLine", ["mappedMaterialLineId"]),
+
+  // Print Files
+  printFiles: defineTable({
+    printPartId: v.id("printParts"),
+    projectId: v.id("projects"),
+    fileId: v.id("projectFiles"),
+    kind: v.union(
+      v.literal("source"),
+      v.literal("printReady"),
+      v.literal("mockup")
+    ),
+    originalFilename: v.optional(v.string()),
+    uploadedAt: v.number(),
+  })
+    .index("by_printPart", ["printPartId"])
+    .index("by_project", ["projectId"]),
+
+  printFileAnalyses: defineTable({
+    printFileId: v.id("printFiles"),
+    widthPx: v.optional(v.number()),
+    heightPx: v.optional(v.number()),
+    dpiX: v.optional(v.number()),
+    dpiY: v.optional(v.number()),
+    pageCount: v.optional(v.number()),
+    pageWidthMm: v.optional(v.number()),
+    pageHeightMm: v.optional(v.number()),
+    warnings: v.array(v.string()),
+    createdAt: v.number(),
+  }).index("by_printFile", ["printFileId"]),
+
+  // Element Images
+  elementImages: defineTable({
+    projectId: v.id("projects"),
+    elementId: v.id("elements"),
+    fileId: v.id("projectFiles"),
+    type: v.union(
+      v.literal("engineering"),
+      v.literal("illustration"),
+      v.literal("reference")
+    ),
+    caption: v.optional(v.string()),
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    createdAt: v.number(),
+  })
+    .index("by_element", ["elementId"])
+    .index("by_project", ["projectId"]),
+
   // Employees / People
   employees: defineTable({
     displayName: v.string(),
+    displayNameNormalized: v.optional(v.string()),
     role: v.string(),
     defaultDayRate: v.number(),
     active: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }),
+  }).index("by_displayNameNormalized", ["displayNameNormalized"]),
 
   // Vendors
   vendors: defineTable({

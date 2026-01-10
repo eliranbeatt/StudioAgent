@@ -208,6 +208,7 @@ export const listForProject = query({
                 checklist: task.checklist,
                 accountingLinks: task.accountingLinks,
                 assignee: task.assignee,
+                assigneeIds: task.assigneeIds,
                 dependencies: task.dependencies,
                 materials,
                 labor,

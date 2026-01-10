@@ -4,13 +4,14 @@ import { X, Save, MessageSquare, Sparkles } from "lucide-react";
 
 type TaskModalProps = {
   task: Task;
+  employees: Array<{ id: string; name: string }>;
   onClose: () => void;
   onSave: (patch: Partial<Task>) => Promise<void>;
   draftMode: boolean;
   isSaving: boolean;
 };
 
-export function TaskModal({ task, onClose, onSave, draftMode, isSaving }: TaskModalProps) {
+export function TaskModal({ task, employees, onClose, onSave, draftMode, isSaving }: TaskModalProps) {
   const [formData, setFormData] = useState<Partial<Task>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [activeTab, setActiveTab] = useState<"details" | "chat">("details");
@@ -61,12 +62,23 @@ export function TaskModal({ task, onClose, onSave, draftMode, isSaving }: TaskMo
   const checklist = effectiveTask.checklist ?? [];
   const checklistDone = checklist.filter((item) => item.done).length;
   const checklistTotal = checklist.length;
+  const selectedAssigneeId =
+    effectiveTask.assigneeIds?.[0] ??
+    employees.find((employee) => employee.name === effectiveTask.assignee)?.id ??
+    "";
 
   const toggleChecklistItem = (itemId: string) => {
     const nextChecklist = checklist.map((item) =>
       item.id === itemId ? { ...item, done: !item.done } : item
     );
     handleChange("checklist", nextChecklist);
+  };
+
+  const handleAssigneeChange = (nextId: string) => {
+    const id = nextId || undefined;
+    const name = id ? employees.find((emp) => emp.id === id)?.name : undefined;
+    handleChange("assigneeIds", id ? [id] : []);
+    handleChange("assignee", name);
   };
 
   return (
@@ -130,11 +142,21 @@ export function TaskModal({ task, onClose, onSave, draftMode, isSaving }: TaskMo
                 value={effectiveTask.category ?? ""}
                 onChange={(v) => handleChange("category", v)}
               />
-              <InputField
-                label="Assignee"
-                value={effectiveTask.assignee ?? ""}
-                onChange={(v) => handleChange("assignee", v)}
-              />
+              <div className="space-y-1.5">
+                <label className="text-xs uppercase font-bold text-gray-400 tracking-wider">Assignee</label>
+                <select
+                  value={selectedAssigneeId}
+                  onChange={(e) => handleAssigneeChange(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black/5 bg-white appearance-none cursor-pointer hover:border-gray-300 transition"
+                >
+                  <option value="">Unassigned</option>
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Scheduling */}

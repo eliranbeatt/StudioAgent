@@ -239,16 +239,27 @@ export const discardChangeSet = mutation({
 export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId: Id<"changeSets"> }) {
   const cs = await ctx.db.get(args.changeSetId);
   if (!cs) throw new Error("ChangeSet not found");
-  if (cs.status !== "PROPOSED") throw new Error(`ChangeSet is ${cs.status}`);
+  if (cs.status !== "PROPOSED" && cs.status !== "APPLIED") throw new Error(`ChangeSet is ${cs.status}`);
 
   if (cs.base?.elements) {
     for (const check of cs.base.elements) {
-      if (!check?.elementId) {
-        console.warn("Skipping base element check with missing elementId");
+      let el = null;
+      if (check?.elementId) {
+        el = await ctx.db.get(check.elementId);
+      } else if (check?.title) {
+        // Try to find by title within project
+        el = await ctx.db
+          .query("elements")
+          .withIndex("by_project", (q: any) => q.eq("projectId", cs.projectId))
+          .filter((q: any) => q.eq(q.field("title"), check.title))
+          .first();
+      }
+
+      if (!el) {
+        console.warn("Skipping base element check: Element not found (missing Id or Title match)");
         continue;
       }
-      const el = await ctx.db.get(check.elementId);
-      if (!el) throw new Error(`Element ${check.elementId} missing`);
+
       const currentRev = el.rev ?? 0;
       if (currentRev !== check.rev) {
         console.warn(`Conflict ignored: Element ${el.title} rev ${currentRev} != base ${check.rev}`);

@@ -50,6 +50,7 @@ export type Task = {
   steps?: string[];
   subtasks?: TaskSubtask[];
   assignee?: string;
+  assigneeIds?: Id<"employees">[];
   photos?: TaskPhoto[];
   materials?: MaterialLine[];
   labor?: LaborLine[];

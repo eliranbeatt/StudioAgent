@@ -1,0 +1,921 @@
+Got it. Below is the **full end-to-end data + migration plan**, but now **tailored exactly to your current schema** (the file you pasted). This includes:
+
+* ✅ **New tables** you’re missing (Customers, CustomerContacts, ShareLinks, ReceiptItems, PrintFiles, PrintFileAnalyses, ElementImages)
+* ✅ **Schema upgrades** to existing tables (projects, tasks, quoteVersions, receipts, printParts, materialLines, workLines, employees)
+* ✅ **Migration plan** (safe additive rollout, optional backfills, verification, cleanup)
+* ✅ **Convex implementation** (schema patches + minimal functions + migration actions + health checks)
+
+---
+
+# 1) What changes in your current schema
+
+## 1.1 New tables to ADD
+
+You currently do **not** have:
+
+* `customers`
+* `customerContacts`
+* `shareLinks`
+* `receiptItems`
+* `printFiles`
+* `printFileAnalyses`
+* `elementImages`
+
+You **already have**:
+
+* `employees`, `vendors`, `purchases`, `projectFiles`, `printParts` (basic), `receipts` (basic), `changeSets`, `materialLines`, `workLines`, `quoteVersions`.
+
+So we will **extend** existing and **add** only missing.
+
+---
+
+## 1.2 Existing tables to EXTEND (additive only, no breaking)
+
+### `projects`
+
+Add:
+
+* `customerId?: v.id("customers")`
+* `customerName?: v.string()` *(snapshot / display name)*
+* (keep your existing `clientName?: string` as legacy; we’ll stop writing to it later)
+
+Add indexes (recommended):
+
+* `by_status` (you don’t have any indexes on projects today)
+* `by_customerId`
+* `by_updatedAt`
+
+### `quoteVersions`
+
+Add:
+
+* `customerId?: v.id("customers")`
+* `customerName?: v.string()` *(snapshot at time of quote)*
+
+### `tasks`
+
+Add:
+
+* `assigneeIds?: v.array(v.id("employees"))` *(new, future-proof)*
+  Keep:
+* `assignee?: string` (legacy / UI text)
+
+### `employees`
+
+Add (optional but very useful for mapping):
+
+* `displayNameNormalized?: v.optional(v.string())`
+  Add index:
+* `by_displayName` (or `by_displayNameNormalized`)
+
+### `receipts` (you already have it, but it’s too thin)
+
+Extend it to support real receipt workflow:
+
+* `vendorId?: v.id("vendors")`
+* `status: "uploaded"|"extracted"|"reviewed"|"approved"` (add; keep existing rows default)
+* `date?: number`, `total?: number`, `currency?: string`
+* `fileIds?: v.array(v.id("projectFiles"))` *(multi files; keep `fileId` as primary for backwards compatibility)*
+* `extraction?: v.any()`
+* `updatedAt?: number`
+
+### `printParts` (you already have it)
+
+Extend it with structured size + QA fields:
+
+* `width?: number`, `height?: number`
+* `unit?: "mm"|"cm"|"m"`
+* `finish?: string`
+* `requiresProof?: boolean` *(you already have `requiresProof`, keep it)*
+* `testPrintRequired?: boolean`
+* `qaStatus?: "not_started"|"in_review"|"pass"|"fail"`
+* `notes?: string`
+
+Add index:
+
+* `by_project`
+
+### `materialLines` / `workLines`
+
+Add actuals fields + linkage to receipt items:
+
+* `actualUnitCost?: number` (materials)
+* `actualTotalCost?: number` (materials + work)
+* `receiptItemIds?: v.array(v.id("receiptItems"))`
+
+---
+
+# 2) The exact schema patch for YOUR schema.ts
+
+## 2.1 Add these helpers near your enums (top area)
+
+```ts
+const customerStatus = v.union(v.literal("active"), v.literal("archived"));
+
+const receiptStatus = v.union(
+  v.literal("uploaded"),
+  v.literal("extracted"),
+  v.literal("reviewed"),
+  v.literal("approved")
+);
+
+const shareScope = v.union(
+  v.literal("projectSummary"),
+  v.literal("quote"),
+  v.literal("gallery")
+);
+
+const printQaStatus = v.union(
+  v.literal("not_started"),
+  v.literal("in_review"),
+  v.literal("pass"),
+  v.literal("fail")
+);
+```
+
+## 2.2 Add NEW tables (recommended location: under “Management Hub Tables”)
+
+Paste these **before** `employees` / `vendors` or right after them — order doesn’t matter.
+
+```ts
+// Customers (NEW)
+customers: defineTable({
+  customerId: v.string(),          // business id (NOT Convex _id)
+  name: v.string(),
+  nameNormalized: v.string(),
+  status: customerStatus,
+  notes: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_customerId", ["customerId"])
+  .index("by_nameNormalized", ["nameNormalized"])
+  .index("by_status", ["status"]),
+
+customerContacts: defineTable({
+  customerId: v.id("customers"),
+  name: v.string(),
+  phone: v.optional(v.string()),
+  email: v.optional(v.string()),
+  role: v.optional(v.string()),
+  notes: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+}).index("by_customer", ["customerId"]),
+
+// Public share links (NEW)
+shareLinks: defineTable({
+  token: v.string(),
+  projectId: v.id("projects"),
+  scope: shareScope,
+  quoteVersionId: v.optional(v.id("quoteVersions")),
+  // optional: if you generate a PDF and want to share that exact artifact
+  pdfFileId: v.optional(v.id("projectFiles")),
+  expiresAt: v.optional(v.number()),
+  createdBy: v.optional(v.union(v.literal("human"), v.literal("agent"))),
+  createdByUserId: v.optional(v.id("users")),
+  createdAt: v.number(),
+})
+  .index("by_token", ["token"])
+  .index("by_project", ["projectId"]),
+
+// Receipt line-items (NEW) - works with your existing receipts table
+receiptItems: defineTable({
+  receiptId: v.id("receipts"),
+  nameRaw: v.string(),
+  qty: v.optional(v.number()),
+  unit: v.optional(v.string()),
+  unitPrice: v.optional(v.number()),
+  total: v.optional(v.number()),
+
+  // Optional mappings (actuals + traceability)
+  vendorId: v.optional(v.id("vendors")),
+  mappedMaterialLineId: v.optional(v.id("materialLines")),
+  mappedWorkLineId: v.optional(v.id("workLines")),
+  mappedTaskId: v.optional(v.id("tasks")),
+  mappedElementId: v.optional(v.id("elements")),
+
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_receipt", ["receiptId"])
+  .index("by_mappedMaterialLine", ["mappedMaterialLineId"]),
+
+// Printing file attachments (NEW) - uses your projectFiles
+printFiles: defineTable({
+  printPartId: v.id("printParts"),
+  projectId: v.id("projects"),
+  fileId: v.id("projectFiles"),
+  kind: v.union(v.literal("source"), v.literal("printReady"), v.literal("mockup")),
+  originalFilename: v.optional(v.string()),
+  uploadedAt: v.number(),
+})
+  .index("by_printPart", ["printPartId"])
+  .index("by_project", ["projectId"]),
+
+printFileAnalyses: defineTable({
+  printFileId: v.id("printFiles"),
+  // Raster
+  widthPx: v.optional(v.number()),
+  heightPx: v.optional(v.number()),
+  dpiX: v.optional(v.number()),
+  dpiY: v.optional(v.number()),
+  // PDF
+  pageCount: v.optional(v.number()),
+  pageWidthMm: v.optional(v.number()),
+  pageHeightMm: v.optional(v.number()),
+  warnings: v.array(v.string()),
+  createdAt: v.number(),
+}).index("by_printFile", ["printFileId"]),
+
+// Element images (NEW) - store AI-generated / reference images per element
+elementImages: defineTable({
+  projectId: v.id("projects"),
+  elementId: v.id("elements"),
+  fileId: v.id("projectFiles"),
+  type: v.union(
+    v.literal("engineering"),
+    v.literal("illustration"),
+    v.literal("reference")
+  ),
+  caption: v.optional(v.string()),
+  createdFromChangeSetId: v.optional(v.id("changeSets")),
+  createdAt: v.number(),
+})
+  .index("by_element", ["elementId"])
+  .index("by_project", ["projectId"]),
+```
+
+---
+
+## 2.3 Patch EXISTING tables (your exact ones)
+
+### A) `projects` — add customer fields + indexes
+
+**Edit your existing `projects: defineTable({ ... })` and add these fields:**
+
+```ts
+customerId: v.optional(v.id("customers")),
+customerName: v.optional(v.string()), // snapshot / display
+```
+
+**Also add indexes on projects (recommended):**
+
+```ts
+}).index("by_status", ["status"])
+  .index("by_customerId", ["customerId"])
+  .index("by_updatedAt", ["updatedAt"]),
+```
+
+> Keep `clientName` for now, but stop using it going forward. If you want, we can later migrate and delete it in a breaking change window.
+
+---
+
+### B) `quoteVersions` — add customer snapshot
+
+Add near the top of `quoteVersions` fields:
+
+```ts
+customerId: v.optional(v.id("customers")),
+customerName: v.optional(v.string()),
+```
+
+---
+
+### C) `tasks` — add employee ID assignments (keep string)
+
+Add:
+
+```ts
+assigneeIds: v.optional(v.array(v.id("employees"))),
+```
+
+(Keep `assignee: v.optional(v.string())` as you have today.)
+
+---
+
+### D) `employees` — add index (recommended)
+
+Change your employees table to:
+
+```ts
+employees: defineTable({
+  displayName: v.string(),
+  displayNameNormalized: v.optional(v.string()),
+  role: v.string(),
+  defaultDayRate: v.number(),
+  active: v.boolean(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+}).index("by_displayName", ["displayName"]),
+```
+
+---
+
+### E) `receipts` — extend (keep old fields to avoid breaking)
+
+Replace your receipts definition with this **superset** (keeps `purchaseId` and `fileId` exactly as you have):
+
+```ts
+receipts: defineTable({
+  projectId: v.id("projects"),
+  purchaseId: v.optional(v.id("purchases")),
+
+  // Existing field (keep)
+  fileId: v.id("projectFiles"),
+
+  // NEW: allow multiple files while keeping fileId as "primary"
+  fileIds: v.optional(v.array(v.id("projectFiles"))),
+
+  vendorId: v.optional(v.id("vendors")),
+  status: v.optional(receiptStatus), // make optional so old docs don't break
+  date: v.optional(v.number()),
+  total: v.optional(v.number()),
+  currency: v.optional(v.string()),
+  extraction: v.optional(v.any()),
+
+  createdFromChangeSetId: v.optional(v.id("changeSets")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_purchase", ["purchaseId"])
+  .index("by_project", ["projectId"])
+  .index("by_vendor", ["vendorId"]),
+```
+
+---
+
+### F) `printParts` — extend (keep old fields)
+
+Replace your `printParts` with this superset:
+
+```ts
+printParts: defineTable({
+  projectId: v.id("projects"),
+  elementId: v.id("elements"),
+  label: v.string(),
+
+  substrate: v.optional(v.string()),
+  finish: v.optional(v.string()),
+
+  qty: v.number(),
+
+  // keep old `size` string for legacy
+  size: v.optional(v.string()),
+
+  // NEW structured dimensions
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  unit: v.optional(v.union(v.literal("mm"), v.literal("cm"), v.literal("m"))),
+
+  requiresProof: v.optional(v.boolean()),
+  testPrintRequired: v.optional(v.boolean()),
+  qaStatus: v.optional(printQaStatus),
+
+  notes: v.optional(v.string()),
+  createdFromChangeSetId: v.optional(v.id("changeSets")),
+  createdAt: v.number(),
+})
+  .index("by_element", ["elementId"])
+  .index("by_project", ["projectId"]),
+```
+
+---
+
+### G) `materialLines` + `workLines` — actuals + receipt linkage
+
+Add to `materialLines`:
+
+```ts
+actualUnitCost: v.optional(v.number()),
+actualTotalCost: v.optional(v.number()),
+receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
+```
+
+Add to `workLines`:
+
+```ts
+actualTotalCost: v.optional(v.number()),
+receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
+```
+
+---
+
+# 3) End-to-end migration plan (staging → prod)
+
+## Phase 1 — Schema deploy (staging)
+
+1. Apply the schema patches above
+2. Deploy to staging
+
+✅ Safe because:
+
+* All new fields are optional
+* We’re not deleting anything
+* Existing docs remain valid
+
+---
+
+## Phase 2 — Add Convex functions (staging)
+
+Create these new files (minimal foundations):
+
+### `convex/lib/normalize.ts`
+
+```ts
+export function normalizeName(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function newBusinessId(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+```
+
+### `convex/customers.ts`
+
+* `findOrCreateByName(name)`
+* `listActive()`
+* `addContact(customerId, ...)`
+
+### `convex/projects.ts`
+
+* `setCustomer(projectId, customerName)` (find-or-create customer, patch project)
+
+### `convex/shareLinks.ts`
+
+* `createShareLink(projectId, scope, quoteVersionId?)`
+* `getByToken(token)`
+
+### `convex/receipts.ts`
+
+* `createReceipt(projectId, fileId, vendorId?)`
+* `upsertReceiptItems(receiptId, items[])`
+* `approveReceipt(receiptId)` → applies actuals to linked material/work lines
+
+### `convex/printing.ts`
+
+* `attachPrintFile(printPartId, projectFileId, kind)`
+* `writePrintFileAnalysis(printFileId, analysis)`
+
+### `convex/elementImages.ts`
+
+* `addElementImage(elementId, projectFileId, type)`
+* `listByElement(elementId)`
+
+---
+
+## Phase 3 — Migration actions (optional, but recommended)
+
+Even though you *think* there’s no customer name anywhere, you **do** have `projects.clientName`. If it’s truly unused, the migration will do nothing; if some projects have it, this will convert them.
+
+### Migration A: Projects `clientName` → customers + project.customerId/customerName
+
+* For each project:
+
+  * if `customerId` empty AND (`customerName` empty) AND `clientName` exists:
+
+    * create/find customer by nameNormalized
+    * patch:
+
+      * `customerId`
+      * `customerName = clientName`
+
+### Migration B: Tasks `assignee` string → `assigneeIds[]` (best effort)
+
+* Load employees into a map `normalize(displayName) -> employeeId`
+* For each task with `assignee` string:
+
+  * if matches an employee:
+
+    * set `assigneeIds=[employeeId]`
+
+### Migration C: QuoteVersions inherit customer from project (best effort)
+
+* For each quoteVersion:
+
+  * read project
+  * if project has customerId → patch quoteVersion customerId/customerName
+
+---
+
+## Phase 4 — Verification (staging)
+
+Add a health query:
+
+* customers unique customerId
+* % projects with customerId
+* % tasks with assigneeIds when assignee exists
+* receipts with missing receiptItems (allowed)
+* printFiles missing analyses (allowed)
+
+If clean → deploy to prod.
+
+---
+
+## Phase 5 — Production deploy
+
+1. Deploy schema + functions to prod
+2. Run migrations (dry-run first, then real)
+3. Add UI later to start writing:
+
+   * projects.customerName + customerId on create
+   * tasks.assigneeIds when selected
+   * receipts workflow + mappings
+
+---
+
+# 4) Minimal Convex implementations (copy-paste)
+
+## 4.1 `convex/customers.ts`
+
+```ts
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+import { normalizeName, newBusinessId } from "./lib/normalize";
+
+export const findOrCreateByName = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Customer name is required");
+    const n = normalizeName(trimmed);
+
+    const existing = await ctx.db
+      .query("customers")
+      .withIndex("by_nameNormalized", (q) => q.eq("nameNormalized", n))
+      .first();
+
+    if (existing) return existing._id;
+
+    // ensure unique business id
+    for (let i = 0; i < 5; i++) {
+      const cid = newBusinessId("CUST");
+      const clash = await ctx.db
+        .query("customers")
+        .withIndex("by_customerId", (q) => q.eq("customerId", cid))
+        .first();
+      if (!clash) {
+        return await ctx.db.insert("customers", {
+          customerId: cid,
+          name: trimmed,
+          nameNormalized: n,
+          status: "active",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+    }
+    throw new Error("Failed to generate unique customerId");
+  },
+});
+
+export const listActive = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("customers")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .collect();
+  },
+});
+
+export const addContact = mutation({
+  args: {
+    customerId: v.id("customers"),
+    name: v.string(),
+    phone: v.optional(v.string()),
+    email: v.optional(v.string()),
+    role: v.optional(v.string()),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("customerContacts", {
+      ...args,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+```
+
+## 4.2 `convex/projectsCustomers.ts` (attach customer to project)
+
+```ts
+import { mutation } from "./_generated/server";
+import { v } from "convex/values";
+import { normalizeName, newBusinessId } from "./lib/normalize";
+
+export const setProjectCustomerByName = mutation({
+  args: { projectId: v.id("projects"), customerName: v.string() },
+  handler: async (ctx, { projectId, customerName }) => {
+    const name = customerName.trim();
+    if (!name) throw new Error("customerName is required");
+
+    const n = normalizeName(name);
+
+    let customer = await ctx.db
+      .query("customers")
+      .withIndex("by_nameNormalized", (q) => q.eq("nameNormalized", n))
+      .first();
+
+    let customerId = customer?._id;
+    if (!customerId) {
+      // unique business id
+      let businessId = "";
+      for (let i = 0; i < 5; i++) {
+        const cid = newBusinessId("CUST");
+        const clash = await ctx.db
+          .query("customers")
+          .withIndex("by_customerId", (q) => q.eq("customerId", cid))
+          .first();
+        if (!clash) { businessId = cid; break; }
+      }
+      if (!businessId) throw new Error("Failed to generate customerId");
+
+      customerId = await ctx.db.insert("customers", {
+        customerId: businessId,
+        name,
+        nameNormalized: n,
+        status: "active",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+
+    await ctx.db.patch(projectId, {
+      customerId,
+      customerName: name,
+      // optional: keep clientName for legacy UI
+      clientName: name,
+      updatedAt: Date.now(),
+    });
+
+    return customerId;
+  },
+});
+```
+
+## 4.3 `convex/shareLinks.ts`
+
+```ts
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+
+function token(len = 28) {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let out = "";
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+export const create = mutation({
+  args: {
+    projectId: v.id("projects"),
+    scope: v.union(v.literal("projectSummary"), v.literal("quote"), v.literal("gallery")),
+    quoteVersionId: v.optional(v.id("quoteVersions")),
+    pdfFileId: v.optional(v.id("projectFiles")),
+    expiresAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // retry for uniqueness
+    for (let i = 0; i < 5; i++) {
+      const t = token();
+      const exists = await ctx.db
+        .query("shareLinks")
+        .withIndex("by_token", (q) => q.eq("token", t))
+        .first();
+      if (!exists) {
+        await ctx.db.insert("shareLinks", {
+          token: t,
+          ...args,
+          createdBy: "human",
+          createdAt: Date.now(),
+        });
+        return { token: t };
+      }
+    }
+    throw new Error("Failed to generate unique share token");
+  },
+});
+
+export const getByToken = query({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    return await ctx.db
+      .query("shareLinks")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .first();
+  },
+});
+```
+
+---
+
+# 5) Migration actions (Convex Actions) — dry run first
+
+## 5.1 `convex/migrations.ts`
+
+```ts
+import { action } from "./_generated/server";
+import { v } from "convex/values";
+import { normalizeName, newBusinessId } from "./lib/normalize";
+
+export const migrateProjectsClientNameToCustomers = action({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const dry = !!dryRun;
+    const projects = await ctx.db.query("projects").take(50_000);
+
+    let touched = 0;
+
+    for (const p of projects) {
+      const hasCustomer = (p as any).customerId || (p as any).customerName;
+      const clientName = (p as any).clientName?.trim();
+      if (hasCustomer || !clientName) continue;
+
+      const n = normalizeName(clientName);
+      let customer = await ctx.db
+        .query("customers")
+        .withIndex("by_nameNormalized", (q) => q.eq("nameNormalized", n))
+        .first();
+
+      let customerId = customer?._id;
+      if (!customerId && !dry) {
+        // create customer
+        let businessId = "";
+        for (let i = 0; i < 5; i++) {
+          const cid = newBusinessId("CUST");
+          const clash = await ctx.db
+            .query("customers")
+            .withIndex("by_customerId", (q) => q.eq("customerId", cid))
+            .first();
+          if (!clash) { businessId = cid; break; }
+        }
+        if (!businessId) throw new Error("Failed to generate customerId");
+
+        customerId = await ctx.db.insert("customers", {
+          customerId: businessId,
+          name: clientName,
+          nameNormalized: n,
+          status: "active",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+
+      if (!dry && customerId) {
+        await ctx.db.patch(p._id, {
+          customerId,
+          customerName: clientName,
+          updatedAt: Date.now(),
+        });
+      }
+
+      touched++;
+    }
+
+    return { dryRun: dry, projectsProcessed: projects.length, projectsUpdated: touched };
+  },
+});
+
+export const migrateTasksAssigneeToEmployeeIds = action({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const dry = !!dryRun;
+
+    const employees = await ctx.db.query("employees").take(10_000);
+    const map = new Map<string, string>();
+    for (const e of employees) {
+      map.set(normalizeName(e.displayName), e._id);
+    }
+
+    const tasks = await ctx.db.query("tasks").take(50_000);
+    let updated = 0;
+
+    for (const t of tasks) {
+      const assignee = (t as any).assignee?.trim();
+      const hasIds = Array.isArray((t as any).assigneeIds) && (t as any).assigneeIds.length > 0;
+      if (!assignee || hasIds) continue;
+
+      const id = map.get(normalizeName(assignee));
+      if (!id) continue;
+
+      if (!dry) {
+        await ctx.db.patch(t._id, { assigneeIds: [id], updatedAt: Date.now() });
+      }
+      updated++;
+    }
+
+    return { dryRun: dry, tasksProcessed: tasks.length, tasksUpdated: updated };
+  },
+});
+
+export const backfillQuoteVersionsCustomerFromProject = action({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const dry = !!dryRun;
+    const quotes = await ctx.db.query("quoteVersions").take(50_000);
+
+    let updated = 0;
+    for (const q of quotes) {
+      const already = (q as any).customerId || (q as any).customerName;
+      if (already) continue;
+
+      const project = await ctx.db.get(q.projectId);
+      if (!project) continue;
+
+      const customerId = (project as any).customerId;
+      const customerName = (project as any).customerName || (project as any).clientName;
+
+      if (!customerId && !customerName) continue;
+
+      if (!dry) {
+        await ctx.db.patch(q._id, { customerId, customerName });
+      }
+      updated++;
+    }
+
+    return { dryRun: dry, quotesProcessed: quotes.length, quotesUpdated: updated };
+  },
+});
+```
+
+---
+
+# 6) Verification (must do before prod)
+
+## `convex/adminHealth.ts`
+
+```ts
+import { query } from "./_generated/server";
+
+export const health = query({
+  args: {},
+  handler: async (ctx) => {
+    const customers = await ctx.db.query("customers").take(10_000);
+    const ids = new Set<string>();
+    const dupCustomerIds: string[] = [];
+
+    for (const c of customers) {
+      const cid = (c as any).customerId;
+      if (ids.has(cid)) dupCustomerIds.push(cid);
+      ids.add(cid);
+    }
+
+    const projects = await ctx.db.query("projects").take(10_000);
+    const projectsWithCustomer = projects.filter((p) => (p as any).customerId).length;
+
+    const tasks = await ctx.db.query("tasks").take(10_000);
+    const tasksWithAssigneeText = tasks.filter((t) => (t as any).assignee).length;
+    const tasksWithAssigneeIds = tasks.filter((t) => Array.isArray((t as any).assigneeIds) && (t as any).assigneeIds.length).length;
+
+    return {
+      customersCount: customers.length,
+      dupCustomerIds,
+      projectsCount: projects.length,
+      projectsWithCustomer,
+      tasksCount: tasks.length,
+      tasksWithAssigneeText,
+      tasksWithAssigneeIds,
+    };
+  },
+});
+```
+
+---
+
+# 7) Rollout order (end-to-end, practical)
+
+### Staging
+
+1. Apply schema patches
+2. Deploy
+3. Deploy functions (`customers`, `shareLinks`, migrations, health)
+4. Run migrations:
+
+   * `migrateProjectsClientNameToCustomers(dryRun=true)` → review
+   * `migrateProjectsClientNameToCustomers(dryRun=false)`
+   * `migrateTasksAssigneeToEmployeeIds(dryRun=true/false)` (optional)
+   * `backfillQuoteVersionsCustomerFromProject(dryRun=true/false)` (optional)
+5. Run `adminHealth.health`
+
+### Production
+
+6. Deploy same schema + functions
+7. Run the same migrations (dry-run first)
+8. Start writing customer info from now on:
+
+   * When creating/editing a project, call `setProjectCustomerByName`
+   * Future: stop using `clientName`
+
+---
+
+# 8) Notes specific to YOUR schema (important)
+
+* You already have `projects.clientName`. Even if you “don’t use it”, keep it as **legacy** and introduce `customerName` + `customerId` now.
+* You already have `receipts` and `printParts`; we’re **extending**, not replacing (safe).
+* You already have `projectFiles` as the canonical file wrapper; so all new file attachments use `projectFiles`, not raw `_storage`.
+
+---
+

@@ -90,7 +90,9 @@ ChangeSetBlock:
   "diffPreview_he": { ... },
   "proposedChangeSet": {
     "reason_he": "...",
-    "base": { "elements": [...] },
+    "base": { 
+      "elements": [ { "elementId": "...", "rev": 1 } ] 
+    },
     "ops": [ { "kind": "...", "payload": { ... } } ]
   },
   "actions": [ { "id": "apply", "label_he": "..." }, { "id": "discard", "label_he": "..." } ]
@@ -237,9 +239,16 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     }
   }
 
-  7. element.create / element.patch / vendor.create / purchase.create (standard)
+  7. element.patch payload:
+  {
+    "elementId": "...", // REQUIRED
+    "patch": { "title": "...", "status": "..." },
+    "draftPatch": { "merge": { ... } }
+  }
 
-  8. Deletion ops:
+  8. element.create / vendor.create / purchase.create (standard)
+
+  9. Deletion ops:
   - "task.delete": { "taskId": "..." }
   - "materialLine.delete": { "lineId": "..." }
   - "workLine.delete": { "lineId": "..." }
@@ -1002,30 +1011,25 @@ async function handleSuggestionAction({
   }
 
   if (actionId === "generate_quote" || actionId === "draft_quote") {
-    const elements = await ctx.db
-      .query("elements")
-      .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
-      .collect();
-    const versionIds = elements
-      .map((el: any) => el.currentApprovedVersionId)
-      .filter(Boolean);
-
-    if (versionIds.length === 0) {
-      const text_he =
-        "אין גרסאות אלמנטים מאושרות כדי לייצר הצעת מחיר. אשר גרסה באלמנטים ואז נייצר.";
-      const block = ensureNextStepsBlock(buildNextStepSuggestionBlock(stage), stage);
-      await ctx.runMutation(internal.agent.finalizeMessage, {
-        messageId: agentMessageId,
-        text_he,
-        block,
-      });
-      return true;
-    }
-
-    const quoteId = await ctx.runMutation(api.quotes.generateQuote, {
+    const overview = await ctx.runQuery(api.projects.getOverview, { id: projectId });
+    const description = overview?.project?.description ?? "";
+    const quoteId = await ctx.runMutation(api.quotes.createDraftFromUi, {
       projectId,
-      elementVersionIds: versionIds,
+      inputs: {
+        projectDescription: description || undefined,
+        includeFlags: {
+          includeElements: true,
+          elementsMode: "byElement",
+          includeTerms: true,
+          includeDates: true,
+          includeAgreements: true,
+          includeOptions: false,
+        },
+      },
     });
+
+    await ctx.runAction(api.quotes.generateQuoteV2, { projectId, quoteId });
+
     const text_he = `נוצרה גרסת הצעת מחיר חדשה (מזהה: ${quoteId}). אפשר לבדוק בלשונית Quote.`;
     const block = ensureNextStepsBlock(buildNextStepSuggestionBlock(stage), stage);
     await ctx.runMutation(internal.agent.finalizeMessage, {

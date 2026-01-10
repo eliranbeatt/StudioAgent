@@ -19,6 +19,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
 
   const createElementFromStructured = useMutation(api.agent.createElementFromStructured);
   const updateProjectDetails = useMutation(api.projects.updateProjectDetails);
+  const setProjectCustomerByName = useMutation(api.projectsCustomers.setProjectCustomerByName);
   const linkProject = useMutation(api.projects.linkProject);
   const unlinkProject = useMutation(api.projects.unlinkProject);
   const generateProjectDigest = useMutation(api.projects.generateProjectDigest);
@@ -28,6 +29,8 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [formState, setFormState] = useState({
+    name: "",
+    customerName: "",
     description: "",
     eventDate: "",
     budgetCap: "",
@@ -40,6 +43,8 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   useEffect(() => {
     if (!overview?.project) return;
     setFormState({
+      name: overview.project.name ?? "",
+      customerName: overview.project.customerName ?? overview.project.clientName ?? "",
       description: overview.project.description ?? "",
       eventDate: formatDateInput(overview.project.details?.eventDate),
       budgetCap:
@@ -134,6 +139,27 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
           <div className="p-6 space-y-4 text-sm">
             <label className="block">
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                Project name
+              </span>
+              <input
+                className="mt-2 w-full rounded-lg border border-gray-200 p-2 text-sm text-gray-900"
+                value={formState.name}
+                onChange={(e) => setFormState((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                Customer
+              </span>
+              <input
+                className="mt-2 w-full rounded-lg border border-gray-200 p-2 text-sm text-gray-900"
+                value={formState.customerName}
+                onChange={(e) => setFormState((prev) => ({ ...prev, customerName: e.target.value }))}
+                placeholder="Customer name"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 Project description
               </span>
               <textarea
@@ -202,6 +228,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
                   const budgetCap = parseNumberInput(formState.budgetCap);
                   await updateProjectDetails({
                     id: projectId,
+                    name: formState.name,
                     description: formState.description,
                     projectTypes: formState.projectTypes,
                     details: {
@@ -209,6 +236,15 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
                       budgetCap: budgetCap ?? undefined,
                     },
                   });
+                  const trimmedCustomer = formState.customerName.trim();
+                  const currentCustomer =
+                    overview.project.customerName ?? overview.project.clientName ?? "";
+                  if (trimmedCustomer && trimmedCustomer !== currentCustomer) {
+                    await setProjectCustomerByName({
+                      projectId,
+                      customerName: trimmedCustomer,
+                    });
+                  }
                 } finally {
                   setIsSavingDetails(false);
                 }

@@ -193,8 +193,14 @@ export const getAccountingView = query({
       .collect();
 
     // 2. Fetch committed accounting lines (fallback/reference)
-    const lines = await ctx.db
-      .query("accountingLines")
+    // We now prefer materialLines/workLines if available
+    const matLines = await ctx.db
+      .query("materialLines")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const workLines = await ctx.db
+      .query("workLines")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
@@ -246,23 +252,26 @@ export const getAccountingView = query({
     };
 
     const extractFromDB = (elId: string | undefined) => {
-      const relevantLines = lines.filter(l => l.elementId === elId && (!elId ? !l.elementId : true));
+      const relevantMaterials = matLines.filter(l => l.elementId === elId && (!elId ? !l.elementId : true));
+      const relevantLabor = workLines.filter(l => l.elementId === elId && (!elId ? !l.elementId : true));
 
-      const materials = relevantLines.filter(l => l.type === "material").map(l => ({
+      const materials = relevantMaterials.map(l => ({
         id: l._id,
-        name: l.title,
-        qty: l.qty ?? 0,
-        unitCost: l.unitCost ?? 0,
-        total: l.total,
-        taskIds: [], // DB doesn't store array of tasks easily on line yet, or not joined here
+        name: l.itemName ?? "Untitled Material",
+        title: l.itemName ?? "Untitled Material",
+        qty: l.quantity ?? 0,
+        unitCost: l.plannedUnitCost ?? 0,
+        total: l.plannedTotalCost ?? (l.quantity ?? 0) * (l.plannedUnitCost ?? 0),
+        taskIds: [], 
       }));
 
-      const labor = relevantLines.filter(l => l.type === "labor").map(l => ({
+      const labor = relevantLabor.map(l => ({
         id: l._id,
-        role: l.title,
-        qty: l.qty ?? 0,
-        rate: l.unitCost ?? 0,
-        total: l.total,
+        role: l.roleHe ?? "Untitled Role",
+        title: l.roleHe ?? "Untitled Role",
+        qty: l.plannedQuantity ?? 0,
+        rate: l.plannedUnitCost ?? 0,
+        total: l.plannedTotalCost ?? (l.plannedQuantity ?? 0) * (l.plannedUnitCost ?? 0),
         taskIds: [],
       }));
 
@@ -351,6 +360,35 @@ export const getAccountingView = query({
       },
       elements: elementViews,
       projectCosts,
+    };
+  },
+});
+
+export const getAccountingSectionTotals = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const lines = await ctx.db
+      .query("accountingLines")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const sectionsMap = new Map<string, { key: string; label: string; total: number }>();
+    let total = 0;
+
+    for (const line of lines) {
+      const lineTotal = Number(line.total ?? 0);
+      total += lineTotal;
+
+      const key = line.sectionKey ?? line.sectionLabelHe ?? "general";
+      const label = line.sectionLabelHe ?? line.sectionKey ?? "כללי";
+      const entry = sectionsMap.get(key) ?? { key, label, total: 0 };
+      entry.total += lineTotal;
+      sectionsMap.set(key, entry);
+    }
+
+    return {
+      total,
+      sections: Array.from(sectionsMap.values()).sort((a, b) => a.label.localeCompare(b.label)),
     };
   },
 });

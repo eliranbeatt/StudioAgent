@@ -1,0 +1,296 @@
+Below is a developer-ready plan for Epic A1 Quote Generator v2 (Quote tab), updated to the current Magnetic Studio Console codebase (Next.js App Router + Convex + existing quote flow). This version reflects what is already implemented in the repo and focuses on the remaining gaps.
+
+---
+
+# A1 - Quote Generator v2 (Dev Plan, adjusted to current repo)
+
+## 1) Scope & Definition of Done
+
+### Goal
+
+Generate a client-ready Hebrew quote from the current cost snapshot (see Data Source decision), with:
+
+- checkboxes to include/omit sections (elements, T&C, dates, agreements, options)
+- customer-facing prices only (AFTER margins) - never expose internal vendor costs
+- versioning + diff
+- export PDF with logo + copy as text
+
+### Definition of Done
+
+1. Quote tab renders input fields + include toggles + "Generate quote (AI)".
+2. Generates a new quote version stored in quoteVersions.
+3. Quote output includes: scope, deliverables, schedule, price summary, assumptions, exclusions, terms, valid until.
+4. Copy-as-text matches the quote content.
+5. PDF export matches preview (typography/layout consistent, includes logo).
+6. "Diff vs previous" shows meaningful changes (text + totals + included blocks).
+
+---
+
+## 2) Architecture Fit (what already exists)
+
+You already have (implemented in code):
+
+- quoteVersions table and Quote page route /projects/[id]/quote with a basic list UI.
+- convex/quotes.ts v2 flow: createDraftFromUi, generateQuoteV2, updateQuote, listQuotes, getQuote.
+- Quote tab UI with inputs, include toggles, preview, copy-as-text, version list, and baseline approval.
+- Pricing source prefers accounting view (draft + committed) and falls back to approved elementVersions.
+- Baseline approval reads quote.totals in convex/financials.ts and requires grandTotal to stay compatible.
+
+Therefore A1 is: stabilize v2 output, fix grouping and Hebrew content, optionally add LLM generation, then add PDF + diff while keeping totals compatible with baseline approval.
+
+---
+
+## 3) Data Model (Convex) - minimal changes with compatibility
+
+### 3.1 quoteVersions table (already extended)
+
+Already present (no schema changes required):
+
+- projectId
+- version (int) + createdAt
+- status: "draft" | "final" | "generated" | "approved" (keep existing values working)
+- customerId? + denormalized customerName?
+- inputs:
+  - projectDescription (string)
+  - specs (string + optional structured K/V later)
+  - includeFlags:
+    - includeElements: boolean
+    - elementsMode: "bySection" | "byElement"
+    - includeTerms: boolean
+    - includeDates: boolean
+    - includeAgreements: boolean
+    - includeOptions: boolean
+  - validUntil (ISO string)
+  - logoFileId?
+- pricing snapshot (customer-facing):
+  - currency (default NIS)
+  - margins: { riskPct, overheadPct, profitPct } (copied from project at generation time)
+  - priceSummary: { subtotalBeforeVat, vatNote_he, total }
+  - sellBreakdown: array of sell lines without costs
+- rendered outputs:
+  - quoteText_he (full quote)
+  - quoteBlocks: structured blocks for UI (scope, deliverables, etc.)
+  - pdfFileId?
+- diff support:
+  - contentHash (hash of normalized blocks + numbers)
+  - previousQuoteId?
+
+Compatibility note: keep totals with grandTotal so approveQuoteAsBaseline continues to work.
+Why structured blocks? Because you need reliable diff + PDF rendering and consistent sections.
+
+---
+
+## 4) Pricing Logic - customer price only (critical rule)
+
+### 4.1 Inputs for pricing (Decision already made in code)
+
+Current behavior in convex/quotes.ts:
+
+A) Primary: Accounting snapshot (financials.getAccountingView)
+- Aggregates draft + committed accounting lines
+- Pros: matches Accounting totals
+- Cons: must explicitly avoid internal/vendor data in output
+
+B) Fallback: Approved elementVersions
+- Aggregates from elementVersions.snapshot when accounting is empty
+
+### 4.2 Output required
+
+For the quote, store and display SELL prices only:
+
+- sellSubtotal = costSubtotal * (1 + risk + overhead + profit)
+- Round rules (define once): e.g., round to nearest 10 NIS (optional)
+
+Never store vendor names/costs inside the quote output blocks or PDF (unless explicitly requested).
+Implementation note: you can store internal cost snapshot in DB for audit, but keep it in a hidden field and do not surface it in quote blocks/PDF.
+
+---
+
+## 5) Backend API (Convex) - functions to add/modify
+
+### 5.1 Queries
+
+- quotes.listQuotes(projectId) (already exists)
+  Returns versions with createdAt, version, total, status.
+- quotes.getQuote(quoteId) (already exists)
+  Returns full blocks + text + includeFlags + pdf link.
+- quotes.getDiff(prevId, nextId)
+  Returns a structured diff object (see Section 9). (not implemented yet)
+
+### 5.2 Mutations/Actions
+
+- quotes.createDraftFromUi(projectId, uiInputs) (already exists)
+  Validates, assigns next version number, saves initial record with inputs, status draft.
+- quotes.generateQuoteV2(projectId, quoteId) (already exists, template-driven)
+  - Fetch: project context, includeFlags, accounting totals
+  - Compute sellBreakdown + priceSummary
+  - Build quoteBlocks + quoteText_he (currently non-LLM, needs Hebrew fixes)
+  - Save results + contentHash
+- quotes.attachPdf(quoteId, pdfFileId) (not implemented yet)
+- quotes.setStatus(quoteId, "final") (optional)
+
+Implementation choice:
+- Keep generateQuote (v1) for compatibility.
+- Keep generateQuoteV2 (v2) and optionally add LLM generation inside it once blocks are stable.
+
+---
+
+## 6) Quote Tab UI (Next.js) - component plan
+
+### 6.1 Layout
+
+Top area (inputs):
+
+- Project short description (textarea)
+- Key specs box (textarea + later K/V chips)
+- Include checkboxes
+  - Elements + dropdown: by section / by element
+  - T&C
+  - Dates
+  - Agreements
+  - Options/Alternates
+- Valid until date picker
+- Logo (upload/select)
+
+Actions row:
+
+- Generate quote
+- Copy as text
+- Export PDF
+- Diff vs previous (disabled if no previous)
+
+Right/Bottom area (output):
+
+- Render quoteBlocks in a clean preview (same order as PDF)
+- Show Price Summary card (total + VAT note)
+- Version selector (dropdown) + status badge
+
+### 6.2 States
+
+- idle: no quote selected
+- generating: show progress
+- ready: show blocks
+- error: show agent error and keep draft inputs
+
+---
+
+## 7) Quote Agent v2 - prompt contract + schema (Hebrew output)
+
+### 7.1 Inputs to agent (assembled server-side)
+
+- project name, customer name, project description, specs
+- included scope: elements list grouped as requested (by section/element)
+- sellBreakdown: { groupName_he, includedItems_he[], sellSubtotalNIS }[]
+- priceSummary: totals + VAT note rule
+- schedule/dates if provided
+- house rules: assumptions/exclusions/proof step/contingency/options language
+
+### 7.2 Output schema (strict JSON, Hebrew values)
+
+Return:
+
+- title_he, intro_he
+- scope_he[]
+- deliverables_he[] (or grouped by element)
+- schedule_he[]
+- priceSummary_he (numbers included)
+- options_he[] (each has name_he, deltaNIS, note_he)
+- assumptions_he[]
+- exclusions_he[]
+- terms_he[]
+- validUntil_he (human text)
+- signatureBlock_he
+
+Hard rule in system message: do not mention internal vendor costs or vendor names.
+
+---
+
+## 8) PDF Export (with logo) - implementation approach
+
+### Option A (fastest & consistent): HTML + PDF
+
+1. Create a single QuotePrintView React component that renders from quoteBlocks.
+2. Server-side PDF generation using headless Chromium (Playwright) or a hosted HTML-to-PDF solution.
+3. Store PDF in file storage and link via pdfFileId.
+
+Pros: Typography parity with UI preview.
+Cons: Slight infra complexity.
+
+### Option B: Programmatic PDF (more deterministic)
+
+Use a PDF library to render blocks (less CSS parity).
+Pros: Deterministic.
+Cons: More layout work.
+
+Day-1 recommendation: Option A, since parity is important.
+
+---
+
+## 9) "Diff vs previous" - what to diff (practical)
+
+Compute diff across:
+
+1. Numbers: total, subtotal, each sellBreakdown group total
+2. Included blocks: which sections were included
+3. Text blocks: assumptions/exclusions/terms/options (line-based diff)
+
+Implementation:
+
+- Store quoteBlocks as structured arrays and diff by key + normalized string
+- For UI: show a Changed / Added / Removed list, plus number deltas
+
+---
+
+## 10) Testing & Acceptance (focused)
+
+### Core tests
+
+- Generate quote with:
+  - elements by section
+  - elements by element
+  - include/exclude each checkbox block
+- Verify no internal costs appear in quoteText_he or blocks.
+- Verify totals:
+  - sum(sellBreakdown subtotals) == priceSummary.subtotalBeforeVat
+- PDF renders:
+  - logo appears
+  - Hebrew RTL alignment ok
+  - same headings order as preview
+
+### Edge cases
+
+- No accounting lines yet - agent must output "missing info" questions instead of hallucinating
+- Missing dates/specs - assumptions must include pending measurements/venue constraints notes
+- Options included but none defined - output empty options section or suppress
+
+---
+
+# Implementation Phases (incremental, aligned to current code)
+
+### Phase 0 - Stabilize current v2 output (must come first)
+
+- Fix broken Hebrew strings in convex/quotes.ts (VAT note, labels, intro, assumptions, terms, signature).
+- Confirm currency display and VAT note logic (use project currency if needed).
+- Keep quote.totals.grandTotal compatibility for baseline approval.
+
+### Phase 1 - Pricing + grouping correctness
+
+- Implement elementsMode behavior in generateQuoteV2 (bySection vs byElement).
+- Ensure sellBreakdown totals sum to priceSummary.subtotalBeforeVat.
+- Preserve rule: never expose internal/vendor data in quoteBlocks or quoteText_he.
+
+### Phase 2 - Agent v2 output (optional, after blocks are stable)
+
+- Add LLM call with strict schema to generate quoteBlocks + quoteText_he.
+- Update convex/agent.ts to call v2 generation (not v1).
+
+### Phase 3 - PDF + Logo
+
+- Build QuotePrintView
+- Implement PDF pipeline + store pdfFileId
+- Export PDF button
+
+### Phase 4 - Diff + Version UX polish
+
+- previousQuoteId linking + getDiff
+- UI diff modal

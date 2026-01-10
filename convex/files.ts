@@ -51,6 +51,16 @@ export const listProjectFiles = query({
   },
 });
 
+export const getFileUrl = query({
+  args: { fileId: v.id("projectFiles") },
+  handler: async (ctx, args) => {
+    const file = await ctx.db.get(args.fileId);
+    if (!file) return null;
+    const url = await ctx.storage.getUrl(file.storageId);
+    return { url, fileName: file.fileName, contentType: file.contentType };
+  },
+});
+
 export const deleteProjectFile = action({
   args: { fileId: v.id("projectFiles") },
   handler: async (ctx, args) => {
@@ -94,5 +104,4 @@ export const deleteFileRecord = internalMutation({
     await ctx.db.delete(args.fileId);
   },
 });
-
 

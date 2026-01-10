@@ -12,8 +12,13 @@ export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapsho
     .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
     .collect();
 
-  const existingLines = await ctx.db
-    .query("accountingLines")
+  const existingMaterialLines = await ctx.db
+    .query("materialLines")
+    .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
+    .collect();
+
+  const existingWorkLines = await ctx.db
+    .query("workLines")
     .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
     .collect();
 
@@ -22,92 +27,18 @@ export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapsho
     .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
     .collect();
 
-  // --- Check if Snapshot is Empty ---
-  const snapTasks = snapshot.tasks?.byId ?? {};
-  const snapLines = snapshot.accounting?.lines ?? snapshot.accounting?.byId ?? [];
-  const snapParts = snapshot.printing?.parts ?? snapshot.printing?.byId ?? [];
-
-  const snapHasTasks = Object.keys(snapTasks).length > 0;
-  const snapHasLines = Array.isArray(snapLines) ? snapLines.length > 0 : Object.keys(snapLines).length > 0;
-  const snapHasParts = Array.isArray(snapParts) ? snapParts.length > 0 : Object.keys(snapParts).length > 0;
-
-  const snapshotIsEmpty = !snapHasTasks && !snapHasLines && !snapHasParts;
-  const liveHasData = existingTasks.length > 0 || existingLines.length > 0 || existingParts.length > 0;
-
-  if (snapshotIsEmpty && liveHasData) {
-    console.log(`[Approve] Snapshot is empty but live data exists for element ${elementId}. Hydrating snapshot from live data.`);
-
-    // Construct snapshot from live data
-    const newSnapshot = { ...snapshot };
-
-    // Tasks
-    newSnapshot.tasks = { byId: {} };
-    for (const t of existingTasks) {
-      newSnapshot.tasks.byId[t._id] = {
-        id: t._id,
-        title: t.title,
-        description: t.description,
-        status: t.status,
-        priority: t.priority,
-        category: t.category,
-        startDate: t.startDate,
-        endDate: t.endDate,
-        estimatedMinutes: t.estimatedMinutes,
-        assignee: t.assignee,
-        dependencies: t.dependencies,
-      };
-    }
-
-    // Accounting
-    newSnapshot.accounting = { byId: {} };
-    for (const l of existingLines) {
-      newSnapshot.accounting.byId[l._id] = {
-        id: l._id,
-        taskId: l.taskId,
-        type: l.type,
-        title: l.title,
-        qty: l.qty,
-        unitCost: l.unitCost,
-        total: l.total,
-        billable: l.billable,
-      };
-    }
-
-    // Printing
-    newSnapshot.printing = { byId: {} };
-    for (const p of existingParts) {
-      newSnapshot.printing.byId[p._id] = {
-        id: p._id,
-        label: p.label,
-        substrate: p.substrate,
-        qty: p.qty,
-        size: p.size,
-        requiresProof: p.requiresProof,
-      };
-    }
-
-    return newSnapshot;
-  }
-
-  // --- Normal Flow: Snapshot -> Live ---
-
   // --- 1. Tasks Sync ---
   const existingTaskMap = new Map(existingTasks.map((t: any) => [t._id, t]));
   const activeTaskIds = new Set<string>();
 
   const snapshotTasksMap = snapshot.tasks?.byId ?? {};
 
-  // Iterate snapshot tasks
   for (const [key, taskData] of Object.entries<any>(snapshotTasksMap)) {
     let taskId = taskData.id;
-
-    // Check if it's a valid ID and exists
     let existing = null;
     if (taskId) {
       try {
-        if (existingTaskMap.has(taskId)) {
-          existing = existingTaskMap.get(taskId);
-        }
+        if (existingTaskMap.has(taskId)) existing = existingTaskMap.get(taskId);
       } catch (e) { /* ignore */ }
     }
 
@@ -136,80 +67,102 @@ export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapsho
       await ctx.db.patch(existing._id, payload);
       activeTaskIds.add(existing._id);
     } else {
-      const newId = await ctx.db.insert("tasks", {
-        ...payload,
-        createdAt: now,
-      });
+      const newId = await ctx.db.insert("tasks", { ...payload, createdAt: now });
       activeTaskIds.add(newId);
-      // Update snapshot with real ID
       snapshotTasksMap[key].id = newId;
     }
   }
 
-  // Delete obsolete tasks
   for (const task of existingTasks) {
-    if (!activeTaskIds.has(task._id)) {
-      await ctx.db.delete(task._id);
-    }
+    if (!activeTaskIds.has(task._id)) await ctx.db.delete(task._id);
   }
 
+  // --- 2. Material Lines Sync ---
+  const existingMatMap = new Map(existingMaterialLines.map((l: any) => [l._id, l]));
+  const activeMatIds = new Set<string>();
 
-  // --- 2. Accounting Lines Sync ---
-  const existingLineMap = new Map(existingLines.map((l: any) => [l._id, l]));
-  const activeLineIds = new Set<string>();
+  const snapshotMaterials = snapshot.materials?.byId ?? {};
+  const matsIterable = Object.values<any>(snapshotMaterials);
 
-  const snapshotAccounting = snapshot.accounting?.lines ?? snapshot.accounting?.byId ?? [];
-  const linesIterable = Array.isArray(snapshotAccounting)
-    ? snapshotAccounting
-    : Object.values(snapshotAccounting);
-
-  for (const lineData of linesIterable) {
-    let lineId = lineData.id;
+  for (const matData of matsIterable) {
+    let lineId = matData.id;
     let existing = null;
-    if (lineId && existingLineMap.has(lineId)) {
-      existing = existingLineMap.get(lineId);
+    if (lineId && existingMatMap.has(lineId)) {
+      existing = existingMatMap.get(lineId);
     }
 
     const payload = {
       projectId,
       elementId,
-      taskId: lineData.taskId,
-      type: lineData.type,
-      title: lineData.title,
-      qty: lineData.qty,
-      unitCost: lineData.unitCost,
-      total: lineData.total,
-      billable: lineData.billable,
+      itemName: matData.name,
+      quantity: Number(matData.qty ?? 0),
+      plannedUnitCost: Number(matData.unitCost ?? 0),
+      plannedTotalCost: Number(matData.total ?? 0),
+      actualUnitCost: matData.actualUnitCost,
+      actualTotalCost: matData.actualTotalCost,
+      // Note: mapping actualQty if schema supports it, otherwise ignored
     };
 
     if (existing) {
       await ctx.db.patch(existing._id, payload);
-      activeLineIds.add(existing._id);
+      activeMatIds.add(existing._id);
     } else {
-      const newId = await ctx.db.insert("accountingLines", {
-        ...payload,
-        createdAt: now,
-      });
-      activeLineIds.add(newId);
-      lineData.id = newId;
+      const newId = await ctx.db.insert("materialLines", { ...payload, createdAt: now });
+      activeMatIds.add(newId);
+      matData.id = newId;
     }
   }
 
-  for (const line of existingLines) {
-    if (!activeLineIds.has(line._id)) {
-      await ctx.db.delete(line._id);
+  for (const line of existingMaterialLines) {
+    if (!activeMatIds.has(line._id)) await ctx.db.delete(line._id);
+  }
+
+  // --- 3. Work Lines Sync ---
+  const existingWorkMap = new Map(existingWorkLines.map((l: any) => [l._id, l]));
+  const activeWorkIds = new Set<string>();
+
+  const snapshotLabor = snapshot.labor?.byId ?? {};
+  const laborIterable = Object.values<any>(snapshotLabor);
+
+  for (const laborData of laborIterable) {
+    let lineId = laborData.id;
+    let existing = null;
+    if (lineId && existingWorkMap.has(lineId)) {
+      existing = existingWorkMap.get(lineId);
+    }
+
+    const payload = {
+      projectId,
+      elementId,
+      roleHe: laborData.role,
+      plannedQuantity: Number(laborData.qty ?? 0),
+      plannedUnitCost: Number(laborData.rate ?? laborData.unitCost ?? 0),
+      plannedTotalCost: Number(laborData.total ?? 0),
+      // actuals mappings if needed
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, payload);
+      activeWorkIds.add(existing._id);
+    } else {
+      const newId = await ctx.db.insert("workLines", { ...payload, createdAt: now });
+      activeWorkIds.add(newId);
+      laborData.id = newId;
     }
   }
 
+  for (const line of existingWorkLines) {
+    if (!activeWorkIds.has(line._id)) await ctx.db.delete(line._id);
+  }
 
-  // --- 3. Print Parts Sync ---
+  // --- 4. Print Parts Sync ---
   const existingPartMap = new Map(existingParts.map((p: any) => [p._id, p]));
   const activePartIds = new Set<string>();
 
   const snapshotPrinting = snapshot.printing?.parts ?? snapshot.printing?.byId ?? [];
   const partsIterable = Array.isArray(snapshotPrinting)
     ? snapshotPrinting
-    : Object.values(snapshotPrinting);
+    : Object.values<any>(snapshotPrinting);
 
   for (const partData of partsIterable) {
     let partId = partData.id;
@@ -257,8 +210,13 @@ export async function captureSnapshotFromLive(ctx: any, elementId: any) {
     .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
     .collect();
 
-  const existingLines = await ctx.db
-    .query("accountingLines")
+  const existingMaterialLines = await ctx.db
+    .query("materialLines")
+    .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
+    .collect();
+
+  const existingWorkLines = await ctx.db
+    .query("workLines")
     .withIndex("by_element", (q: any) => q.eq("elementId", elementId))
     .collect();
 
@@ -270,8 +228,10 @@ export async function captureSnapshotFromLive(ctx: any, elementId: any) {
   // --- Construct Snapshot ---
   const snapshot: any = {
     tasks: { byId: {} },
-    accounting: { byId: {} },
+    materials: { byId: {} },
+    labor: { byId: {} },
     printing: { byId: {} },
+    // accounting: { byId: {} }, // Legacy support removed to force migration to materials/labor
   };
 
   // Tasks
@@ -291,17 +251,27 @@ export async function captureSnapshotFromLive(ctx: any, elementId: any) {
     };
   }
 
-  // Accounting
-  for (const l of existingLines) {
-    snapshot.accounting.byId[l._id] = {
+  // Materials
+  for (const l of existingMaterialLines) {
+    snapshot.materials.byId[l._id] = {
       id: l._id,
-      taskId: l.taskId,
-      type: l.type,
-      title: l.title,
-      qty: l.qty,
-      unitCost: l.unitCost,
-      total: l.total,
-      billable: l.billable,
+      name: l.itemName ?? "Untitled Material",
+      qty: l.quantity ?? 0,
+      unitCost: l.plannedUnitCost ?? 0,
+      total: l.plannedTotalCost ?? (l.quantity ?? 0) * (l.plannedUnitCost ?? 0),
+      actualUnitCost: l.actualUnitCost,
+      actualTotalCost: l.actualTotalCost,
+    };
+  }
+
+  // Labor
+  for (const l of existingWorkLines) {
+    snapshot.labor.byId[l._id] = {
+      id: l._id,
+      role: l.roleHe ?? "Untitled Role",
+      qty: l.plannedQuantity ?? 0,
+      rate: l.plannedUnitCost ?? 0,
+      total: l.plannedTotalCost ?? (l.plannedQuantity ?? 0) * (l.plannedUnitCost ?? 0),
     };
   }
 

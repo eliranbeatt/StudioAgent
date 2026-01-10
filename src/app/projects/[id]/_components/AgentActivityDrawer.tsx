@@ -712,8 +712,8 @@ export default function AgentActivityDrawer({
                           <div className="mt-3 flex gap-2">
                             <button
                               onClick={() => handleApplyChangeSet(item.id)}
-                              disabled={item.status !== "pending" || isWaiting}
-                              className="flex-1 rounded-md bg-green-600 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
+                              disabled={item.status === "discarded" || isWaiting}
+                              className="flex-1 rounded-md bg-green-600 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
                             >
                               Approve
                             </button>

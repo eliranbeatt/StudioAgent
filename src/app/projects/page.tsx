@@ -10,8 +10,10 @@ export default function ProjectsPage() {
   const projects = useQuery(api.projects.list);
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.updateProjectDetails);
+  const setProjectCustomerByName = useMutation(api.projectsCustomers.setProjectCustomerByName);
 
   const [newProjectName, setNewProjectName] = useState("");
+  const [newCustomerName, setNewCustomerName] = useState("");
 
   // Renaming state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -20,8 +22,16 @@ export default function ProjectsPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     // Pass undefined if empty string to trigger default naming
-    await createProject({ name: newProjectName.trim() || undefined });
+    const projectId = await createProject({ name: newProjectName.trim() || undefined });
+    const customerName = newCustomerName.trim();
+    if (customerName) {
+      await setProjectCustomerByName({
+        projectId,
+        customerName,
+      });
+    }
     setNewProjectName("");
+    setNewCustomerName("");
   };
 
   const startEditing = (e: React.MouseEvent, project: any) => {
@@ -65,6 +75,13 @@ export default function ProjectsPage() {
             value={newProjectName}
             onChange={(e) => setNewProjectName(e.target.value)}
             className="border p-2 rounded text-black w-64"
+          />
+          <input
+            type="text"
+            placeholder="Customer (Optional)"
+            value={newCustomerName}
+            onChange={(e) => setNewCustomerName(e.target.value)}
+            className="border p-2 rounded text-black w-56"
           />
           <button
             type="submit"
