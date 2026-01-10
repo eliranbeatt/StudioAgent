@@ -67,9 +67,10 @@ export default function AgentActivityDrawer({
     api.suggestions.listSuggested,
     open ? { projectId } : "skip"
   ) as any[] | undefined;
+  const resolvedStage = useQuery(api.projectsStage.resolveStage, open ? { projectId } : "skip");
 
   const createConversation = useMutation(api.agent.createConversation);
-  const setConversationStage = useMutation(api.agent.setConversationStageV1);
+  // const setConversationStage = useMutation(api.agent.setConversationStageV1); // Removed manual override
   const setConversationMode = useMutation(api.agent.setConversationMode);
   const setConversationTitle = useMutation(api.agent.setConversationTitle);
   const setConversationStatus = useMutation(api.agent.setConversationStatus);
@@ -116,8 +117,8 @@ export default function AgentActivityDrawer({
       setActiveConversationId(conversations[0]._id);
       return;
     }
-    createConversation({ projectId }).then((convId) => setActiveConversationId(convId));
-  }, [conversations, activeConversationId, createConversation, projectId, open]);
+    createConversation({ projectId, stage: resolvedStage?.stage }).then((convId) => setActiveConversationId(convId));
+  }, [conversations, activeConversationId, createConversation, projectId, open, resolvedStage]);
 
   useEffect(() => {
     if (!overview?.elements?.length) return;
@@ -136,7 +137,7 @@ export default function AgentActivityDrawer({
     setIsCreatingConversation(true);
     setCreateConversationError(null);
     try {
-      const convId = await createConversation({ projectId });
+      const convId = await createConversation({ projectId, stage: resolvedStage?.stage });
       setActiveConversationId(convId);
       setInput("");
     } catch (err) {
@@ -210,7 +211,7 @@ export default function AgentActivityDrawer({
       }));
   }, [messages]);
 
-  const stageValue = (activeConversation?.stage ?? "IDEATION") as Stage;
+  const stageValue = (resolvedStage?.stage ?? "IDEATION") as Stage;
   const modeValue = (activeConversation?.mode ?? panelMode ?? "CHAT") as Mode;
 
   const handleSend = async () => {
@@ -445,20 +446,16 @@ export default function AgentActivityDrawer({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <select
-                    value={stageValue}
-                    onChange={(e) => {
-                      const stage = e.target.value as Stage;
-                      if (activeConversationId) {
-                        setConversationStage({ id: activeConversationId, stage });
-                      }
-                    }}
-                    className="border border-blue-200 rounded-md px-2 py-1 text-[11px] text-gray-700 bg-white"
+                  <div 
+                    className={`px-3 py-1.5 rounded-md text-[11px] font-bold tracking-wide border cursor-help transition-colors ${
+                      stageValue === "IDEATION" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                      stageValue === "QUOTE" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                      "bg-green-50 text-green-700 border-green-200"
+                    }`}
+                    title={resolvedStage?.reasonHe ?? "Auto-resolved based on project status"}
                   >
-                    <option value="IDEATION">Ideation</option>
-                    <option value="QUOTE">Quote</option>
-                    <option value="BREAKDOWN">Breakdown</option>
-                  </select>
+                    {stageValue}
+                  </div>
                   <select
                     value={modeValue}
                     onChange={(e) => {

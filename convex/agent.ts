@@ -458,7 +458,31 @@ export const setConversationStageV1 = mutation({
     stage: v.union(v.literal("IDEATION"), v.literal("QUOTE"), v.literal("BREAKDOWN")),
   },
   handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.id);
+    if (!conversation) throw new Error("Conversation not found");
+
     await ctx.db.patch(args.id, { stage: args.stage, updatedAt: Date.now() });
+
+    // Also update project stage if this is an advance (or even if it's just setting it)
+    // We respect the monotonic rule here too to be safe, or we trust the agent?
+    // Let's trust the agent's intent to switch stage. 
+    // But we should check if we are "advancing" or "regressing".
+    // Actually, simply setting it allows the agent to control it.
+    // But recomputeStage might fight it if we regress.
+    // Let's set it. recomputeStage logic in projectsStage.ts prevents regression *from computed signals*,
+    // but if we set it here, we are effectively committing it.
+
+    const project = await ctx.db.get(conversation.projectId);
+    if (project) {
+        const order = { IDEATION: 0, QUOTE: 1, BREAKDOWN: 2 };
+        const currentOrder = order[project.stage ?? "IDEATION"] ?? 0;
+        const newOrder = order[args.stage] ?? 0;
+        
+        if (newOrder > currentOrder) {
+             await ctx.db.patch(project._id, { stage: args.stage, updatedAt: Date.now() });
+        }
+    }
+
     return { ok: true };
   },
 });
