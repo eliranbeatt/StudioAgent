@@ -4,6 +4,7 @@ import { applyPatchOps, PatchOp } from "./patch";
 import { runReconciliation } from "./reconciliation";
 import { findExistingReservation, reserveStockInternal } from "./inventory_helpers";
 import { query } from "./_generated/server";
+import { captureSnapshotFromLive } from "./elements";
 
 type DraftType = "element" | "projectCost";
 
@@ -154,6 +155,48 @@ export const applyChangeSet = mutation({
       createdFrom: args.createdFrom,
       createdBy: args.createdBy,
     });
+  },
+});
+
+export const ensureElementDraft = mutation({
+  args: {
+    projectId: v.id("projects"),
+    elementId: v.id("elements"),
+  },
+  handler: async (ctx, args) => {
+    const element = await ctx.db.get(args.elementId);
+    if (!element) throw new Error("Element not found");
+
+    if (element.currentDraftId) {
+      const draft = await ctx.db.get(element.currentDraftId);
+      if (draft && (draft.status === "open" || draft.status === "needsReview")) {
+        return { draftId: draft._id, revisionNumber: draft.revisionNumber };
+      }
+    }
+
+    const snapshot = await captureSnapshotFromLive(ctx, element._id);
+    const schemaVersion = 1;
+
+    const now = Date.now();
+    const draftId = await ctx.db.insert("elementDrafts", {
+      elementId: element._id,
+      projectId: args.projectId,
+      status: "open",
+      revisionNumber: 1,
+      createdFrom: { tab: "Accounting", stage: "planning" },
+      workingSnapshot: snapshot,
+      schemaVersion,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(element._id, {
+      currentDraftId: draftId,
+      status: "drafting",
+      updatedAt: now,
+    });
+
+    return { draftId, revisionNumber: 1 };
   },
 });
 

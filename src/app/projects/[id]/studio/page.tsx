@@ -51,295 +51,315 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const setConversationStage = useMutation(api.agent.setConversationStageV1);
   const setConversationMode = useMutation(api.agent.setConversationMode);
   const appendUserMessage = useMutation(api.agent.appendUserMessage);
-  const appendEventMessage = useMutation(api.agent.appendEventMessage);
-  const applyChangeSet = useMutation(api.changeSets.applyChangeSet);
-  const discardChangeSet = useMutation(api.changeSets.discardChangeSet);
-  const agentRespond = useAction(api.agent.agentRespond);
-
-  const activeConversation = useMemo(() => {
-    if (!conversations || !activeConversationId) return null;
-    return conversations.find((item) => item._id === activeConversationId) ?? null;
-  }, [conversations, activeConversationId]);
-
-  useEffect(() => {
-    if (!conversations) return;
-    if (activeConversationId) return;
-    if (conversations.length > 0) {
-      setActiveConversationId(conversations[0]._id);
-      return;
-    }
-    createConversation({ projectId }).then((convId) => setActiveConversationId(convId));
-  }, [conversations, activeConversationId, createConversation, projectId]);
-
-  useEffect(() => {
-    if (!overview?.elements?.length) return;
-    if (selectedElementIds.length > 0) return;
-    setSelectedElementIds([overview.elements[0].id as Id<"elements">]);
-  }, [overview?.elements, selectedElementIds.length]);
-
-  const changeSetStatusMap = useMemo(() => {
-    const map = new Map<string, "pending" | "applied" | "discarded">();
-    if (!messages) return map;
-
-    for (const msg of messages) {
-      if (msg.role === "event") {
-        if (msg.eventType === "changeset_applied" && msg.eventPayload?.changeSetId) {
-          map.set(msg.eventPayload.changeSetId, "applied");
-        } else if (msg.eventType === "changeset_discarded" && msg.eventPayload?.changeSetId) {
-          map.set(msg.eventPayload.changeSetId, "discarded");
+    const appendEventMessage = useMutation(api.agent.appendEventMessage);
+    const applyChangeSet = useMutation(api.changeSets.applyChangeSet);
+    const discardChangeSet = useMutation(api.changeSets.discardChangeSet);
+    const cancelRunningAgent = useMutation(api.agent.cancelRunningAgent);
+    const agentRespond = useAction(api.agent.agentRespond);
+  
+    const activeConversation = useMemo(() => {
+      if (!conversations || !activeConversationId) return null;
+      return conversations.find((item) => item._id === activeConversationId) ?? null;
+    }, [conversations, activeConversationId]);
+  
+    useEffect(() => {
+      if (!conversations) return;
+      if (activeConversationId) return;
+      if (conversations.length > 0) {
+        setActiveConversationId(conversations[0]._id);
+        return;
+      }
+      createConversation({ projectId }).then((convId) => setActiveConversationId(convId));
+    }, [conversations, activeConversationId, createConversation, projectId]);
+  
+    useEffect(() => {
+      if (!overview?.elements?.length) return;
+      if (selectedElementIds.length > 0) return;
+      setSelectedElementIds([overview.elements[0].id as Id<"elements">]);
+    }, [overview?.elements, selectedElementIds.length]);
+  
+    const changeSetStatusMap = useMemo(() => {
+      const map = new Map<string, "pending" | "applied" | "discarded">();
+      if (!messages) return map;
+  
+      for (const msg of messages) {
+        if (msg.role === "event") {
+          if (msg.eventType === "changeset_applied" && msg.eventPayload?.changeSetId) {
+            map.set(msg.eventPayload.changeSetId, "applied");
+          } else if (msg.eventType === "changeset_discarded" && msg.eventPayload?.changeSetId) {
+            map.set(msg.eventPayload.changeSetId, "discarded");
+          }
         }
       }
-    }
-    return map;
-  }, [messages]);
-
-  const handleNewConversation = async () => {
-    if (isWaiting || isCreatingConversation) return;
-    setIsCreatingConversation(true);
-    setCreateConversationError(null);
-    try {
-      const convId = await createConversation({ projectId });
-      setActiveConversationId(convId);
-      setInput("");
-    } catch (err) {
-      console.error("Failed to create conversation", err);
-      setCreateConversationError("Could not create a new conversation.");
-    } finally {
-      setIsCreatingConversation(false);
-    }
-  };
-
-  const handleSend = async () => {
-    if (!activeConversationId || isWaiting) return;
-    const text = input.trim();
-    if (!text) return;
-    setInput("");
-    setIsWaiting(true);
-    try {
-      await appendUserMessage({ conversationId: activeConversationId, text_he: text });
-      await agentRespond({
-        conversationId: activeConversationId,
-        uiContext: { selectedElementIds },
-        model,
-      });
-    } finally {
-      setIsWaiting(false);
-    }
-  };
-
-  const handleEventSubmit = async (eventType: string, eventPayload: any) => {
-    if (!activeConversationId || isWaiting) return;
-    setIsWaiting(true);
-    try {
-      await appendEventMessage({
-        conversationId: activeConversationId,
-        eventType,
-        eventPayload,
-      });
-      await agentRespond({
-        conversationId: activeConversationId,
-        uiContext: { selectedElementIds },
-        model,
-      });
-    } finally {
-      setIsWaiting(false);
-    }
-  };
-
-  const handleImmediateChangeSetAction = async (action: "apply" | "discard", changeSetId?: Id<"changeSets">) => {
-    if (!changeSetId || !activeConversationId) return;
-
-    try {
-      if (action === "apply") {
-        await applyChangeSet({ changeSetId });
-        await appendEventMessage({
-          conversationId: activeConversationId,
-          eventType: "changeset_applied",
-          eventPayload: { changeSetId },
-        });
-      } else {
-        await discardChangeSet({ changeSetId });
-        await appendEventMessage({
-          conversationId: activeConversationId,
-          eventType: "changeset_discarded",
-          eventPayload: { changeSetId },
-        });
+      return map;
+    }, [messages]);
+  
+    const handleNewConversation = async () => {
+      if (isWaiting || isCreatingConversation) return;
+      setIsCreatingConversation(true);
+      setCreateConversationError(null);
+      try {
+        const convId = await createConversation({ projectId });
+        setActiveConversationId(convId);
+        setInput("");
+      } catch (err) {
+        console.error("Failed to create conversation", err);
+        setCreateConversationError("Could not create a new conversation.");
+      } finally {
+        setIsCreatingConversation(false);
       }
-    } catch (e) {
-      console.error("Failed to apply/discard changeset", e);
-    }
-  };
-
-  const handleSuggestionSubmit = async (payload: any) => {
-    if (!activeConversationId || isWaiting) return;
-    setIsWaiting(true);
-    try {
-      await appendEventMessage({
-        conversationId: activeConversationId,
-        eventType: "suggestions_selected",
-        eventPayload: payload,
-      });
-      await agentRespond({
-        conversationId: activeConversationId,
-        uiContext: { selectedElementIds },
-        model,
-      });
-    } finally {
-      setIsWaiting(false);
-    }
-  };
-
-  const stageValue = (activeConversation?.stage ?? "IDEATION") as Stage;
-  const modeValue = (activeConversation?.mode ?? "CHAT") as Mode;
-
-  return (
-    <div className="flex h-full bg-white">
-      <aside className="w-64 border-r border-gray-200 bg-gray-50">
-        <div className="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-widest text-gray-500">Conversations</div>
-          <button
-            type="button"
-            onClick={handleNewConversation}
-            disabled={isCreatingConversation}
-            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600 hover:border-gray-300 disabled:opacity-60"
-          >
-            <Plus size={12} />
-            New
-          </button>
-        </div>
-        {createConversationError ? (
-          <div className="px-4 py-2 text-[11px] text-red-500">{createConversationError}</div>
-        ) : null}
-        <div className="p-3 space-y-2">
-          {!conversations ? (
-            <div className="text-xs text-gray-400">Loading...</div>
-          ) : conversations.length === 0 ? (
-            <div className="text-xs text-gray-400">No conversations yet.</div>
-          ) : (
-            conversations.map((conversation) => (
-              <button
-                key={conversation._id}
-                onClick={() => setActiveConversationId(conversation._id)}
-                className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${conversation._id === activeConversationId
-                  ? "border-gray-900 bg-white shadow"
-                  : "border-gray-200 bg-white/70 hover:border-gray-300"
-                  }`}
-              >
-                <div className="font-semibold text-gray-800">
-                  {conversation.title_he ?? "שיחה חדשה"}
-                </div>
-                <div className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
-                  {String(conversation.stage).toUpperCase()} · {String(conversation.mode ?? "CHAT").toUpperCase()}
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      </aside>
-
-      <main className="flex-1 flex flex-col">
-        <header className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white">
-          <div className="flex items-center gap-4">
-            <div className="text-lg font-semibold text-gray-900">Flowing Assistant</div>
-            <span className="text-[10px] uppercase tracking-widest bg-gray-100 border border-gray-200 text-gray-500 px-2 py-1 rounded-full">
-              {ACTIVE_AGENT_PROMPT_ID}
-            </span>
+    };
+  
+    const handleSend = async () => {
+      if (!activeConversationId || isWaiting) return;
+      const text = input.trim();
+      if (!text) return;
+      setInput("");
+      setIsWaiting(true);
+      try {
+        await appendUserMessage({ conversationId: activeConversationId, text_he: text });
+        await agentRespond({
+          conversationId: activeConversationId,
+          uiContext: { selectedElementIds },
+          model,
+        });
+      } finally {
+        setIsWaiting(false);
+      }
+    };
+  
+    const handleCancel = async () => {
+      if (!activeConversationId) return;
+      try {
+        await cancelRunningAgent({ conversationId: activeConversationId });
+        setIsWaiting(false);
+      } catch (err) {
+        console.error("Failed to cancel agent", err);
+      }
+    };
+  
+    const handleEventSubmit = async (eventType: string, eventPayload: any) => {
+      if (!activeConversationId || isWaiting) return;
+      setIsWaiting(true);
+      try {
+        await appendEventMessage({
+          conversationId: activeConversationId,
+          eventType,
+          eventPayload,
+        });
+        await agentRespond({
+          conversationId: activeConversationId,
+          uiContext: { selectedElementIds },
+          model,
+        });
+      } finally {
+        setIsWaiting(false);
+      }
+    };
+  
+    const handleImmediateChangeSetAction = async (action: "apply" | "discard", changeSetId?: Id<"changeSets">) => {
+      if (!changeSetId || !activeConversationId) return;
+  
+      try {
+        if (action === "apply") {
+          await applyChangeSet({ changeSetId });
+          await appendEventMessage({
+            conversationId: activeConversationId,
+            eventType: "changeset_applied",
+            eventPayload: { changeSetId },
+          });
+        } else {
+          await discardChangeSet({ changeSetId });
+          await appendEventMessage({
+            conversationId: activeConversationId,
+            eventType: "changeset_discarded",
+            eventPayload: { changeSetId },
+          });
+        }
+      } catch (e) {
+        console.error("Failed to apply/discard changeset", e);
+      }
+    };
+  
+    const handleSuggestionSubmit = async (payload: any) => {
+      if (!activeConversationId || isWaiting) return;
+      setIsWaiting(true);
+      try {
+        await appendEventMessage({
+          conversationId: activeConversationId,
+          eventType: "suggestions_selected",
+          eventPayload: payload,
+        });
+        await agentRespond({
+          conversationId: activeConversationId,
+          uiContext: { selectedElementIds },
+          model,
+        });
+      } finally {
+        setIsWaiting(false);
+      }
+    };
+  
+    const stageValue = (activeConversation?.stage ?? "IDEATION") as Stage;
+    const modeValue = (activeConversation?.mode ?? "CHAT") as Mode;
+  
+    return (
+      <div className="flex h-full bg-white">
+        <aside className="w-64 border-r border-gray-200 bg-gray-50">
+          <div className="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-500">Conversations</div>
+            <button
+              type="button"
+              onClick={handleNewConversation}
+              disabled={isCreatingConversation}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600 hover:border-gray-300 disabled:opacity-60"
+            >
+              <Plus size={12} />
+              New
+            </button>
           </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
-            >
-              <option value="gpt-4o">GPT-4o</option>
-              <option value="gpt-5-nano">GPT-5 Nano</option>
-              <option value="gpt-5-mini">GPT-5 Mini</option>
-              <option value="gpt-5.2">GPT-5.2</option>
-              <option value="gpt-5.2-thinking">GPT-5.2 (Thinking)</option>
-            </select>
-            <select
-              value={stageValue}
-              onChange={(e) => {
-                const stage = e.target.value as Stage;
-                if (activeConversationId) {
-                  setConversationStage({ id: activeConversationId, stage });
-                }
-              }}
-              className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
-            >
-              <option value="IDEATION">Ideation</option>
-              <option value="QUOTE">Quote</option>
-              <option value="BREAKDOWN">Breakdown</option>
-            </select>
-            <select
-              value={modeValue}
-              onChange={(e) => {
-                const mode = e.target.value as Mode;
-                if (activeConversationId) {
-                  setConversationMode({ id: activeConversationId, mode });
-                }
-              }}
-              className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
-            >
-              <option value="CHAT">Chat</option>
-              <option value="QUESTIONS">Questions</option>
-              <option value="SUGGESTIONS">Suggestions</option>
-            </select>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto bg-gray-50">
-          <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">
-            {!messages ? (
-              <div className="flex items-center justify-center text-gray-400">
-                <Loader2 size={20} className="animate-spin" />
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="text-sm text-gray-400">Start the conversation by sending a message.</div>
+          {createConversationError ? (
+            <div className="px-4 py-2 text-[11px] text-red-500">{createConversationError}</div>
+          ) : null}
+          <div className="p-3 space-y-2">
+            {!conversations ? (
+              <div className="text-xs text-gray-400">Loading...</div>
+            ) : conversations.length === 0 ? (
+              <div className="text-xs text-gray-400">No conversations yet.</div>
             ) : (
-              messages.map((msg) => (
-                <MessageBubble
-                  key={msg._id}
-                  message={msg}
-                  status={msg.changeSetId ? changeSetStatusMap.get(msg.changeSetId) : undefined}
-                  onClarificationSubmit={handleEventSubmit}
-                  onSuggestionsSubmit={handleSuggestionSubmit}
-                  onApplyChangeSet={(changeSetId) => handleImmediateChangeSetAction("apply", changeSetId)}
-                  onDiscardChangeSet={(changeSetId) => handleImmediateChangeSetAction("discard", changeSetId)}
-                  disabled={isWaiting}
-                />
+              conversations.map((conversation) => (
+                <button
+                  key={conversation._id}
+                  onClick={() => setActiveConversationId(conversation._id)}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${conversation._id === activeConversationId
+                    ? "border-gray-900 bg-white shadow"
+                    : "border-gray-200 bg-white/70 hover:border-gray-300"
+                    }`}
+                >
+                  <div className="font-semibold text-gray-800">
+                    {conversation.title_he ?? "שיחה חדשה"}
+                  </div>
+                  <div className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
+                    {String(conversation.stage).toUpperCase()} · {String(conversation.mode ?? "CHAT").toUpperCase()}
+                  </div>
+                </button>
               ))
             )}
           </div>
-        </div>
-
-        <div className="border-t border-gray-200 bg-white px-6 py-4">
-          <div className="max-w-3xl mx-auto flex items-center gap-3">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              rows={2}
-              placeholder="כתוב כאן..."
-              className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-200"
-            />
-            <button
-              onClick={handleSend}
-              disabled={isWaiting || !input.trim()}
-              className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              <Send size={16} />
-              שלח
-            </button>
+        </aside>
+  
+        <main className="flex-1 flex flex-col">
+          <header className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white">
+            <div className="flex items-center gap-4">
+              <div className="text-lg font-semibold text-gray-900">Flowing Assistant</div>
+              <span className="text-[10px] uppercase tracking-widest bg-gray-100 border border-gray-200 text-gray-500 px-2 py-1 rounded-full">
+                {ACTIVE_AGENT_PROMPT_ID}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
+              >
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-5-nano">GPT-5 Nano</option>
+                <option value="gpt-5-mini">GPT-5 Mini</option>
+                <option value="gpt-5.2">GPT-5.2</option>
+                <option value="gpt-5.2-thinking">GPT-5.2 (Thinking)</option>
+              </select>
+              <select
+                value={stageValue}
+                onChange={(e) => {
+                  const stage = e.target.value as Stage;
+                  if (activeConversationId) {
+                    setConversationStage({ id: activeConversationId, stage });
+                  }
+                }}
+                className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
+              >
+                <option value="IDEATION">Ideation</option>
+                <option value="QUOTE">Quote</option>
+                <option value="BREAKDOWN">Breakdown</option>
+              </select>
+              <select
+                value={modeValue}
+                onChange={(e) => {
+                  const mode = e.target.value as Mode;
+                  if (activeConversationId) {
+                    setConversationMode({ id: activeConversationId, mode });
+                  }
+                }}
+                className="border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 bg-white"
+              >
+                <option value="CHAT">Chat</option>
+                <option value="QUESTIONS">Questions</option>
+                <option value="SUGGESTIONS">Suggestions</option>
+              </select>
+            </div>
+          </header>
+  
+          <div className="flex-1 overflow-y-auto bg-gray-50">
+            <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">
+              {!messages ? (
+                <div className="flex items-center justify-center text-gray-400">
+                  <Loader2 size={20} className="animate-spin" />
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="text-sm text-gray-400">Start the conversation by sending a message.</div>
+              ) : (
+                messages.map((msg) => (
+                  <MessageBubble
+                    key={msg._id}
+                    message={msg}
+                    status={msg.changeSetId ? changeSetStatusMap.get(msg.changeSetId) : undefined}
+                    onClarificationSubmit={handleEventSubmit}
+                    onSuggestionsSubmit={handleSuggestionSubmit}
+                    onApplyChangeSet={(changeSetId) => handleImmediateChangeSetAction("apply", changeSetId)}
+                    onDiscardChangeSet={(changeSetId) => handleImmediateChangeSetAction("discard", changeSetId)}
+                    disabled={isWaiting}
+                  />
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      </main>
-
+  
+          <div className="border-t border-gray-200 bg-white px-6 py-4">
+            <div className="max-w-3xl mx-auto flex items-center gap-3">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                rows={2}
+                placeholder="כתוב כאן..."
+                className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-2 focus:ring-gray-200"
+              />
+              {isWaiting ? (
+                <button
+                  onClick={handleCancel}
+                  className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  <div className="w-3.5 h-3.5 bg-white rounded-sm" /> {/* Square icon equivalent */}
+                  Cancel
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  <Send size={16} />
+                  שלח
+                </button>
+              )}
+            </div>
+          </div>
+        </main>
       <aside className="w-72 border-l border-gray-200 bg-gray-50">
         <div className="px-4 py-4 border-b border-gray-200">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-500">Elements</div>

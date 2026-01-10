@@ -7,11 +7,11 @@ import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  FileCheck,
-  ShieldAlert,
-  TrendingUp,
+  ChevronDown,
+  ChevronRight,
   Plus,
   Save,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -37,6 +37,12 @@ type LaborLine = {
   taskIds: string[];
 };
 
+type TaskOption = {
+  id: string;
+  title: string;
+  elementTitle?: string;
+};
+
 export default function AccountingPage({
   params,
 }: {
@@ -46,12 +52,15 @@ export default function AccountingPage({
   const projectId = id as Id<"projects">;
   const summary = useQuery(api.financials.getFinancialSummary, { projectId });
   const accounting = useQuery(api.financials.getAccountingView, { projectId });
+  const tasksData = useQuery(api.tasks.listForProject, { projectId });
   const pendingGraveyard = useQuery(api.graveyard.listPending, { projectId });
   const applyChangeSet = useMutation(api.drafts.applyChangeSet);
+  const ensureElementDraft = useMutation(api.drafts.ensureElementDraft);
   const [tab, setTab] = useState<TabKey>("summary");
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
   const pendingCount = pendingGraveyard?.length ?? 0;
+  const taskOptions: TaskOption[] = tasksData?.tasks ?? [];
 
 
   if (!summary || !accounting) {
@@ -153,18 +162,24 @@ export default function AccountingPage({
 
       {tab === "materials" ? (
         <MaterialsTab
+          projectId={projectId}
           accounting={accounting}
+          tasks={taskOptions}
           savingLineId={savingLineId}
           onApplyOps={handleApplyOps}
+          onEnsureElementDraft={ensureElementDraft}
           onSavingLineId={setSavingLineId}
         />
       ) : null}
 
       {tab === "labor" ? (
         <LaborTab
+          projectId={projectId}
           accounting={accounting}
+          tasks={taskOptions}
           savingLineId={savingLineId}
           onApplyOps={handleApplyOps}
+          onEnsureElementDraft={ensureElementDraft}
           onSavingLineId={setSavingLineId}
         />
       ) : null}
@@ -199,6 +214,7 @@ function SummaryTab({
       <AccountingSummaryBlock
         projectId={projectId}
         summary={summary}
+        accounting={accounting}
         projectDefaults={projectDefaults}
       />
 
@@ -216,12 +232,17 @@ function SummaryTab({
 
 
 function MaterialsTab({
+  projectId,
   accounting,
+  tasks,
   savingLineId,
   onApplyOps,
+  onEnsureElementDraft,
   onSavingLineId,
 }: {
+  projectId: Id<"projects">;
   accounting: any;
+  tasks: TaskOption[];
   savingLineId: string | null;
   onApplyOps: (args: {
     draftType: "element" | "projectCost";
@@ -230,17 +251,51 @@ function MaterialsTab({
     patchOps: any[];
     reason: string;
   }) => Promise<void>;
+  onEnsureElementDraft: (args: {
+    projectId: Id<"projects">;
+    elementId: Id<"elements">;
+  }) => Promise<{ draftId: string; revisionNumber: number }>;
   onSavingLineId: (value: string | null) => void;
 }) {
+  const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
+
+  const resolveElementDraft = async ({
+    draftId,
+    revisionNumber,
+    elementId,
+  }: {
+    draftId?: string;
+    revisionNumber?: number;
+    elementId: Id<"elements">;
+  }) => {
+    if (draftId && revisionNumber !== undefined) {
+      return { draftId, revisionNumber };
+    }
+    return await onEnsureElementDraft({ projectId, elementId });
+  };
+
   const addMaterialLine = async ({
     draftType,
     draftId,
     revisionNumber,
+    elementId,
   }: {
     draftType: "element" | "projectCost";
-    draftId: string;
-    revisionNumber: number;
+    draftId?: string;
+    revisionNumber?: number;
+    elementId?: Id<"elements">;
   }) => {
+    if (draftType === "element" && elementId) {
+      const resolved = await resolveElementDraft({
+        draftId,
+        revisionNumber,
+        elementId,
+      });
+      draftId = resolved.draftId;
+      revisionNumber = resolved.revisionNumber;
+    }
+    if (!draftId || revisionNumber === undefined) return;
+
     const id = `mat_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const patchOps = [
       {
@@ -266,6 +321,42 @@ function MaterialsTab({
     });
   };
 
+  const handleDeleteLine = async ({
+    lineId,
+    draftType,
+    draftId,
+    revisionNumber,
+    elementId,
+  }: {
+    lineId: string;
+    draftType: "element" | "projectCost";
+    draftId?: string;
+    revisionNumber?: number;
+    elementId?: Id<"elements">;
+  }) => {
+    if (!confirm("Delete this material line?")) return;
+    if (draftType === "element" && elementId) {
+      const resolved = await resolveElementDraft({
+        draftId,
+        revisionNumber,
+        elementId,
+      });
+      draftId = resolved.draftId;
+      revisionNumber = resolved.revisionNumber;
+    }
+    if (!draftId || revisionNumber === undefined) return;
+
+    await onApplyOps({
+      draftType,
+      draftId,
+      baseRevisionNumber: revisionNumber,
+      patchOps: [
+        { op: "tombstone", path: `/materials/byId/${lineId}`, value: { deletedAt: "now" } },
+      ],
+      reason: "Delete material line",
+    });
+  };
+
   return (
     <div className="space-y-8">
       {accounting.elements.map((element: any) => (
@@ -274,10 +365,27 @@ function MaterialsTab({
           className="bg-white border border-gray-100 rounded-xl shadow-sm"
         >
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <div className="font-semibold text-gray-900">{element.title}</div>
-              <div className="text-xs text-gray-500">
-                Materials: {element.totals.materials.toLocaleString()} NIS
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() =>
+                  setCollapsedByElement((prev) => ({
+                    ...prev,
+                    [element.elementId]: !prev[element.elementId],
+                  }))
+                }
+                className="text-gray-400 hover:text-gray-700"
+              >
+                {collapsedByElement[element.elementId] ? (
+                  <ChevronRight size={16} />
+                ) : (
+                  <ChevronDown size={16} />
+                )}
+              </button>
+              <div>
+                <div className="font-semibold text-gray-900">{element.title}</div>
+                <div className="text-xs text-gray-500">
+                  Materials: {element.totals.materials.toLocaleString()} NIS
+                </div>
               </div>
             </div>
             <button
@@ -286,6 +394,7 @@ function MaterialsTab({
                   draftType: "element",
                   draftId: element.draftId,
                   revisionNumber: element.revisionNumber,
+                  elementId: element.elementId,
                 })
               }
               className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -293,34 +402,52 @@ function MaterialsTab({
               <Plus size={14} /> Add line
             </button>
           </div>
-          <div className="divide-y">
-            {element.materials.length === 0 ? (
-              <div className="p-6 text-sm text-gray-500">No materials</div>
-            ) : (
-              element.materials.map((line: MaterialLine) => (
-                <MaterialLineRow
-                  key={line.id}
-                  line={line}
-                  saving={savingLineId === line.id}
-                  onSave={async (next) => {
-                    onSavingLineId(line.id);
-                    try {
-                      const patchOps = buildMaterialPatchOps(line.id, next);
-                      await onApplyOps({
+          {collapsedByElement[element.elementId] ? null : (
+            <div className="divide-y">
+              {element.materials.length === 0 ? (
+                <div className="p-6 text-sm text-gray-500">No materials</div>
+              ) : (
+                element.materials.map((line: MaterialLine) => (
+                  <MaterialLineRow
+                    key={line.id}
+                    line={line}
+                    tasks={tasks}
+                    projectId={projectId}
+                    saving={savingLineId === line.id}
+                    onDelete={() =>
+                      handleDeleteLine({
+                        lineId: line.id,
                         draftType: "element",
                         draftId: element.draftId,
-                        baseRevisionNumber: element.revisionNumber,
-                        patchOps,
-                        reason: "Update material line",
-                      });
-                    } finally {
-                      onSavingLineId(null);
+                        revisionNumber: element.revisionNumber,
+                        elementId: element.elementId,
+                      })
                     }
-                  }}
-                />
-              ))
-            )}
-          </div>
+                    onSave={async (next) => {
+                      onSavingLineId(line.id);
+                      try {
+                        const resolved = await resolveElementDraft({
+                          draftId: element.draftId,
+                          revisionNumber: element.revisionNumber,
+                          elementId: element.elementId,
+                        });
+                        const patchOps = buildMaterialPatchOps(line.id, next);
+                        await onApplyOps({
+                          draftType: "element",
+                          draftId: resolved.draftId,
+                          baseRevisionNumber: resolved.revisionNumber,
+                          patchOps,
+                          reason: "Update material line",
+                        });
+                      } finally {
+                        onSavingLineId(null);
+                      }
+                    }}
+                  />
+                ))
+              )}
+            </div>
+          )}
         </div>
       ))}
 
@@ -356,10 +483,26 @@ function MaterialsTab({
                 <MaterialLineRow
                   key={line.id}
                   line={line}
+                  tasks={tasks}
+                  projectId={projectId}
                   saving={savingLineId === line.id}
+                  onDelete={() =>
+                    handleDeleteLine({
+                      lineId: line.id,
+                      draftType: "projectCost",
+                      draftId: accounting.projectCosts.draftId,
+                      revisionNumber: accounting.projectCosts.revisionNumber,
+                    })
+                  }
                   onSave={async (next) => {
                     onSavingLineId(line.id);
                     try {
+                      if (
+                        !accounting.projectCosts.draftId ||
+                        accounting.projectCosts.revisionNumber === undefined
+                      ) {
+                        return;
+                      }
                       const patchOps = buildMaterialPatchOps(line.id, next);
                       await onApplyOps({
                         draftType: "projectCost",
@@ -383,12 +526,17 @@ function MaterialsTab({
 }
 
 function LaborTab({
+  projectId,
   accounting,
+  tasks,
   savingLineId,
   onApplyOps,
+  onEnsureElementDraft,
   onSavingLineId,
 }: {
+  projectId: Id<"projects">;
   accounting: any;
+  tasks: TaskOption[];
   savingLineId: string | null;
   onApplyOps: (args: {
     draftType: "element" | "projectCost";
@@ -397,17 +545,51 @@ function LaborTab({
     patchOps: any[];
     reason: string;
   }) => Promise<void>;
+  onEnsureElementDraft: (args: {
+    projectId: Id<"projects">;
+    elementId: Id<"elements">;
+  }) => Promise<{ draftId: string; revisionNumber: number }>;
   onSavingLineId: (value: string | null) => void;
 }) {
+  const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
+
+  const resolveElementDraft = async ({
+    draftId,
+    revisionNumber,
+    elementId,
+  }: {
+    draftId?: string;
+    revisionNumber?: number;
+    elementId: Id<"elements">;
+  }) => {
+    if (draftId && revisionNumber !== undefined) {
+      return { draftId, revisionNumber };
+    }
+    return await onEnsureElementDraft({ projectId, elementId });
+  };
+
   const addLaborLine = async ({
     draftType,
     draftId,
     revisionNumber,
+    elementId,
   }: {
     draftType: "element" | "projectCost";
-    draftId: string;
-    revisionNumber: number;
+    draftId?: string;
+    revisionNumber?: number;
+    elementId?: Id<"elements">;
   }) => {
+    if (draftType === "element" && elementId) {
+      const resolved = await resolveElementDraft({
+        draftId,
+        revisionNumber,
+        elementId,
+      });
+      draftId = resolved.draftId;
+      revisionNumber = resolved.revisionNumber;
+    }
+    if (!draftId || revisionNumber === undefined) return;
+
     const id = `lab_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const patchOps = [
       {
@@ -431,6 +613,42 @@ function LaborTab({
     });
   };
 
+  const handleDeleteLine = async ({
+    lineId,
+    draftType,
+    draftId,
+    revisionNumber,
+    elementId,
+  }: {
+    lineId: string;
+    draftType: "element" | "projectCost";
+    draftId?: string;
+    revisionNumber?: number;
+    elementId?: Id<"elements">;
+  }) => {
+    if (!confirm("Delete this labor line?")) return;
+    if (draftType === "element" && elementId) {
+      const resolved = await resolveElementDraft({
+        draftId,
+        revisionNumber,
+        elementId,
+      });
+      draftId = resolved.draftId;
+      revisionNumber = resolved.revisionNumber;
+    }
+    if (!draftId || revisionNumber === undefined) return;
+
+    await onApplyOps({
+      draftType,
+      draftId,
+      baseRevisionNumber: revisionNumber,
+      patchOps: [
+        { op: "tombstone", path: `/labor/byId/${lineId}`, value: { deletedAt: "now" } },
+      ],
+      reason: "Delete labor line",
+    });
+  };
+
   return (
     <div className="space-y-8">
       {accounting.elements.map((element: any) => (
@@ -439,10 +657,27 @@ function LaborTab({
           className="bg-white border border-gray-100 rounded-xl shadow-sm"
         >
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <div className="font-semibold text-gray-900">{element.title}</div>
-              <div className="text-xs text-gray-500">
-                Labor: {element.totals.labor.toLocaleString()} NIS
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() =>
+                  setCollapsedByElement((prev) => ({
+                    ...prev,
+                    [element.elementId]: !prev[element.elementId],
+                  }))
+                }
+                className="text-gray-400 hover:text-gray-700"
+              >
+                {collapsedByElement[element.elementId] ? (
+                  <ChevronRight size={16} />
+                ) : (
+                  <ChevronDown size={16} />
+                )}
+              </button>
+              <div>
+                <div className="font-semibold text-gray-900">{element.title}</div>
+                <div className="text-xs text-gray-500">
+                  Labor: {element.totals.labor.toLocaleString()} NIS
+                </div>
               </div>
             </div>
             <button
@@ -451,6 +686,7 @@ function LaborTab({
                   draftType: "element",
                   draftId: element.draftId,
                   revisionNumber: element.revisionNumber,
+                  elementId: element.elementId,
                 })
               }
               className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -458,34 +694,52 @@ function LaborTab({
               <Plus size={14} /> Add line
             </button>
           </div>
-          <div className="divide-y">
-            {element.labor.length === 0 ? (
-              <div className="p-6 text-sm text-gray-500">No labor</div>
-            ) : (
-              element.labor.map((line: LaborLine) => (
-                <LaborLineRow
-                  key={line.id}
-                  line={line}
-                  saving={savingLineId === line.id}
-                  onSave={async (next) => {
-                    onSavingLineId(line.id);
-                    try {
-                      const patchOps = buildLaborPatchOps(line.id, next);
-                      await onApplyOps({
+          {collapsedByElement[element.elementId] ? null : (
+            <div className="divide-y">
+              {element.labor.length === 0 ? (
+                <div className="p-6 text-sm text-gray-500">No labor</div>
+              ) : (
+                element.labor.map((line: LaborLine) => (
+                  <LaborLineRow
+                    key={line.id}
+                    line={line}
+                    tasks={tasks}
+                    projectId={projectId}
+                    saving={savingLineId === line.id}
+                    onDelete={() =>
+                      handleDeleteLine({
+                        lineId: line.id,
                         draftType: "element",
                         draftId: element.draftId,
-                        baseRevisionNumber: element.revisionNumber,
-                        patchOps,
-                        reason: "Update labor line",
-                      });
-                    } finally {
-                      onSavingLineId(null);
+                        revisionNumber: element.revisionNumber,
+                        elementId: element.elementId,
+                      })
                     }
-                  }}
-                />
-              ))
-            )}
-          </div>
+                    onSave={async (next) => {
+                      onSavingLineId(line.id);
+                      try {
+                        const resolved = await resolveElementDraft({
+                          draftId: element.draftId,
+                          revisionNumber: element.revisionNumber,
+                          elementId: element.elementId,
+                        });
+                        const patchOps = buildLaborPatchOps(line.id, next);
+                        await onApplyOps({
+                          draftType: "element",
+                          draftId: resolved.draftId,
+                          baseRevisionNumber: resolved.revisionNumber,
+                          patchOps,
+                          reason: "Update labor line",
+                        });
+                      } finally {
+                        onSavingLineId(null);
+                      }
+                    }}
+                  />
+                ))
+              )}
+            </div>
+          )}
         </div>
       ))}
 
@@ -521,10 +775,26 @@ function LaborTab({
                 <LaborLineRow
                   key={line.id}
                   line={line}
+                  tasks={tasks}
+                  projectId={projectId}
                   saving={savingLineId === line.id}
+                  onDelete={() =>
+                    handleDeleteLine({
+                      lineId: line.id,
+                      draftType: "projectCost",
+                      draftId: accounting.projectCosts.draftId,
+                      revisionNumber: accounting.projectCosts.revisionNumber,
+                    })
+                  }
                   onSave={async (next) => {
                     onSavingLineId(line.id);
                     try {
+                      if (
+                        !accounting.projectCosts.draftId ||
+                        accounting.projectCosts.revisionNumber === undefined
+                      ) {
+                        return;
+                      }
                       const patchOps = buildLaborPatchOps(line.id, next);
                       await onApplyOps({
                         draftType: "projectCost",
@@ -549,16 +819,26 @@ function LaborTab({
 
 function MaterialLineRow({
   line,
+  tasks,
+  projectId,
   saving,
+  onDelete,
   onSave,
 }: {
   line: MaterialLine;
+  tasks: TaskOption[];
+  projectId: Id<"projects">;
   saving: boolean;
+  onDelete: () => void;
   onSave: (next: MaterialLine) => Promise<void>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<MaterialLine>(line);
   const active = isEditing ? draft : line;
+  const tasksById = useMemo(
+    () => new Map(tasks.map((task) => [task.id, task])),
+    [tasks]
+  );
 
   const handleCancel = () => {
     setDraft(line);
@@ -664,17 +944,48 @@ function MaterialLineRow({
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Task Links
         </div>
-        <input
-          value={active.taskIds?.join(", ") ?? ""}
-          disabled={!isEditing || saving}
-          onChange={(e) =>
-            setDraft({
-              ...draft,
-              taskIds: splitCsv(e.target.value),
-            })
-          }
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
-        />
+        {isEditing ? (
+          <select
+            multiple
+            value={active.taskIds ?? []}
+            disabled={saving}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                taskIds: Array.from(e.target.selectedOptions).map(
+                  (option) => option.value
+                ),
+              })
+            }
+            className="w-full border border-gray-200 rounded-md px-2 py-2 text-sm"
+          >
+            {tasks.map((task) => (
+              <option key={task.id} value={task.id}>
+                {task.elementTitle ? `${task.elementTitle} / ${task.title}` : task.title}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {active.taskIds?.length ? (
+              active.taskIds.map((taskId) => {
+                const task = tasksById.get(taskId);
+                if (!task) return null;
+                return (
+                  <Link
+                    key={taskId}
+                    href={`/projects/${projectId}/tasks?focus=${taskId}`}
+                    className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 rounded-full"
+                  >
+                    {task.title}
+                  </Link>
+                );
+              })
+            ) : (
+              <div className="text-xs text-gray-400">No tasks</div>
+            )}
+          </div>
+        )}
       </div>
       <div className="md:col-span-1 text-xs text-gray-500">
         <div className="uppercase font-semibold text-gray-400">Gap</div>
@@ -706,15 +1017,23 @@ function MaterialLineRow({
             </button>
           </>
         ) : (
-          <button
-            onClick={() => {
-              setDraft(line);
-              setIsEditing(true);
-            }}
-            className="text-xs font-semibold text-gray-600"
-          >
-            Edit
-          </button>
+          <>
+            <button
+              onClick={() => {
+                setDraft(line);
+                setIsEditing(true);
+              }}
+              className="text-xs font-semibold text-gray-600"
+            >
+              Edit
+            </button>
+            <button
+              onClick={onDelete}
+              className="text-xs font-semibold text-red-600 inline-flex items-center gap-1"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -723,16 +1042,26 @@ function MaterialLineRow({
 
 function LaborLineRow({
   line,
+  tasks,
+  projectId,
   saving,
+  onDelete,
   onSave,
 }: {
   line: LaborLine;
+  tasks: TaskOption[];
+  projectId: Id<"projects">;
   saving: boolean;
+  onDelete: () => void;
   onSave: (next: LaborLine) => Promise<void>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<LaborLine>(line);
   const active = isEditing ? draft : line;
+  const tasksById = useMemo(
+    () => new Map(tasks.map((task) => [task.id, task])),
+    [tasks]
+  );
 
   const handleCancel = () => {
     setDraft(line);
@@ -835,17 +1164,48 @@ function LaborLineRow({
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Task Links
         </div>
-        <input
-          value={active.taskIds?.join(", ") ?? ""}
-          disabled={!isEditing || saving}
-          onChange={(e) =>
-            setDraft({
-              ...draft,
-              taskIds: splitCsv(e.target.value),
-            })
-          }
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
-        />
+        {isEditing ? (
+          <select
+            multiple
+            value={active.taskIds ?? []}
+            disabled={saving}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                taskIds: Array.from(e.target.selectedOptions).map(
+                  (option) => option.value
+                ),
+              })
+            }
+            className="w-full border border-gray-200 rounded-md px-2 py-2 text-sm"
+          >
+            {tasks.map((task) => (
+              <option key={task.id} value={task.id}>
+                {task.elementTitle ? `${task.elementTitle} / ${task.title}` : task.title}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {active.taskIds?.length ? (
+              active.taskIds.map((taskId) => {
+                const task = tasksById.get(taskId);
+                if (!task) return null;
+                return (
+                  <Link
+                    key={taskId}
+                    href={`/projects/${projectId}/tasks?focus=${taskId}`}
+                    className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 rounded-full"
+                  >
+                    {task.title}
+                  </Link>
+                );
+              })
+            ) : (
+              <div className="text-xs text-gray-400">No tasks</div>
+            )}
+          </div>
+        )}
       </div>
       <div className="md:col-span-1 text-xs text-gray-500">
         <div className="uppercase font-semibold text-gray-400">Gap</div>
@@ -877,15 +1237,23 @@ function LaborLineRow({
             </button>
           </>
         ) : (
-          <button
-            onClick={() => {
-              setDraft(line);
-              setIsEditing(true);
-            }}
-            className="text-xs font-semibold text-gray-600"
-          >
-            Edit
-          </button>
+          <>
+            <button
+              onClick={() => {
+                setDraft(line);
+                setIsEditing(true);
+              }}
+              className="text-xs font-semibold text-gray-600"
+            >
+              Edit
+            </button>
+            <button
+              onClick={onDelete}
+              className="text-xs font-semibold text-red-600 inline-flex items-center gap-1"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -936,18 +1304,6 @@ function buildLaborPatchOps(id: string, next: LaborLine) {
       value: next.taskIds,
     },
   ];
-}
-
-function splitCsv(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function formatCurrency(amount: number) {
-  if (!Number.isFinite(amount)) return "--";
-  return `${amount.toLocaleString()} NIS`;
 }
 
 function formatGap(amount: number) {

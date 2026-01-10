@@ -27,7 +27,7 @@ export const saveUploadedFile = action({
             ? await extractStructuredInfo(extracted, args.fileName)
             : null;
 
-        await ctx.runMutation(internal.files.saveFileRecord, {
+        const fileId = await ctx.runMutation(internal.files.saveFileRecord, {
             projectId: args.projectId,
             storageId: args.storageId,
             fileName: args.fileName,
@@ -37,6 +37,7 @@ export const saveUploadedFile = action({
             summary: extractedInfo?.summary ?? summary ?? undefined,
             extractedInfo: extractedInfo ?? undefined,
         });
+        return { fileId };
     },
 });
 

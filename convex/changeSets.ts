@@ -236,6 +236,36 @@ export const discardChangeSet = mutation({
   },
 });
 
+function normalizeProcurementCode(
+  code: string | undefined | null
+): "in_stock" | "local_buy" | "import" | "rental" | undefined {
+  if (!code) return undefined;
+  if (code === "in_stock") return "in_stock";
+  if (code === "local_buy") return "local_buy";
+  if (code === "import") return "import";
+  if (code === "rental") return "rental";
+  return undefined;
+}
+
+function normalizeUnitCode(
+  code: string | undefined | null
+): "ea" | "m" | "sqm" | "kg" | "l" | "set" | "box" | "roll" | undefined {
+  if (!code) return undefined;
+  const c = code.toLowerCase().trim();
+  if (c === "m2" || c === "sqm") return "sqm";
+  if (c === "ea" || c === "each" || c === "units") return "ea";
+  if (c === "m" || c === "meter" || c === "meters") return "m";
+  if (c === "kg" || c === "kgs") return "kg";
+  if (c === "l" || c === "liter" || c === "liters") return "l";
+  if (c === "set" || c === "sets") return "set";
+  if (c === "box" || c === "boxes") return "box";
+  if (c === "roll" || c === "rolls") return "roll";
+
+  const valid = ["ea", "m", "sqm", "kg", "l", "set", "box", "roll"];
+  if (valid.includes(c)) return c as any;
+  return undefined;
+}
+
 export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId: Id<"changeSets"> }) {
   const cs = await ctx.db.get(args.changeSetId);
   if (!cs) throw new Error("ChangeSet not found");
@@ -545,7 +575,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       itemName: fields.itemName ?? undefined,
       spec: fields.spec ?? undefined,
       quantity: fields.quantity ?? undefined,
-      unitCode: fields.unitCode ?? undefined,
+      unitCode: normalizeUnitCode(fields.unitCode),
       unitLabelHe: fields.unitLabelHe ?? undefined,
       unit: fields.unit ?? undefined,
       wastePct: fields.wastePct ?? undefined,
@@ -554,9 +584,9 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       vendorId: resolvedVendorId ?? undefined,
       vendorName: fields.vendorName ?? undefined,
       leadTimeDays: fields.leadTimeDays ?? undefined,
-      procurementCode: fields.procurementCode ?? undefined,
+      procurementCode: normalizeProcurementCode(fields.procurementCode),
       procurementLabelHe: fields.procurementLabelHe ?? undefined,
-      procurement: fields.procurement ?? undefined,
+      procurement: fields.procurement ?? (fields.procurementCode && !normalizeProcurementCode(fields.procurementCode) ? fields.procurementCode : undefined),
       notes: fields.notes ?? undefined,
       sourceCode: fields.sourceCode ?? undefined,
       sourceLabelHe: fields.sourceLabelHe ?? undefined,

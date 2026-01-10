@@ -314,6 +314,8 @@ export default defineSchema({
     source: v.optional(v.string()),
     confidence: v.optional(v.number()),
     notes: v.optional(v.string()),
+    actualTotalCost: v.optional(v.number()),
+    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
 
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     createdAt: v.number(),
@@ -351,6 +353,8 @@ export default defineSchema({
         v.literal("ea"),
         v.literal("m"),
         v.literal("sqm"),
+        v.literal("m2"),
+        v.literal("m3"),
         v.literal("kg"),
         v.literal("l"),
         v.literal("set"),
@@ -756,6 +760,7 @@ export default defineSchema({
     unitPrice: v.optional(v.number()),
     total: v.optional(v.number()),
     vendorId: v.optional(v.id("vendors")),
+    mappedAccountingLineId: v.optional(v.id("accountingLines")),
     mappedMaterialLineId: v.optional(v.id("materialLines")),
     mappedWorkLineId: v.optional(v.id("workLines")),
     mappedTaskId: v.optional(v.id("tasks")),
@@ -988,6 +993,7 @@ export default defineSchema({
     eventType: v.optional(v.string()),
     eventPayload: v.optional(v.any()),
     changeSetId: v.optional(v.id("changeSets")),
+    metadata: v.optional(v.any()),
     createdAt: v.number(),
   })
     .index("by_conversation", ["conversationId"])

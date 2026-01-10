@@ -1,0 +1,334 @@
+Below is a **dev plan for all Accounting-tab epics** you’ve mentioned so far (UI redesign + delete row + task links + actuals + profit + baseline/gaps), **mapped to your current Convex schema** (projects/materialLines/workLines/budgetBaselines/quoteVersions/tasks/receipts/purchases). I’m also flagging what’s **P0 must-have for production** vs **P1/P2**.
+
+---
+
+## Scope recap: Accounting Tab epics
+
+### You asked for these outcomes
+
+1. **Top summary**:
+
+   * Total Materials, Total Labor
+   * Three editable margin columns: **Risk 10%**, **Overhead 15%**, **Profit 30%** (per project)
+   * **Total price for customer** (sell price)
+   * **Approved budget** line derived from approved quote/baseline
+   * **Materials gap / Labor gap / Total gap** vs approved
+
+2. **Lines view**:
+
+   * For each element: show totals per element + expandable detail lines
+   * For each line: planned cost, and **delete row button** (materials + labor)
+   * **Task linking**: show which task(s) a line belongs to (and jump)
+   * **Actual prices** (from receipts/purchases) and **profit** (sell − actual)
+
+---
+
+## Data model decisions (based on your schema)
+
+### Canonical tables for Accounting UI
+
+* **Planned costs**: `materialLines`, `workLines` (you already have great fields and indexes)
+* **Approved budget**: `projects.activeBudgetBaselineId` → `budgetBaselines.planned` (or baseline linked to `quoteVersionId`)
+* **Margins**: `projects.defaults` (already exists: profitPct/overheadPct/riskPct)
+* **Actuals**:
+
+  * Today you have: `purchases` + thin `receipts`
+  * To support per-line actual mapping: add **receiptItems** + add actual fields to lines
+
+### Minimal schema changes required for “Actuals + Profit”
+
+**Add to `materialLines`:**
+
+* `actualUnitCost?: number`
+* `actualTotalCost?: number`
+* `receiptItemIds?: Id<"receiptItems">[]`
+
+**Add to `workLines`:**
+
+* `actualTotalCost?: number`
+* `receiptItemIds?: Id<"receiptItems">[]` (optional)
+
+**Add new tables (if not already added in your patch plan):**
+
+* `receiptItems` (receiptId + extracted items + mapping to materialLine/workLine/task/element)
+* (Optional later) `shareLinks` etc — not required for Accounting tab itself.
+
+> If you want **Accounting P0 only**, you can ship without actuals and profit, but you explicitly asked for actual prices + profit, so I’m including them as P1.
+
+---
+
+## Priority and phased dev plan (1-day execution friendly)
+
+### P0 — Must ship for “Accounting works”
+
+**Goal:** Accounting tab shows correct totals, editable margins, sell price, line lists, delete row, and task links.
+
+#### P0.1 Backend: Accounting snapshot query (single source)
+
+Create a Convex query that returns everything Accounting needs in one call:
+
+**`accounting.getSnapshot(projectId)`**
+Returns:
+
+* project defaults (risk/overhead/profit + excludeManagementLaborFromCost)
+* planned totals:
+
+  * materialsPlannedTotal
+  * laborPlannedTotal (optionally exclude management)
+  * plannedCostTotal
+* computed margins:
+
+  * riskAmount, overheadAmount, profitAmount
+  * sellPriceTotal
+* grouping:
+
+  * perElement: { elementId, elementTitle, materialsTotal, laborTotal, costTotal, sellTotal, lines[] }
+* raw lines:
+
+  * `materialLines[]`, `workLines[]` including `taskId`, `elementId`, `sectionLabelHe`, `workType`, etc.
+* baseline (if exists):
+
+  * approvedCostTotals (materials/labor/total)
+  * gaps = current − approved
+
+**Implementation notes**
+
+* Use existing indexes: `materialLines.by_project`, `workLines.by_project`, `elements.by_project`
+* Keep computations inside query for consistency + speed.
+
+#### P0.2 Backend: Update margins (editable on Accounting screen)
+
+**`projects.updateMargins(projectId, {riskPct, overheadPct, profitPct})`**
+
+* Patch `projects.defaults.*Pct`
+* (Optional) also patch `updatedAt`
+
+#### P0.3 Backend: Delete line mutations (materials + labor)
+
+* `materialLines.deleteLine(materialLineId)`
+* `workLines.deleteLine(workLineId)`
+
+**Fast path (P0):** hard delete with confirm modal.
+**Safer path (P1/P2):** “soft delete” + graveyard entry + ChangeSet op. (Not required for production if you accept hard delete.)
+
+#### P0.4 Backend: Task linking on line
+
+You already have:
+
+* `materialLines.taskId?: Id<tasks>`
+* `workLines.taskId?: Id<tasks>`
+  So implement:
+* `materialLines.setTask(materialLineId, taskId|null)`
+* `workLines.setTask(workLineId, taskId|null)`
+
+Also add convenience queries:
+
+* `tasks.listForProject(projectId)` (for dropdown search)
+* `tasks.get(taskId)` (for jump)
+
+#### P0.5 UI: Accounting tab redesign (layout)
+
+Implement as a single page with 2 zones:
+
+**Zone A: Summary header**
+
+* Card row:
+
+  * Materials total
+  * Labor total
+  * Risk % (editable) → shows amount
+  * Overhead % (editable) → shows amount
+  * Profit % (editable) → shows amount
+  * Sell price total (customer price)
+* Baseline row (if exists):
+
+  * Approved materials/labor/total
+  * Gap materials/labor/total (red if over)
+
+**Zone B: Elements + lines**
+
+* Collapsible per element section (you asked this also on Elements UI; same behavior fits Accounting):
+
+  * Element header row: Materials/Labor/Cost/Sell totals
+  * Expand shows 2 tables:
+
+    * Materials lines table
+    * Labor lines table
+* Each row shows:
+
+  * title / itemName / roleHe
+  * qty / unit / plannedUnitCost / plannedTotalCost
+  * linked task pill (click to open task)
+  * **Delete icon button**
+
+#### P0 Acceptance criteria
+
+* Totals match sum of lines
+* Margin % edits persist in `projects.defaults`
+* Sell price updates immediately after margin change
+* Delete removes line and updates totals
+* Setting taskId on a line shows on UI and persists
+
+---
+
+### P1 — “Actual prices + Profit” (next after P0)
+
+**Goal:** track actuals per line from receipts/purchases and compute profit.
+
+#### P1.1 Data: receipts expansion (you already have receipts/purchases)
+
+Right now `receipts` is: `{ projectId, purchaseId?, fileId, createdAt }`
+To support actuals:
+
+* Extend `receipts` with optional: `vendorId`, `status`, `date`, `total`, `currency`, `extraction`, `fileIds[]`
+* Add `receiptItems` table and connect to `materialLines/workLines`
+
+#### P1.2 Backend: receipt workflow
+
+* `receipts.create(projectId, fileId, purchaseId?, vendorId?)`
+* `receipts.setStatus(receiptId, status)`
+* `receiptItems.upsert(receiptId, items[])`
+* `receiptItems.mapToLine(receiptItemId, { materialLineId? / workLineId? / taskId? / elementId? })`
+
+#### P1.3 Backend: apply actuals to lines
+
+Two options:
+
+* **Manual mapping only (fast):** user maps receipt items to material lines; then:
+
+  * patch `materialLines.actualTotalCost`
+  * push `receiptItemId` to `materialLines.receiptItemIds`
+* **Semi-auto (later):** match by vendor + itemName similarity.
+
+Add computed fields in `accounting.getSnapshot`:
+
+* actualMaterialsTotal, actualLaborTotal, actualCostTotal
+* profit = sellPriceTotal − actualCostTotal
+* variance vs planned = actual − planned
+
+#### P1.4 UI changes
+
+* Add “Actual” columns next to planned:
+
+  * plannedTotalCost | actualTotalCost | variance
+* Profit box in header:
+
+  * Sell total, Actual total, Profit (number + %)
+
+#### P1 Acceptance criteria
+
+* Can attach receipt items and map to lines
+* Actual totals appear on Accounting tab
+* Profit updates live
+* No data corruption when deleting lines (warn if actuals attached)
+
+---
+
+### P2 — Auditability & safety (after you’re live)
+
+* Replace hard-delete with:
+
+  * create ChangeSet op `materialLine.delete` / `workLine.delete`
+  * write to `graveyardItems` with undo option
+* Add “diff vs baseline” view using `budgetAdjustments`
+* Support multi-task allocation per line (new join table) if you outgrow `taskId`
+
+---
+
+## Detailed implementation checklist (parallelizable for your multi-agent day)
+
+### Backend agent tasks (parallel)
+
+1. **Agent A**: `accounting.getSnapshot(projectId)` + helper computation functions
+2. **Agent B**: margin mutation `projects.updateMargins`
+3. **Agent C**: delete mutations for `materialLines/workLines` + confirm constraints
+4. **Agent D**: line ↔ task linking mutations + tasks list query
+5. **Agent E (P1)**: receiptItems table + receipt mapping mutations
+
+### Frontend agent tasks (parallel)
+
+1. **Agent F**: Accounting header UI (totals + margin editors + sell price)
+2. **Agent G**: baseline + gaps UI (reads `activeBudgetBaselineId`)
+3. **Agent H**: per-element collapsible sections + tables + delete buttons
+4. **Agent I**: task link pill + dropdown selector in row
+
+---
+
+## Key calculations (make them consistent everywhere)
+
+Let:
+
+* `materialsPlanned = sum(materialLines.plannedTotalCost ?? 0)`
+* `laborPlanned = sum(workLines.plannedTotalCost ?? 0)`
+
+  * if `excludeManagementLaborFromCost`, exclude `workLines.isManagement === true`
+* `plannedCost = materialsPlanned + laborPlanned`
+
+Margins:
+
+* `risk = plannedCost * riskPct`
+* `overhead = plannedCost * overheadPct`
+* `profit = plannedCost * profitPct`
+* `sellTotal = plannedCost + risk + overhead + profit`
+
+Baseline (approved):
+
+* source:
+
+  * `project.activeBudgetBaselineId` → `budgetBaselines.planned` (you decide the planned shape; return totals)
+    Gaps:
+* `gapMaterials = materialsPlanned - approvedMaterials`
+* `gapLabor = laborPlanned - approvedLabor`
+* `gapTotal = plannedCost - approvedTotal`
+
+Profit (P1):
+
+* `actualCost = actualMaterials + actualLabor`
+* `profitActual = sellTotal - actualCost`
+
+---
+
+## Testing plan (quick but real)
+
+### Unit-level (Convex)
+
+* Snapshot computation: totals, margin math, exclude management logic
+* Delete line: removes doc and snapshot changes
+* Set taskId: persists and appears in snapshot
+
+### UI-level
+
+* Margin edit updates totals immediately (optimistic UI ok)
+* Delete confirm → row removed and totals refresh
+* Element collapse/expand doesn’t lose state
+* Baseline missing → UI shows “No approved budget yet”
+
+### Safety checks
+
+* If deleting a line with `receiptItemIds` (P1): show warning / block delete / or detach first
+
+---
+
+## Deliverable structure (what you’ll build in repo)
+
+**Convex**
+
+* `convex/accounting.ts` (snapshot query)
+* `convex/projects.ts` (updateMargins)
+* `convex/materialLines.ts` (deleteLine, setTask, updatePlanned fields)
+* `convex/workLines.ts` (deleteLine, setTask, updatePlanned fields)
+* `convex/tasks.ts` (listForProject)
+* `convex/receipts.ts` + `convex/receiptItems.ts` (P1)
+
+**UI**
+
+* `app/projects/[id]/accounting/page.tsx`
+* components:
+
+  * `AccountingHeaderSummary.tsx`
+  * `MarginsEditor.tsx`
+  * `ApprovedBudgetRow.tsx`
+  * `ElementAccountingSection.tsx`
+  * `MaterialLinesTable.tsx`
+  * `WorkLinesTable.tsx`
+  * `TaskLinkCell.tsx`

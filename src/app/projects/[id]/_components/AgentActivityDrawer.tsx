@@ -77,6 +77,7 @@ export default function AgentActivityDrawer({
   const appendEventMessage = useMutation(api.agent.appendEventMessage);
   const applyChangeSet = useMutation(api.changeSets.applyChangeSet);
   const discardChangeSet = useMutation(api.changeSets.discardChangeSet);
+  const cancelRunningAgent = useMutation(api.agent.cancelRunningAgent);
   const approveSuggested = useMutation(api.suggestions.approveSuggestedElement);
   const rejectSuggested = useMutation(api.suggestions.rejectSuggestedElement);
   const updateProjectSummary = useMutation(api.projects.updateProjectSummary);
@@ -143,6 +144,16 @@ export default function AgentActivityDrawer({
       setCreateConversationError("Could not create a new conversation.");
     } finally {
       setIsCreatingConversation(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!activeConversationId) return;
+    try {
+      await cancelRunningAgent({ conversationId: activeConversationId });
+      setIsWaiting(false);
+    } catch (err) {
+      console.error("Failed to cancel agent", err);
     }
   };
 
@@ -598,14 +609,24 @@ export default function AgentActivityDrawer({
                     placeholder="Send a command or note..."
                     className="flex-1 resize-none rounded-lg border border-blue-200 px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-100"
                   />
-                  <button
-                    onClick={handleSend}
-                    disabled={isWaiting || !input.trim()}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                  >
-                    <Send size={14} />
-                    Send
-                  </button>
+                  {isWaiting ? (
+                    <button
+                      onClick={handleCancel}
+                      className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
+                    >
+                      <div className="w-3.5 h-3.5 bg-white rounded-sm" /> {/* Square icon equivalent */}
+                      Cancel
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSend}
+                      disabled={!input.trim()}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      <Send size={14} />
+                      Send
+                    </button>
+                  )}
                 </div>
               </div>
             </section>

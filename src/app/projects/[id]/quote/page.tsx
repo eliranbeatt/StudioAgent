@@ -5,6 +5,7 @@ import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { CheckCircle, Clock, Copy, FileText, Loader2, Plus } from "lucide-react";
 import { useMemo, useState, use } from "react";
+import QuotePrintView from "./QuotePrintView";
 
 export default function QuotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -16,9 +17,31 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
     api.quotes.getQuote,
     selectedQuoteId.value ? { quoteId: selectedQuoteId.value } : "skip"
   );
+  const previousQuoteId = useMemo(() => {
+    if (!quotes || !selectedQuoteId.value) return null;
+    const direct = quote?.previousQuoteId ?? null;
+    if (direct) return direct;
+    const index = quotes.findIndex((item) => item._id === selectedQuoteId.value);
+    if (index === -1 || index + 1 >= quotes.length) return null;
+    return quotes[index + 1]._id;
+  }, [quotes, quote?.previousQuoteId, selectedQuoteId.value]);
+  const diffData = useQuery(
+    api.quotes.getDiff,
+    previousQuoteId && selectedQuoteId.value
+      ? { prevId: previousQuoteId, nextId: selectedQuoteId.value }
+      : "skip"
+  );
 
   const overview = useQuery(api.projects.getOverview, { id: projectId });
   const files = useQuery(api.files.listProjectFiles, { projectId });
+  const pdfUrl = useQuery(
+    api.files.getFileUrl,
+    quote?.pdfFileId ? { fileId: quote.pdfFileId } : "skip"
+  );
+  const logoUrl = useQuery(
+    api.files.getFileUrl,
+    quote?.inputs?.logoFileId ? { fileId: quote.inputs.logoFileId } : "skip"
+  );
 
   const createDraftFromUi = useMutation(api.quotes.createDraftFromUi);
   const generateQuoteV2 = useAction(api.quotes.generateQuoteV2);
@@ -36,6 +59,7 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
   const [includeOptions, setIncludeOptions] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
   const [logoFileId, setLogoFileId] = useState<Id<"projectFiles"> | "">("");
 
   const handleGenerate = async () => {
@@ -104,6 +128,23 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
         </div>
         <div className="flex gap-2">
           <button
+            onClick={() => setShowDiff(true)}
+            className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
+            disabled={!previousQuoteId}
+          >
+            <Clock size={16} /> Diff vs Previous
+          </button>
+          {pdfUrl?.url && (
+            <a
+              href={pdfUrl.url}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
+            >
+              <FileText size={16} /> Download PDF
+            </a>
+          )}
+          <button
             onClick={handleExportPdf}
             className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
             disabled={!quote?._id || isExporting}
@@ -136,6 +177,120 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
           </button>
         </div>
       </div>
+
+      {showDiff && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-6">
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Diff vs Previous</h3>
+              <button
+                onClick={() => setShowDiff(false)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+            {!diffData ? (
+              <div className="text-sm text-gray-500">No diff available.</div>
+            ) : (
+              <div className="space-y-4 text-sm text-gray-700">
+                <div>
+                  <h4 className="font-medium text-black">Totals</h4>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="border rounded-lg p-3">
+                      <div className="text-xs text-gray-500">Subtotal Before VAT</div>
+                      <div className="font-semibold">
+                        {diffData.numbers.subtotalBeforeVat.before.toLocaleString()} →{" "}
+                        {diffData.numbers.subtotalBeforeVat.after.toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Δ {diffData.numbers.subtotalBeforeVat.delta.toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="border rounded-lg p-3">
+                      <div className="text-xs text-gray-500">Total</div>
+                      <div className="font-semibold">
+                        {diffData.numbers.total.before.toLocaleString()} →{" "}
+                        {diffData.numbers.total.after.toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Δ {diffData.numbers.total.delta.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {diffData.numbers.breakdown.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-black">Breakdown Changes</h4>
+                    <div className="mt-2 space-y-2">
+                      {diffData.numbers.breakdown.map((item: any) => (
+                        <div key={item.name} className="flex justify-between border-b pb-1">
+                          <span>{item.name}</span>
+                          <span>
+                            {item.before.toLocaleString()} → {item.after.toLocaleString()} (Δ{" "}
+                            {item.delta.toLocaleString()})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <h4 className="font-medium text-black">Content Changes</h4>
+                  {diffData.blocks.added.length === 0 &&
+                  diffData.blocks.removed.length === 0 &&
+                  diffData.blocks.changed.length === 0 ? (
+                    <div className="text-sm text-gray-500">No content changes.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {diffData.blocks.added.length > 0 && (
+                        <div>
+                          <div className="text-xs text-gray-500">Added Sections</div>
+                          <div>{diffData.blocks.added.join(", ")}</div>
+                        </div>
+                      )}
+                      {diffData.blocks.removed.length > 0 && (
+                        <div>
+                          <div className="text-xs text-gray-500">Removed Sections</div>
+                          <div>{diffData.blocks.removed.join(", ")}</div>
+                        </div>
+                      )}
+                      {diffData.blocks.changed.length > 0 && (
+                        <div>
+                          <div className="text-xs text-gray-500">Changed Sections</div>
+                          <div className="space-y-2">
+                            {diffData.blocks.changed.map((item: any) => (
+                              <div key={item.block} className="border rounded-lg p-3">
+                                <div className="text-xs text-gray-500">{item.block}</div>
+                                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                                  <div>
+                                    <div className="text-gray-400">Before</div>
+                                    <pre className="whitespace-pre-wrap text-gray-600">
+                                      {item.before}
+                                    </pre>
+                                  </div>
+                                  <div>
+                                    <div className="text-gray-400">After</div>
+                                    <pre className="whitespace-pre-wrap text-gray-600">
+                                      {item.after}
+                                    </pre>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
         <div className="bg-white border rounded-xl p-5 shadow-sm space-y-5">
@@ -282,92 +437,16 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
           <div className="bg-white border rounded-xl p-6 shadow-sm space-y-4">
             <h4 className="font-semibold">Quote Preview</h4>
             {quote?.quoteBlocks ? (
-              <div className="space-y-4 text-sm text-gray-700">
-                <div>
-                  <h5 className="font-semibold text-base text-black">{quote.quoteBlocks.title_he}</h5>
-                  <p className="text-gray-600 mt-1">{quote.quoteBlocks.intro_he}</p>
-                </div>
-                {quote.quoteBlocks.scope_he?.length > 0 && (
-                  <div>
-                    <p className="font-medium text-black">Scope</p>
-                    <ul className="list-disc list-inside text-gray-600">
-                      {quote.quoteBlocks.scope_he.map((item: string, index: number) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {quote.quoteBlocks.deliverables_he?.length > 0 && (
-                  <div>
-                    <p className="font-medium text-black">Deliverables</p>
-                    <ul className="list-disc list-inside text-gray-600">
-                      {quote.quoteBlocks.deliverables_he.map((item: string, index: number) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {quote.quoteBlocks.schedule_he?.length > 0 && (
-                  <div>
-                    <p className="font-medium text-black">Schedule</p>
-                    <ul className="list-disc list-inside text-gray-600">
-                      {quote.quoteBlocks.schedule_he.map((item: string, index: number) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {quote.quoteBlocks.priceSummary_he?.length > 0 && (
-                  <div>
-                    <p className="font-medium text-black">Price Summary</p>
-                    <ul className="list-disc list-inside text-gray-600">
-                      {quote.quoteBlocks.priceSummary_he.map((item: string, index: number) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {quote.quoteBlocks.agreements_he?.length > 0 && (
-                  <div>
-                    <p className="font-medium text-black">Agreements</p>
-                    <ul className="list-disc list-inside text-gray-600">
-                      {quote.quoteBlocks.agreements_he.map((item: string, index: number) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {quote.quoteBlocks.assumptions_he?.length > 0 && (
-                  <div>
-                    <p className="font-medium text-black">Assumptions</p>
-                    <ul className="list-disc list-inside text-gray-600">
-                      {quote.quoteBlocks.assumptions_he.map((item: string, index: number) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {quote.quoteBlocks.exclusions_he?.length > 0 && (
-                  <div>
-                    <p className="font-medium text-black">Exclusions</p>
-                    <ul className="list-disc list-inside text-gray-600">
-                      {quote.quoteBlocks.exclusions_he.map((item: string, index: number) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {quote.quoteBlocks.terms_he?.length > 0 && (
-                  <div>
-                    <p className="font-medium text-black">Terms</p>
-                    <ul className="list-disc list-inside text-gray-600">
-                      {quote.quoteBlocks.terms_he.map((item: string, index: number) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
+              <QuotePrintView
+                projectName={overview?.project?.name ?? ""}
+                customerName={
+                  overview?.project?.customerName ??
+                  overview?.project?.clientName ??
+                  ""
+                }
+                quote={quote}
+                logoUrl={logoUrl?.url}
+              />
             ) : (
               <div className="text-sm text-gray-500">No quote generated yet.</div>
             )}

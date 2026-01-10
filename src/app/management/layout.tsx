@@ -50,6 +50,12 @@ export default function ManagementLayout({
             <ReceiptText size={20} /> Purchases
           </Link>
           <Link
+            href="/management/receipts"
+            className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
+          >
+            <ReceiptText size={20} /> Receipts
+          </Link>
+          <Link
             href="/management/employees"
             className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
           >

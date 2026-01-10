@@ -42,7 +42,7 @@ export const generateQuote = mutation({
     // 2. Apply Project Margins
     const overhead = totalDirectCost * project.defaults.overheadPct;
     const risk = totalDirectCost * project.defaults.riskPct;
-    const profit = (totalDirectCost + overhead + risk) * project.defaults.profitPct;
+    const profit = totalDirectCost * project.defaults.profitPct;
     const grandTotal = totalDirectCost + overhead + risk + profit;
 
     // 3. Save Quote
@@ -168,10 +168,12 @@ export const updateQuote = mutation({
       priceSummary: v.optional(v.any()),
       sellBreakdown: v.optional(v.any()),
       margins: v.optional(v.any()),
+      currency: v.optional(v.string()),
       quoteBlocks: v.optional(v.any()),
       quoteText_he: v.optional(v.string()),
       contentHash: v.optional(v.string()),
       pdfFileId: v.optional(v.id("projectFiles")),
+      previousQuoteId: v.optional(v.id("quoteVersions")),
     }),
   },
   handler: async (ctx, args) => {
@@ -289,7 +291,7 @@ export const generateQuoteV2 = action({
 
     const overhead = totalDirectCost * margins.overheadPct;
     const risk = totalDirectCost * margins.riskPct;
-    const profit = (totalDirectCost + overhead + risk) * margins.profitPct;
+    const profit = totalDirectCost * margins.profitPct;
     const grandTotal = totalDirectCost + overhead + risk + profit;
     const ratio = totalDirectCost > 0 ? grandTotal / totalDirectCost : 0;
 
@@ -311,13 +313,23 @@ export const generateQuoteV2 = action({
       }
     }
 
+    const currency = overview.project.currency || "NIS";
+    const vatNote_he =
+      currency === "NIS" ? "לא כולל מע\"מ" : "לא כולל מסים מקומיים";
+    const priceLabel =
+      currency === "NIS" ? "סה\"כ לפני מע\"מ" : "סה\"כ לפני מסים";
     const priceSummary = {
       subtotalBeforeVat: Math.round(grandTotal),
-      vatNote_he: "לא כולל מע\"מ",
+      vatNote_he,
       total: Math.round(grandTotal),
     };
 
-    const formatNis = (value: number) => value.toLocaleString("he-IL");
+    const formatCurrency = (value: number) =>
+      new Intl.NumberFormat("he-IL", {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 0,
+      }).format(value);
     const validUntil = quote.inputs?.validUntil?.trim();
     const validUntilText = validUntil
       ? `בתוקף עד ${validUntil}`
@@ -354,7 +366,7 @@ export const generateQuoteV2 = action({
           ]
         : [],
       priceSummary_he: [
-        `סה\"כ לפני מע\"מ: ${formatNis(Math.round(grandTotal))} ₪`,
+        `${priceLabel}: ${formatCurrency(Math.round(grandTotal))}`,
       ],
       options_he: includeFlags.includeOptions ? [] : [],
       agreements_he: includeFlags.includeAgreements
@@ -396,6 +408,16 @@ export const generateQuoteV2 = action({
       JSON.stringify({ quoteBlocks, priceSummary, sellBreakdown, includeFlags })
     );
 
+    const previousQuote =
+      quote.previousQuoteId ??
+      (await ctx.db
+        .query("quoteVersions")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .order("desc")
+        .filter((q) => q.neq(q.field("_id"), args.quoteId))
+        .first())?._id ??
+      undefined;
+
     await ctx.runMutation(api.quotes.updateQuote, {
       quoteId: args.quoteId,
       patch: {
@@ -415,6 +437,8 @@ export const generateQuoteV2 = action({
         quoteBlocks,
         quoteText_he,
         contentHash,
+        currency,
+        previousQuoteId: previousQuote,
       },
     });
 
@@ -430,6 +454,33 @@ export const listQuotes = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .order("desc")
       .collect();
+  },
+});
+
+export const getDiff = query({
+  args: {
+    prevId: v.id("quoteVersions"),
+    nextId: v.id("quoteVersions"),
+  },
+  handler: async (ctx, args) => {
+    const prev = await ctx.db.get(args.prevId);
+    const next = await ctx.db.get(args.nextId);
+    if (!prev || !next) throw new Error("Quote not found");
+
+    const prevSummary = normalizeQuoteForDiff(prev);
+    const nextSummary = normalizeQuoteForDiff(next);
+
+    const numberDiffs = diffNumbers(prevSummary, nextSummary);
+    const textDiffs = diffTextBlocks(prevSummary, nextSummary);
+
+    return {
+      numbers: numberDiffs,
+      blocks: {
+        added: textDiffs.added,
+        removed: textDiffs.removed,
+        changed: textDiffs.changed,
+      },
+    };
   },
 });
 
@@ -503,6 +554,107 @@ function simpleHash(value: string) {
     hash = (hash * 33) ^ value.charCodeAt(i);
   }
   return (hash >>> 0).toString(16);
+}
+
+function normalizeQuoteForDiff(quote: any) {
+  const blocks = quote.quoteBlocks ?? {};
+  const includeFlags = quote.inputs?.includeFlags ?? {};
+  const summaryLines = Array.isArray(blocks.priceSummary_he) ? blocks.priceSummary_he : [];
+  const totals = quote.priceSummary ?? quote.totals ?? {};
+  const sellBreakdown = Array.isArray(quote.sellBreakdown) ? quote.sellBreakdown : [];
+
+  return {
+    includeFlags,
+    totals: {
+      subtotalBeforeVat: totals.subtotalBeforeVat ?? totals.grandTotal ?? 0,
+      total: totals.total ?? totals.grandTotal ?? 0,
+    },
+    sellBreakdown: sellBreakdown.map((item: any) => ({
+      name: item.groupName_he ?? "",
+      total: Number(item.sellSubtotalNIS ?? 0),
+    })),
+    textBlocks: {
+      title: String(blocks.title_he ?? ""),
+      intro: String(blocks.intro_he ?? ""),
+      scope: toList(blocks.scope_he),
+      deliverables: toList(blocks.deliverables_he),
+      schedule: includeFlags.includeDates === false ? [] : toList(blocks.schedule_he),
+      priceSummary: summaryLines.map((line: string) => String(line)),
+      agreements: includeFlags.includeAgreements === false ? [] : toList(blocks.agreements_he),
+      options: includeFlags.includeOptions === false ? [] : toList(blocks.options_he),
+      assumptions: toList(blocks.assumptions_he),
+      exclusions: toList(blocks.exclusions_he),
+      terms: includeFlags.includeTerms === false ? [] : toList(blocks.terms_he),
+      validUntil: String(blocks.validUntil_he ?? ""),
+    },
+  };
+}
+
+function toList(value: any) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === "string" ? item : item?.name_he ?? String(item)));
+  }
+  return [String(value)];
+}
+
+function diffNumbers(prev: any, next: any) {
+  const breakdownDiffs = [];
+  const nextMap = new Map(next.sellBreakdown.map((item: any) => [item.name, item.total]));
+  const prevMap = new Map(prev.sellBreakdown.map((item: any) => [item.name, item.total]));
+
+  const names = new Set([...nextMap.keys(), ...prevMap.keys()]);
+  for (const name of names) {
+    const before = prevMap.get(name) ?? 0;
+    const after = nextMap.get(name) ?? 0;
+    if (before !== after) {
+      breakdownDiffs.push({ name, before, after, delta: after - before });
+    }
+  }
+
+  const subtotalBeforeVat = {
+    before: prev.totals.subtotalBeforeVat,
+    after: next.totals.subtotalBeforeVat,
+    delta: next.totals.subtotalBeforeVat - prev.totals.subtotalBeforeVat,
+  };
+  const total = {
+    before: prev.totals.total,
+    after: next.totals.total,
+    delta: next.totals.total - prev.totals.total,
+  };
+
+  return {
+    subtotalBeforeVat,
+    total,
+    breakdown: breakdownDiffs,
+  };
+}
+
+function diffTextBlocks(prev: any, next: any) {
+  const added: string[] = [];
+  const removed: string[] = [];
+  const changed: Array<{ block: string; before: string; after: string }> = [];
+
+  const keys = Object.keys(next.textBlocks);
+  for (const key of keys) {
+    const before = normalizeText(prev.textBlocks[key]);
+    const after = normalizeText(next.textBlocks[key]);
+    if (!before && after) added.push(key);
+    else if (before && !after) removed.push(key);
+    else if (before !== after) {
+      changed.push({ block: key, before, after });
+    }
+  }
+
+  return { added, removed, changed };
+}
+
+function normalizeText(value: any) {
+  if (!value) return "";
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean).join("\n");
+  }
+  return String(value).trim();
 }
 
 async function generateQuoteBlocksWithLlm(payload: {

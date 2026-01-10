@@ -34,6 +34,10 @@ You already have (implemented in code):
 - convex/quotes.ts v2 flow: createDraftFromUi, generateQuoteV2, updateQuote, listQuotes, getQuote.
 - Quote tab UI with inputs, include toggles, preview, copy-as-text, version list, and baseline approval.
 - Pricing source prefers accounting view (draft + committed) and falls back to approved elementVersions.
+- LLM-backed quoteBlocks generation (with fallback to template blocks) in convex/quotes.ts.
+- Agent "generate_quote" now calls v2 (createDraftFromUi + generateQuoteV2).
+- PDF export action exists (convex/quotePdf.ts) with Playwright + storage pipeline.
+- Diff query exists (quotes.getDiff) and UI diff modal is wired in Quote tab.
 - Baseline approval reads quote.totals in convex/financials.ts and requires grandTotal to stay compatible.
 
 Therefore A1 is: stabilize v2 output, fix grouping and Hebrew content, optionally add LLM generation, then add PDF + diff while keeping totals compatible with baseline approval.
@@ -115,19 +119,23 @@ Implementation note: you can store internal cost snapshot in DB for audit, but k
 - quotes.getQuote(quoteId) (already exists)
   Returns full blocks + text + includeFlags + pdf link.
 - quotes.getDiff(prevId, nextId)
-  Returns a structured diff object (see Section 9). (not implemented yet)
+  Returns a structured diff object (see Section 9). (implemented)
+- files.getFileUrl(fileId)
+  Returns storage URL for PDF download (implemented)
 
 ### 5.2 Mutations/Actions
 
 - quotes.createDraftFromUi(projectId, uiInputs) (already exists)
   Validates, assigns next version number, saves initial record with inputs, status draft.
-- quotes.generateQuoteV2(projectId, quoteId) (already exists, template-driven)
+- quotes.generateQuoteV2(projectId, quoteId) (already exists, LLM-backed with fallback)
   - Fetch: project context, includeFlags, accounting totals
   - Compute sellBreakdown + priceSummary
-  - Build quoteBlocks + quoteText_he (currently non-LLM, needs Hebrew fixes)
+  - Call LLM for quoteBlocks + quoteText_he (fallback to template if LLM fails/missing key)
   - Save results + contentHash
 - quotes.attachPdf(quoteId, pdfFileId) (not implemented yet)
 - quotes.setStatus(quoteId, "final") (optional)
+- quotePdf.generateQuotePdf(projectId, quoteId) (implemented)
+  - Render HTML to PDF via Playwright, store in projectFiles, patch quote.pdfFileId
 
 Implementation choice:
 - Keep generateQuote (v1) for compatibility.
@@ -156,8 +164,9 @@ Actions row:
 
 - Generate quote
 - Copy as text
-- Export PDF
-- Diff vs previous (disabled if no previous)
+- Export PDF (implemented)
+- Diff vs previous (implemented)
+- Logo selection (implemented; uses Project Files image list)
 
 Right/Bottom area (output):
 
@@ -223,6 +232,7 @@ Pros: Deterministic.
 Cons: More layout work.
 
 Day-1 recommendation: Option A, since parity is important.
+Status: Implemented using Playwright in convex/quotePdf.ts, with a simple HTML renderer and logo support.
 
 ---
 
@@ -238,6 +248,7 @@ Implementation:
 
 - Store quoteBlocks as structured arrays and diff by key + normalized string
 - For UI: show a Changed / Added / Removed list, plus number deltas
+Status: Implemented in quotes.getDiff and Quote tab modal.
 
 ---
 
@@ -269,28 +280,32 @@ Implementation:
 
 ### Phase 0 - Stabilize current v2 output (must come first)
 
-- Fix broken Hebrew strings in convex/quotes.ts (VAT note, labels, intro, assumptions, terms, signature).
+- Fix broken Hebrew strings in convex/quotes.ts (VAT note, labels, intro, assumptions, terms, signature). (done)
 - Confirm currency display and VAT note logic (use project currency if needed).
 - Keep quote.totals.grandTotal compatibility for baseline approval.
 
 ### Phase 1 - Pricing + grouping correctness
 
-- Implement elementsMode behavior in generateQuoteV2 (bySection vs byElement).
-- Ensure sellBreakdown totals sum to priceSummary.subtotalBeforeVat.
+- Implement elementsMode behavior in generateQuoteV2 (bySection vs byElement). (done)
+- Ensure sellBreakdown totals sum to priceSummary.subtotalBeforeVat. (done)
 - Preserve rule: never expose internal/vendor data in quoteBlocks or quoteText_he.
 
 ### Phase 2 - Agent v2 output (optional, after blocks are stable)
 
-- Add LLM call with strict schema to generate quoteBlocks + quoteText_he.
-- Update convex/agent.ts to call v2 generation (not v1).
+- Add LLM call with strict schema to generate quoteBlocks + quoteText_he. (done)
+- Update convex/agent.ts to call v2 generation (not v1). (done)
 
 ### Phase 3 - PDF + Logo
 
-- Build QuotePrintView
-- Implement PDF pipeline + store pdfFileId
-- Export PDF button
+- Build QuotePrintView (partial: HTML renderer in quotePdf.ts, can later be shared with UI)
+- Implement PDF pipeline + store pdfFileId (done)
+- Export PDF button (done)
 
 ### Phase 4 - Diff + Version UX polish
 
-- previousQuoteId linking + getDiff
-- UI diff modal
+- previousQuoteId linking + getDiff (diff uses version list ordering; previousQuoteId still optional)
+- UI diff modal (done)
+
+## Remaining TODOs
+
+- (none for Quote v2 core workflow)

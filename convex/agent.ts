@@ -666,10 +666,15 @@ export const agentRespond = action({
             const isInsideBlock = jsonIndex !== -1 && jsonIndex < responseText.length - 10;
 
             if (!isInsideBlock && (chunkCount % 5 === 0 || Date.now() - lastUpdate > 300)) {
-              await ctx.runMutation(internal.agent.updateMessageContent, {
+              const updateResult = await ctx.runMutation(internal.agent.updateMessageContent, {
                 messageId: agentMessageId,
                 text_he: responseText,
               });
+              if (updateResult?.cancelled) {
+                responseText += " (Cancelled)";
+                stream.controller.abort(); // Attempt to abort OpenAI stream if possible, or just break
+                break; 
+              }
               lastUpdate = Date.now();
             }
           }
@@ -1079,6 +1084,23 @@ export const listMessages = query({
 // Internal Mutations for Streaming
 // ---------------------------------------------------------
 
+export const cancelRunningAgent = mutation({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const lastMsg = await ctx.db
+      .query("conversationMessages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .order("desc")
+      .first();
+
+    if (lastMsg && lastMsg.role === "assistant") {
+      await ctx.db.patch(lastMsg._id, {
+        metadata: { ...(lastMsg.metadata ?? {}), cancelled: true },
+      });
+    }
+  },
+});
+
 export const createPlaceholderMessage = internalMutation({
   args: {
     conversationId: v.id("conversations"),
@@ -1102,9 +1124,14 @@ export const updateMessageContent = internalMutation({
     text_he: v.string(),
   },
   handler: async (ctx, args) => {
+    const msg = await ctx.db.get(args.messageId);
+    if (msg?.metadata?.cancelled) {
+      return { cancelled: true };
+    }
     await ctx.db.patch(args.messageId, {
       text_he: args.text_he,
     });
+    return { cancelled: false };
   },
 });
 

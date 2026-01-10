@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
-import { Pencil, Check } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 interface AccountingSummaryBlockProps {
     projectId: Id<"projects">;
     summary: any;
+    accounting: any;
     projectDefaults: {
         riskPct: number;
         overheadPct: number;
@@ -17,6 +18,7 @@ interface AccountingSummaryBlockProps {
 export function AccountingSummaryBlock({
     projectId,
     summary,
+    accounting,
     projectDefaults,
 }: AccountingSummaryBlockProps) {
     // Local state for margins
@@ -39,17 +41,22 @@ export function AccountingSummaryBlock({
     const profitAmount = baseCost * margins.profitPct;
     const customerPrice = baseCost + riskAmount + overheadAmount + profitAmount;
     const effectiveMultiplier = baseCost > 0 ? (customerPrice / baseCost).toFixed(2) : "1.00";
+    const actualTotal = accounting?.totals?.actualTotal ?? null;
+    const profitActual =
+        actualTotal !== null && Number.isFinite(actualTotal)
+            ? customerPrice - Number(actualTotal)
+            : null;
 
     // --- Gap Calculations ---
     // Baseline logic: check if baseline has detailed breakdown (materials, labor).
     // Usually it acts as a snapshot of 'totals'.
     // If not present, we can only safely calc total gap.
     const baseline = summary?.baseline;
-    const hasBaseline = !!baseline?.grandTotal;
+    const hasBaseline = Number(baseline?.total ?? baseline?.grandTotal ?? 0) > 0;
 
     // We treat missing baseline metrics as null (--)
-    const baselineMat = baseline?.totals?.materials ?? null;
-    const baselineLab = baseline?.totals?.labor ?? null;
+    const baselineMat = baseline?.materials ?? null;
+    const baselineLab = baseline?.labor ?? null;
 
     const matGap = hasBaseline && baselineMat !== null ? materialsTotal - baselineMat : null;
     const labGap = hasBaseline && baselineLab !== null ? laborTotal - baselineLab : null;
@@ -152,7 +159,21 @@ export function AccountingSummaryBlock({
                         {Math.round(customerPrice).toLocaleString()} <span className="text-lg text-gray-400 font-normal">NIS</span>
                     </div>
                     <div className="mt-4 inline-flex items-center px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                        <span className="text-xs font-mono font-semibold">Multiplier: × {effectiveMultiplier}</span>
+                        <span className="text-xs font-mono font-semibold">Multiplier: A- {effectiveMultiplier}</span>
+                    </div>
+                    <div className="mt-4 w-full text-xs text-gray-500 space-y-1">
+                        <div className="flex items-center justify-between">
+                            <span>Actual total</span>
+                            <span className="font-mono text-gray-700">
+                                {actualTotal === null ? "--" : Math.round(actualTotal).toLocaleString()} NIS
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span>Profit</span>
+                            <span className="font-mono text-gray-900 font-semibold">
+                                {profitActual === null ? "--" : Math.round(profitActual).toLocaleString()} NIS
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
