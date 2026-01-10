@@ -75,6 +75,22 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
     setSelectedElementIds([overview.elements[0].id as Id<"elements">]);
   }, [overview?.elements, selectedElementIds.length]);
 
+  const changeSetStatusMap = useMemo(() => {
+    const map = new Map<string, "pending" | "applied" | "discarded">();
+    if (!messages) return map;
+
+    for (const msg of messages) {
+      if (msg.role === "event") {
+        if (msg.eventType === "changeset_applied" && msg.eventPayload?.changeSetId) {
+          map.set(msg.eventPayload.changeSetId, "applied");
+        } else if (msg.eventType === "changeset_discarded" && msg.eventPayload?.changeSetId) {
+          map.set(msg.eventPayload.changeSetId, "discarded");
+        }
+      }
+    }
+    return map;
+  }, [messages]);
+
   const handleSend = async () => {
     if (!activeConversationId || isWaiting) return;
     const text = input.trim();
@@ -255,6 +271,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                 <MessageBubble
                   key={msg._id}
                   message={msg}
+                  status={msg.changeSetId ? changeSetStatusMap.get(msg.changeSetId) : undefined}
                   onClarificationSubmit={handleEventSubmit}
                   onSuggestionsSubmit={handleSuggestionSubmit}
                   onApplyChangeSet={(changeSetId) => handleImmediateChangeSetAction("apply", changeSetId)}
@@ -338,6 +355,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
 
 function MessageBubble({
   message,
+  status,
   onClarificationSubmit,
   onSuggestionsSubmit,
   onApplyChangeSet,
@@ -345,6 +363,7 @@ function MessageBubble({
   disabled,
 }: {
   message: ConversationMessage;
+  status?: "pending" | "applied" | "discarded";
   onClarificationSubmit: (eventType: string, payload: any) => void;
   onSuggestionsSubmit: (payload: any) => void;
   onApplyChangeSet: (changeSetId?: Id<"changeSets">) => void;
@@ -389,6 +408,7 @@ function MessageBubble({
           <BlockRenderer
             key={block?.type ?? index}
             block={block}
+            status={status}
             changeSetId={message.changeSetId}
             onClarificationSubmit={onClarificationSubmit}
             onSuggestionsSubmit={onSuggestionsSubmit}
@@ -501,6 +521,7 @@ function renderLine(text: string) {
 
 function BlockRenderer({
   block,
+  status,
   changeSetId,
   onClarificationSubmit,
   onSuggestionsSubmit,
@@ -509,6 +530,7 @@ function BlockRenderer({
   disabled,
 }: {
   block: any;
+  status?: "pending" | "applied" | "discarded";
   changeSetId?: Id<"changeSets">;
   onClarificationSubmit: (eventType: string, payload: any) => void;
   onSuggestionsSubmit: (payload: any) => void;
@@ -549,6 +571,7 @@ function BlockRenderer({
     return (
       <ChangeSetBlock
         block={block}
+        status={status}
         changeSetId={changeSetId}
         onApply={onApplyChangeSet}
         onDiscard={onDiscardChangeSet}
@@ -788,12 +811,14 @@ function SuggestionBlock({
 
 function ChangeSetBlock({
   block,
+  status,
   changeSetId,
   onApply,
   onDiscard,
   disabled,
 }: {
   block: any;
+  status?: "pending" | "applied" | "discarded";
   changeSetId?: Id<"changeSets">;
   onApply: (changeSetId?: Id<"changeSets">) => void;
   onDiscard: (changeSetId?: Id<"changeSets">) => void;
@@ -801,6 +826,7 @@ function ChangeSetBlock({
 }) {
   const rawChanges = block.changes ?? {};
   const diff = block.diffPreview_he ?? {};
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Normalize changes to array of { label, value }
   const changesList = Array.isArray(rawChanges)
@@ -822,17 +848,34 @@ function ChangeSetBlock({
     return String(value);
   };
 
+  const handleAction = async (action: "apply" | "discard") => {
+    if (!changeSetId) return;
+    setIsSubmitting(true);
+    try {
+        if (action === "apply") await onApply(changeSetId);
+        else await onDiscard(changeSetId);
+    } finally {
+        setIsSubmitting(false);
+    }
+  }
+
+  const isResolved = status === "applied" || status === "discarded";
+
   return (
     <div
-      className="relative max-w-xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+      className={`relative max-w-xl rounded-2xl border bg-white p-4 shadow-sm transition ${isResolved ? "border-gray-100 bg-gray-50 opacity-75" : "border-gray-200"}`}
       dir="auto"
       style={{ textAlign: "start" }}
     >
-      <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-gray-900">{block.title_he}</div>
+        {status === "applied" && <span className="text-[10px] font-bold uppercase tracking-widest text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded-full">Applied</span>}
+        {status === "discarded" && <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 border border-gray-200 bg-gray-100 px-2 py-0.5 rounded-full">Discarded</span>}
+      </div>
       {block.summary_he ? <div className="text-xs text-gray-500 mt-1">{block.summary_he}</div> : null}
       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
         {changesList.map((item: any, idx: number) => (
-          <div key={idx} className="flex items-center justify-between rounded-md border border-gray-100 px-2 py-1">
+          <div key={idx} className="flex items-center justify-between rounded-md border border-gray-100 px-2 py-1 bg-white">
             <span>{item.label}</span>
             <span className="font-semibold text-gray-700">{formatChangeValue(item.value)}</span>
           </div>
@@ -890,27 +933,31 @@ function ChangeSetBlock({
           </div>
         ) : null}
       </div>
-      <div className="mt-4 flex gap-2">
-        <button
-          onClick={() => onApply(changeSetId)}
-          disabled={disabled || !changeSetId}
-          className="flex-1 rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-        >
-          {block.actions?.find((action: any) => action.id === "apply")?.label_he ?? "Apply"}
-        </button>
-        <button
-          onClick={() => onDiscard(changeSetId)}
-          disabled={disabled}
-          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50"
-        >
-          {block.actions?.find((action: any) => action.id === "discard")?.label_he ?? "Discard"}
-        </button>
-        {!changeSetId && (
-          <div className="absolute bottom-full mb-1 left-0 right-0 text-center text-[10px] text-red-500 bg-white border border-red-200 rounded px-1 py-0.5 shadow-sm">
-            Not saved to DB (view only)
+      
+      {!isResolved && (
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => handleAction("apply")}
+              disabled={disabled || !changeSetId || isSubmitting}
+              className="flex-1 rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? <Loader2 size={12} className="animate-spin"/> : null}
+              {block.actions?.find((action: any) => action.id === "apply")?.label_he ?? "Apply"}
+            </button>
+            <button
+              onClick={() => handleAction("discard")}
+              disabled={disabled || isSubmitting}
+              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50"
+            >
+              {block.actions?.find((action: any) => action.id === "discard")?.label_he ?? "Discard"}
+            </button>
           </div>
-        )}
-      </div>
+      )}
+      {!changeSetId && !isResolved && (
+        <div className="absolute bottom-full mb-1 left-0 right-0 text-center text-[10px] text-red-500 bg-white border border-red-200 rounded px-1 py-0.5 shadow-sm">
+          Not saved to DB (view only)
+        </div>
+      )}
     </div>
   );
 }
