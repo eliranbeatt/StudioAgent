@@ -19,6 +19,7 @@ import {
   Trash2,
   Wrench,
   X,
+  Plus,
 } from "lucide-react";
 
 type SnapshotEntity = {
@@ -442,6 +443,49 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
                     "Delete labor"
                   )
                 }
+                onAddTask={async () => {
+                  const tempId = crypto.randomUUID();
+                  const newTask = {
+                    id: tempId,
+                    title: "New Task",
+                    status: "todo",
+                    domain: "general",
+                    description: "",
+                    createdAt: Date.now(),
+                  };
+                  return applyDraftOps(
+                    [{ op: "add", path: `/tasks/byId/${tempId}`, value: newTask }],
+                    "Add new task"
+                  );
+                }}
+                onAddMaterial={async () => {
+                  const tempId = crypto.randomUUID();
+                  const newMaterial = {
+                    id: tempId,
+                    name: "New Material",
+                    qty: 1,
+                    unitCost: 0,
+                    createdAt: Date.now(),
+                  };
+                  return applyDraftOps(
+                    [{ op: "add", path: `/materials/byId/${tempId}`, value: newMaterial }],
+                    "Add new material"
+                  );
+                }}
+                onAddLabor={async () => {
+                  const tempId = crypto.randomUUID();
+                  const newLabor = {
+                    id: tempId,
+                    role: "New Role",
+                    qty: 1,
+                    rate: 0,
+                    createdAt: Date.now(),
+                  };
+                  return applyDraftOps(
+                    [{ op: "add", path: `/labor/byId/${tempId}`, value: newLabor }],
+                    "Add new labor"
+                  );
+                }}
               />
             </SectionCard>
 
@@ -763,6 +807,9 @@ function SnapshotSection({
   onDeleteMaterial,
   onSaveLabor,
   onDeleteLabor,
+  onAddTask,
+  onAddMaterial,
+  onAddLabor,
 }: {
   spec: any;
   canEdit: boolean;
@@ -772,6 +819,9 @@ function SnapshotSection({
   onDeleteMaterial: (id: string) => Promise<void>;
   onSaveLabor: (id: string, next: any) => Promise<void>;
   onDeleteLabor: (id: string) => Promise<void>;
+  onAddTask: () => Promise<void>;
+  onAddMaterial: () => Promise<void>;
+  onAddLabor: () => Promise<void>;
 }) {
   const tasks = normalizeSnapshotList(spec?.tasks?.byId);
   const materials = normalizeSnapshotList(spec?.materials?.byId);
@@ -791,14 +841,27 @@ function SnapshotSection({
 
   return (
     <div className="space-y-5 text-sm text-gray-700">
-      <SnapshotTaskGroup items={tasks} canEdit={canEdit} onSave={onSaveTask} onDelete={onDeleteTask} />
+      <SnapshotTaskGroup
+        items={tasks}
+        canEdit={canEdit}
+        onSave={onSaveTask}
+        onDelete={onDeleteTask}
+        onAdd={onAddTask}
+      />
       <SnapshotMaterialGroup
         items={materials}
         canEdit={canEdit}
         onSave={onSaveMaterial}
         onDelete={onDeleteMaterial}
+        onAdd={onAddMaterial}
       />
-      <SnapshotLaborGroup items={labor} canEdit={canEdit} onSave={onSaveLabor} onDelete={onDeleteLabor} />
+      <SnapshotLaborGroup
+        items={labor}
+        canEdit={canEdit}
+        onSave={onSaveLabor}
+        onDelete={onDeleteLabor}
+        onAdd={onAddLabor}
+      />
       <SnapshotGroup label="Subcontract" items={subcontract} />
       {notes.length > 0 ? (
         <div>
@@ -853,15 +916,27 @@ function SnapshotTaskGroup({
   canEdit,
   onSave,
   onDelete,
+  onAdd,
 }: {
   items: SnapshotEntity[];
   canEdit: boolean;
   onSave: (id: string, next: SnapshotEntity) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onAdd: () => Promise<void>;
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-gray-400 mb-2">Tasks</div>
+      <div className="flex items-center justify-between xl:justify-start xl:gap-4 mb-2">
+        <div className="text-xs uppercase tracking-wider text-gray-400">Tasks</div>
+        {canEdit && (
+          <button
+            onClick={onAdd}
+            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+          >
+            <Plus size={12} /> Add Task
+          </button>
+        )}
+      </div>
       {items.length === 0 ? (
         <div className="text-sm text-gray-400">No tasks.</div>
       ) : (
@@ -994,15 +1069,27 @@ function SnapshotMaterialGroup({
   canEdit,
   onSave,
   onDelete,
+  onAdd,
 }: {
   items: SnapshotEntity[];
   canEdit: boolean;
   onSave: (id: string, next: SnapshotEntity) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onAdd: () => Promise<void>;
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-gray-400 mb-2">Materials</div>
+      <div className="flex items-center justify-between xl:justify-start xl:gap-4 mb-2">
+        <div className="text-xs uppercase tracking-wider text-gray-400">Materials</div>
+        {canEdit && (
+          <button
+            onClick={onAdd}
+            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+          >
+            <Plus size={12} /> Add Material
+          </button>
+        )}
+      </div>
       {items.length === 0 ? (
         <div className="text-sm text-gray-400">No materials.</div>
       ) : (
@@ -1127,15 +1214,27 @@ function SnapshotLaborGroup({
   canEdit,
   onSave,
   onDelete,
+  onAdd,
 }: {
   items: SnapshotEntity[];
   canEdit: boolean;
   onSave: (id: string, next: SnapshotEntity) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onAdd: () => Promise<void>;
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-gray-400 mb-2">Labor</div>
+      <div className="flex items-center justify-between xl:justify-start xl:gap-4 mb-2">
+        <div className="text-xs uppercase tracking-wider text-gray-400">Labor</div>
+        {canEdit && (
+          <button
+            onClick={onAdd}
+            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+          >
+            <Plus size={12} /> Add Labor
+          </button>
+        )}
+      </div>
       {items.length === 0 ? (
         <div className="text-sm text-gray-400">No labor.</div>
       ) : (

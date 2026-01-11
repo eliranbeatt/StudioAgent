@@ -6,34 +6,18 @@ import { useState } from "react";
 import Link from "next/link";
 import { Plus, Folder, Database, Pencil, Check, X, Trash2 } from "lucide-react";
 
+import NewProjectDialog from "./_components/NewProjectDialog";
+
 export default function ProjectsPage() {
   const projects = useQuery(api.projects.list);
-  const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.updateProjectDetails);
   const deleteProject = useMutation(api.projects.deleteProject);
-  const setProjectCustomerByName = useMutation(api.projectsCustomers.setProjectCustomerByName);
 
-  const [newProjectName, setNewProjectName] = useState("");
-  const [newCustomerName, setNewCustomerName] = useState("");
+  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
 
   // Renaming state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // Pass undefined if empty string to trigger default naming
-    const projectId = await createProject({ name: newProjectName.trim() || undefined });
-    const customerName = newCustomerName.trim();
-    if (customerName) {
-      await setProjectCustomerByName({
-        projectId,
-        customerName,
-      });
-    }
-    setNewProjectName("");
-    setNewCustomerName("");
-  };
 
   const handleDelete = async (e: React.MouseEvent, id: any, name: string) => {
     e.preventDefault();
@@ -77,29 +61,16 @@ export default function ProjectsPage() {
             </Link>
           </div>
         </div>
-        <form onSubmit={handleCreate} className="flex gap-2">
-          <input
-            type="text"
-            placeholder="New Project Name (Optional)"
-            value={newProjectName}
-            onChange={(e) => setNewProjectName(e.target.value)}
-            className="border p-2 rounded text-black w-64"
-          />
-          <input
-            type="text"
-            placeholder="Customer (Optional)"
-            value={newCustomerName}
-            onChange={(e) => setNewCustomerName(e.target.value)}
-            className="border p-2 rounded text-black w-56"
-          />
-          <button
-            type="submit"
-            className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2"
-          >
-            <Plus size={16} /> Create
-          </button>
-        </form>
+
+        <button
+          onClick={() => setIsNewProjectOpen(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-sm"
+        >
+          <Plus size={16} /> New Project
+        </button>
       </div>
+
+      <NewProjectDialog isOpen={isNewProjectOpen} onClose={() => setIsNewProjectOpen(false)} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {projects?.map((project) => (

@@ -105,6 +105,37 @@ export const updateTask = mutation({
   },
 });
 
+export const createTask = mutation({
+  args: {
+    projectId: v.id("projects"),
+    elementId: v.optional(v.id("elements")),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.optional(v.string()),
+    priority: v.optional(v.string()),
+    category: v.optional(v.string()),
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+    estimatedMinutes: v.optional(v.number()),
+    assignee: v.optional(v.string()),
+    assigneeIds: v.optional(v.array(v.id("employees"))),
+    checklist: v.optional(v.any()), // flexible for now
+  },
+  handler: async (ctx, args) => {
+    const { projectId, ...fields } = args;
+    await ctx.db.insert("tasks", {
+      projectId,
+      ...fields,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      createdBy: "human",
+    });
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, {
+      projectId,
+    });
+  },
+});
+
 export const listForProject = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -147,116 +178,116 @@ export const listForProject = query({
     // Build Maps
     const tasksByElement = new Map<string, typeof allTasks>();
     for (const task of allTasks) {
-       if (task.elementId) {
-           const list = tasksByElement.get(task.elementId) ?? [];
-           list.push(task);
-           tasksByElement.set(task.elementId, list);
-       }
+      if (task.elementId) {
+        const list = tasksByElement.get(task.elementId) ?? [];
+        list.push(task);
+        tasksByElement.set(task.elementId, list);
+      }
     }
 
     const materialLinesByTask = new Map<string, typeof allMaterialLines>();
     for (const line of allMaterialLines) {
-        if (line.taskId) {
-            const list = materialLinesByTask.get(line.taskId) ?? [];
-            list.push(line);
-            materialLinesByTask.set(line.taskId, list);
-        }
+      if (line.taskId) {
+        const list = materialLinesByTask.get(line.taskId) ?? [];
+        list.push(line);
+        materialLinesByTask.set(line.taskId, list);
+      }
     }
     const workLinesByTask = new Map<string, typeof allWorkLines>();
     for (const line of allWorkLines) {
-        if (line.taskId) {
-            const list = workLinesByTask.get(line.taskId) ?? [];
-            list.push(line);
-            workLinesByTask.set(line.taskId, list);
-        }
+      if (line.taskId) {
+        const list = workLinesByTask.get(line.taskId) ?? [];
+        list.push(line);
+        workLinesByTask.set(line.taskId, list);
+      }
     }
 
     // Transform
     const results = elements.map(element => {
-        const elementTasks = tasksByElement.get(element._id) ?? [];
-        const draft = element.currentDraftId ? draftById.get(element.currentDraftId) : null;
+      const elementTasks = tasksByElement.get(element._id) ?? [];
+      const draft = element.currentDraftId ? draftById.get(element.currentDraftId) : null;
 
-        const mappedTasks = elementTasks.map(task => {
-            const materialLines = materialLinesByTask.get(task._id) ?? [];
-            const workLines = workLinesByTask.get(task._id) ?? [];
-            const materials = materialLines.map(l => ({
-                id: l._id,
-                name: l.itemName ?? "",
-                qty: l.quantity ?? 0,
-                unitCost: l.plannedUnitCost ?? 0,
-                sectionKey: l.sectionKey,
-                sectionLabelHe: l.sectionLabelHe,
-            }));
-            const labor = workLines.map(l => ({
-                id: l._id,
-                role: l.roleHe ?? "",
-                qty: l.plannedQuantity ?? 0,
-                rate: l.plannedUnitCost ?? 0,
-                isManagement: l.isManagement ?? false,
-                sectionKey: l.sectionKey,
-                sectionLabelHe: l.sectionLabelHe,
-            }));
+      const mappedTasks = elementTasks.map(task => {
+        const materialLines = materialLinesByTask.get(task._id) ?? [];
+        const workLines = workLinesByTask.get(task._id) ?? [];
+        const materials = materialLines.map(l => ({
+          id: l._id,
+          name: l.itemName ?? "",
+          qty: l.quantity ?? 0,
+          unitCost: l.plannedUnitCost ?? 0,
+          sectionKey: l.sectionKey,
+          sectionLabelHe: l.sectionLabelHe,
+        }));
+        const labor = workLines.map(l => ({
+          id: l._id,
+          role: l.roleHe ?? "",
+          qty: l.plannedQuantity ?? 0,
+          rate: l.plannedUnitCost ?? 0,
+          isManagement: l.isManagement ?? false,
+          sectionKey: l.sectionKey,
+          sectionLabelHe: l.sectionLabelHe,
+        }));
 
-            const revision = revisionByTaskId.get(task._id);
-
-            return {
-                id: task._id,
-                title: task.title,
-                description: task.description,
-                status: task.status,
-                priority: task.priority,
-                category: task.category,
-                startDate: task.startDate,
-                endDate: task.endDate,
-                dueDate: task.dueDate,
-                estimatedMinutes: task.estimatedMinutes,
-                stage: task.stage,
-                workType: task.workType,
-                workTypeLabelHe: task.workTypeLabelHe,
-                plannedStartDate: task.plannedStartDate,
-                plannedEndDate: task.plannedEndDate,
-                checklist: task.checklist,
-                accountingLinks: task.accountingLinks,
-                assignee: task.assignee,
-                assigneeIds: task.assigneeIds,
-                dependencies: task.dependencies,
-                materials,
-                labor,
-                // New fields
-                isDraft: task.isDraft,
-                draftOfTaskId: task.draftOfTaskId,
-                draftRevisionId: revision?._id ?? task.draftRevisionId, // Prefer active revision
-                draftPatch: revision?.patch, // The draft changes
-                elementSubtaskId: task.elementSubtaskId,
-                aiThreadId: task.aiThreadId,
-                
-                draftId: draft?._id,
-                revisionNumber: draft?.revisionNumber,
-            };
-        });
+        const revision = revisionByTaskId.get(task._id);
 
         return {
-            elementId: element._id,
-            elementTitle: element.title,
-            elementType: element.type,
-            elementStatus: element.status,
-            tasks: mappedTasks,
+          id: task._id,
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          priority: task.priority,
+          category: task.category,
+          startDate: task.startDate,
+          endDate: task.endDate,
+          dueDate: task.dueDate,
+          estimatedMinutes: task.estimatedMinutes,
+          stage: task.stage,
+          workType: task.workType,
+          workTypeLabelHe: task.workTypeLabelHe,
+          plannedStartDate: task.plannedStartDate,
+          plannedEndDate: task.plannedEndDate,
+          checklist: task.checklist,
+          accountingLinks: task.accountingLinks,
+          assignee: task.assignee,
+          assigneeIds: task.assigneeIds,
+          dependencies: task.dependencies,
+          materials,
+          labor,
+          // New fields
+          isDraft: task.isDraft,
+          draftOfTaskId: task.draftOfTaskId,
+          draftRevisionId: revision?._id ?? task.draftRevisionId, // Prefer active revision
+          draftPatch: revision?.patch, // The draft changes
+          elementSubtaskId: task.elementSubtaskId,
+          aiThreadId: task.aiThreadId,
+
+          draftId: draft?._id,
+          revisionNumber: draft?.revisionNumber,
         };
+      });
+
+      return {
+        elementId: element._id,
+        elementTitle: element.title,
+        elementType: element.type,
+        elementStatus: element.status,
+        tasks: mappedTasks,
+      };
     });
 
     const flatTasks = results.flatMap(r => r.tasks.map(t => ({
-        ...t,
-        elementId: r.elementId,
-        elementTitle: r.elementTitle,
+      ...t,
+      elementId: r.elementId,
+      elementTitle: r.elementTitle,
     })));
 
     return {
-        elements: results,
-        tasks: flatTasks,
-        totals: {
-            elementCount: results.length,
-            taskCount: flatTasks.length,
-        },
+      elements: results,
+      tasks: flatTasks,
+      totals: {
+        elementCount: results.length,
+        taskCount: flatTasks.length,
+      },
     };
   },
 });

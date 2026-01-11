@@ -4,8 +4,9 @@ import { useMutation, useQuery, useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { use, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Layers, Wallet, ClipboardCheck, UploadCloud, Trash2 } from "lucide-react";
+import { AlertTriangle, Layers, Wallet, ClipboardCheck, UploadCloud, Trash2, Loader2, RefreshCcw } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 
 export default function OverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -29,6 +30,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const unlinkProject = useMutation(api.projects.unlinkProject);
   const generateProjectDigest = useMutation(api.projects.generateProjectDigest);
   const generateOverviewSummary = useAction(api.projects.generateOverviewSummary);
+  const retrySummary = useMutation(api.projects.retrySummary);
 
   const openImprove = () => {
     const params = new URLSearchParams(searchParams.toString());
@@ -99,6 +101,9 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const approvedCO = Number(overview.approvedCO?.sellPrice ?? 0);
   const effectiveBudget = baselineSell + approvedCO;
 
+  // Use new 'summary' field if available, fallback to old overviewSummary
+  const summaryText = (overview.project as any).summary || overview.project.overviewSummary;
+
   return (
     <div className="p-8 max-w-6xl mx-auto text-black">
       <div className="flex items-center justify-between mb-8">
@@ -120,6 +125,34 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
       </div>
+
+      {((overview.project as any).summaryStatus === "queued" || (overview.project as any).summaryStatus === "generating") && (
+        <div className="mb-8 bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center gap-3 text-blue-700 animate-in fade-in slide-in-from-top-2">
+          <Loader2 className="animate-spin" size={20} />
+          <div>
+            <div className="font-semibold">AI is generating project summary...</div>
+            <div className="text-xs opacity-80">This might take a minute. It will appear below automatically.</div>
+          </div>
+        </div>
+      )}
+
+      {(overview.project as any).summaryStatus === "failed" && (
+        <div className="mb-8 bg-red-50 border border-red-100 rounded-xl p-4 flex items-center justify-between text-red-700">
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={20} />
+            <div>
+              <div className="font-semibold">Summary generation failed</div>
+              <div className="text-xs opacity-80">{(overview.project as any).summaryError || "Unknown error"}</div>
+            </div>
+          </div>
+          <button
+            onClick={() => retrySummary({ projectId })}
+            className="px-3 py-1.5 bg-white border border-red-200 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-red-50 transition-colors shadow-sm"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
         <StatCard
@@ -163,10 +196,29 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
               {overview.project.overviewSummary ? "Regenerate summary" : "Generate summary"}
             </button>
           </div>
-          <div className="p-6 text-sm text-gray-700 whitespace-pre-wrap">
-            {overview.project.overviewSummary && overview.project.overviewSummary.trim().length > 0
-              ? overview.project.overviewSummary
-              : "No project summary yet. Generate one from elements and knowledge."}
+          <div className="p-6 text-sm text-gray-700">
+            {summaryText && summaryText.trim().length > 0 ? (
+              <div className="prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700" dir="auto">
+                <ReactMarkdown>{summaryText}</ReactMarkdown>
+
+                {(overview.project as any).summarySources && (overview.project as any).summarySources.length > 0 && (
+                  <div className="mt-6 pt-4 border-t border-gray-100">
+                    <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Sources</div>
+                    <ul className="space-y-1">
+                      {(overview.project as any).summarySources.map((s: any, idx: number) => (
+                        <li key={idx} className="text-xs">
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                            {s.title}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-gray-500 italic">No project summary yet. Generate one from elements and knowledge.</div>
+            )}
           </div>
         </div>
 

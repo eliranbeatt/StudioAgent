@@ -5,13 +5,14 @@ import { X, Save, MessageSquare, Sparkles, Trash2, Plus } from "lucide-react";
 type TaskModalProps = {
   task: Task;
   employees: Array<{ id: string; name: string }>;
+  elements: Array<{ id: string; title: string }>;
   onClose: () => void;
   onSave: (patch: Partial<Task>) => Promise<void>;
   draftMode: boolean;
   isSaving: boolean;
 };
 
-export function TaskModal({ task, employees, onClose, onSave, draftMode, isSaving }: TaskModalProps) {
+export function TaskModal({ task, employees, elements, onClose, onSave, draftMode, isSaving }: TaskModalProps) {
   const [formData, setFormData] = useState<Partial<Task>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [activeTab, setActiveTab] = useState<"details" | "chat">("details");
@@ -19,7 +20,7 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant", content: string }>>([
     { role: "assistant", content: "Hi! I can help you edit this task. Try saying 'change status to blocked' or 'add a subtask'." }
   ]);
-  
+
   // Reset state when task changes (pattern: derive state from props)
   const [prevTaskId, setPrevTaskId] = useState(task.id);
   if (task.id !== prevTaskId) {
@@ -104,6 +105,13 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
     handleChange("assignee", name);
   };
 
+  const handleElementChange = (nextId: string) => {
+    const id = nextId || undefined;
+    const title = id ? elements.find((el) => el.id === id)?.title : undefined;
+    handleChange("elementId", id);
+    handleChange("elementTitle", title);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 md:p-6 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
@@ -112,7 +120,7 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
           <div className="flex items-center gap-4">
             <div className="flex flex-col">
               <span className="text-xs uppercase font-bold text-gray-400 tracking-wider flex items-center gap-2">
-                {effectiveTask.elementTitle}
+                {effectiveTask.elementTitle ?? "No Element"}
                 {draftMode && <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Draft Mode</span>}
               </span>
               <input
@@ -128,8 +136,8 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
               onClick={handleSave}
               disabled={!hasChanges || isSaving}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition ${hasChanges
-                  ? "bg-black text-white hover:bg-gray-800"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                ? "bg-black text-white hover:bg-gray-800"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
             >
               <Save size={16} />
@@ -147,7 +155,22 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
           <div className={`flex-1 overflow-y-auto p-6 md:p-8 space-y-8 ${activeTab === "chat" ? "hidden md:block" : ""}`}>
 
             {/* Status / Meta Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+              <div className="space-y-1.5">
+                <label className="text-xs uppercase font-bold text-gray-400 tracking-wider">Element</label>
+                <select
+                  value={effectiveTask.elementId ?? ""}
+                  onChange={(e) => handleElementChange(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black/5 bg-white appearance-none cursor-pointer hover:border-gray-300 transition"
+                >
+                  <option value="">No Element</option>
+                  {elements.map((el) => (
+                    <option key={el.id} value={el.id}>
+                      {el.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <SelectField
                 label="Status"
                 value={effectiveTask.status ?? "todo"}
@@ -309,8 +332,8 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
               {messages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.role === "user"
-                      ? "bg-black text-white rounded-br-none"
-                      : "bg-white border border-gray-100 shadow-sm rounded-bl-none text-gray-700"
+                    ? "bg-black text-white rounded-br-none"
+                    : "bg-white border border-gray-100 shadow-sm rounded-bl-none text-gray-700"
                     }`}>
                     {msg.content}
                   </div>

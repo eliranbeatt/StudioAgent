@@ -25,6 +25,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
     // Queries & Mutations
     const data = useQuery(api.tasks.listForProject, { projectId });
     const updateTask = useMutation(api.tasks.updateTask);
+    const createTask = useMutation(api.tasks.createTask);
     const upsertDraft = useMutation(api.taskRevisions.upsertDraft);
     const runEstimator = useMutation(api.agent_tasks.runEstimator);
     const taskOrder = useQuery(api.projects.getTaskOrder, { projectId });
@@ -43,6 +44,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
     const [view, setView] = useState<TaskViewMode>("kanban");
     const [filters, setFilters] = useState<TaskFilters>({});
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [draftTask, setDraftTask] = useState<Partial<Task> | null>(null);
     const [isEstimating, setIsEstimating] = useState(false);
     const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
     const [modalSaving, setModalSaving] = useState(false);
@@ -182,15 +184,53 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
         if (!selectedTaskId) return;
         setModalSaving(true);
         try {
+            const { elementTitle, ...cleanPatch } = patch;
             await updateTask({
                 taskId: selectedTaskId as Id<"tasks">,
-                patch: patch
+                patch: cleanPatch
             });
         } catch (e) {
             console.error("Failed to save task", e);
         } finally {
             setModalSaving(false);
         }
+    };
+
+    const handleCreateTask = async (patch: Partial<Task>) => {
+        setModalSaving(true);
+        try {
+            await createTask({
+                projectId,
+                title: patch.title ?? "New Task",
+                description: patch.description,
+                status: patch.status ?? "todo",
+                priority: patch.priority,
+                category: patch.category,
+                startDate: patch.startDate,
+                endDate: patch.endDate,
+                estimatedMinutes: patch.estimatedMinutes,
+                assigneeIds: patch.assigneeIds,
+                checklist: patch.checklist,
+                elementId: patch.elementId as Id<"elements">,
+            });
+            setDraftTask(null);
+        } catch (e) {
+            console.error("Failed to create task", e);
+        } finally {
+            setModalSaving(false);
+        }
+    };
+
+    const handleAddTask = () => {
+        setDraftTask({
+            id: "new-task",
+            title: "New Task",
+            status: "todo",
+            priority: "normal",
+            checklist: [],
+            elementTitle: "General",
+            description: "",
+        });
     };
 
     const handleChecklistToggle = async (taskId: string, itemId: string) => {
@@ -279,6 +319,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                 onConfigureTrello={() => setShowTrelloConfig(true)}
                 taskCount={filteredTasks.length}
                 elementCount={data.elements.length}
+                onAddTask={handleAddTask}
             />
 
             <TaskControlsBar
@@ -347,6 +388,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                 <TaskModal
                     task={selectedTask}
                     employees={employeeOptions}
+                    elements={filterOptions.elements}
                     onClose={() => setSelectedTaskId(null)}
                     onSave={handleTaskSave}
                     draftMode={!!selectedTask.isDraft}
@@ -354,9 +396,21 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                 />
             )}
 
+            {draftTask && (
+                <TaskModal
+                    task={draftTask as Task}
+                    employees={employeeOptions}
+                    elements={filterOptions.elements}
+                    onClose={() => setDraftTask(null)}
+                    onSave={handleCreateTask}
+                    draftMode={false}
+                    isSaving={modalSaving}
+                />
+            )}
+
             {showTrelloConfig && (
                 <TrelloConfigModal
-                    initialConfig={trelloConfig}
+                    initialConfig={trelloConfig as any}
                     onSave={handleSaveTrelloConfig}
                     onClose={() => setShowTrelloConfig(false)}
                     fetchBoards={(creds) => fetchBoards({ creds })}

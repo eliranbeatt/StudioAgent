@@ -1,6 +1,7 @@
-import { action, mutation, query } from "./_generated/server";
+import { action, mutation, query, internalAction, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 
 export const create = mutation({
@@ -559,7 +560,7 @@ export const deleteProject = mutation({
         .query(table as any)
         .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
         .collect();
-      
+
       // Special handling for nested children or storage
       if (table === "receipts") {
         for (const receipt of records) {
@@ -609,7 +610,7 @@ export const deleteProject = mutation({
     }
 
     // 2. Delete from tables containing projectId but without by_project index
-    
+
     // purchases
     const purchases = await ctx.db
       .query("purchases")
@@ -701,22 +702,22 @@ async function buildOverviewSummary({
     customerName: project.customerName || project.clientName || "לא צוין",
     description: project.description || "אין תיאור",
     elements: elements.map(el => {
-        const elTasks = (tasks ?? []).filter((t) => t.elementId === el.id);
-        const elMaterials = el.materials ?? []; // Note: materials might need to be passed in or fetched if not in elements
-        return {
-            title: el.title,
-            type: el.type,
-            status: el.status,
-            tasks: elTasks.map(t => ({ title: t.title, status: t.status })),
-            // Add more if available
-        };
+      const elTasks = (tasks ?? []).filter((t) => t.elementId === el.id);
+      const elMaterials = el.materials ?? []; // Note: materials might need to be passed in or fetched if not in elements
+      return {
+        title: el.title,
+        type: el.type,
+        status: el.status,
+        tasks: elTasks.map(t => ({ title: t.title, status: t.status })),
+        // Add more if available
+      };
     }),
     files: fileList,
     financials: financials ? {
-        baseline: financials.baseline,
-        forecast: financials.forecast,
-        effectiveBudget: financials.effectiveBudget,
-        variance: financials.variance,
+      baseline: financials.baseline,
+      forecast: financials.forecast,
+      effectiveBudget: financials.effectiveBudget,
+      variance: financials.variance,
     } : "אין נתונים פיננסיים"
   };
 
@@ -773,3 +774,307 @@ async function buildOverviewSummary({
     return fallbackSummary;
   }
 }
+
+// ------------------------------------------------------------
+// New Project Modal & AI Summary Implementation
+// ------------------------------------------------------------
+
+export const createProjectFromModal = mutation({
+  args: {
+    name: v.optional(v.string()),
+    customerId: v.optional(v.id("customers")),
+    customerNameNew: v.optional(v.string()),
+    types: v.array(v.string()),
+    eventDate: v.optional(v.string()), // ISO string
+    notes: v.optional(v.string()),
+    status: v.union(v.literal("lead"), v.literal("production"), v.literal("done"), v.literal("rejected")),
+    elements: v.array(v.string()), // Element names
+  },
+  handler: async (ctx, args) => {
+    // 1. Resolve Customer
+    let customerId = args.customerId;
+    let customerName = args.customerNameNew;
+
+    if (!customerId && args.customerNameNew) {
+      const normalized = args.customerNameNew.trim().toLowerCase();
+      // eslint-disable-next-line
+      // @ts-ignore
+      const existing = await ctx.db
+        .query("customers")
+        .withIndex("by_nameNormalized", (q) => q.eq("nameNormalized", normalized))
+        .first();
+
+      if (existing) {
+        customerId = existing._id;
+        customerName = existing.name;
+      } else {
+        const newCustId = "CUST-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+        customerId = await ctx.db.insert("customers", {
+          customerId: newCustId,
+          name: args.customerNameNew.trim(),
+          nameNormalized: normalized,
+          status: "active",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+        customerName = args.customerNameNew.trim();
+      }
+    } else if (customerId) {
+      // If ID provided, ensure we have the name
+      const existing = await ctx.db.get(customerId);
+      if (existing) {
+        customerName = existing.name;
+      }
+    }
+
+    // 2. Determine Project Name
+    let finalName = args.name;
+    if (!finalName || !finalName.trim()) {
+      const dateStr = new Date().toISOString().slice(0, 16).replace("T", " ");
+      finalName = customerName ? `${dateStr} - ${customerName}` : dateStr;
+    }
+
+    // 3. Create Project
+    const projectId = await ctx.db.insert("projects", {
+      name: finalName,
+      customerId: customerId,
+      customerName: customerName,
+      // @ts-ignore
+      customerNameRaw: args.customerNameNew,
+      // @ts-ignore
+      types: args.types, // These are projectTypes effectively
+      projectTypes: args.types, // Map to existing field as well for compatibility
+      // @ts-ignore
+      status: args.status,
+      // @ts-ignore
+      eventDate: args.eventDate,
+      // @ts-ignore
+      notes: args.notes,
+      // @ts-ignore
+      summaryStatus: "queued",
+      // @ts-ignore
+      summary: "",
+      currency: "NIS", // Default
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      defaults: {
+        profitPct: 0.3,
+        overheadPct: 0.15,
+        riskPct: 0.1,
+        excludeManagementLaborFromCost: true,
+      },
+      details: {
+        eventDate: args.eventDate ? new Date(args.eventDate).getTime() : undefined,
+        notes: args.notes
+      }
+    });
+
+    // 4. Create Elements (Drafts)
+    let sortOrder = 1;
+    for (const elName of args.elements) {
+      if (!elName.trim()) continue;
+      await ctx.db.insert("elements", {
+        projectId,
+        title: elName,
+        type: "mixed", // Default
+        status: "drafting",
+        // @ts-ignore
+        order: sortOrder++,
+        tags: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+
+    // 5. Schedule Summary Generation
+    await ctx.scheduler.runAfter(0, internal.projects.generateInitialSummary, { projectId });
+
+    return projectId;
+  },
+});
+
+export const generateInitialSummary = internalAction({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    // 1. Update status to generating
+    await ctx.runMutation(internal.projects.updateSummaryStatus, {
+      projectId: args.projectId,
+      status: "generating"
+    });
+
+    try {
+      // 2. Load Data
+      const project = await ctx.runQuery(api.projects.getProjectInternal, { id: args.projectId });
+      if (!project) throw new Error("Project not found");
+
+      const elements = await ctx.runQuery(api.projects.getElementsInternal, { projectId: args.projectId });
+
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
+
+      // 2.1 AI Reasoning for Search Query
+      const projectDataStr = `
+Project Name: ${project.name}
+Customer: ${project.customerName || "N/A"}
+Event Date: ${project.eventDate || "N/A"}
+Types: ${(project.projectTypes || []).join(", ")}
+Notes: ${project.notes || project.description || "None"}
+Elements: ${(elements || []).map((e: any) => e.title).join(", ")}
+`;
+
+      let searchContext = "";
+      let sources: { title: string; url: string }[] = [];
+
+      try {
+        // Step 1: Ask AI if we need to search and what for
+        const searchReasoningRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: "gpt-5-mini",
+            messages: [
+              { role: "system", content: "You are an expert researcher. You have project details. Your goal is to find external context (event details, customer visual style, technical specs) to help write a summary. Return a SINGLE Google search query that would be most helpful. If the project description is self-contained or generic (e.g. 'Build a box'), return 'EMPTY'." },
+              { role: "user", content: projectDataStr }
+            ],
+            temperature: 0.2, // Low temp for decision making
+            max_tokens: 50
+          })
+        });
+
+        const reasoningData = await searchReasoningRes.json();
+        const aiSuggestedQuery = reasoningData.choices?.[0]?.message?.content?.trim() || "EMPTY";
+
+        console.log("AI Search Decision:", aiSuggestedQuery);
+
+        if (aiSuggestedQuery !== "EMPTY" && aiSuggestedQuery.length > 5) {
+          const { searchWeb } = await import("./lib/webSearch");
+          const searchResult = await searchWeb(aiSuggestedQuery);
+          if (searchResult && !searchResult.error && searchResult.results) {
+            searchContext = `Extracted Web Knowledge (Query: "${aiSuggestedQuery}"):\n${searchResult.results.map((r: any) => `- ${r.title}: ${r.content}`).join("\n")}\n\n`;
+            sources = searchResult.results.map((r: any) => ({ title: r.title, url: r.url }));
+          }
+        }
+      } catch (err) {
+        console.error("AI search reasoning failed", err);
+      }
+
+      // 3. Prepare AI Prompt
+      const systemPrompt = `You are a professional project coordinator for a set design studio (Output language: Hebrew).
+Write a concise project summary based on the details provided.
+Do not add fluff.
+Sections:
+- **מה זה הפרויקט**
+- **דדליין / אירוע**
+- **סוגי עבודה (Workstreams)**
+- **אלמנטים**
+- **דגשים / מגבלות**
+- **מה חסר (שאלות פתוחות קצרות)**`;
+
+      const userPrompt = `Project: ${project.name}
+Customer: ${project.customerName || "N/A"}
+Event Date: ${project.eventDate || "N/A"}
+Types: ${(project.projectTypes || []).join(", ")}
+Notes: ${project.notes || project.description || "None"}
+Elements: ${(elements || []).map((e: any) => e.title).join(", ")}
+
+${searchContext}`;
+
+
+
+      // 4. Call AI
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-5-mini", // Strong model for reasoning
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ]
+        })
+      });
+
+      if (!response.ok) throw new Error("AI call failed");
+      const data = await response.json();
+      const summary = data.choices[0].message.content;
+
+      // 5. Save Result
+      await ctx.runMutation(internal.projects.saveSummary, {
+        projectId: args.projectId,
+        summary,
+        status: "ready",
+        sources
+      });
+
+    } catch (error: any) {
+      console.error("Summary generation failed:", error);
+      await ctx.runMutation(internal.projects.saveSummary, {
+        projectId: args.projectId,
+        summary: "",
+        status: "failed",
+        error: error.message
+      });
+    }
+  },
+});
+
+export const retrySummary = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    // @ts-ignore
+    await ctx.db.patch(args.projectId, { summaryStatus: "queued", summaryError: undefined });
+    await ctx.scheduler.runAfter(0, internal.projects.generateInitialSummary, { projectId: args.projectId });
+  }
+});
+
+// Internal helpers for the action
+export const updateSummaryStatus = internalMutation({
+  args: { projectId: v.id("projects"), status: v.string() },
+  handler: async (ctx, args) => {
+    // Safe cast string to union if possible or just use string if schema is loose during dev
+    // @ts-ignore
+    await ctx.db.patch(args.projectId, { summaryStatus: args.status });
+  }
+});
+
+export const saveSummary = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    summary: v.string(),
+    status: v.string(),
+    error: v.optional(v.string()),
+    sources: v.optional(v.array(v.object({ title: v.string(), url: v.optional(v.string()) })))
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.projectId, {
+      // @ts-ignore
+      summary: args.summary,
+      // @ts-ignore
+      summaryStatus: args.status,
+      // @ts-ignore
+      summaryError: args.error,
+      // @ts-ignore
+      summarySources: args.sources,
+      // @ts-ignore
+      summaryUpdatedAt: Date.now()
+    });
+  }
+});
+
+// Simple getters for action to read data safely
+export const getProjectInternal = query({
+  args: { id: v.id("projects") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  }
+});
+
+export const getElementsInternal = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    return await ctx.db.query("elements").withIndex("by_project", q => q.eq("projectId", args.projectId)).collect();
+  }
+});
