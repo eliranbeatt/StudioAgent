@@ -1,6 +1,6 @@
-import { Task } from "./types";
+import { Task, TaskChecklistItem } from "./types";
 import { useState, useEffect } from "react";
-import { X, Save, MessageSquare, Sparkles } from "lucide-react";
+import { X, Save, MessageSquare, Sparkles, Trash2, Plus } from "lucide-react";
 
 type TaskModalProps = {
   task: Task;
@@ -71,6 +71,28 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
   const toggleChecklistItem = (itemId: string) => {
     const nextChecklist = checklist.map((item) =>
       item.id === itemId ? { ...item, done: !item.done } : item
+    );
+    handleChange("checklist", nextChecklist);
+  };
+
+  const addChecklistItem = () => {
+    const newItem: TaskChecklistItem = {
+      id: Math.random().toString(36).substr(2, 9),
+      title: "",
+      order: checklist.length,
+      done: false,
+    };
+    handleChange("checklist", [...checklist, newItem]);
+  };
+
+  const removeChecklistItem = (itemId: string) => {
+    const nextChecklist = checklist.filter((item) => item.id !== itemId);
+    handleChange("checklist", nextChecklist);
+  };
+
+  const updateChecklistItem = (itemId: string, patch: Partial<TaskChecklistItem>) => {
+    const nextChecklist = checklist.map((item) =>
+      item.id === itemId ? { ...item, ...patch } : item
     );
     handleChange("checklist", nextChecklist);
   };
@@ -196,7 +218,16 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
             {/* Checklist */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-xs uppercase font-bold text-gray-400 tracking-wider">Checklist</label>
+                <div className="flex items-center gap-3">
+                  <label className="text-xs uppercase font-bold text-gray-400 tracking-wider">Checklist</label>
+                  <button
+                    onClick={addChecklistItem}
+                    className="p-1 rounded-full hover:bg-gray-100 text-blue-600 transition"
+                    title="Add Item"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
                 {checklistTotal > 0 ? (
                   <span className="text-[10px] text-gray-400">
                     {checklistDone}/{checklistTotal} done
@@ -212,28 +243,45 @@ export function TaskModal({ task, employees, onClose, onSave, draftMode, isSavin
                 </div>
               ) : null}
               {checklistTotal === 0 ? (
-                <div className="text-sm text-gray-400 italic">No checklist items yet.</div>
+                <div className="text-sm text-gray-400 italic flex items-center justify-between">
+                  No checklist items yet.
+                </div>
               ) : (
                 <div className="space-y-2">
                   {checklist.map((item) => (
-                    <label
+                    <div
                       key={item.id}
-                      className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2 text-sm text-gray-700"
+                      className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2 text-sm text-gray-700 group"
                     >
                       <input
                         type="checkbox"
                         checked={item.done}
                         onChange={() => toggleChecklistItem(item.id)}
+                        className="mt-1"
                       />
-                      <div>
-                        <div className={`font-medium ${item.done ? "line-through text-gray-400" : ""}`}>
-                          {item.title}
-                        </div>
-                        {item.description ? (
-                          <div className="text-xs text-gray-400">{item.description}</div>
-                        ) : null}
+                      <div className="flex-1 space-y-1">
+                        <input
+                          type="text"
+                          value={item.title}
+                          onChange={(e) => updateChecklistItem(item.id, { title: e.target.value })}
+                          placeholder="Item title..."
+                          className={`w-full bg-transparent border-none focus:ring-0 p-0 font-medium ${item.done ? "line-through text-gray-400" : "text-gray-900"}`}
+                        />
+                        <input
+                          type="text"
+                          value={item.description ?? ""}
+                          onChange={(e) => updateChecklistItem(item.id, { description: e.target.value })}
+                          placeholder="Add description (optional)"
+                          className="w-full bg-transparent border-none focus:ring-0 p-0 text-xs text-gray-400 placeholder:text-gray-300"
+                        />
                       </div>
-                    </label>
+                      <button
+                        onClick={() => removeChecklistItem(item.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}

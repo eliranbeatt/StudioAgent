@@ -170,8 +170,8 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
   };
 
   return (
-    <div className="h-[calc(100vh-64px)] grid grid-cols-[280px_minmax(0,1fr)] overflow-hidden">
-      <aside className="border-r bg-white flex flex-col">
+    <div className="h-full grid grid-cols-[280px_minmax(0,1fr)] overflow-hidden">
+      <aside className="border-r bg-white flex flex-col overflow-hidden">
         <div className="p-4 border-b">
           <div className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
             Elements
@@ -200,9 +200,8 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
                     params.set("element", element.id);
                     router.replace(`${pathname}?${params.toString()}`);
                   }}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-100 transition ${
-                    isActive ? "bg-black text-white" : "hover:bg-gray-50"
-                  }`}
+                  className={`w-full text-left px-4 py-3 border-b border-gray-100 transition ${isActive ? "bg-black text-white" : "hover:bg-gray-50"
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold truncate">{element.title}</div>
@@ -223,7 +222,7 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
         </div>
       </aside>
 
-      <section className="overflow-y-auto bg-gray-50">
+      <section className="overflow-y-auto bg-gray-50 min-h-0">
         {!composite ? (
           <div className="p-8 text-gray-500">Loading element...</div>
         ) : (

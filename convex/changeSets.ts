@@ -604,11 +604,11 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       const existingTasks = await ctx.db.query("tasks")
         .withIndex("by_element", q => q.eq("elementId", elementId))
         .collect();
-      
+
       const cleanTitle = title.trim().toLowerCase();
       const dedupKey = fields.dedupKey;
 
-      existingTask = existingTasks.find(t => 
+      existingTask = existingTasks.find(t =>
         (dedupKey && t.dedupKey === dedupKey) ||
         (t.title.trim().toLowerCase() === cleanTitle)
       );
@@ -643,7 +643,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         );
       }
       if ("dedupKey" in fields) patch.dedupKey = toOptional(fields?.dedupKey);
-      
+
       await ctx.db.patch(taskId, {
         ...patch,
         updatedAt: now,
@@ -732,9 +732,10 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (!fields?.itemName) throw new Error("materialLine.create requires fields.itemName");
 
     const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
-    const taskId =
+    const rawTaskId =
       resolveFromTemp(taskTempOrId, taskTempMap) ??
       resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
+    const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
     const rawVendorId =
       resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
       fields.vendorId;
@@ -812,9 +813,10 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (!fields?.roleHe) throw new Error("workLine.create requires fields.roleHe");
 
     const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
-    const taskId =
+    const rawTaskId =
       resolveFromTemp(taskTempOrId, taskTempMap) ??
       resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
+    const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
     const sectionKey = normalizeSectionKey(
       fields.sectionKey ?? op.payload?.sectionKey,
       fields.sectionLabelHe ?? op.payload?.sectionLabelHe
@@ -947,22 +949,22 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     // However, for bulk ops, maybe we just try. 
     // Let's rely on standard Convex behavior: delete(id) works if id is valid.
     // If we resolved it, it's an ID.
-      const existing = await ctx.db.get(id);
-      if (existing) {
-        await ctx.db.delete(id);
-        await recordAudit(ctx, {
-          projectId: cs.projectId,
-          changeSetId: auditChangeSetId,
-          operation: "softDelete",
-          entityRef: `task:${id}`,
-          before: existing,
-          after: null,
-          appliedAt: now,
-        });
-        // Should we cleanup links? For now, raw delete as requested.
-        // Elements that owned this task might need bumping?
-        if (existing.elementId) elementsToBump.add(existing.elementId);
-      }
+    const existing = await ctx.db.get(id);
+    if (existing) {
+      await ctx.db.delete(id);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "softDelete",
+        entityRef: `task:${id}`,
+        before: existing,
+        after: null,
+        appliedAt: now,
+      });
+      // Should we cleanup links? For now, raw delete as requested.
+      // Elements that owned this task might need bumping?
+      if (existing.elementId) elementsToBump.add(existing.elementId);
+    }
   }
 
   for (const op of cs.ops) {
@@ -971,20 +973,20 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const id = resolveFromTemp(tempId ?? materialLineId ?? lineId, materialLineTempMap);
     if (!id) throw new Error("materialLine.delete requires lineId");
 
-      const existing = await ctx.db.get(id);
-      if (existing) {
-        await ctx.db.delete(id);
-        await recordAudit(ctx, {
-          projectId: cs.projectId,
-          changeSetId: auditChangeSetId,
-          operation: "softDelete",
-          entityRef: `materialLine:${id}`,
-          before: existing,
-          after: null,
-          appliedAt: now,
-        });
-        if (existing.elementId) elementsToBump.add(existing.elementId);
-      }
+    const existing = await ctx.db.get(id);
+    if (existing) {
+      await ctx.db.delete(id);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "softDelete",
+        entityRef: `materialLine:${id}`,
+        before: existing,
+        after: null,
+        appliedAt: now,
+      });
+      if (existing.elementId) elementsToBump.add(existing.elementId);
+    }
   }
 
   for (const op of cs.ops) {
@@ -993,20 +995,20 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const id = resolveFromTemp(tempId ?? workLineId ?? lineId, workLineTempMap);
     if (!id) throw new Error("workLine.delete requires lineId");
 
-      const existing = await ctx.db.get(id);
-      if (existing) {
-        await ctx.db.delete(id);
-        await recordAudit(ctx, {
-          projectId: cs.projectId,
-          changeSetId: auditChangeSetId,
-          operation: "softDelete",
-          entityRef: `workLine:${id}`,
-          before: existing,
-          after: null,
-          appliedAt: now,
-        });
-        if (existing.elementId) elementsToBump.add(existing.elementId);
-      }
+    const existing = await ctx.db.get(id);
+    if (existing) {
+      await ctx.db.delete(id);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "softDelete",
+        entityRef: `workLine:${id}`,
+        before: existing,
+        after: null,
+        appliedAt: now,
+      });
+      if (existing.elementId) elementsToBump.add(existing.elementId);
+    }
   }
 
   for (const op of cs.ops) {
@@ -1015,20 +1017,20 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const id = accountingLineId ?? lineId; // Accounting lines rarely use tempIds in current flows?
     if (!id) throw new Error("accountingLine.delete requires lineId");
 
-      const existing = await ctx.db.get(id);
-      if (existing) {
-        await ctx.db.delete(id);
-        await recordAudit(ctx, {
-          projectId: cs.projectId,
-          changeSetId: auditChangeSetId,
-          operation: "softDelete",
-          entityRef: `accountingLine:${id}`,
-          before: existing,
-          after: null,
-          appliedAt: now,
-        });
-        if (existing.elementId) elementsToBump.add(existing.elementId);
-      }
+    const existing = await ctx.db.get(id);
+    if (existing) {
+      await ctx.db.delete(id);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "softDelete",
+        entityRef: `accountingLine:${id}`,
+        before: existing,
+        after: null,
+        appliedAt: now,
+      });
+      if (existing.elementId) elementsToBump.add(existing.elementId);
+    }
   }
 
   for (const op of cs.ops) {
@@ -1047,9 +1049,10 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     }
 
     const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
-    const taskId =
+    const rawTaskId =
       resolveFromTemp(taskTempOrId, taskTempMap) ??
       resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
+    const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
     let type = fields.type;
     const normalizedLineType = normalizeLineType(fields.lineType ?? fields.type);
     if (normalizedLineType === "material") type = "material";
@@ -1116,7 +1119,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("unitCost" in fields) patch.unitCost = fields.unitCost === null ? undefined : fields.unitCost;
       if ("total" in fields) patch.total = Number(total);
       if ("billable" in fields) patch.billable = fields.billable === null ? undefined : fields.billable;
-      
+
       patch.sectionId = sectionId;
       patch.sectionKey = sectionKey;
       patch.sectionLabelHe = sectionLabelHe;

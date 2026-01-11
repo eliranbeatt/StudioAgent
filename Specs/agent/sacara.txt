@@ -1,0 +1,785 @@
+# מסמך קונטקסט פרויקט (v2) — **סקארה26 | חנות קונספט פורים 2026 (אבנת פ״ת)**
+
+מבוסס על **הסכם העבודה** + ההערכות/אלמנטים ששלחת, עם **החלטות העדכון האחרונות**:
+
+* **תאריכי הקמה:** **21–22.01** (שני לילות, 22:00–09:00)
+* **שנדליר / שלט אייקוני בחוץ:** **לא בסקופ** → הוסר מכל מקום (אלמנטים/עלויות/משימות/סיכונים)
+* **קרוסלה:** **דו־מימד** (אין יציקות סוסים). הסוסים **מודפסים על קאפה חתוכה**, **תלויים בהקמה**, עם **קישוטים מוכנים בסטודיו**
+
+---
+
+## 1) זיהוי פרויקט
+
+* **שם פרויקט באפליקציה:** `פרויקט סקארה26`
+* **לקוח:** סאקרה
+* **סניף:** קניון אבנת, פתח תקווה
+* **איש קשר:** עידו
+* **מטרת הפרויקט:** עיצוב + ייצור + התקנה + פירוק ושיקום סניף לקונספט “פורים 2026”, לפי 4 אזורי דמויות:
+  **שטן / מלאכית / ליצנים / נמרה**
+
+  * אלמנטים כלליים: **רצפה / מגירות / תקרה / קירות מודפסים**
+
+---
+
+## 2) לו״ז ותנאי אתר (הקמה/פירוק)
+
+### 2.1 הקמה
+
+* **חלון עבודה באתר:** 22:00–09:00
+* **מסגרת הקמה:** **2 לילות**
+
+  * **לילה 1 — 21.01:** תקרה + תלויים/דמויות + התחלה של אלמנטים קריטיים
+  * **לילה 2 — 22.01:** רצפה + מגירות + הדפסות קיר + פינישים + מסירה
+
+### 2.2 פירוק ושיקום
+
+* התאריך הסופי לפירוק יקבע מול הקניון/לקוח (בחוזה סביב תחילת מרץ).
+* כולל: פירוק אלמנטים, סגירת חורים, ניקוי דבקים, תיקוני צבע נקודתיים, חשמל “חזרה למצב תקין/נקי”.
+
+---
+
+## 3) תקציב — “Approved Quote Snapshot” (עלויות ישירות לפני מרווחים)
+
+> כל המספרים כאן הם **עלות** (Materials+Labor) **לפני** Risk/Overhead/Profit.
+
+* **חומרים (E):** 58,500 ₪
+* **עבודה/סטודיו (S):** 69,550 ₪
+* **סה״כ ישיר:** **128,050 ₪**
+
+---
+
+## 4) רשימת אלמנטים (אחרי האיחודים/מחיקות + החלטות v2)
+
+### 4.1 מחיקות מחייבות (בחוץ)
+
+* **שנדליר** (בפנים/בחוץ) — מחוק
+* **שלט אייקוני בחוץ** — מחוק
+* כל שורות 0 שביקשת למחוק — בחוץ (כמו ב־v1)
+
+### 4.2 אלמנטים קנוניים באפליקציה (IDs יציבים)
+
+#### אלמנטים “מוצר” (Deliverables)
+
+1. `E01_floor` — **רצפת לינו/פיויסי + ספי אלומיניום** (כל החנות, לא כולל מחסן)
+2. `E02_drawers` — **חיפוי מגירות + אי איפור** (טפט/“קטיפה” + נצנצים)
+3. `E03_walls_prints` — **הדפסות PVC לכל הקירות (כל האזורים)** — ספק: **צחי**
+4. `E04_ceiling` — **תקרה + חוטי “יהלומים” + חישוק מרכזי** *(ללא שנדליר)*
+5. `E05_devil` — **אזור השטן: קאטאאוט להבות + תאורה + תושבות/ספייסרים**
+6. `E06_angel_wings` — **כנפיים ענקיות (מלאכית) + שילוב לד עדין**
+7. `E07_clowns_carousel` — **קרוסלת ליצנים דו־מימד: סוסים מודפסים על קאפה חתוכה + קישוטים**
+8. `E08_tiger` — **קיר נמרה: צמחייה זהב + בסיס/במה + נמר + אבטחה/עיגון**
+9. `E09_curtains` — **וילונות קטיפה**
+10. `E10_frames` — **מסגרות/קרניזים** (צביעה והרכבה)
+
+#### אלמנטים “תפעול” (Operations)
+
+11. `E11_graphics` — **גרפיקה והדמיות (אודליה)**
+12. `E12_constructor` — **קונסטרוקטור/אישורי בטיחות**
+13. `E13_general` — **חומרי סטודיו מתכלים + אוכל סטודיו**
+14. `E14_install` — **הקמה (לוגיסטיקה + צוות + תיאום + ביצוע)**
+15. `E15_teardown` — **פירוק ושיקום**
+16. `E16_repairs` — **ביקורי תיקונים לאחר הקמה**
+
+---
+
+## 5) מיפוי עלויות (Accounting) לפי האלמנטים החדשים
+
+> פורמט: **MaterialLines (ML / E)** + **Work/LaborLines (WL / S)**.
+> הערה: “עבודה בשטח” יושבת בעיקר תחת `E14_install` עם `relatedElement:*`.
+
+### `E01_floor` — רצפה
+
+* **ML_E01_01**: Linoleum/PVC + ספי אלומיניום — **4,300**
+
+### `E02_drawers` — מגירות + אי איפור
+
+* **ML_E02_01**: טפט/“קטיפה” + נצנצים — **3,900**
+
+### `E03_walls_prints` — הדפסות PVC (צחי)
+
+* **ML_E03_01**: PVC לכל הקירות — **16,700**
+* **WL_E03_01**: הכנות/QA/ארגון להתקנה — **1,500**
+
+### `E04_ceiling` — תקרה “יהלומים” *(ללא שנדליר)*
+
+* **ML_E04_01**: גלילים + חישוק + מחברים — **2,500**
+* **WL_E04_01**: הכנות סטודיו — **750**
+
+### `E05_devil` — שטן
+
+* **ML_E05_01**: חומרים/תאורה/ספייסרים — **3,500**
+* **WL_E05_01**: עבודת סטודיו — **1,500**
+
+### `E06_angel_wings` — כנפיים
+
+* **ML_E06_01**: ברזל/“נוצות”/LED — **2,400**
+* **WL_E06_01**: עבודת סטודיו — **8,000**
+
+### `E07_clowns_carousel` — קרוסלה דו־מימד (קאפה חתוכה + קישוטים)
+
+* **ML_E07_01**: הדפסה + קאפה + חיתוך + חומרי תלייה + קישוטים — **2,000**
+* **WL_E07_01**: הכנות סטודיו (גימור/קישוט/חיזוקים/אריזה) — **4,000**
+
+### `E08_tiger` — נמרה
+
+* **ML_E08_01**: צמחיה + צבע זהב + חומרים — **3,000**
+* **WL_E08_01**: סטודיו צבע/הכנה — **2,000**
+
+### `E09_curtains` — וילונות
+
+* **ML_E09_01**: קטיפה — **700**
+* **WL_E09_01**: גזירה/תפירה — **800**
+
+### `E10_frames` — מסגרות/קרניזים
+
+* **ML_E10_01**: רכישה — **1,000**
+* **WL_E10_01**: צביעה/הרכבה — **1,000**
+
+### `E11_graphics` — גרפיקה
+
+* **WL_E11_01**: אודליה — **15,000**
+
+### `E12_constructor` — קונסטרוקטור
+
+* **WL_E12_01**: אישור — **2,000**
+
+### `E13_general` — מתכלים/אוכל
+
+* **ML_E13_01**: אוכל סטודיו — **2,900**
+* **ML_E13_02**: מתכלים (דבק/סכינים/צבע וכו׳) — **1,000**
+
+### `E14_install` — הקמה
+
+* **ML_E14_01**: אוכל התקנה — **1,500**
+* **ML_E14_02**: מוניות עובדים — **1,500**
+* **ML_E14_03**: הובלות+פיגומים/ציוד — **7,000**
+* **WL_E14_01**: שכר צוות התקנה — **20,000**
+
+### `E15_teardown` — פירוק ושיקום
+
+* **ML_E15_01**: הובלה/ציוד — **3,000**
+* **ML_E15_02**: חומרים לשיקום — **1,000**
+* **WL_E15_01**: שכר צוות פירוק — **10,000**
+
+### `E16_repairs` — תיקונים
+
+* **ML_E16_01**: חומרים — **600**
+* **WL_E16_01**: עבודה — **3,000**
+
+---
+
+## 6) נקודות חסרות/סיכונים שחייבים לנעול (Critical Path)
+
+1. **מידות הדפסות/חלוקות קיר** (קובץ מצחי) — חייב להיות זמין לפני פרינט.
+2. **נקודות תלייה בתקרה** — מה מותר לעגן/לקדוח/להעמיס.
+3. **חשמל:** תכנית נקודות: איפה מזינים לדים/“אש”/תאורה, ומה צריך הארכה/ממיר.
+4. **קרוסלה דו־מימד (קאפה):**
+
+   * מניעת עיוות/קימור (קאפה עבה/חיזוק פס אחורי)
+   * שיטת תלייה כפולה (חוט+גיבוי) כדי שלא יקרע/יסתובב.
+5. **QA קבצים לפני דפוס** כדי לא ליפול על ריפרינט בדקה ה־90.
+
+---
+
+## 7) טקסונומיית Tags (כדי שזה יעבוד באפליקציה)
+
+* `element:E##_name`
+* `relatedElement:E##_name` (רק למשימות תחת הקמה/פירוק שעושות “עבודה של מוצר אחר”)
+* `stage:studio | stage:vendor | stage:install | stage:teardown | stage:repair`
+* `workType:printing_graphics | carpentry | metal_fab | paint_finish | electrical | logistics | qa | coordination | procurement`
+* `priority:high|med|low`
+* `status:blocked|todo|doing|done`
+* `accounting:ML_xxx` / `accounting:WL_xxx`
+
+---
+
+# 8) פירוק למשימות (Tasks) + תתי משימות (Checklists) + קשר ל־Accounting (מעודכן v2)
+
+> פורמט קבוע לכל משימה:
+
+* **TaskID**
+* **כותרת**
+* **משך (שעות)**
+* **תלויות**
+* **Tags**
+* **Accounting links**
+* **Checklist**
+
+---
+
+## `E11_graphics` — גרפיקה והדמיות (אודליה)
+
+**T_E11_01 — איסוף חומרים מהלקוח + נעילת “מה מאושר”**
+
+* 2h | תלוי: —
+* Tags: `element:E11_graphics`, `stage:vendor`, `workType:coordination`, `priority:high`
+* Accounting: `WL_E11_01`
+* Checklist:
+
+  * רשימת קבצים חסרים (4 אזורים)
+  * פורמטים (AI/PSD/PDF), פונטים/לוגואים
+  * אישור כתוב: “זה הסופי”
+
+**T_E11_02 — סט מידות/תבניות לקירות (כולל פתחים/אוורור/מראות)**
+
+* 2h | תלוי: מדידות/תבניות מצחי
+* Tags: `workType:printing_graphics`, `priority:high`, `status:blocked`
+* Accounting: `WL_E11_01`
+* Checklist:
+
+  * תבנית לכל אזור
+  * bleed/safe
+  * סימון פתחים/עמודים
+
+**T_E11_03 — קבצי Print-Ready + אריזה לפי Parts**
+
+* 3h | תלוי: אישורים סופיים
+* Tags: `workType:printing_graphics`, `priority:high`, `status:blocked`
+* Accounting: `WL_E11_01`, `WL_E03_01`
+* Checklist:
+
+  * PDF/X או פורמט צחי
+  * הטמעת פונטים
+  * Naming קבוע
+
+**T_E11_04 — QA קבצים לפני שליחה (מידה/רזולוציה/פרופורציות)**
+
+* 2h | תלוי: T_E11_03
+* Tags: `workType:qa`, `priority:high`
+* Accounting: `WL_E03_01`
+* Checklist:
+
+  * מידה מול תבנית
+  * DPI
+  * safe margins
+
+---
+
+## `E03_walls_prints` — הדפסות PVC (צחי)
+
+**T_E03_01 — סגירת מפרט מול צחי (חומר/עובי/שיטת חיבור)**
+
+* 1h | תלוי: T_E11_03
+* Tags: `element:E03_walls_prints`, `stage:vendor`, `workType:coordination`, `priority:high`
+* Accounting: `ML_E03_01`, `WL_E03_01`
+* Checklist:
+
+  * עובי PVC
+  * תלייה: ברגים/ספייסרים/דבק
+  * אריזה/חלוקה למקטעים
+
+**T_E03_02 — Proof דיגיטלי + Sign-off**
+
+* 1h | תלוי: T_E03_01
+* Tags: `workType:qa`, `priority:high`
+* Accounting: `WL_E03_01`
+* Checklist:
+
+  * צבע/קונטרסט
+  * פתחים/מראות
+  * אישור כתוב
+
+**T_E03_03 — קליטת ההדפסות + סימון חלקים לפי אזורים**
+
+* 2h | תלוי: אספקה
+* Tags: `stage:studio`, `workType:qa`, `priority:high`
+* Accounting: `ML_E03_01`, `WL_E03_01`
+* Checklist:
+
+  * ספירה מול רשימה
+  * בדיקת פגמים
+  * סימון “לאיזה קיר הולך מה”
+
+---
+
+## `E04_ceiling` — תקרה “יהלומים” *(ללא שנדליר)*
+
+**T_E04_01 — תכנון תלייה: חישוק מרכז + קבוצות פסים + עומסים**
+
+* 2h
+* Tags: `element:E04_ceiling`, `stage:studio`, `workType:coordination`, `priority:high`
+* Accounting: `WL_E04_01`
+* Checklist:
+
+  * תכנית רדיאלית
+  * אורך לכל קבוצת פסים
+  * פתרון נגד הסתבכות
+
+**T_E04_02 — חיתוך פסים 15 ס״מ (Batch 1)**
+
+* 3h | תלוי: T_E04_01
+* Tags: `workType:fabrication`, `stage:studio`, `priority:high`
+* Accounting: `ML_E04_01`, `WL_E04_01`
+* Checklist:
+
+  * מדידה אחידה
+  * אריזה לפי קבוצות
+
+**T_E04_03 — הכנת לולאות/מחברים לפסים (Batch 1)**
+
+* 3h | תלוי: T_E04_02
+* Tags: `workType:fabrication`, `stage:studio`
+* Accounting: `ML_E04_01`, `WL_E04_01`
+* Checklist:
+
+  * חיבור/קליפס
+  * סימון אורך יעד
+
+**T_E04_04 — בניית חישוק מרכזי + נקודות יציאה**
+
+* 3h | תלוי: T_E04_01
+* Tags: `workType:fabrication`, `stage:studio`, `priority:high`
+* Accounting: `ML_E04_01`, `WL_E04_01`
+* Checklist:
+
+  * יציבות
+  * נקודות חיבור מרובות
+  * שיטת תלייה ראשית
+
+---
+
+## `E06_angel_wings` — כנפיים מלאכית
+
+**T_E06_01 — סגירת מידות + נקודת תלייה + משקל יעד**
+
+* 2h | תלוי: קונסטרוקטור/תקרה
+* Tags: `element:E06_angel_wings`, `workType:coordination`, `priority:high`, `status:blocked`
+* Accounting: `WL_E06_01`, `WL_E12_01`
+* Checklist:
+
+  * מידות סופיות
+  * פירוק/הובלה מודולרי
+
+**T_E06_02 — שלד ברזל: שרטוט+חיתוך+ריתוך (כנף שמאל)**
+
+* 4h
+* Tags: `workType:metal_fab`, `stage:studio`, `priority:high`
+* Accounting: `ML_E06_01`, `WL_E06_01`
+
+**T_E06_03 — שלד ברזל: ריתוך (כנף ימין)**
+
+* 4h
+* Tags: `workType:metal_fab`, `stage:studio`
+* Accounting: `WL_E06_01`
+
+**T_E06_04 — נוצות: תבנית + חיתוך Batch 1**
+
+* 3h
+* Tags: `workType:fabrication`, `stage:studio`
+* Accounting: `WL_E06_01`
+
+**T_E06_05 — נוצות: חיתוך Batch 2**
+
+* 3h
+* Tags: `workType:fabrication`, `stage:studio`
+* Accounting: `WL_E06_01`
+
+**T_E06_06 — הדבקת נוצות על כנף שמאל**
+
+* 4h
+* Tags: `workType:paint_finish`, `stage:studio`, `priority:high`
+* Accounting: `WL_E06_01`
+
+**T_E06_07 — הדבקת נוצות על כנף ימין**
+
+* 4h
+* Tags: `workType:paint_finish`, `stage:studio`
+* Accounting: `WL_E06_01`
+
+**T_E06_08 — שילוב לד עדין + בדיקות בטיחות**
+
+* 3h | תלוי: גיא
+* Tags: `workType:electrical`, `stage:studio`, `priority:high`, `status:blocked`
+* Accounting: `ML_E06_01`, `WL_E06_01`
+* Checklist:
+
+  * הזנת חשמל
+  * הסתרת חוטים
+  * טסט חום/קצרים
+
+**T_E06_09 — QA תלייה בסטודיו + צילום**
+
+* 2h
+* Tags: `workType:qa`, `stage:studio`, `priority:high`
+* Accounting: `WL_E06_01`, `WL_E12_01`
+
+**T_E06_10 — אריזה להובלה (מודולרי + סימון)**
+
+* 2h
+* Tags: `workType:logistics`, `stage:studio`
+* Accounting: `WL_E06_01`
+
+---
+
+## `E07_clowns_carousel` — קרוסלה דו־מימד (קאפה חתוכה + קישוטים) *(עודכן)*
+
+**T_E07_01 — הגדרת סט סוסים (כמות/גדלים) + הכנת קבצי הדפסה/חיתוך**
+
+* 2h | תלוי: גרפיקה
+* Tags: `element:E07_clowns_carousel`, `workType:printing_graphics`, `priority:high`, `status:blocked`
+* Accounting: `ML_E07_01`, `WL_E07_01`
+* Checklist:
+
+  * 6–10 סוסים? (גדלים שונים)
+  * חורי תלייה בקובץ
+  * חיזוק גב (אם צריך)
+  * שכבת למינציה/הגנה (אם צריך)
+
+**T_E07_02 — הזמנה: הדפסה על קאפה + חיתוך קאפה + אספקה**
+
+* 1.5h | תלוי: T_E07_01
+* Tags: `stage:vendor`, `workType:coordination`, `priority:high`
+* Accounting: `ML_E07_01`
+
+**T_E07_03 — קישוטים בסטודיו: הדבקה/נצנצים/פיניש + חיזוק נקודות תלייה**
+
+* 4h | תלוי: אספקת קאפה
+* Tags: `stage:studio`, `workType:paint_finish`, `priority:high`
+* Accounting: `WL_E07_01`
+* Checklist:
+
+  * הדבקת קישוטים
+  * חיזוק חורים/עיניות
+  * ניקוי שאריות דבק
+
+**T_E07_04 — QA + “מפת תלייה” + אריזה שטוחה לפי סדר התקנה**
+
+* 2h
+* Tags: `workType:qa`, `stage:studio`, `priority:high`
+* Accounting: `WL_E07_01`
+* Checklist:
+
+  * סימון גבהים (A/B/C)
+  * סט חוטים/קרסים מוכן בשקית
+
+---
+
+## `E08_tiger` — נמרה
+
+**T_E08_01 — קניית צמחיה + ספריי זהב**
+
+* 2h
+* Tags: `element:E08_tiger`, `workType:procurement`, `priority:high`
+* Accounting: `ML_E08_01`
+
+**T_E08_02 — צביעת צמחיה זהב + ייבוש**
+
+* 3h
+* Tags: `workType:paint_finish`, `stage:studio`
+* Accounting: `WL_E08_01`
+
+**T_E08_03 — נמר: איתור/רכישה + בדיקת מצב**
+
+* 2h | status:blocked אם לא קיים
+* Tags: `workType:procurement`, `priority:high`, `status:blocked`
+* Accounting: `ML_E08_01`
+
+**T_E08_04 — פיניש נמר (זהב מיושן/צילום)**
+
+* 4h
+* Tags: `workType:paint_finish`, `stage:studio`, `priority:high`
+* Accounting: `WL_E08_01`
+
+**T_E08_05 — תכנון עיגון (כבל/ברגים) + ערכת התקנה**
+
+* 3h | תלוי: קונסטרוקטור
+* Tags: `workType:coordination`, `priority:high`, `status:blocked`
+* Accounting: `WL_E12_01`, `WL_E08_01`
+
+---
+
+## `E05_devil` — שטן
+
+**T_E05_01 — סגירת פתרון “אש בין שכבות” (חומר/מרחק/תאורה) + טסט סטודיו**
+
+* 3h | תלוי: גיא
+* Tags: `element:E05_devil`, `workType:electrical`, `priority:high`, `status:blocked`
+* Accounting: `ML_E05_01`, `WL_E05_01`
+
+**T_E05_02 — הכנת ספייסרים/תושבות לתלייה + פירוק מהיר**
+
+* 3h
+* Tags: `workType:fabrication`, `stage:studio`
+* Accounting: `WL_E05_01`
+
+---
+
+## `E09_curtains` — וילונות
+
+**T_E09_01 — קניה + תפירה/שוליים**
+
+* 4h
+* Tags: `element:E09_curtains`, `workType:fabrication`, `priority:med`
+* Accounting: `ML_E09_01`, `WL_E09_01`
+
+**T_E09_02 — שיטת תלייה + QA**
+
+* 2h
+* Tags: `workType:qa`, `stage:studio`
+* Accounting: `WL_E09_01`
+
+---
+
+## `E10_frames` — מסגרות/קרניזים
+
+**T_E10_01 — רכישה**
+
+* 2h
+* Tags: `element:E10_frames`, `workType:procurement`, `priority:med`
+* Accounting: `ML_E10_01`
+
+**T_E10_02 — צביעה/יישון**
+
+* 3h
+* Tags: `workType:paint_finish`, `stage:studio`
+* Accounting: `WL_E10_01`
+
+**T_E10_03 — חיבורי תלייה + QA**
+
+* 2h
+* Tags: `workType:fabrication`, `stage:studio`
+* Accounting: `WL_E10_01`
+
+---
+
+## `E12_constructor` — קונסטרוקטור/בטיחות
+
+**T_E12_01 — הכנת חבילה לקונסטרוקטור (אלמנטים תלויים/עיגונים)**
+
+* 2h
+* Tags: `element:E12_constructor`, `workType:coordination`, `priority:high`
+* Accounting: `WL_E12_01`
+* Checklist:
+
+  * כנפיים
+  * תקרה “יהלומים”
+  * קרוסלה קאפה תלויה (שיטת תלייה כפולה)
+  * עיגון נמר/במה
+
+**T_E12_02 — אישור בכתב + העברה לקניון/לקוח**
+
+* 2h
+* Tags: `workType:coordination`, `priority:high`
+* Accounting: `WL_E12_01`
+
+---
+
+# `E14_install` — הקמה (21–22.01) — משימות מפורקות + שיוך
+
+### A) תכנון והיערכות (לפני לילה 1)
+
+**T_E14_01 — תכנית הקמה לפי לילות + חלוקת צוות**
+
+* 2h
+* Tags: `element:E14_install`, `workType:coordination`, `priority:high`
+* Accounting: `WL_E14_01`
+
+**T_E14_02 — הזמנת הובלות + פיגומים + אישורי כניסה**
+
+* 2h
+* Tags: `workType:logistics`, `priority:high`
+* Accounting: `ML_E14_03`
+
+**T_E14_03 — Kit התקנה (כלים/דבקים/טאצ׳אפ/מחברים לפי אלמנט)**
+
+* 3h
+* Tags: `workType:logistics`, `priority:high`
+* Accounting: `ML_E13_02`
+
+---
+
+### B) לילה 1 — 21.01 — תקרה + תלויים + דמויות
+
+**T_E14_10 — פריקה + בטיחות (פיגומים/סולמות/סימון אזורים)**
+
+* 2h
+* Tags: `stage:install`, `workType:logistics`, `priority:high`
+* Accounting: `WL_E14_01`, `ML_E14_03`
+
+**T_E14_11 — התקנת תקרה: חישוק מרכז + תליית פסים**
+
+* 4h
+* Tags: `stage:install`, `workType:install`, `relatedElement:E04_ceiling`, `priority:high`
+* Accounting: `WL_E14_01`, `ML_E04_01`, `WL_E04_01`
+
+**T_E14_12 — תליית כנפיים + בדיקת לד (גיא)**
+
+* 3h
+* Tags: `workType:install`, `workType:electrical`, `relatedElement:E06_angel_wings`, `priority:high`, `assignee:גיא`
+* Accounting: `WL_E14_01`
+
+**T_E14_13 — שטן: התקנת שכבות “אש” + חיבור חשמל (גיא)**
+
+* 4h
+* Tags: `workType:electrical`, `relatedElement:E05_devil`, `priority:high`, `assignee:גיא`
+* Accounting: `WL_E14_01`, `ML_E05_01`
+
+**T_E14_14 — קרוסלה: תליית סוסים קאפה + סדר גבהים + גיבוי תלייה**
+
+* 3h
+* Tags: `workType:install`, `relatedElement:E07_clowns_carousel`, `priority:high`
+* Accounting: `WL_E14_01`
+
+**T_E14_15 — QA לילה 1 (צילום/רשימת השלמות ללילה 2)**
+
+* 1.5h
+* Tags: `workType:qa`, `priority:high`
+* Accounting: `WL_E14_01`
+
+---
+
+### C) לילה 2 — 22.01 — רצפה + מגירות + קירות + פינישים
+
+**T_E14_20 — התקנת רצפה + ספי אלומיניום**
+
+* 4h
+* Tags: `workType:install`, `relatedElement:E01_floor`, `priority:high`
+* Accounting: `WL_E14_01`, `ML_E01_01`
+
+**T_E14_21 — חיפוי מגירות + אי איפור (טפט + נצנצים)**
+
+* 4h
+* Tags: `workType:install`, `relatedElement:E02_drawers`, `priority:high`
+* Accounting: `WL_E14_01`, `ML_E02_01`, `ML_E13_02`
+
+**T_E14_22 — התקנת הדפסות קיר PVC לפי Parts מסומנים**
+
+* 4h
+* Tags: `workType:install`, `relatedElement:E03_walls_prints`, `priority:high`
+* Accounting: `WL_E14_01`, `ML_E03_01`
+
+**T_E14_23 — נמרה: תליית צמחיה + התקנת נמר/במה + עיגון**
+
+* 4h
+* Tags: `workType:install`, `relatedElement:E08_tiger`, `priority:high`
+* Accounting: `WL_E14_01`, `ML_E08_01`
+
+**T_E14_24 — פינישים: ניקוי דבקים, יישור קצוות, טאצ׳־אפים צבע**
+
+* 2h
+* Tags: `workType:paint_finish`, `priority:high`
+* Accounting: `WL_E14_01`, `ML_E13_02`
+
+**T_E14_25 — מסירה: סיבוב סניף + “Known Issues” מוסכם**
+
+* 1h
+* Tags: `workType:coordination`, `priority:high`
+* Accounting: `WL_E14_01`
+
+---
+
+# `E15_teardown` — פירוק ושיקום — משימות מפורקות (עודכן: ללא שנדליר + קרוסלה קאפה)
+
+**T_E15_01 — תיאום תאריך/שעות מול קניון + רשימת עובדים/אישורים**
+
+* 2h
+* Tags: `element:E15_teardown`, `workType:coordination`, `priority:high`
+* Accounting: `WL_E15_01`, `ML_E15_01`
+
+**T_E15_02 — Kit שיקום (שפכטל/ניקוי דבק/צבע תיקונים)**
+
+* 2h
+* Tags: `workType:logistics`, `priority:high`
+* Accounting: `ML_E15_02`
+
+**T_E15_10 — פירוק תלויים: תקרה “יהלומים” (חישוק+פסים)**
+
+* 4h
+* Tags: `stage:teardown`, `workType:teardown`, `relatedElement:E04_ceiling`, `priority:high`
+* Accounting: `WL_E15_01`
+
+**T_E15_11 — פירוק תלויים: כנפיים + ניתוק חשמל (גיא)**
+
+* 3h
+* Tags: `workType:teardown`, `workType:electrical`, `relatedElement:E06_angel_wings`, `priority:high`, `assignee:גיא`
+* Accounting: `WL_E15_01`
+
+**T_E15_12 — פירוק קרוסלה: הורדת סוסים קאפה + קישוטים (דו־מימד)**
+
+* 2h
+* Tags: `workType:teardown`, `relatedElement:E07_clowns_carousel`, `priority:high`
+* Accounting: `WL_E15_01`
+
+**T_E15_13 — פירוק נמרה: צמחיה + נמר + שחרור עיגון**
+
+* 3h
+* Tags: `workType:teardown`, `relatedElement:E08_tiger`, `priority:high`
+* Accounting: `WL_E15_01`
+
+**T_E15_14 — פירוק הדפסות קיר + הסרת דבק/ספייסרים**
+
+* 4h
+* Tags: `workType:teardown`, `relatedElement:E03_walls_prints`, `priority:high`
+* Accounting: `WL_E15_01`
+
+**T_E15_15 — פירוק רצפה + ספים + ניקוי רצפה מקורית**
+
+* 4h
+* Tags: `workType:teardown`, `relatedElement:E01_floor`, `priority:high`
+* Accounting: `WL_E15_01`
+
+**T_E15_16 — שיקום: סגירת חורים + תיקוני צבע נקודתיים**
+
+* 4h
+* Tags: `workType:paint_finish`, `priority:high`
+* Accounting: `WL_E15_01`, `ML_E15_02`
+
+**T_E15_17 — חשמל: החזרת נקודות למצב תקין/נקי (גיא)**
+
+* 2h
+* Tags: `workType:electrical`, `priority:high`, `assignee:גיא`
+* Accounting: `WL_E15_01`
+
+**T_E15_18 — העמסה/פינוי/הובלה חזור**
+
+* 3h
+* Tags: `workType:logistics`, `priority:high`
+* Accounting: `ML_E15_01`
+
+---
+
+## `E16_repairs` — ביקורי תיקונים
+
+**T_E16_01 — פתיחת “חלון תיקונים” אחרי הקמה**
+
+* 1h
+* Tags: `element:E16_repairs`, `workType:coordination`, `priority:med`
+* Accounting: `WL_E16_01`
+
+**T_E16_02 — ביקור תיקונים #1**
+
+* 4h
+* Tags: `stage:repair`, `workType:install`, `priority:med`
+* Accounting: `WL_E16_01`, `ML_E16_01`
+
+---
+
+## 9) נספח — מינימום ל־ChangeSet (IDs בלבד, v2)
+
+```json
+{
+  "projectKey": "scara26_purim_2026_avnat",
+  "installNights": [
+    {"date":"2026-01-21","window":"22:00-09:00"},
+    {"date":"2026-01-22","window":"22:00-09:00"}
+  ],
+  "elements": [
+    {"id":"E01_floor","name_he":"רצפת לינו/פיויסי + ספי אלומיניום"},
+    {"id":"E02_drawers","name_he":"חיפוי מגירות + אי איפור (טפט + נצנצים)"},
+    {"id":"E03_walls_prints","name_he":"הדפסות PVC לכל הקירות (צחי)"},
+    {"id":"E04_ceiling","name_he":"תקרה + חוטי יהלומים + חישוק מרכזי (ללא שנדליר)"},
+    {"id":"E05_devil","name_he":"אזור השטן – להבות + תאורה"},
+    {"id":"E06_angel_wings","name_he":"כנפיים ענקיות – מלאכית"},
+    {"id":"E07_clowns_carousel","name_he":"קרוסלת ליצנים דו־מימד – קאפה חתוכה + קישוטים"},
+    {"id":"E08_tiger","name_he":"קיר נמרה – צמחיה + נמר + עיגון"},
+    {"id":"E09_curtains","name_he":"וילונות קטיפה"},
+    {"id":"E10_frames","name_he":"מסגרות/קרניזים"},
+    {"id":"E11_graphics","name_he":"גרפיקה והדמיות (אודליה)"},
+    {"id":"E12_constructor","name_he":"קונסטרוקטור/בטיחות"},
+    {"id":"E13_general","name_he":"מתכלים + אוכל סטודיו"},
+    {"id":"E14_install","name_he":"הקמה (לוגיסטיקה + צוות)"},
+    {"id":"E15_teardown","name_he":"פירוק ושיקום"},
+    {"id":"E16_repairs","name_he":"ביקורי תיקונים"}
+  ]
+}
+```
