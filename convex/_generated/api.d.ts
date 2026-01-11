@@ -12,7 +12,6 @@ import type * as adminHealth from "../adminHealth.js";
 import type * as agent from "../agent.js";
 import type * as agent_improve from "../agent_improve.js";
 import type * as agent_tasks from "../agent_tasks.js";
-import type * as auth from "../auth.js";
 import type * as changeSets from "../changeSets.js";
 import type * as customers from "../customers.js";
 import type * as debug from "../debug.js";
@@ -58,7 +57,6 @@ declare const fullApi: ApiFromModules<{
   agent: typeof agent;
   agent_improve: typeof agent_improve;
   agent_tasks: typeof agent_tasks;
-  auth: typeof auth;
   changeSets: typeof changeSets;
   customers: typeof customers;
   debug: typeof debug;

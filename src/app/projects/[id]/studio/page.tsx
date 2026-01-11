@@ -236,10 +236,10 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
               conversations.map((conversation) => {
                 const isEditing = renamingId === conversation._id;
                 return (
-                <button
+                <div
                   key={conversation._id}
                   onClick={() => setActiveConversationId(conversation._id)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${conversation._id === activeConversationId
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition cursor-pointer ${conversation._id === activeConversationId
                     ? "border-gray-900 bg-white shadow"
                     : "border-gray-200 bg-white/70 hover:border-gray-300"
                     }`}
@@ -280,7 +280,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                   <div className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
                     {stageValue} · {String(conversation.mode ?? "CHAT").toUpperCase()}
                   </div>
-                </button>
+                </div>
               )})
             )}
           </div>
