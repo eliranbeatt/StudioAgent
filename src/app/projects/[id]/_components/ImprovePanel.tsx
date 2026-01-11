@@ -63,6 +63,7 @@ export default function ImprovePanel({
     const runAgent = useAction(api.agent_improve.runImproveAgent);
     const applyGroups = useMutation(api.changeSets.applyChangeGroups);
     const discardChangeSet = useMutation(api.changeSets.discardChangeSet);
+    const updateGroupOps = useMutation(api.changeSets.updateChangeGroupOps);
     const saveImage = useMutation(api.elementImages.addElementImage);
 
     // Fetch result if available
@@ -72,6 +73,8 @@ export default function ImprovePanel({
     const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
     const [applying, setApplying] = useState(false);
     const [savedImages, setSavedImages] = useState<Set<string>>(new Set());
+    const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+    const [editingText, setEditingText] = useState("");
 
     const handleSaveImage = async (img: any) => {
         if (!img.elementId) return;
@@ -157,6 +160,31 @@ export default function ImprovePanel({
             setSelectedGroupIds([]);
         } finally {
             setApplying(false);
+        }
+    };
+
+    const handleOpenEdit = (group: any) => {
+        setEditingGroupId(group.id);
+        const payload = group.operations ?? [];
+        setEditingText(JSON.stringify(payload, null, 2));
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingGroupId || !resultChangeSetId) return;
+        try {
+            const parsed = JSON.parse(editingText);
+            if (!Array.isArray(parsed)) {
+                throw new Error("Operations must be an array");
+            }
+            await updateGroupOps({
+                changeSetId: resultChangeSetId,
+                groupId: editingGroupId,
+                operations: parsed
+            });
+            setEditingGroupId(null);
+            setEditingText("");
+        } catch (e) {
+            console.error("Failed to update group ops", e);
         }
     };
 
@@ -475,6 +503,13 @@ export default function ImprovePanel({
                                     >
                                         {isApplied ? <><Check size={14} /> Applied</> : "Apply"}
                                     </button>
+                                    <button
+                                        onClick={() => handleOpenEdit(group)}
+                                        disabled={isApplied}
+                                        className="px-3 py-2 rounded-lg font-semibold text-xs border border-gray-200 text-gray-600 hover:bg-gray-50"
+                                    >
+                                        Edit
+                                    </button>
                                 </div>
                             </div>
                         );
@@ -542,6 +577,34 @@ export default function ImprovePanel({
                     {step === "results" && renderResults()}
                 </div>
             </div>
+
+            {editingGroupId && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setEditingGroupId(null)} />
+                    <div className="relative bg-white w-full max-w-3xl rounded-2xl shadow-2xl p-6 space-y-4">
+                        <h3 className="text-lg font-bold text-gray-900">Edit ChangeGroup Ops</h3>
+                        <textarea
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            className="w-full h-64 rounded-lg border border-gray-200 p-3 text-xs font-mono"
+                        />
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setEditingGroupId(null)}
+                                className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveEdit}
+                                className="px-4 py-2 rounded-lg text-sm text-white bg-blue-600 hover:bg-blue-700"
+                            >
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -83,6 +83,12 @@ export default defineSchema({
   // Users (Application users)
   users: defineTable({
     email: v.string(),
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
     displayName: v.optional(v.string()),
     trelloCredentials: v.optional(v.object({
       apiKey: v.string(),
@@ -91,7 +97,60 @@ export default defineSchema({
     preferredModel: v.optional(v.string()), // e.g. "gpt-5-mini", "gpt-5-nano"
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_email", ["email"]),
+  })
+    .index("by_email", ["email"])
+    .index("phone", ["phone"]),
+
+  authSessions: defineTable({
+    userId: v.id("users"),
+    expirationTime: v.number(),
+  }).index("userId", ["userId"]),
+
+  authAccounts: defineTable({
+    userId: v.id("users"),
+    provider: v.string(),
+    providerAccountId: v.string(),
+    secret: v.optional(v.string()),
+    emailVerified: v.optional(v.string()),
+    phoneVerified: v.optional(v.string()),
+  })
+    .index("userIdAndProvider", ["userId", "provider"])
+    .index("providerAndAccountId", ["provider", "providerAccountId"]),
+
+  authRefreshTokens: defineTable({
+    sessionId: v.id("authSessions"),
+    expirationTime: v.number(),
+    firstUsedTime: v.optional(v.number()),
+    parentRefreshTokenId: v.optional(v.id("authRefreshTokens")),
+  })
+    .index("sessionId", ["sessionId"])
+    .index("sessionIdAndParentRefreshTokenId", [
+      "sessionId",
+      "parentRefreshTokenId",
+    ]),
+
+  authVerificationCodes: defineTable({
+    accountId: v.id("authAccounts"),
+    provider: v.string(),
+    code: v.string(),
+    expirationTime: v.number(),
+    verifier: v.optional(v.string()),
+    emailVerified: v.optional(v.string()),
+    phoneVerified: v.optional(v.string()),
+  })
+    .index("accountId", ["accountId"])
+    .index("code", ["code"]),
+
+  authVerifiers: defineTable({
+    sessionId: v.optional(v.id("authSessions")),
+    signature: v.optional(v.string()),
+  }).index("signature", ["signature"]),
+
+  authRateLimits: defineTable({
+    identifier: v.string(),
+    lastAttemptTime: v.number(),
+    attemptsLeft: v.number(),
+  }).index("identifier", ["identifier"]),
 
   // Projects
   projects: defineTable({
@@ -229,8 +288,9 @@ export default defineSchema({
     createdByRunId: v.optional(v.string()), // changed from v.id("agentRuns") as table is missing
 
     createdFromChangeSetId: v.optional(v.id("changeSets")),
+    dedupKey: v.optional(v.string()),
     createdAt: v.number(),
-    updatedAt: v.number(),
+    updatedAt: v.optional(v.number()),
   }).index("by_project", ["projectId"])
     .index("by_element", ["elementId"])
     .index("by_project_status", ["projectId", "status"])
@@ -315,15 +375,16 @@ export default defineSchema({
     confidence: v.optional(v.number()),
     notes: v.optional(v.string()),
     actualTotalCost: v.optional(v.number()),
-      receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
+    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
 
-      createdFromChangeSetId: v.optional(v.id("changeSets")),
-      createdAt: v.number(),
-      updatedAt: v.optional(v.number()),
-    }).index("by_project", ["projectId"])
-      .index("by_element", ["elementId"])
-      .index("by_task", ["taskId"])
-      .index("by_project_updatedAt", ["projectId", "updatedAt"]),
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    dedupKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_project", ["projectId"])
+    .index("by_element", ["elementId"])
+    .index("by_task", ["taskId"])
+    .index("by_project_updatedAt", ["projectId", "updatedAt"]),
 
   // Accounting Sections (canonical keys for routing)
   accountingSections: defineTable({
@@ -396,16 +457,16 @@ export default defineSchema({
     confidence: v.optional(v.number()),
     actualUnitCost: v.optional(v.number()),
     actualTotalCost: v.optional(v.number()),
-      receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
-      checklistItemId: v.optional(v.string()),
-      createdFromChangeSetId: v.optional(v.id("changeSets")),
-      createdAt: v.number(),
-      updatedAt: v.optional(v.number()),
-    })
-      .index("by_project", ["projectId"])
-      .index("by_element", ["elementId"])
-      .index("by_task", ["taskId"])
-      .index("by_project_updatedAt", ["projectId", "updatedAt"]),
+    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
+    checklistItemId: v.optional(v.string()),
+        createdFromChangeSetId: v.optional(v.id("changeSets")),
+        dedupKey: v.optional(v.string()),
+        createdAt: v.number(),
+        updatedAt: v.optional(v.number()),
+      }).index("by_project", ["projectId"])
+    .index("by_element", ["elementId"])
+    .index("by_task", ["taskId"])
+    .index("by_project_updatedAt", ["projectId", "updatedAt"]),
 
   // Work Lines (linked to tasks)
   workLines: defineTable({
@@ -441,15 +502,16 @@ export default defineSchema({
     source: v.optional(v.string()),
     confidence: v.optional(v.number()),
     actualTotalCost: v.optional(v.number()),
-      receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
-      createdFromChangeSetId: v.optional(v.id("changeSets")),
-      createdAt: v.number(),
-      updatedAt: v.optional(v.number()),
-    })
-      .index("by_project", ["projectId"])
-      .index("by_element", ["elementId"])
-      .index("by_task", ["taskId"])
-      .index("by_project_updatedAt", ["projectId", "updatedAt"]),
+    receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
+    createdFromChangeSetId: v.optional(v.id("changeSets")),
+    dedupKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_element", ["elementId"])
+    .index("by_task", ["taskId"])
+    .index("by_project_updatedAt", ["projectId", "updatedAt"]),
 
   // Print Parts
   printParts: defineTable({
@@ -639,23 +701,23 @@ export default defineSchema({
     ),
 
     // v2: Scope & Configuration
-      scope: v.optional(v.union(
-        v.literal("tasks"),
-        v.literal("accounting"),
-        v.literal("elements"),
-        v.literal("quote"),
-        v.literal("knowledge"),
-        v.literal("project"),
-        v.literal("multi")
-      )),
-      baseSnapshot: v.optional(v.object({
-        projectUpdatedAt: v.optional(v.number()),
-        elementsUpdatedAt: v.optional(v.number()),
-        tasksUpdatedAt: v.optional(v.number()),
-        accountingUpdatedAt: v.optional(v.number()),
-        quoteUpdatedAt: v.optional(v.number()),
-      })),
-      runConfig: v.optional(v.object({
+    scope: v.optional(v.union(
+      v.literal("tasks"),
+      v.literal("accounting"),
+      v.literal("elements"),
+      v.literal("quote"),
+      v.literal("knowledge"),
+      v.literal("project"),
+      v.literal("multi")
+    )),
+    baseSnapshot: v.optional(v.object({
+      projectUpdatedAt: v.optional(v.number()),
+      elementsUpdatedAt: v.optional(v.number()),
+      tasksUpdatedAt: v.optional(v.number()),
+      accountingUpdatedAt: v.optional(v.number()),
+      quoteUpdatedAt: v.optional(v.number()),
+    })),
+    runConfig: v.optional(v.object({
       modelPreset: v.string(),
       allowWeb: v.boolean(),
       createImages: v.boolean(),
@@ -694,16 +756,17 @@ export default defineSchema({
 
     appliedGroupIds: v.optional(v.array(v.string())),
     auditLogIds: v.optional(v.array(v.string())),
+    userEdits: v.optional(v.any()),
 
     // Legacy / Flat Ops (kept for backward compatibility or simple runs)
-      reason_he: v.optional(v.string()),
-      base: v.optional(v.any()),
-      ops: v.optional(v.array(v.object({
-        kind: v.string(),
-        payload: v.any(),
-      }))),
-      preview_he: v.optional(v.any()),
-      sourceChangeSetId: v.optional(v.id("changeSets")),
+    reason_he: v.optional(v.string()),
+    base: v.optional(v.any()),
+    ops: v.optional(v.array(v.object({
+      kind: v.string(),
+      payload: v.any(),
+    }))),
+    preview_he: v.optional(v.any()),
+    sourceChangeSetId: v.optional(v.id("changeSets")),
 
     schemaVersion: v.optional(v.number()),
 

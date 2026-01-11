@@ -176,6 +176,7 @@ export const getTasksForElements = query({
           title: task.title,
           status: task.status,
           estimatedMinutes: task.estimatedMinutes,
+          dedupKey: task.dedupKey,
         })),
       });
     }
@@ -201,6 +202,7 @@ export const getAccountingForElements = query({
           total: line.total,
           qty: line.qty,
           unitCost: line.unitCost,
+          dedupKey: line.dedupKey,
         })),
       });
     }
@@ -289,11 +291,20 @@ export const generateOverviewSummary = action({
       projectId: args.id,
     });
 
+    const tasksRes = await ctx.runQuery(api.tasks.listForProject, {
+      projectId: args.id,
+    });
+
+    const financials = await ctx.runQuery(api.financials.getFinancialSummary, {
+      projectId: args.id,
+    });
 
     const summary = await buildOverviewSummary({
       project: overview.project,
       elements: overview.elements ?? [],
       files: files ?? [],
+      tasks: tasksRes?.tasks ?? [],
+      financials,
     });
 
     await ctx.runMutation(api.projects.updateProjectSummary, {
@@ -653,20 +664,29 @@ async function buildOverviewSummary({
   project,
   elements,
   files,
+  tasks,
+  financials,
 }: {
   project: any;
   elements: any[];
   files: any[];
+  tasks: any[];
+  financials: any;
 }) {
   const apiKey = process.env.OPENAI_API_KEY;
-  const elementList = elements.slice(0, 8).map((el) => `${el.title} (${el.type})`);
-  const fileList = (files ?? []).slice(0, 6).map((file) =>
+  const elementList = elements.slice(0, 12).map((el) => {
+    const elTasks = (tasks ?? []).filter((t) => t.elementId === el.id);
+    const taskTitles = elTasks.slice(0, 5).map(t => t.title).join(", ");
+    return `- ${el.title} (${el.type}): משימות עיקריות: ${taskTitles || 'אין עדיין'}`;
+  });
+
+  const fileList = (files ?? []).slice(0, 8).map((file) =>
     file.summary ? `${file.fileName}: ${file.summary}` : file.fileName
   );
 
   const fallbackSummary = [
     project.description?.trim(),
-    elementList.length ? `Elements: ${elementList.join(", ")}.` : "No elements yet.",
+    elements.length ? `Elements: ${elements.map(e => e.title).join(", ")}.` : "No elements yet.",
     fileList.length ? `Knowledge: ${fileList.join(" | ")}.` : null,
   ]
     .filter(Boolean)
@@ -676,15 +696,33 @@ async function buildOverviewSummary({
     return fallbackSummary;
   }
 
-  const prompt = [
-    `Project: ${project.name}`,
-    project.description ? `Description: ${project.description}` : null,
-    elementList.length ? `Elements: ${elementList.join(", ")}` : "Elements: none",
-    fileList.length ? `Knowledge files: ${fileList.join(" | ")}` : "Knowledge files: none",
-    "Write a concise project summary (2-4 sentences). Emphasize scope, key elements, and critical constraints.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const contextData = {
+    projectName: project.name,
+    customerName: project.customerName || project.clientName || "לא צוין",
+    description: project.description || "אין תיאור",
+    elements: elements.map(el => {
+        const elTasks = (tasks ?? []).filter((t) => t.elementId === el.id);
+        const elMaterials = el.materials ?? []; // Note: materials might need to be passed in or fetched if not in elements
+        return {
+            title: el.title,
+            type: el.type,
+            status: el.status,
+            tasks: elTasks.map(t => ({ title: t.title, status: t.status })),
+            // Add more if available
+        };
+    }),
+    files: fileList,
+    financials: financials ? {
+        baseline: financials.baseline,
+        forecast: financials.forecast,
+        effectiveBudget: financials.effectiveBudget,
+        variance: financials.variance,
+    } : "אין נתונים פיננסיים"
+  };
+
+  const systemPrompt = `You are a professional project coordinator for a set design and production studio.\nYour task is to write a comprehensive project summary in HEBREW.\n\nStructure the response as follows:\n1. **Short Concise Summary**: 2-3 sentences summarizing the project goals and the customer.\n2. **Deep Elaborated Description**:\n   - A detailed overview of the project scope.\n   - For each element: explain what it is, its status, key tasks, and relevant materials/vendors.\n   - Accounting & Financial status: Mention if there's an approved quote, total budget vs forecast, and estimated profit/margins.\n   - Mention any critical constraints or missing information.\n\nLANGUAGE: HEBREW ONLY.\nTONE: Professional, practical, and clear.`;
+
+  const userPrompt = `Project Context JSON:\n${JSON.stringify(contextData, null, 2)}`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -694,18 +732,38 @@ async function buildOverviewSummary({
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-5-mini", // Requested model
         messages: [
-          { role: "system", content: "You are a project coordinator summarizing internal project context." },
-          { role: "user", content: prompt },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
         ],
-        temperature: 0.2,
-        max_tokens: 220,
+        temperature: 0.3,
+        max_tokens: 1500,
       }),
     });
 
     if (!response.ok) {
-      return fallbackSummary;
+      // Fallback to gpt-4o-mini if gpt-5-mini is not available
+      const retryResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 1500,
+        }),
+      });
+      if (!retryResponse.ok) return fallbackSummary;
+      const retryData = await retryResponse.json();
+      const retryContent = retryData?.choices?.[0]?.message?.content;
+      return typeof retryContent === "string" && retryContent.trim() ? retryContent.trim() : fallbackSummary;
     }
 
     const data = await response.json();

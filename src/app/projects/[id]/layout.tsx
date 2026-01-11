@@ -32,9 +32,9 @@ export default function ProjectLayout({
   const resolved = useQuery(api.projects.resolveProjectId, { id: rawId });
   const projectId = resolved?.projectId ?? null;
   const [isActivityOpen, setIsActivityOpen] = useState(false);
-  const [isImproveOpen, setIsImproveOpen] = useState(false);
   const derivedContext = getTabContext(pathname);
   const improveParam = searchParams.get("improve") === "1";
+  const isImproveOpen = improveParam;
 
   useEffect(() => {
     if (!resolved || !projectId) return;
@@ -43,14 +43,13 @@ export default function ProjectLayout({
     router.replace(nextPath);
   }, [pathname, projectId, rawId, resolved, router]);
 
-  useEffect(() => {
-    if (improveParam && !isImproveOpen) {
-      setIsImproveOpen(true);
-    }
-  }, [improveParam, isImproveOpen]);
+  const openImprove = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("improve", "1");
+    router.replace(`${pathname}?${params.toString()}`);
+  };
 
   const handleCloseImprove = () => {
-    setIsImproveOpen(false);
     if (!improveParam) return;
     const params = new URLSearchParams(searchParams.toString());
     params.delete("improve");
@@ -116,7 +115,7 @@ export default function ProjectLayout({
         </nav>
         <div className="p-4 border-t space-y-2">
           <button
-            onClick={() => setIsImproveOpen(true)}
+            onClick={openImprove}
             className="group w-full flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all duration-200 text-gray-500 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 hover:text-blue-700"
           >
             <BrainCircuit size={18} className="text-gray-400 group-hover:text-blue-600" />

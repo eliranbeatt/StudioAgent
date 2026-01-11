@@ -413,6 +413,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
   if (cs.status !== "PROPOSED" && cs.status !== "APPLIED") throw new Error(`ChangeSet is ${cs.status}`);
   await assertBaseSnapshotFresh(ctx, cs.projectId, cs.baseSnapshot);
   const sourceChangeSetId = cs.sourceChangeSetId ?? cs._id;
+  const auditChangeSetId = sourceChangeSetId;
 
   if (cs.base?.elements) {
     for (const check of cs.base.elements) {
@@ -502,6 +503,17 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
     if (tempId) elementTempMap.set(tempId, elementId);
     // Newly created elements start at rev 1, no need to bump.
+
+    const createdElement = await ctx.db.get(elementId);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "create",
+      entityRef: `element:${elementId}`,
+      before: null,
+      after: createdElement,
+      appliedAt: now,
+    });
   }
 
   for (const op of cs.ops) {
@@ -589,37 +601,62 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     let taskId: TaskId;
     let existingTask = null;
     if (elementId) {
-      existingTask = await ctx.db.query("tasks")
+      const existingTasks = await ctx.db.query("tasks")
         .withIndex("by_element", q => q.eq("elementId", elementId))
-        .filter(q => q.eq(q.field("title"), title))
-        .first();
+        .collect();
+      
+      const cleanTitle = title.trim().toLowerCase();
+      const dedupKey = fields.dedupKey;
+
+      existingTask = existingTasks.find(t => 
+        (dedupKey && t.dedupKey === dedupKey) ||
+        (t.title.trim().toLowerCase() === cleanTitle)
+      );
     }
 
     if (existingTask) {
       taskId = existingTask._id;
-      await ctx.db.patch(taskId, {
-        description: toOptional(fields?.description),
-        status: toOptional(fields?.status),
-        priority: toOptional(fields?.priority),
-        category: toOptional(fields?.category),
-        startDate: toOptional(fields?.startDate),
-        endDate: toOptional(fields?.endDate),
-        estimatedMinutes: toOptional(fields?.estimatedMinutes),
-        assignee: toOptional(fields?.assignee),
-        // New V3 fields
-        stage: normalizeStage(fields?.stage),
-        workType: normalizeWorkType(fields?.workType),
-        workTypeLabelHe: toOptional(fields?.workTypeLabelHe),
-        plannedStartDate: toOptional(fields?.plannedStartDate),
-        plannedEndDate: toOptional(fields?.plannedEndDate),
-        durationBucket: toOptional(fields?.durationBucket),
-        checklist: normalizeChecklist(fields?.checklist),
-        accountingLinks: normalizeAccountingLinks(
+      const before = existingTask;
+      const patch: any = {};
+      if ("title" in fields) patch.title = toOptional(fields.title);
+      if ("description" in fields) patch.description = toOptional(fields.description);
+      if ("status" in fields) patch.status = toOptional(fields.status);
+      if ("priority" in fields) patch.priority = toOptional(fields.priority);
+      if ("category" in fields) patch.category = toOptional(fields.category);
+      if ("startDate" in fields) patch.startDate = toOptional(fields.startDate);
+      if ("endDate" in fields) patch.endDate = toOptional(fields.endDate);
+      if ("estimatedMinutes" in fields) patch.estimatedMinutes = toOptional(fields.estimatedMinutes);
+      if ("assignee" in fields) patch.assignee = toOptional(fields.assignee);
+      // New V3 fields
+      if ("stage" in fields) patch.stage = normalizeStage(fields?.stage);
+      if ("workType" in fields) patch.workType = normalizeWorkType(fields?.workType);
+      if ("workTypeLabelHe" in fields) patch.workTypeLabelHe = toOptional(fields?.workTypeLabelHe);
+      if ("plannedStartDate" in fields) patch.plannedStartDate = toOptional(fields?.plannedStartDate);
+      if ("plannedEndDate" in fields) patch.plannedEndDate = toOptional(fields?.plannedEndDate);
+      if ("durationBucket" in fields) patch.durationBucket = toOptional(fields?.durationBucket);
+      if ("checklist" in fields) patch.checklist = normalizeChecklist(fields?.checklist);
+      if ("accountingLinks" in fields) {
+        patch.accountingLinks = normalizeAccountingLinks(
           fields?.accountingLinks,
           materialLineTempMap,
           workLineTempMap
-        ),
+        );
+      }
+      if ("dedupKey" in fields) patch.dedupKey = toOptional(fields?.dedupKey);
+      
+      await ctx.db.patch(taskId, {
+        ...patch,
         updatedAt: now,
+      });
+      const after = await ctx.db.get(taskId);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "update",
+        entityRef: `task:${taskId}`,
+        before,
+        after,
+        appliedAt: now,
       });
     } else {
       taskId = await ctx.db.insert("tasks", {
@@ -648,10 +685,21 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
           materialLineTempMap,
           workLineTempMap
         ),
+        dedupKey: toOptional(fields?.dedupKey),
 
         createdFromChangeSetId: sourceChangeSetId,
         createdAt: now,
         updatedAt: now,
+      });
+      const after = await ctx.db.get(taskId);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "create",
+        entityRef: `task:${taskId}`,
+        before: null,
+        after,
+        appliedAt: now,
       });
     }
 
@@ -734,12 +782,24 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       sourceCode: fields.sourceCode ?? undefined,
       sourceLabelHe: fields.sourceLabelHe ?? undefined,
       source: fields.source ?? undefined,
-        confidence: fields.confidence ?? undefined,
-        checklistItemId: fields.checklistItemId ?? undefined,
-        createdFromChangeSetId: sourceChangeSetId,
-        createdAt: now,
-        updatedAt: now,
-      });
+      confidence: fields.confidence ?? undefined,
+      checklistItemId: fields.checklistItemId ?? undefined,
+      createdFromChangeSetId: sourceChangeSetId,
+      dedupKey: toOptional(fields.dedupKey),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const after = await ctx.db.get(lineId);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "create",
+      entityRef: `materialLine:${lineId}`,
+      before: null,
+      after,
+      appliedAt: now,
+    });
 
     if (tempId) materialLineTempMap.set(tempId, lineId);
     if (elementId) elementsToBump.add(elementId);
@@ -789,12 +849,24 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       notes: fields.notes ?? undefined,
       sourceCode: fields.sourceCode ?? undefined,
       sourceLabelHe: fields.sourceLabelHe ?? undefined,
-        source: fields.source ?? undefined,
-        confidence: fields.confidence ?? undefined,
-        createdFromChangeSetId: sourceChangeSetId,
-        createdAt: now,
-        updatedAt: now,
-      });
+      source: fields.source ?? undefined,
+      confidence: fields.confidence ?? undefined,
+      createdFromChangeSetId: sourceChangeSetId,
+      dedupKey: toOptional(fields.dedupKey),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const after = await ctx.db.get(lineId);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "create",
+      entityRef: `workLine:${lineId}`,
+      before: null,
+      after,
+      appliedAt: now,
+    });
 
     if (tempId) workLineTempMap.set(tempId, lineId);
     if (elementId) elementsToBump.add(elementId);
@@ -807,6 +879,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (!resolvedTaskId) throw new Error("task.patch requires taskId or taskTempOrId");
     if (!fields || typeof fields !== "object") continue;
 
+    const before = await ctx.db.get(resolvedTaskId);
     const patch: any = {};
     if ("title" in fields) patch.title = toOptional(fields.title);
     if ("description" in fields) patch.description = toOptional(fields.description);
@@ -850,6 +923,16 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     }
 
     await ctx.db.patch(resolvedTaskId, { ...patch, updatedAt: now });
+    const after = await ctx.db.get(resolvedTaskId);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "update",
+      entityRef: `task:${resolvedTaskId}`,
+      before,
+      after,
+      appliedAt: now,
+    });
   }
 
   // DELETE Handlers
@@ -864,13 +947,22 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     // However, for bulk ops, maybe we just try. 
     // Let's rely on standard Convex behavior: delete(id) works if id is valid.
     // If we resolved it, it's an ID.
-    const existing = await ctx.db.get(id);
-    if (existing) {
-      await ctx.db.delete(id);
-      // Should we cleanup links? For now, raw delete as requested.
-      // Elements that owned this task might need bumping?
-      if (existing.elementId) elementsToBump.add(existing.elementId);
-    }
+      const existing = await ctx.db.get(id);
+      if (existing) {
+        await ctx.db.delete(id);
+        await recordAudit(ctx, {
+          projectId: cs.projectId,
+          changeSetId: auditChangeSetId,
+          operation: "softDelete",
+          entityRef: `task:${id}`,
+          before: existing,
+          after: null,
+          appliedAt: now,
+        });
+        // Should we cleanup links? For now, raw delete as requested.
+        // Elements that owned this task might need bumping?
+        if (existing.elementId) elementsToBump.add(existing.elementId);
+      }
   }
 
   for (const op of cs.ops) {
@@ -879,11 +971,20 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const id = resolveFromTemp(tempId ?? materialLineId ?? lineId, materialLineTempMap);
     if (!id) throw new Error("materialLine.delete requires lineId");
 
-    const existing = await ctx.db.get(id);
-    if (existing) {
-      await ctx.db.delete(id);
-      if (existing.elementId) elementsToBump.add(existing.elementId);
-    }
+      const existing = await ctx.db.get(id);
+      if (existing) {
+        await ctx.db.delete(id);
+        await recordAudit(ctx, {
+          projectId: cs.projectId,
+          changeSetId: auditChangeSetId,
+          operation: "softDelete",
+          entityRef: `materialLine:${id}`,
+          before: existing,
+          after: null,
+          appliedAt: now,
+        });
+        if (existing.elementId) elementsToBump.add(existing.elementId);
+      }
   }
 
   for (const op of cs.ops) {
@@ -892,11 +993,20 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const id = resolveFromTemp(tempId ?? workLineId ?? lineId, workLineTempMap);
     if (!id) throw new Error("workLine.delete requires lineId");
 
-    const existing = await ctx.db.get(id);
-    if (existing) {
-      await ctx.db.delete(id);
-      if (existing.elementId) elementsToBump.add(existing.elementId);
-    }
+      const existing = await ctx.db.get(id);
+      if (existing) {
+        await ctx.db.delete(id);
+        await recordAudit(ctx, {
+          projectId: cs.projectId,
+          changeSetId: auditChangeSetId,
+          operation: "softDelete",
+          entityRef: `workLine:${id}`,
+          before: existing,
+          after: null,
+          appliedAt: now,
+        });
+        if (existing.elementId) elementsToBump.add(existing.elementId);
+      }
   }
 
   for (const op of cs.ops) {
@@ -905,11 +1015,20 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const id = accountingLineId ?? lineId; // Accounting lines rarely use tempIds in current flows?
     if (!id) throw new Error("accountingLine.delete requires lineId");
 
-    const existing = await ctx.db.get(id);
-    if (existing) {
-      await ctx.db.delete(id);
-      if (existing.elementId) elementsToBump.add(existing.elementId);
-    }
+      const existing = await ctx.db.get(id);
+      if (existing) {
+        await ctx.db.delete(id);
+        await recordAudit(ctx, {
+          projectId: cs.projectId,
+          changeSetId: auditChangeSetId,
+          operation: "softDelete",
+          entityRef: `accountingLine:${id}`,
+          before: existing,
+          after: null,
+          appliedAt: now,
+        });
+        if (existing.elementId) elementsToBump.add(existing.elementId);
+      }
   }
 
   for (const op of cs.ops) {
@@ -970,12 +1089,12 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         .withIndex("by_element", q => q.eq("elementId", elementId))
         .collect();
 
-      // Try to find a match. Note: inferring type effectively might make matching harder if existing was 'other'
-      // But usually we are creating new lines here.
+      const cleanTitle = fields.title.trim().toLowerCase();
+      const dedupKey = fields.dedupKey;
+
       existing = lines.find(l =>
-        l.title === fields.title &&
-        l.type === type &&
-        l.taskId === taskId
+        (dedupKey && l.dedupKey === dedupKey) ||
+        (l.title.trim().toLowerCase() === cleanTitle && l.type === type && l.taskId === taskId)
       );
     }
 
@@ -990,35 +1109,54 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     );
 
     if (existing) {
+      const before = existing;
+      const patch: any = {};
+      if ("title" in fields) patch.title = toOptional(fields.title);
+      if ("qty" in fields) patch.qty = fields.qty === null ? undefined : fields.qty;
+      if ("unitCost" in fields) patch.unitCost = fields.unitCost === null ? undefined : fields.unitCost;
+      if ("total" in fields) patch.total = Number(total);
+      if ("billable" in fields) patch.billable = fields.billable === null ? undefined : fields.billable;
+      
+      patch.sectionId = sectionId;
+      patch.sectionKey = sectionKey;
+      patch.sectionLabelHe = sectionLabelHe;
+
+      // V3 Patches
+      if ("itemName" in fields) patch.itemName = fields.itemName === null ? undefined : fields.itemName;
+      if ("spec" in fields) patch.spec = fields.spec === null ? undefined : fields.spec;
+      if ("unit" in fields) patch.unit = fields.unit === null ? undefined : fields.unit;
+      if ("unitCostEstimate" in fields) patch.unitCostEstimate = fields.unitCostEstimate === null ? undefined : fields.unitCostEstimate;
+      if ("wastePct" in fields) patch.wastePct = fields.wastePct === null ? undefined : fields.wastePct;
+      if ("vendorId" in fields) patch.vendorId = resolvedVendorId ?? undefined;
+      if ("vendorName" in fields) patch.vendorName = fields.vendorName === null ? undefined : fields.vendorName;
+      if ("vendorSku" in fields) patch.vendorSku = fields.vendorSku === null ? undefined : fields.vendorSku;
+      if ("vendorUrl" in fields) patch.vendorUrl = fields.vendorUrl === null ? undefined : fields.vendorUrl;
+      if ("leadTimeDays" in fields) patch.leadTimeDays = fields.leadTimeDays === null ? undefined : fields.leadTimeDays;
+      if ("workType" in fields) patch.workType = normalizeWorkType(fields.workType);
+      if ("hours" in fields) patch.hours = fields.hours === null ? undefined : fields.hours;
+      if ("crewSize" in fields) patch.crewSize = fields.crewSize === null ? undefined : fields.crewSize;
+      if ("ratePerHour" in fields) patch.ratePerHour = fields.ratePerHour === null ? undefined : fields.ratePerHour;
+      if ("source" in fields) patch.source = fields.source === null ? undefined : fields.source;
+      if ("confidence" in fields) patch.confidence = fields.confidence === null ? undefined : fields.confidence;
+      if ("notes" in fields) patch.notes = fields.notes === null ? undefined : fields.notes;
+      if ("dedupKey" in fields) patch.dedupKey = toOptional(fields?.dedupKey);
+
       await ctx.db.patch(existing._id, {
-        qty: fields.qty === null ? undefined : fields.qty,
-        unitCost: fields.unitCost === null ? undefined : fields.unitCost,
-        total: Number(total),
-        billable: fields.billable === null ? undefined : fields.billable,
-        sectionId,
-        sectionKey,
-        sectionLabelHe,
-        // V3 Patches
-        itemName: fields.itemName === null ? undefined : fields.itemName,
-        spec: fields.spec === null ? undefined : fields.spec,
-        unit: fields.unit === null ? undefined : fields.unit,
-        unitCostEstimate: fields.unitCostEstimate === null ? undefined : fields.unitCostEstimate,
-        wastePct: fields.wastePct === null ? undefined : fields.wastePct,
-        vendorId: resolvedVendorId ?? undefined,
-        vendorName: fields.vendorName === null ? undefined : fields.vendorName,
-        vendorSku: fields.vendorSku === null ? undefined : fields.vendorSku,
-        vendorUrl: fields.vendorUrl === null ? undefined : fields.vendorUrl,
-        leadTimeDays: fields.leadTimeDays === null ? undefined : fields.leadTimeDays,
-        workType: normalizeWorkType(fields.workType),
-        hours: fields.hours === null ? undefined : fields.hours,
-        crewSize: fields.crewSize === null ? undefined : fields.crewSize,
-        ratePerHour: fields.ratePerHour === null ? undefined : fields.ratePerHour,
-        source: fields.source === null ? undefined : fields.source,
-        confidence: fields.confidence === null ? undefined : fields.confidence,
-        notes: fields.notes === null ? undefined : fields.notes,
+        ...patch,
+        updatedAt: now,
+      });
+      const after = await ctx.db.get(existing._id);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "update",
+        entityRef: `accountingLine:${existing._id}`,
+        before,
+        after,
+        appliedAt: now,
       });
     } else {
-      await ctx.db.insert("accountingLines", {
+      const accountingLineId = await ctx.db.insert("accountingLines", {
         projectId: cs.projectId,
         elementId,
         taskId,
@@ -1048,12 +1186,23 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         ratePerHour: fields.ratePerHour === null ? undefined : fields.ratePerHour,
         source: fields.source === null ? undefined : fields.source,
         confidence: fields.confidence === null ? undefined : fields.confidence,
-          notes: fields.notes === null ? undefined : fields.notes,
+        notes: fields.notes === null ? undefined : fields.notes,
+        dedupKey: toOptional(fields?.dedupKey),
 
-          createdFromChangeSetId: sourceChangeSetId,
-          createdAt: now,
-          updatedAt: now,
-        });
+        createdFromChangeSetId: sourceChangeSetId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const after = await ctx.db.get(accountingLineId);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "create",
+        entityRef: `accountingLine:${accountingLineId}`,
+        before: null,
+        after,
+        appliedAt: now,
+      });
     }
     if (elementId) elementsToBump.add(elementId);
   }
@@ -1099,11 +1248,13 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       // ... match other materialLines fields
       if ("actualUnitCost" in fields) patch.actualUnitCost = toOptional(fields.actualUnitCost);
       if ("actualTotalCost" in fields) patch.actualTotalCost = toOptional(fields.actualTotalCost);
+      if ("dedupKey" in fields) patch.dedupKey = toOptional(fields.dedupKey);
     } else if (isLabor) {
       if ("qty" in fields || "plannedQuantity" in fields) patch.plannedQuantity = toOptional(fields.plannedQuantity ?? fields.qty);
       if ("unitCost" in fields || "plannedUnitCost" in fields || "rate" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.rate ?? fields.unitCost);
       if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
       if ("roleHe" in fields || "title" in fields) patch.roleHe = toOptional(fields.roleHe ?? fields.title);
+      if ("dedupKey" in fields) patch.dedupKey = toOptional(fields.dedupKey);
       // ... match other workLines fields
     } else {
       // Assume accountingLines
@@ -1148,15 +1299,26 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("ratePerHour" in fields) patch.ratePerHour = toOptional(fields.ratePerHour);
       if ("source" in fields) patch.source = toOptional(fields.source);
       if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
+      if ("dedupKey" in fields) patch.dedupKey = toOptional(fields.dedupKey);
     }
 
     patch.updatedAt = now;
+    const before = await ctx.db.get(resolvedLineId);
     await ctx.db.patch(resolvedLineId, { ...patch });
+    const after = await ctx.db.get(resolvedLineId);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "update",
+      entityRef: `accountingLine:${resolvedLineId}`,
+      before,
+      after,
+      appliedAt: now,
+    });
 
     // Fetch line to identify element for bumping
-    const existingLine = await ctx.db.get(resolvedLineId);
-    if (existingLine?.elementId) {
-      elementsToBump.add(existingLine.elementId);
+    if (after?.elementId) {
+      elementsToBump.add(after.elementId);
     }
   }
 
@@ -1178,6 +1340,17 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       createdFromChangeSetId: sourceChangeSetId,
       createdAt: now,
       updatedAt: now,
+    });
+
+    const afterPurchase = await ctx.db.get(purchaseId);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "create",
+      entityRef: `purchase:${purchaseId}`,
+      before: null,
+      after: afterPurchase,
+      appliedAt: now,
     });
 
     if (op.payload?.tempId) purchaseTempMap.set(op.payload.tempId, purchaseId);
@@ -1227,6 +1400,17 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         updatedAt: now,
       });
     }
+
+    const after = await ctx.db.get(elementId);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "update",
+      entityRef: `element:${elementId}`,
+      before: element,
+      after,
+      appliedAt: now,
+    });
 
     elementsToBump.add(elementId);
   }
@@ -1422,13 +1606,25 @@ export const applyChangeGroups = mutation({
       if (cs.appliedGroupIds?.includes(group.id)) {
         continue; // Already applied
       }
-      if (group.operations) {
-        const normalizedOps = normalizeChangeGroupOps(group.operations);
+      const groupOps = cs.userEdits?.[group.id] ?? group.operations;
+      if (groupOps) {
+        const normalizedOps = normalizeChangeGroupOps(groupOps);
         allOps.push(...normalizedOps);
       }
     }
 
     if (allOps.length === 0) {
+      const previousApplied = cs.appliedGroupIds ?? [];
+      const newApplied = [...previousApplied, ...selectedGroups.map((g: any) => g.id)];
+      const uniqueApplied = Array.from(new Set(newApplied));
+      const allGroupIds = cs.changeGroups.map((g: any) => g.id);
+      const allApplied = allGroupIds.every((id: any) => uniqueApplied.includes(id));
+
+      await ctx.db.patch(args.changeSetId, {
+        appliedGroupIds: uniqueApplied,
+        status: allApplied ? "APPLIED" : "PARTIALLY_APPLIED",
+        appliedAt: Date.now()
+      });
       return { status: "no_new_ops" };
     }
 
@@ -1475,6 +1671,29 @@ export const applyChangeGroups = mutation({
       console.warn("Audit log failed", e);
     }
   }
+});
+
+export const updateChangeGroupOps = mutation({
+  args: {
+    changeSetId: v.id("changeSets"),
+    groupId: v.string(),
+    operations: v.array(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const cs = await ctx.db.get(args.changeSetId);
+    if (!cs) throw new Error("ChangeSet not found");
+    if (!cs.changeGroups?.some((g: any) => g.id === args.groupId)) {
+      throw new Error("ChangeGroup not found");
+    }
+    const next = {
+      ...(cs.userEdits ?? {}),
+      [args.groupId]: args.operations,
+    };
+    await ctx.db.patch(args.changeSetId, {
+      userEdits: next,
+      updatedAt: Date.now(),
+    });
+  },
 });
 
 // Helper for applying a list of Ops (derived from applying a whole changeset)

@@ -4,7 +4,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { use, useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, Send } from "lucide-react";
+import { Loader2, Pencil, Plus, Send } from "lucide-react";
 import { ACTIVE_AGENT_PROMPT_ID } from "../../../../lib/agentPrompts";
 
 type Stage = "IDEATION" | "QUOTE" | "BREAKDOWN";
@@ -31,6 +31,8 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [isWaiting, setIsWaiting] = useState(false);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [createConversationError, setCreateConversationError] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<Id<"conversations"> | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const user = useQuery(api.users.getViewer);
   const model = user?.preferredModel ?? "gpt-5-mini";
 
@@ -44,6 +46,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
 
   const createConversation = useMutation(api.agent.createConversation);
   const setConversationMode = useMutation(api.agent.setConversationMode);
+  const setConversationTitle = useMutation(api.agent.setConversationTitle);
   const appendUserMessage = useMutation(api.agent.appendUserMessage);
     const appendEventMessage = useMutation(api.agent.appendEventMessage);
     const applyChangeSet = useMutation(api.changeSets.applyChangeSet);
@@ -122,6 +125,13 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
       } finally {
         setIsWaiting(false);
       }
+    };
+
+    const handleRename = async (id: Id<"conversations">) => {
+      const nextTitle = renameDraft.trim();
+      setRenamingId(null);
+      if (!nextTitle) return;
+      await setConversationTitle({ id, title_he: nextTitle });
     };
   
     const handleCancel = async () => {
@@ -223,7 +233,9 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
             ) : conversations.length === 0 ? (
               <div className="text-xs text-gray-400">No conversations yet.</div>
             ) : (
-              conversations.map((conversation) => (
+              conversations.map((conversation) => {
+                const isEditing = renamingId === conversation._id;
+                return (
                 <button
                   key={conversation._id}
                   onClick={() => setActiveConversationId(conversation._id)}
@@ -232,14 +244,44 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                     : "border-gray-200 bg-white/70 hover:border-gray-300"
                     }`}
                 >
-                  <div className="font-semibold text-gray-800">
-                    {conversation.title_he ?? "שיחה חדשה"}
+                  <div className="flex items-center justify-between gap-2">
+                    {isEditing ? (
+                      <input
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onBlur={() => handleRename(conversation._id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRename(conversation._id);
+                          if (e.key === "Escape") setRenamingId(null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        onFocus={(e) => e.stopPropagation()}
+                        className="w-full rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-800"
+                        autoFocus
+                      />
+                    ) : (
+                      <div className="font-semibold text-gray-800">
+                        {conversation.title_he ?? "שיחה חדשה"}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenamingId(conversation._id);
+                        setRenameDraft(conversation.title_he ?? "");
+                      }}
+                      className="rounded-md border border-gray-200 bg-white p-1 text-gray-500 hover:text-gray-700"
+                      title="עריכת כותרת"
+                    >
+                      <Pencil size={12} />
+                    </button>
                   </div>
                   <div className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
                     {stageValue} · {String(conversation.mode ?? "CHAT").toUpperCase()}
                   </div>
                 </button>
-              ))
+              )})
             )}
           </div>
         </aside>

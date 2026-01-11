@@ -217,22 +217,75 @@ function buildWebQueries(args: { project?: any; elements?: any[]; scope: string 
     return Array.from(new Set(queries)).slice(0, 3);
 }
 
-async function runTavilySearch(query: string, apiKey: string) {
-    const res = await fetch("https://api.tavily.com/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            api_key: apiKey,
-            query,
-            max_results: 3,
-            include_answer: false,
-            include_images: false
-        })
+async function runOpenAISearch(client: OpenAI, query: string) {
+    const response = await client.responses.create({
+        model: "gpt-4.1-mini",
+        tools: [{ type: "web_search" }],
+        input: [
+            {
+                role: "user",
+                content: [
+                    {
+                        type: "input_text",
+                        text: [
+                            "Search the web for sources relevant to the query.",
+                            "Return STRICT JSON only with this schema:",
+                            "{ \"results\": [{ \"title\": string, \"url\": string, \"publishedAt\": string|null }] }",
+                            "Query:",
+                            query
+                        ].join("\n")
+                    }
+                ]
+            }
+        ]
     });
-    if (!res.ok) {
-        throw new Error(`Tavily search failed: ${res.status}`);
+
+    const text = (response as any).output_text ?? "";
+    if (!text) return [];
+    try {
+        const parsed = JSON.parse(text);
+        return Array.isArray(parsed?.results) ? parsed.results : [];
+    } catch {
+        const match = text.match(/\{[\s\S]*\}/);
+        if (!match) return [];
+        try {
+            const parsed = JSON.parse(match[0]);
+            return Array.isArray(parsed?.results) ? parsed.results : [];
+        } catch {
+            return [];
+        }
     }
-    return await res.json();
+}
+
+async function storeImageAsProjectFile(ctx: any, projectId: Id<"projects">, imageRef: string, fileName: string) {
+    let buffer: Buffer;
+    let contentType = "image/png";
+
+    if (imageRef.startsWith("data:")) {
+        const match = imageRef.match(/^data:(.+);base64,(.+)$/);
+        if (!match) {
+            throw new Error("Invalid data URL");
+        }
+        contentType = match[1] ?? contentType;
+        buffer = Buffer.from(match[2], "base64");
+    } else {
+        const res = await fetch(imageRef);
+        if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
+        const arrayBuffer = await res.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+        contentType = res.headers.get("content-type") ?? contentType;
+    }
+
+    const storageId = await ctx.storage.store(new Blob([new Uint8Array(buffer)], { type: contentType }));
+    const fileId = await ctx.runMutation(internal.files.saveFileRecord, {
+        projectId,
+        storageId,
+        fileName,
+        contentType,
+        size: buffer.length,
+    });
+    const url = await ctx.storage.getUrl(storageId);
+    return { fileId, url };
 }
 
 export const runImproveAgent = action({
@@ -326,45 +379,86 @@ export const runImproveAgent = action({
             });
 
             const raw = completion.choices[0].message.content;
+            console.log("--------------- AI RAW OUTPUT ---------------");
+            console.log(raw);
+            console.log("---------------------------------------------");
+
             if (!raw) throw new Error("Empty response from AI");
 
             const parsed = JSON.parse(raw);
 
+            const normalizedReport = typeof parsed.report_he === "string"
+                ? {
+                    whatIWouldChange: [parsed.report_he],
+                    gaps: [],
+                    risks: [],
+                    outOfScopeNotes: [],
+                    openQuestions: [],
+                    assumptions: [],
+                }
+                : (parsed.report_he ?? {
+                    whatIWouldChange: [],
+                    gaps: [],
+                    risks: [],
+                    outOfScopeNotes: [],
+                    openQuestions: [],
+                    assumptions: [],
+                });
+
+            if (Array.isArray(parsed.openQuestions_he)) {
+                const questions = parsed.openQuestions_he
+                    .map((q: any) => q?.question_he ?? q?.text_he ?? q)
+                    .filter((q: any) => typeof q === "string");
+                normalizedReport.openQuestions = [
+                    ...(normalizedReport.openQuestions ?? []),
+                    ...questions,
+                ];
+            }
+
+            let changeGroups = Array.isArray(parsed.changeGroups) ? parsed.changeGroups : [];
+            if (changeGroups.length === 0 && normalizedReport.whatIWouldChange?.length) {
+                changeGroups = [{
+                    id: `questions-${Date.now()}`,
+                    title_he: "שאלות פתוחות",
+                    scope: args.scope,
+                    rationale_he: "נדרשות תשובות לפני ביצוע שינויים.",
+                    riskLevel: "medium",
+                    requiresUserApproval: true,
+                    operations: [],
+                }];
+            }
+
             let links = Array.isArray(parsed.links) ? parsed.links : [];
             if (args.runConfig.allowWeb && links.length === 0) {
-                const tavilyKey = process.env.TAVILY_API_KEY;
-                if (tavilyKey) {
-                    try {
-                        const queries = buildWebQueries({
-                            project,
-                            elements: elementsRes?.elements ?? [],
-                            scope: args.scope
-                        });
-                        const results: any[] = [];
-                        for (const query of queries) {
-                            const data = await runTavilySearch(query, tavilyKey);
-                            if (Array.isArray(data?.results)) {
-                                results.push(...data.results);
-                            }
+                try {
+                    const queries = buildWebQueries({
+                        project,
+                        elements: elementsRes?.elements ?? [],
+                        scope: args.scope
+                    });
+                    const results: any[] = [];
+                    for (const query of queries) {
+                        const data = await runOpenAISearch(client, query);
+                        if (Array.isArray(data)) {
+                            console.log(`[Search Query] "${query}" => ${data.length} results`);
+                            results.push(...data);
                         }
-                        links = results.slice(0, 5).map((item: any) => ({
-                            title: item.title ?? item.url ?? "Source",
-                            domain: toDomain(item.url ?? ""),
-                            url: item.url ?? "",
-                            publishedAt: item.published_date ?? null,
-                            usedFor_he: "מקור רקע לתמיכה בהחלטות"
-                        })).filter((item: any) => item.url);
-                    } catch (e) {
-                        console.warn("Web search failed", e);
                     }
-                } else {
-                    console.warn("TAVILY_API_KEY missing; skipping web search");
+                    links = results.slice(0, 5).map((item: any) => ({
+                        title: item.title ?? item.url ?? "Source",
+                        domain: toDomain(item.url ?? ""),
+                        url: item.url ?? "",
+                        publishedAt: item.publishedAt ?? null,
+                        usedFor_he: "מקור רקע לתמיכה בהחלטות"
+                    })).filter((item: any) => item.url);
+                } catch (e) {
+                    console.warn("Web search failed", e);
                 }
             }
 
             let generatedImages = Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [];
             if (args.runConfig.createImages) {
-                const imageModel = "gpt-image-1";
+                const imageModel = "gpt-image-1.5";
                 const candidates = generatedImages.filter((img: any) => img.imagePrompt_he && !img.imageRef);
                 const fallback = candidates.length === 0
                     ? (elementsRes?.elements ?? []).slice(0, 2).map((el: any) => ({
@@ -390,12 +484,22 @@ export const runImproveAgent = action({
                             imageRef = `data:image/png;base64,${data.b64_json}`;
                         }
                         if (imageRef) {
-                            generated.push({
-                                elementId: img.elementId ?? null,
-                                kind: img.kind ?? "technical",
+                            console.log(`[Image Generated] for ${img.elementId}: ${imageRef.slice(0, 50)}...`);
+                            const fileName = `ai-improve-${args.projectId}-${Date.now()}.png`;
+                            const stored = await storeImageAsProjectFile(
+                                ctx,
+                                args.projectId,
                                 imageRef,
-                                caption_he: img.caption_he ?? "הדמיה"
-                            });
+                                fileName
+                            );
+                            if (stored.url) {
+                                generated.push({
+                                    elementId: img.elementId ?? null,
+                                    kind: img.kind ?? "technical",
+                                    imageRef: stored.url,
+                                    caption_he: img.caption_he ?? "הדמיה"
+                                });
+                            }
                         }
                     } catch (e) {
                         console.warn("Image generation failed", e);
@@ -407,6 +511,12 @@ export const runImproveAgent = action({
                 }
             }
 
+            console.log("FINAL PARSED STRUCTURE:", JSON.stringify({
+                changeGroupsCount: parsed.changeGroups?.length,
+                linksCount: links.length,
+                imagesCount: generatedImages.length
+            }, null, 2));
+
             // 4. Save Result
             const changeSetId = await ctx.runMutation(internal.changeSets.createChangeSet, {
                 projectId: args.projectId,
@@ -417,11 +527,11 @@ export const runImproveAgent = action({
                 baseSnapshot,
                 runConfig: args.runConfig,
 
-                report_he: parsed.report_he,
+                report_he: normalizedReport,
                 gaps: parsed.gaps,
                 links,
                 generatedImages,
-                changeGroups: parsed.changeGroups,
+                changeGroups,
 
                 // Legacy fields population for compatibility if needed
                 ops: [], // We use changeGroups now

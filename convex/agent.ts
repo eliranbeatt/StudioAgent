@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import OpenAI from "openai";
+import { searchWeb } from "./lib/webSearch";
 
 const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV7";
 
@@ -56,6 +57,13 @@ Mode is one of: CHAT | QUESTIONS | SUGGESTIONS (hint only).
 Next-best-action policy (choose exactly one): ANSWER | ASK | SUGGEST | PROPOSE_CHANGESET.
 Anti-bloat: if you are about to output > 12 bullets, stop and choose a smaller next step.
 If you are not providing a ChangeSetBlock or QuestionsBlock, output a SuggestionBlock with 2-3 next steps.
+
+Deduplication Rules:
+- Before creating a task or cost line, check the provided context to see if it exists.
+- If it exists, use 'task.patch' or 'accountingLine.patch' instead of '.create'.
+- For new items, always provide a 'dedupKey' (e.g., 'task_install_pvc') to ensure idempotency.
+
+When citing web search results or providing URLs, YOU MUST use Markdown format: [Link Title](URL). Do not use bare URLs.
 
 ## Block schemas (preferred)
 QuestionsBlock:
@@ -113,6 +121,7 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
   "elementTempOrId": "...",
   "fields": {
     "title": "...",
+    "dedupKey": "...", // OPTIONAL: A unique string to prevent duplicate creation if the agent runs multiple times
     "description": "...",
     "stage": "build"|"install"|"...",
     "workType": "metal_fab"|"printing_graphics"|"...",
@@ -152,6 +161,7 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     "taskTempOrId": "...",
     "fields": {
       "title": "...",
+      "dedupKey": "...", // OPTIONAL: Unique key to prevent duplicates
       "type": "material" | "labor" | "subcontract" | "other",
       "lineType": "material" | "work",
       "sectionKey": "...",
@@ -474,13 +484,13 @@ export const setConversationStageV1 = mutation({
 
     const project = await ctx.db.get(conversation.projectId);
     if (project) {
-        const order = { IDEATION: 0, QUOTE: 1, BREAKDOWN: 2 };
-        const currentOrder = order[project.stage ?? "IDEATION"] ?? 0;
-        const newOrder = order[args.stage] ?? 0;
-        
-        if (newOrder > currentOrder) {
-             await ctx.db.patch(project._id, { stage: args.stage, updatedAt: Date.now() });
-        }
+      const order = { IDEATION: 0, QUOTE: 1, BREAKDOWN: 2 };
+      const currentOrder = order[project.stage ?? "IDEATION"] ?? 0;
+      const newOrder = order[args.stage] ?? 0;
+
+      if (newOrder > currentOrder) {
+        await ctx.db.patch(project._id, { stage: args.stage, updatedAt: Date.now() });
+      }
     }
 
     return { ok: true };
@@ -540,6 +550,46 @@ export const agentRespond = action({
       conversationId: args.conversationId,
       limit: 30,
     });
+
+    const userMessages = recentMessages.filter((msg) => msg.role === "user" && msg.text_he);
+    const hasTitle = Boolean(String(conversation.title_he ?? "").trim());
+    if (!hasTitle && userMessages.length >= 2 && process.env.OPENAI_API_KEY) {
+      const titleInputs = userMessages.slice(0, 2).map((msg) => String(msg.text_he ?? "").trim());
+      if (titleInputs.every((text) => text.length > 0)) {
+        try {
+          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const completion = await client.chat.completions.create({
+            model: "gpt-4o-mini",
+            temperature: 0.2,
+            max_tokens: 20,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Create a short, concise Hebrew conversation title (2-5 words) based on the two user messages. No quotes, no punctuation.",
+              },
+              {
+                role: "user",
+                content: `Message 1: ${titleInputs[0]}\nMessage 2: ${titleInputs[1]}\nTitle:`,
+              },
+            ],
+          });
+          let title = String(completion.choices[0]?.message?.content ?? "").trim();
+          title = title.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "");
+          title = title.replace(/[.?!]+$/g, "");
+          title = title.replace(/\s+/g, " ").trim();
+          if (title.length > 60) title = title.slice(0, 60).trim();
+          if (title) {
+            await ctx.runMutation(api.agent.setConversationTitle, {
+              id: conversation._id,
+              title_he: title,
+            });
+          }
+        } catch (err) {
+          console.error("Failed to auto-title conversation", err);
+        }
+      }
+    }
 
     const selectedIds = args.uiContext?.selectedElementIds ?? [];
     const selectedElements = [];
@@ -642,51 +692,85 @@ export const agentRespond = action({
         };
 
         const forcedAction = selectedAction ? `User selected action: ${selectedAction}. You must execute it.` : "";
-        const payload: any = {
-          model: targetModel,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "system", content: DEVELOPER_PROMPT },
-            { role: "system", content: STAGE_MODULES[stage] ?? "" },
-            { role: "system", content: MODE_NUDGES[mode] ?? "" },
-            ...(forcedAction ? [{ role: "system", content: forcedAction }] : []),
-            { role: "user", content: `Context JSON: \n${JSON.stringify(contextPayload)} ` },
-          ],
-          stream: true, // Enable streaming
-        };
 
-        if (reasoningEffort) {
-          payload.reasoning_effort = reasoningEffort;
-        } else if (supportsTemperature(targetModel)) {
-          // Only add custom temperature for models that support it.
-          payload.temperature = 0.2;
-        }
+        // Initial Message Chain
+        let messages: any[] = [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: DEVELOPER_PROMPT },
+          { role: "system", content: STAGE_MODULES[stage] ?? "" },
+          { role: "system", content: MODE_NUDGES[mode] ?? "" },
+          ...(forcedAction ? [{ role: "system", content: forcedAction }] : []),
+          { role: "user", content: `Context JSON: \n${JSON.stringify(contextPayload)} ` },
+        ];
 
-        let stream;
-        try {
-          stream = await client.chat.completions.create(payload);
-        } catch (err: any) {
-          if (payload.temperature !== undefined && isUnsupportedTemperatureError(err)) {
-            const retryPayload = { ...payload };
-            delete retryPayload.temperature;
-            stream = await client.chat.completions.create(retryPayload);
-          } else {
-            throw err;
+        // Define Tools
+        const tools: any[] = [
+          {
+            type: "function",
+            function: {
+              name: "web_search",
+              description: "Search the web for real-time information, such as prices, material specs, or instructions. Use this when you need facts not in the context.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "The search query (e.g. 'Birch Plywood 18mm price Israel')." }
+                },
+                required: ["query"]
+              }
+            }
           }
-        }
+        ];
 
-        let lastUpdate = Date.now();
-        let chunkCount = 0;
+        let loopCount = 0;
+        const MAX_LOOPS = 4;
+        let isFinalResponse = false;
 
-        try {
+        while (loopCount < MAX_LOOPS && !isFinalResponse) {
+          loopCount++;
+
+          const payload: any = {
+            model: targetModel,
+            messages: messages,
+            stream: true,
+            tools: tools,
+            tool_choice: "auto",
+          };
+
+          if (reasoningEffort) {
+            payload.reasoning_effort = reasoningEffort;
+          } else if (supportsTemperature(targetModel)) {
+            payload.temperature = 0.2;
+          }
+
+          let stream;
+          try {
+            stream = await client.chat.completions.create(payload);
+          } catch (err: any) {
+            if (payload.temperature !== undefined && isUnsupportedTemperatureError(err)) {
+              const retryPayload = { ...payload };
+              delete retryPayload.temperature;
+              stream = await client.chat.completions.create(retryPayload);
+            } else {
+              throw err;
+            }
+          }
+
+          let lastUpdate = Date.now();
+          let chunkCount = 0;
+
+          let currentToolCalls: any[] = [];
+          let currentContent = "";
+
           for await (const chunk of stream as any) {
-            const content = chunk.choices[0]?.delta?.content || "";
-            if (content) {
-              responseText += content;
+            const delta = chunk.choices[0]?.delta;
+
+            // Handle Content
+            if (delta?.content) {
+              currentContent += delta.content;
+              responseText += delta.content;
               chunkCount++;
 
               // Update DB occasionally to create "streaming" effect
-              // Don't update if we are inside the JSON block (crudely detected) to avoid scaring the user
               const jsonIndex = responseText.indexOf("```json");
               const isInsideBlock = jsonIndex !== -1 && jsonIndex < responseText.length - 10;
 
@@ -696,24 +780,80 @@ export const agentRespond = action({
                   text_he: responseText,
                 });
                 if (updateResult?.cancelled) {
-                  responseText += " (Cancelled)";
-                  try {
-                    // Attempt to abort OpenAI stream if possible
-                    if ((stream as any).controller) (stream as any).controller.abort();
-                  } catch (e) {
-                    // Ignore abort errors
-                  }
+                  try { if ((stream as any).controller) (stream as any).controller.abort(); } catch (e) { }
+                  isFinalResponse = true; // Break outer loop
                   break;
                 }
                 lastUpdate = Date.now();
               }
             }
+
+            // Handle Tool Calls
+            if (delta?.tool_calls) {
+              for (const toolCall of delta.tool_calls) {
+                const index = toolCall.index;
+                if (!currentToolCalls[index]) {
+                  currentToolCalls[index] = {
+                    index,
+                    id: toolCall.id,
+                    type: toolCall.type,
+                    function: { name: "", arguments: "" }
+                  };
+                }
+                if (toolCall.id) currentToolCalls[index].id = toolCall.id;
+                if (toolCall.function?.name) currentToolCalls[index].function.name += toolCall.function.name;
+                if (toolCall.function?.arguments) currentToolCalls[index].function.arguments += toolCall.function.arguments;
+              }
+            }
           }
-        } catch (iterErr: any) {
-          if (iterErr?.message && /permits close/i.test(iterErr.message)) {
-            console.warn("Ignored stream close error:", iterErr.message);
+
+          // Check if cancelled
+          if (isFinalResponse && chunkCount > 0 && responseText.includes("(Cancelled)")) break;
+
+          if (currentToolCalls.length > 0) {
+            // Push assistant message (with tool_calls) to history
+            messages.push({
+              role: "assistant",
+              content: currentContent || null,
+              tool_calls: currentToolCalls
+            });
+
+            // Execute tools
+            for (const call of currentToolCalls) {
+              if (call.function.name === "web_search") {
+                let args;
+                try { args = JSON.parse(call.function.arguments); } catch (e) { args = { query: "" }; }
+
+                // UI feedback: show what we are doing
+                await ctx.runMutation(internal.agent.updateMessageContent, {
+                  messageId: agentMessageId,
+                  text_he: responseText + `\n\n*(מחפש: ${args.query})...*`
+                });
+
+                const result = await searchWeb(args.query);
+
+                messages.push({
+                  role: "tool",
+                  tool_call_id: call.id,
+                  content: JSON.stringify(result)
+                });
+
+                // Clear the "searching" text from the main responseText so it doesn't get persisted permanently in the middle?
+                // Actually, keeping it as a record is fine, or we can rely on the next token update to overwrite it if we didn't commit it to responseText.
+                // But responseText is what we finally save. 
+                // Let's add it to responseText so the user sees the history of actions.
+                responseText += `\n\n*(תוצאות חיפוש עבור "${args.query}" התקבלו)*\n`;
+              } else {
+                messages.push({
+                  role: "tool",
+                  tool_call_id: call.id,
+                  content: JSON.stringify({ error: "Unknown tool" })
+                });
+              }
+            }
+            // Loop continues -> OpenAI parses tool results and gives final answer
           } else {
-            throw iterErr;
+            isFinalResponse = true;
           }
         }
       } else {
