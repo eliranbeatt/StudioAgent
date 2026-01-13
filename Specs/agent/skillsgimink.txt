@@ -1,0 +1,145 @@
+# Implementation Plan: Skills-Based Agent Architecture (No RAG)
+
+**Based on:** `Specs/agent/skills.txt` (Plan) & Codebase Analysis
+**Target File:** `Specs/agent/skillsgimink.txt`
+**Goal:** Transition from monolithic `agent.ts` to a modular, skills-based architecture with deterministic recommendations and strict output contracts. (RAG deferred).
+
+---
+
+## Phase 1: Foundation & Data Schema (The Backbone)
+
+This phase establishes the necessary database structures to support skills and runs.
+
+### 1.1 Update `convex/schema.ts`
+
+We need to add new tables to store skills definitions and execution history.
+
+*   **`skills` Table**:
+    *   `skillId` (string, unique index)
+    *   `labelHe`, `descriptionHe` (string)
+    *   `category` (string: "consult", "build", "research", etc.)
+    *   `config` (object: `requiresClarifications`, `allowedTools` {web, etc.}, `outputContract`)
+    *   `prompts` (object: `systemHeaderRef`, `promptAddon`)
+    *   *Note: This acts as the registry.*
+
+*   **`skillRuns` Table**:
+    *   `projectId` (id("projects"))
+    *   `skillId` (string)
+    *   `status` (string: "running", "succeeded", "failed")
+    *   `inputParams` (json)
+    *   `blocks` (json: the structured output)
+    *   `usage` (object: tokens, etc.)
+    *   `createdAt` (number)
+
+*   **`clarificationAnswers` Table**:
+    *   `projectId` (id("projects"))
+    *   `targetSkillId` (string)
+    *   `qaPairs` (array of objects: question, answer, timestamp)
+    *   `isSatisfied` (boolean)
+
+### 1.2 Migration Script
+*   Create a migration in `convex/migrations.ts` to initialize the `skills` table with the default catalog defined in the spec (Consultant, Elements Builder, etc.).
+
+---
+
+## Phase 2: The Skill Runner Engine
+
+This is the core logic replacing the monolithic `agent.ts`.
+
+### 2.1 `convex/skills/runner.ts` (New Module)
+*   **`runSkill` Action**:
+    *   **Inputs**: `projectId`, `skillId`, `params` (optional overrides).
+    *   **Logic**:
+        1.  Fetch Skill definition.
+        2.  **Context Assembly**:
+            *   Fetch Project State (Elements, Tasks, Accounting).
+            *   Fetch Clarification Answers (if applicable).
+            *   *Context Injection*: Gather recent project files/summaries (using existing `convex/memory.ts` logic) and "Running Memory" to inject into prompt.
+        3.  **Prompt Construction**:
+            *   Combine: Shared Header (v7.1) + Skill Addon + Context.
+        4.  **LLM Call**:
+            *   Use the specified model.
+            *   Enforce JSON output strictly.
+        5.  **Validation**:
+            *   Parse JSON.
+            *   Validate against `Blocks` schema (no Hebrew keys, correct types).
+            *   *Retry Logic*: If validation fails, feed error back to LLM for one "repair" attempt.
+        6.  **Persistence**:
+            *   Save result to `skillRuns`.
+            *   If `blocks` contains `ChangeSet`, DO NOT apply it yet. Just store it.
+    *   **Output**: The structured `blocks`.
+
+### 2.2 Tooling Layer (`convex/skills/tools.ts`)
+*   Refactor `webSearch` from `convex/lib` to be a strictly permissible tool passed only when `skill.config.allowedTools.webSearch` is true.
+
+---
+
+## Phase 3: Deterministic Recommendations & Project State
+
+Moving logic out of the LLM and into code.
+
+### 3.1 `convex/skills/recommender.ts`
+*   **`getProjectDigest` Query**:
+    *   Aggregates:
+        *   Counts (Elements, Tasks, Unmapped Receipts).
+        *   States (Has Quote? Has Approved Budget?).
+        *   Gaps (Tasks with no linked accounting?).
+*   **`recommendSkills` Query**:
+    *   Input: `ProjectDigest`.
+    *   Logic: (Pure TypeScript, no LLM)
+        *   `if (elements == 0) return [CONSULTANT, ELEMENTS_BUILDER]`
+        *   `if (tasks > 0 && accounting == 0) return [ACCOUNTING_BUILDER]`
+        *   ... and so on per spec.
+    *   Output: List of `skillId`s with "Why" text.
+
+---
+
+## Phase 4: Gated Workflows (Clarifications & ChangeSets)
+
+### 4.1 Clarification System
+*   **`CLARIFICATIONS_GATE` Skill**:
+    *   Special skill that outputs `QuestionsBlock`.
+*   **`submitClarifications` Mutation**:
+    *   Updates `clarificationAnswers`.
+    *   Checks if all questions for a target skill are answered.
+    *   If yes, marks `isSatisfied = true`.
+
+### 4.2 ChangeSet Application
+*   **`applyChangeSet` Mutation**:
+    *   Input: `skillRunId` or raw `ChangeSet`.
+    *   Logic:
+        *   Transactional application to `elements`, `tasks`, `accounting` tables.
+        *   Handles "Tombstone" logic for deletions (don't hard delete).
+        *   Resolves temporary IDs.
+
+---
+
+## Phase 5: Frontend Integration (Next.js)
+
+### 5.1 Agent UI Update (`src/app/projects/[id]/studio/page.tsx` or new tab)
+*   **Left Panel (Chat)**:
+    *   Render `ChatBlock` (markdown).
+    *   Render `QuestionsBlock` (form inputs).
+    *   Render `ChangeSetBlock` (diff view + Apply button).
+*   **Right Panel (Skill Center)**:
+    *   Fetch `recommendSkills`.
+    *   Display "Recommended Now" cards.
+    *   Display "All Skills" list.
+*   **Interaction**:
+    *   Clicking a skill triggers `runSkill`.
+    *   UI updates optimistically or polls for `skillRun` status.
+
+---
+
+## Execution Order
+
+1.  **Schema & Migrations**: Create tables (`skills`, `skillRuns`, `clarificationAnswers`).
+2.  **Skill Runner Logic**: Build the backend engine (with context injection, no RAG).
+3.  **Skill Catalog**: Populate the database with the defined skills.
+4.  **Frontend**: Wire up the UI to the new backend.
+5.  **Testing**: Verify "Gate -> Clarify -> Build -> ChangeSet" flow.
+
+## Critical Checkpoints
+*   **No Auto-Run**: Verify no background jobs trigger skills.
+*   **Strict JSON**: Ensure the `runner` throws on Hebrew keys.
+*   **Context Limit**: Monitor token usage since we are injecting full summaries/files instead of RAG chunks.

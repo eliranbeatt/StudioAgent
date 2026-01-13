@@ -12,6 +12,8 @@ type TaskModalProps = {
   isSaving: boolean;
 };
 
+const generateId = () => Math.random().toString(36).substr(2, 9);
+
 export function TaskModal({ task, employees, elements, onClose, onSave, draftMode, isSaving }: TaskModalProps) {
   const [formData, setFormData] = useState<Partial<Task>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -78,7 +80,7 @@ export function TaskModal({ task, employees, elements, onClose, onSave, draftMod
 
   const addChecklistItem = () => {
     const newItem: TaskChecklistItem = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       title: "",
       order: checklist.length,
       done: false,

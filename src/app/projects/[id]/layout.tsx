@@ -59,6 +59,7 @@ export default function ProjectLayout({
 
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
+    { name: "Agent (New)", href: `/projects/${projectId}/agent`, icon: BrainCircuit },
     { name: "AgenticEshet", href: `/projects/${projectId}/studio`, icon: Bot },
     { name: "Elements", href: `/projects/${projectId}/elements`, icon: Layers },
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },

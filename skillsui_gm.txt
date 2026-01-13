@@ -1,0 +1,150 @@
+# Implementation Plan: Skills-Based Agent Architecture (Master Plan)
+
+**Goal:** Transition from monolithic `agent.ts` to a modular, skills-based architecture with deterministic recommendations, strict output contracts, and a new dedicated Agent tab.
+
+**Ref:** `Specs/agent/skillsui.txt`, `Specs/agent/skills.txt`, `Specs/agent/skillsgimink.txt`
+
+---
+
+## Phase 1: Foundation & Data Schema
+
+We will establish the necessary database structures to support skills, runs, and the new conversation model.
+
+### 1.1 Update `convex/schema.ts`
+
+Add the following tables:
+
+*   **`skills`**: The registry of available capabilities.
+    *   `skillId` (string, unique index) - e.g., "elements_builder_full"
+    *   `labelHe`, `descriptionHe` (string)
+    *   `category` (string: "consult", "build", "review", "research", "audit")
+    *   `config` (object):
+        *   `requiresClarifications` (boolean)
+        *   `clarificationsTargetSkillId` (optional string)
+        *   `allowedTools` (object: `webSearch`, `ragSearch`, etc.)
+        *   `outputContract` (string: "blocks", "changeset", etc.)
+    *   `prompts` (object):
+        *   `systemHeaderRef` (string)
+        *   `promptAddon` (string)
+    *   `isEnabled` (boolean)
+
+*   **`skillRuns`**: Execution history.
+    *   `projectId` (id("projects"))
+    *   `conversationId` (id("agentConversations"))
+    *   `skillId` (string)
+    *   `status` (string: "running", "succeeded", "failed")
+    *   `inputParams` (json)
+    *   `blocks` (json)
+    *   `usage` (object)
+    *   `createdAt` (number)
+
+*   **`clarificationSessions`** (replaces generic messages for gating):
+    *   `projectId` (id("projects"))
+    *   `conversationId` (id("agentConversations"))
+    *   `targetSkillId` (string)
+    *   `questions` (array of objects: id, text, type, options)
+    *   `answers` (object: questionId -> answer)
+    *   `isSatisfied` (boolean)
+    *   `createdAt` (number)
+    *   `updatedAt` (number)
+
+*   **`agentConversations`** (separate from legacy `conversations`):
+    *   `projectId` (id("projects"))
+    *   `title` (string)
+    *   `mode` (string: "chat", "builder")
+    *   `createdAt` (number)
+    *   `updatedAt` (number)
+
+*   **`agentMessages`**:
+    *   `conversationId` (id("agentConversations"))
+    *   `role` ("user" | "assistant" | "system")
+    *   `text` (string, optional)
+    *   `blocks` (json, array)
+    *   `runId` (optional id("skillRuns"))
+    *   `createdAt` (number)
+
+### 1.2 Update `convex/changeSets.ts`
+*   Add `sourceSkillRunId` (optional string) to `changeSets` table schema if not present (likely in `schema.ts`).
+
+---
+
+## Phase 2: Skill Runner Engine (Backend)
+
+Create a new directory `convex/skills/` to house the logic.
+
+### 2.1 `convex/skills/registry.ts`
+*   Define the static catalog of skills (The "22 Skills" list).
+*   Migration function to seed/update the `skills` table from this catalog.
+
+### 2.2 `convex/skills/runner.ts`
+*   **`runSkill` Action**:
+    *   Inputs: `projectId`, `conversationId`, `skillId`, `params`.
+    *   Logic:
+        1.  **Load Skill**: Fetch config from DB.
+        2.  **Gate Check**: If `requiresClarifications`, check `clarificationSessions`. If not satisfied, return `QuestionsBlock` (running the `CLARIFICATIONS_GATE` skill logic effectively).
+        3.  **Context Assembly**: Fetch Project State (Elements, Tasks, Accounting). Inject into prompt.
+        4.  **LLM Call**: Call OpenAI with strict system prompt (v7.1 Header + Skill Addon).
+        5.  **Validation**: strictly validate output JSON (No Hebrew keys, correct types).
+        6.  **Persistence**: Save to `skillRuns` and `agentMessages`.
+    *   Returns: `blocks`.
+
+### 2.3 `convex/skills/recommender.ts`
+*   **`getProjectDigest` Query**: Computes readiness counts (elements, tasks, lines, quote).
+*   **`recommendSkills` Query**: Pure deterministic logic based on digest. Returns list of `skillId`s.
+
+---
+
+## Phase 3: Frontend Shell
+
+Create the new Agent tab.
+
+### 3.1 Directory Structure
+`src/app/projects/[id]/agent/`
+*   `page.tsx` (Main layout)
+*   `layout.tsx`
+*   `_components/`
+    *   `AgentChat.tsx` (The center timeline)
+    *   `SkillsDock.tsx` (The right rail)
+    *   `ContextToggles.tsx`
+    *   `Blocks/`
+        *   `ChatBlock.tsx`
+        *   `QuestionsBlock.tsx` (Reuse/Extract from `AgentActivityDrawer`)
+        *   `SuggestionBlock.tsx` (Reuse/Extract)
+        *   `ChangeSetBlock.tsx` (Reuse/Extract)
+
+### 3.2 Component Extraction
+*   Refactor `ClarificationPanel`, `SuggestionReviewPanel`, `ChangeSetReviewPanel` from `src/app/projects/[id]/_components/AgentActivityDrawer.tsx` into standalone components in `src/app/projects/[id]/agent/_components/Blocks/`.
+
+### 3.3 State Management
+*   The `page.tsx` will manage the `activeConversationId`.
+*   `SkillsDock` will query `recommendSkills`.
+*   Clicking a skill triggers `runSkill` mutation (which wraps the action).
+
+---
+
+## Phase 4: ChangeSet Review UI
+
+### 4.1 Right Rail Review
+*   When `ChangeSetBlock` is present, clicking "Review" opens a drawer or expands the block.
+*   Reuse `ChangeSetReviewPanel` logic but enhance with "Tree View" if possible.
+
+---
+
+## Phase 5: Implementation Checklist
+
+1.  [ ] **Schema**: Update `convex/schema.ts` & run `npx convex dev`.
+2.  [ ] **Seed**: Create `convex/skills/registry.ts` and seed `skills` table.
+3.  [ ] **Backend**: Implement `recommender.ts` (Project Digest & Logic).
+4.  [ ] **Frontend**: Scaffold `src/app/projects/[id]/agent/page.tsx` + `SkillsDock`.
+5.  [ ] **Backend**: Implement `runner.ts` (LLM integration, context fetching).
+6.  [ ] **Frontend**: Implement `AgentChat` and wire up `runSkill`.
+7.  [ ] **Migration**: Extract Block components from `AgentActivityDrawer`.
+8.  [ ] **Feature**: Implement `CLARIFICATIONS_GATE` logic in `runner.ts`.
+9.  [ ] **Feature**: Wire up `ChangeSet` apply/discard in the new UI.
+
+---
+
+## Constraints & Rules
+*   **No Auto-Run**: Skills only run on user click.
+*   **Two-Step Gating**: Builder skills (Elements, Tasks, Accounting) *must* trigger Clarifications first.
+*   **Strict JSON**: Ensure `runner.ts` rejects Hebrew keys in JSON payloads.

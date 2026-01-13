@@ -475,10 +475,17 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     // Fallback to "Untitled Element" if title is missing
     const elementTitle = element?.title || "Untitled Element";
 
+    const VALID_ELEMENT_TYPES = ["build", "rent", "print", "transport", "install", "subcontract", "mixed"];
+    let elementType = element?.type ?? "build";
+    if (!VALID_ELEMENT_TYPES.includes(elementType)) {
+      console.warn(`Invalid element type "${elementType}" normalized to "build"`);
+      elementType = "build";
+    }
+
     const elementId = await ctx.db.insert("elements", {
       projectId: cs.projectId,
       title: elementTitle,
-      type: element?.type ?? "build",
+      type: elementType,
       status: element?.status ?? "drafting",
       tags: Array.isArray(element?.tags) ? element.tags : [],
       rev: 1,
@@ -606,7 +613,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         .collect();
 
       const cleanTitle = title.trim().toLowerCase();
-      const dedupKey = fields.dedupKey;
+      const dedupKey = fields?.dedupKey;
 
       existingTask = existingTasks.find(t =>
         (dedupKey && t.dedupKey === dedupKey) ||
@@ -1699,6 +1706,52 @@ export const updateChangeGroupOps = mutation({
   },
 });
 
+export const updateChangeSetOp = mutation({
+  args: {
+    changeSetId: v.id("changeSets"),
+    opIndex: v.number(),
+    patch: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const cs = await ctx.db.get(args.changeSetId);
+    if (!cs) throw new Error("ChangeSet not found");
+    if (!cs.ops) throw new Error("No ops in ChangeSet");
+    if (args.opIndex < 0 || args.opIndex >= cs.ops.length) throw new Error("Invalid opIndex");
+
+    const newOps = [...cs.ops];
+    const op = newOps[args.opIndex];
+    
+    // Deep merge patch into payload
+    // Simple shallow merge for now, but usually fields are in payload.fields
+    // We assume patch is the new fields object or part of it
+    // Let's assume patch is { fields: { ... } } or similar structure
+    // Or just merge at top level of op.payload
+    
+    // If patch has "fields", we merge fields
+    const currentPayload = op.payload ?? {};
+    const patchPayload = args.patch.payload ?? args.patch; // flexible input
+
+    const nextPayload = { ...currentPayload };
+    
+    if (patchPayload.fields) {
+        nextPayload.fields = { ...(currentPayload.fields ?? {}), ...patchPayload.fields };
+    } else {
+        // Fallback: merge top level keys if not using fields structure
+        Object.assign(nextPayload, patchPayload);
+    }
+
+    newOps[args.opIndex] = {
+        ...op,
+        payload: nextPayload
+    };
+
+    await ctx.db.patch(args.changeSetId, {
+      ops: newOps,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Helper for applying a list of Ops (derived from applying a whole changeset)
 async function applyOpsList(ctx: any, args: { projectId: Id<"projects">, ops: any[], stage: string, sourceChangeSetId?: Id<"changeSets"> }) {
   // Hack: create temp changeset to reuse logic
@@ -1720,3 +1773,47 @@ async function applyOpsList(ctx: any, args: { projectId: Id<"projects">, ops: an
     reason_he: "Partial application of group(s)"
   });
 }
+
+export const applyChangeSetOps = mutation({
+  args: {
+    changeSetId: v.id("changeSets"),
+    opIndices: v.array(v.number())
+  },
+  handler: async (ctx, args) => {
+    const cs = await ctx.db.get(args.changeSetId);
+    if (!cs) throw new Error("ChangeSet not found");
+    if (!cs.ops) throw new Error("No ops in ChangeSet");
+
+    // Filter ops
+    const selectedOps = args.opIndices
+      .filter(i => i >= 0 && i < (cs.ops?.length ?? 0))
+      .map(i => cs.ops![i]);
+
+    if (selectedOps.length === 0) return;
+
+    // Apply them
+    await applyOpsList(ctx, {
+      projectId: cs.projectId,
+      ops: selectedOps,
+      stage: cs.stage,
+      sourceChangeSetId: cs._id
+    });
+
+    // Update state
+    const alreadyApplied = cs.appliedOpIndices ?? [];
+    const newApplied = Array.from(new Set([...alreadyApplied, ...args.opIndices]));
+
+    let status = cs.status;
+    if (cs.ops.length === newApplied.length) {
+      status = "APPLIED";
+    } else {
+      status = "PARTIALLY_APPLIED";
+    }
+
+    await ctx.db.patch(args.changeSetId, {
+      appliedOpIndices: newApplied,
+      status,
+      appliedAt: Date.now()
+    });
+  }
+});

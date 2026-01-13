@@ -446,12 +446,11 @@ export default function AgentActivityDrawer({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div 
-                    className={`px-3 py-1.5 rounded-md text-[11px] font-bold tracking-wide border cursor-help transition-colors ${
-                      stageValue === "IDEATION" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                  <div
+                    className={`px-3 py-1.5 rounded-md text-[11px] font-bold tracking-wide border cursor-help transition-colors ${stageValue === "IDEATION" ? "bg-purple-50 text-purple-700 border-purple-200" :
                       stageValue === "QUOTE" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                      "bg-green-50 text-green-700 border-green-200"
-                    }`}
+                        "bg-green-50 text-green-700 border-green-200"
+                      }`}
                     title={resolvedStage?.reasonHe ?? "Auto-resolved based on project status"}
                   >
                     {stageValue}
@@ -481,15 +480,15 @@ export default function AgentActivityDrawer({
               <div className="flex-1 overflow-y-auto px-6 py-6">
                 {panelMode === "QUESTIONS"
                   ? activeBlocks
-                      .filter((block) => block?.type === "ClarificationBlock" || block?.type === "QuestionsBlock")
-                      .map((block, index) => (
-                        <ClarificationPanel
-                          key={block?.title_he ?? index}
-                          block={normalizeQuestionsBlock(block)}
-                          disabled={isWaiting}
-                          onSubmit={(payload) => handleEventSubmit("clarification_submitted", payload)}
-                        />
-                      ))
+                    .filter((block) => block?.type === "ClarificationBlock" || block?.type === "QuestionsBlock")
+                    .map((block, index) => (
+                      <ClarificationPanel
+                        key={block?.title_he ?? index}
+                        block={normalizeQuestionsBlock(block)}
+                        disabled={isWaiting}
+                        onSubmit={(payload) => handleEventSubmit("clarification_submitted", payload)}
+                      />
+                    ))
                   : null}
 
                 {panelMode === "SUGGESTIONS" ? (
@@ -925,8 +924,8 @@ function normalizeQuestionsBlock(block: any) {
     title_he: block.title_he,
     submitLabel_he: block.submitLabel_he,
     questions: (block.questions ?? []).map((question: any) => ({
-      id: question.id,
-      text_he: question.question_he ?? question.text_he,
+      id: question.id || `q${(block.questions ?? []).indexOf(question)}`,
+      text_he: question.textHe ?? question.text_he ?? question.question ?? question.questionHe ?? question.label ?? question.labelHe ?? question.question_he,
       inputType: question.type ?? question.inputType ?? "text",
       options_he: question.options_he,
       placeholder_he: question.placeholder_he,

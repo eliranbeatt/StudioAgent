@@ -1,0 +1,332 @@
+Below is a **single consolidated, more robust dev plan** for your **Skills-based Agent** — taking **`skillsui` as the source of truth for the latest UI + flows**, and pulling in the missing engine/back-end rigor and contracts from **`skills` + `skillsgimink`**.
+
+---
+
+## 0) Non-negotiables (system rules)
+
+1. **No auto-runs**
+   The system may *recommend* skills deterministically, but **nothing executes** unless the user clicks.
+
+2. **Two-step gating for “builder” skills** (Elements / Tasks / Accounting / Quote)
+   Click builder → **Clarifications Gate** (3–8 Qs) → user answers → click Continue → builder returns **ChangeSet** → user reviews/applies.
+
+3. **Structured blocks only**
+   Every skill produces `blocks[]` (chat + structured UI blocks). Machine keys are **ASCII English**; Hebrew is for display strings.
+
+4. **ChangeSets are PRs, not writes**
+   Skills propose; users approve; apply is transactional; support partial apply + inline edits.
+
+---
+
+## 1) Target UX (Agent tab = “Flowing Assistant”)
+
+### 1.1 Route + layout
+
+Create `app/projects/[id]/agent/page.tsx` with the **3-pane layout**:
+
+* **Left**: conversations list (“+ New”, badges: has Questions / has ChangeSet)
+* **Center**: chat timeline that renders `blocks[]` inline
+* **Right rail** (sticky dock):
+
+  1. **Suggested Skills (cards)**
+  2. **Project Readiness** (Elements / Tasks / Accounting / Quote traffic-lights)
+  3. **Context Toggles (per run)**: use web search, use price memory, only approved elements, scope = selected elements
+  4. **Elements selection** (collapsible)
+     *(Add “Recent Outputs” here: last 3 ChangeSets / last 3 question sessions — this was implied in earlier UI direction and makes the UX much faster.)* 
+
+### 1.2 “Skill card” UI contract
+
+Each card shows:
+
+* name + goal
+* “what it will change” (entities)
+* expected #questions if gated
+* web search badge if relevant
+* CTA: **Start → Clarifications** (builders) or **Run skill** (non-builders)
+
+---
+
+## 2) Data model (Convex) — minimal tables + the robustness additions
+
+> You already specified the core tables (`skills`, `skillRuns`, clarifications) — below is the *robust* version: indices, status fields, and the minimum extra fields to make review/apply safe.
+
+### 2.1 Agent-tab storage (kept separate from legacy)
+
+* `agentConversations`
+
+  * `projectId`, `title`, `createdAt`, `updatedAt`
+  * `lastSuggestedSkillIds[]?`
+  * indexes: `by_project_updatedAt`
+* `agentMessages`
+
+  * `conversationId`, `role`, `text?`, `blocks?`, `createdAt`
+  * `sourceSkillRunId?`
+  * indexes: `by_conversation_createdAt`
+
+### 2.2 Skills registry (DB as the registry)
+
+* `skills`
+
+  * `skillId` (unique), `labelHe`, `descriptionHe`, `category`
+  * `modelProfile` (FAST | REASONING | WRITING | VISION | WEB_REASONING)
+  * `toolPolicy`: `{ allowWeb, allowVision, allowRagFuture }`
+  * `requiresGate`, `affectsEntities[]`
+  * `promptAddon`, `systemHeaderRef`, `version`, `isEnabled`
+  * indexes: `by_enabled`, `by_category`
+
+### 2.3 Runs (every click = immutable run record)
+
+* `skillRuns`
+
+  * `projectId`, `conversationId`, `skillId`
+  * `status`: `running | ok | error`
+  * `inputParams` (toggles + scope + selected IDs)
+  * `contextDigest` (small snapshot used for debugging + recommender)
+  * `resultBlocks`
+  * `rawModelResponse` (dev only / gated by env flag)
+  * `usage` (tokens, model, latency)
+  * indexes: `by_conversation_createdAt`, `by_project_createdAt`, `by_skillId`
+
+### 2.4 Clarifications (gating sessions)
+
+* `clarificationSessions`
+
+  * `projectId`, `conversationId`, `targetSkillId`
+  * `questions[]` (id, textHe, type, optionsHe?)
+  * `answers[]` (id, value)
+  * `isSatisfied`, `createdAt`, `updatedAt`
+  * **robustness add**: `expiresAt?` (don’t reuse stale answers) 
+
+### 2.5 ChangeSets (existing, but must support PR behavior)
+
+* `changeSets`
+
+  * `sourceSkillRunId`
+  * `sectionStats` (counts by entity)
+  * `ops[]` with stable `opId`, `entityType`, `action`, `before`, `after`
+  * **robustness add**:
+
+    * `applyState`: `open | partiallyApplied | applied | discarded`
+    * `appliedOpIds[]`
+    * `conflicts[]` (filled by apply mutation when detected)
+
+---
+
+## 3) Runtime architecture (backend)
+
+### 3.1 The single entrypoint: `runSkill()`
+
+Create `convex/skills/runner.ts` action:
+
+**Input**
+
+```ts
+{ projectId, conversationId, skillId, params: {
+  allowWeb?: boolean,
+  usePriceMemory?: boolean,
+  onlyApprovedElements?: boolean,
+  scope?: { selectedElementIds?: Id<"elements">[] }
+}}
+```
+
+**Pipeline**
+
+1. Load skill definition (reject if disabled)
+2. Build **Context Bundle** (project summary + elements/tasks/accounting/quote + recent clarifications + small recent runs digest)
+3. **Gate enforcement**: if `requiresGate` and no satisfied session → run `CLARIFICATIONS_GATE` and return those blocks (no builder run yet)
+4. Tool gating:
+
+   * allow web only if skill allows + toggle on
+   * allow vision only if skill allows + input includes file/image reference
+5. Call model → parse strict JSON → normalize to `blocks[]`
+6. Validate:
+
+   * **reject Hebrew keys**
+   * validate block schemas
+   * 1 repair attempt (“you violated schema, return corrected JSON only”)
+7. Persist:
+
+   * create `skillRuns`
+   * append assistant `agentMessage` with `blocks`
+   * if ChangeSet block exists → create `changeSets` linked to run
+8. Return `blocks[]`
+
+### 3.2 Deterministic recommender (no LLM)
+
+`convex/skills/recommender.ts`:
+
+* `getProjectStateDigest(projectId)`:
+
+  * counts + readiness flags + gaps (ex: tasks without accounting links)
+* `recommendSkills(digest)`:
+
+  * pure rules → top 5 skillIds + “why” string
+    This powers the **Skills Dock** instantly.
+
+### 3.3 ChangeSet apply (transactional + partial)
+
+`convex/skills/applyChangeSet.ts` mutation:
+
+* Input: `{ changeSetId, applyOpIds[] }`
+* For each op:
+
+  * re-read current entity → compare with `before`
+  * if mismatch → record conflict, skip op (don’t silently apply)
+* Apply allowed ops in one transaction
+* Mark applied ops; compute final state
+* **Tombstone** deletes (don’t hard delete lines/tasks by default)
+
+### 3.4 Inline edits (safe patching)
+
+`patchChangeSetOp(changeSetId, opId, patch)`:
+
+* whitelist editable fields per entity type
+* store patch as a new `after` (keep original for audit)
+
+---
+
+## 4) Blocks contract (what the UI renders)
+
+Define a canonical `Block` union in `shared/blocks.ts` (client + server share).
+
+Minimum set:
+
+* `chat`
+* `suggestions` (skill cards)
+* `questions` (gating Qs + answer form)
+* `changeset_summary`
+* `review_helper` (optional “what to apply first / risks”)
+
+Add a strict validator server-side to prevent malformed blocks from reaching UI.
+
+---
+
+## 5) Frontend implementation (components & flows)
+
+### 5.1 Components
+
+`components/agent/`:
+
+* `AgentLayout`
+* `ConversationsList`
+* `ChatTimeline`
+* `MessageComposer`
+* `SkillsDock`
+* `ProjectReadinessWidget`
+* `ContextToggles`
+* `ElementScopePicker`
+* `RecentOutputs`
+* Block renderers:
+
+  * `Blocks/ChatBlockView`
+  * `Blocks/SuggestionsBlockView`
+  * `Blocks/QuestionsBlockView`
+  * `Blocks/ChangeSetSummaryView`
+
+### 5.2 Review Board UI
+
+Two surfaces (per spec):
+
+* **Drawer** over right rail (quick review)
+* **Full page**: `app/projects/[id]/agent/review/[changeSetId]/page.tsx` (serious PR review)
+
+  * Tree nav: Elements / Tasks / Accounting(Materials/Labor) / Quote / Meta
+  * Per-op panel: diff + apply/skip + inline edit 
+
+### 5.3 UX safeguards (small but critical)
+
+* Disable “Run skill” while a run is `running` for that conversation (prevents overlapping runs)
+* If a builder is gated: show “Answer required” badge on skill card until satisfied
+* If apply conflicts: show conflict list + “open op” deep link (no silent partial apply)
+
+---
+
+## 6) Skill catalog v1 (seed list)
+
+Seed the initial roster you already defined (22 skills incl. the “new 6”), with metadata:
+
+* `requiresGate` true for the 4 major builders
+* `allowWeb` true only for shopping/research skills
+* `affectsEntities` drives the “what it will change” UI text
+
+---
+
+## 7) What’s missing in the original docs that makes this *production-robust*
+
+These are the reliability upgrades that prevent “demo works / prod breaks”:
+
+1. **Context Budgeter (hard token control)**
+   Instead of injecting full tables, create `ContextPack` functions per skill:
+
+* `elementsPack(approvedOnly, selectedIds)`
+* `tasksPack(selectedIds)`
+* `accountingPack(sectioned, totals)`
+  If a pack exceeds threshold → include **digest only** + “available on demand” note. (Keeps “no RAG” now, but avoids token blowups.)
+
+2. **Run locking + idempotency**
+
+* lock per `conversationId` while running
+* `clientRunId` optional to dedupe accidental double-clicks
+
+3. **Skill versioning + rollback**
+   In `skills`: store `version`, `changelog`, `isEnabled`
+   In `skillRuns`: store `skillVersionUsed`
+   This lets you revert a broken prompt without corrupting history.
+
+4. **Schema contract tests**
+   Add a small test harness that:
+
+* feeds canned contexts into `runner` (mock LLM)
+* validates produced blocks against the union schema
+* verifies “Hebrew keys rejected” and “repair loop” works
+
+5. **Apply audit log**
+   Store `changeSetApplyEvents` (who/when/which ops/conflicts) so you can debug “why did my accounting change”.
+
+---
+
+## 8) Build order (MVP → full)
+
+### Phase A — Agent tab shell + persistence
+
+* tables: `agentConversations`, `agentMessages`
+* basic chat (no skills yet)
+
+### Phase B — Skills Dock (deterministic)
+
+* `getProjectStateDigest` + `recommendSkills`
+* right rail panels + toggles + scope picker
+
+### Phase C — Skills registry + runner + block rendering
+
+* `skills` seed
+* `skillRuns`
+* `runSkill()` end-to-end (chat + suggestions blocks)
+
+### Phase D — Clarifications Gate
+
+* `clarificationSessions`
+* Questions block submit → Continue → builder run
+
+### Phase E — ChangeSet Review Board + apply
+
+* drawer + full page
+* `applyChangeSet` + conflicts + partial apply
+* `patchChangeSetOp`
+
+### Phase F — Implement the 5 “core builders” first
+
+1. Project Brief Builder
+2. Elements Builder
+3. Tasks Builder
+4. Accounting Builder
+5. Quote Writer
+
+### Phase G — Shopping planner (web tool)
+
+* tool wrapper, citations capture
+* procurement fields on material lines
+* generate shopping tasks via ChangeSet
+
+---
+

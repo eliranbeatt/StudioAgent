@@ -1,0 +1,59 @@
+# Agent Tab Implementation Plan (Skills & ChangeSet UI)
+
+Status: **In progress** (core wiring done; final verification pending).
+
+---
+
+# 1. Current Status (Files & Components)
+
+## Backend (Convex)
+* `convex/skills/prompts.ts`:
+  * Shared Header + all skill SYSTEM addons loaded word-for-word from `Specs/agent/skills prompts.txt`.
+* `convex/skills/registry.ts`:
+  * `SKILL_CATALOG` defines all 22 skills (uppercase IDs), `ensureSkillsSeeded`, `listEnabledSkills`.
+* `convex/skills/runner.ts`:
+  * `runSkill`, `buildContext`, `submitClarifications`, `listAgentMessages` implemented.
+  * Gate logic uses CLARIFICATIONS_GATE and includes targetSkillId/currentState in context.
+  * Block normalization handles new block types + camelCase fields.
+  * ChangeSets saved with titleHe/summaryHe fallbacks.
+* `convex/skills/recommender.ts`:
+  * Recommendations use uppercase skill IDs.
+* `convex/schema.ts`:
+  * Skills + ChangeSet tables already support `appliedOpIndices` (line-by-line apply).
+
+## Frontend (Next.js)
+* `src/app/projects/[id]/agent/page.tsx`:
+  * Layout complete (left chat, right SkillsDock, far-right ElementsRail).
+* `src/app/projects/[id]/agent/_components/AgentChat.tsx`:
+  * Block rendering wired for all new blocks.
+* `src/app/projects/[id]/agent/_components/SkillsDock.tsx`:
+  * Auto-seeds skills via `ensureSkillsSeeded` and shows all 22 in "All Skills".
+* `src/app/projects/[id]/agent/_components/Blocks/`:
+  * Existing blocks upgraded: `SuggestionBlock`, `QuestionsBlock`, `ChangeSetBlock`.
+  * New blocks added: `ReviewBlock`, `ShoppingPlanBlock`, `PrintQaBlock`, `ReceiptBlock`, `RunbookBlock`, `DailyPlanBlock`.
+* `src/app/projects/[id]/agent/_components/ChangeSetReviewDrawer.tsx`:
+  * Supports partial apply and line-by-line approval.
+
+---
+
+# 2. What Can Be Reused
+
+* ChangeSet review drawer already supports grouped ops and partial apply.
+* Elements rail already scoped into skill context (selected element IDs).
+* Existing agent conversation/message storage works for all blocks.
+
+---
+
+# 3. Remaining Work (Plan)
+
+1. Verify skills are seeded and all 22 appear in the Agent "All Skills" list.
+2. Smoke-test block rendering with sample payloads from `Specs/agent/skills prompts.txt`:
+   * ReviewBlock, ShoppingPlanBlock, PrintQaBlock, ReceiptBlock, RunbookBlock, DailyPlanBlock.
+3. Confirm ChangeSet apply/discard actions from Agent chat work with new ChangeSetBlock outputs.
+
+---
+
+# 4. Optional Follow-ups (Not Required for Initial Release)
+
+* Add click handling for SuggestionsBlock payload actions (e.g., runSkill on suggestion click).
+* Expand per-skill context shaping if stricter user templates are required.

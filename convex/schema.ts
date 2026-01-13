@@ -707,6 +707,7 @@ export default defineSchema({
     }))),
 
     appliedGroupIds: v.optional(v.array(v.string())),
+    appliedOpIndices: v.optional(v.array(v.number())),
     auditLogIds: v.optional(v.array(v.string())),
     userEdits: v.optional(v.any()),
 
@@ -735,6 +736,8 @@ export default defineSchema({
     appliedBy_he: v.optional(v.string()),
     discardedAt: v.optional(v.number()),
     discardedBy_he: v.optional(v.string()),
+
+    sourceSkillRunId: v.optional(v.id("skillRuns")), // Link to the skill run that produced this ChangeSet
   })
     .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"])
@@ -1107,6 +1110,84 @@ export default defineSchema({
     .index("by_conversation", ["conversationId"])
     .index("by_project", ["projectId"])
     .index("by_changeset", ["changeSetId"]),
+
+  // -------------------------
+  // Skills Architecture (New)
+  // -------------------------
+
+  // Skills Registry
+  skills: defineTable({
+    skillId: v.string(), // Unique key e.g. "elements_builder_full"
+    labelHe: v.string(),
+    descriptionHe: v.string(),
+    category: v.string(), // "consult", "build", "review", "research", "audit"
+    config: v.object({
+      requiresClarifications: v.boolean(),
+      clarificationsTargetSkillId: v.optional(v.string()),
+      allowedTools: v.object({
+        webSearch: v.boolean(),
+        ragSearch: v.boolean(),
+        fileInspect: v.boolean(),
+        runSkill: v.optional(v.boolean()),
+      }),
+      outputContract: v.string(), // "blocks", "changeset"
+    }),
+    prompts: v.object({
+      systemHeaderRef: v.string(),
+      promptAddon: v.string(),
+    }),
+    model: v.optional(v.string()),
+    isEnabled: v.boolean(),
+    version: v.optional(v.number()),
+  }).index("by_skillId", ["skillId"]),
+
+  // Skill Runs
+  skillRuns: defineTable({
+    projectId: v.id("projects"),
+    conversationId: v.id("agentConversations"),
+    skillId: v.string(),
+    status: v.union(v.literal("running"), v.literal("succeeded"), v.literal("failed")),
+    inputParams: v.any(),
+    blocks: v.optional(v.any()),
+    usage: v.optional(v.any()),
+    rawModelResponse: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_conversation", ["conversationId"]),
+
+  // Clarification Sessions
+  clarificationSessions: defineTable({
+    projectId: v.id("projects"),
+    conversationId: v.id("agentConversations"),
+    targetSkillId: v.string(),
+    questions: v.array(v.any()), // { id, text_he, type, options_he }
+    answers: v.optional(v.any()), // Record<string, string>
+    isSatisfied: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_target", ["projectId", "targetSkillId"])
+    .index("by_conversation", ["conversationId"]),
+
+  // Agent Conversations (New)
+  agentConversations: defineTable({
+    projectId: v.id("projects"),
+    title: v.string(),
+    mode: v.union(v.literal("chat"), v.literal("builder")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // Agent Messages (New)
+  agentMessages: defineTable({
+    conversationId: v.id("agentConversations"),
+    role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
+    text: v.optional(v.string()),
+    blocks: v.optional(v.array(v.any())),
+    runId: v.optional(v.id("skillRuns")),
+    createdAt: v.number(),
+  }).index("by_conversation", ["conversationId"]),
 
   // Legacy messages table (keep for now)
   messages: defineTable({

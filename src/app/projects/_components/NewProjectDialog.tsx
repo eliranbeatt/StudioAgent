@@ -193,7 +193,7 @@ export default function NewProjectDialog({ isOpen, onClose }: NewProjectDialogPr
                                             onClick={handleCreateCustomer}
                                             className="p-2 border-t border-gray-100 cursor-pointer hover:bg-blue-50 text-blue-600 text-sm font-medium flex items-center gap-2"
                                         >
-                                            <Plus size={14} /> Create "{customerSearch}"
+                                            <Plus size={14} /> Create &quot;{customerSearch}&quot;
                                         </div>
                                     )}
                                     {filteredCustomers.length === 0 && !showCreateOption && (

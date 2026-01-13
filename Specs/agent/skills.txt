@@ -1,0 +1,541 @@
+According to your uploaded (undated) **Emlly Studio – Agent Prompts v7** and your **StudioOps Workflow / Pricing playbooks**, here’s a full end-to-end dev plan that fits your current app: **one Agent UI (chat + structured blocks), zero auto-running skills, immediate skill recommendations from project state, Clarifications before any major “builder” skill, and ChangeSets for approval**.
+Key contracts we’ll preserve: **Hebrew values for user-facing text + English ASCII keys for machine JSON**, plus a strict “blocks + ChangeSet” output format. 
+
+---
+
+## 0) Product principles (non-negotiables)
+
+### 0.1 No automatic skills
+
+* No background runs.
+* No “guardrails that silently run.”
+* The only “always” behavior is **UI showing recommended skills** (rule-based, deterministic).
+
+### 0.2 Two-step gating for major builders
+
+For **Elements / Tasks / Accounting(BOM) / Quote**:
+
+1. **Clarifications** asks 3–8 blocking questions
+2. After you answer → **Builder** returns a **ChangeSet** for approval
+
+### 0.3 Contract-safe outputs
+
+From v7:
+
+* **JSON keys must be English ASCII**; user-facing values are Hebrew. 
+* Output prefers `blocks[]` and if you emit a ChangeSetBlock or QuestionsBlock you also emit next-step suggestions. 
+* Tasks must be realistic work packages (1–4h small, 1–2d large) with atomic checklists. 
+* Accounting lines must link to tasks (taskId or temp). 
+
+### 0.4 Suggestions are *selectable*, never forced
+
+Your workflow playbook already defines the Suggestions schema with payloads and Hebrew text. 
+
+---
+
+## 1) High-level architecture
+
+### 1.1 Components
+
+**Frontend (Next.js)**
+
+* Existing Agent tab UI (chat + structured panes)
+* “Recommended skills” panel shown immediately (no LLM)
+
+**Backend (Convex)**
+
+* `skillRunner` action: executes one chosen skill, validates JSON, stores run + blocks
+* `skillRecommender` query: deterministic scoring from project state → list of recommended skills
+* `changeSet.apply` mutation: applies ops to canonical tables
+* `changeSet.discard` mutation: discards
+* `qaStore` mutation: stores raw user Q/A pairs for gating + memory
+
+**LLM gateway**
+
+* Single function `callSkillLLM(skillId, context, params)` with:
+
+  * model preset
+  * optional web-search tool (only for allowed skills)
+  * strict JSON validation + retry with “repair” prompt if needed
+
+### 1.2 Where this fits your current app
+
+Your repo already includes:
+
+* `/admin/skills` for skill editing/storage 
+* agent run telemetry tables (`agentRuns`, `conversations`) 
+* ingestion + knowledge pipeline (RAG) you can reuse for “context docs” and citations if needed 
+
+---
+
+## 2) Data model additions / refinements
+
+### 2.1 Skills registry (already implied by `/admin/skills`)
+
+**skills**
+
+* `skillId` (string, stable)
+* `labelHe`, `descriptionHe`
+* `category` (consult/chat | clarify | build | review | research | utility)
+* `requiresClarifications` (boolean)
+* `clarificationsTargetSkillId` (nullable)
+* `allowedTools`:
+
+  * `webSearch`: boolean
+  * `ragSearch`: boolean
+  * `fileInspect`: boolean
+* `outputContract` enum:
+
+  * `CHAT_BLOCKS`
+  * `QUESTIONS_BLOCKS`
+  * `CHANGESET_BLOCKS`
+  * `SUGGESTIONS_ONLY`
+* `promptVersion`, `systemHeaderRef` (points to the shared header = v7)
+* `promptAddon` (skill-specific instructions)
+
+### 2.2 Agent runs / skill runs
+
+**skillRuns**
+
+* `projectId`, `skillId`
+* `inputParams` (sanitized JSON)
+* `contextDigestId` (points to saved digest)
+* `status` (running/succeeded/failed)
+* `blocks` (the parsed blocks, normalized)
+* `rawLLMResponse` (for debugging)
+* `createdAt`
+
+### 2.3 Clarification answers store (gating)
+
+**clarificationAnswers**
+
+* `projectId`
+* `targetSkillId` (tasks/elements/accounting/quote)
+* `qaPairs` = `{ questionId, questionHe, answerHe, answeredAt }[]`
+* `isSatisfied` boolean (computed)
+* `expiresAt` optional (so older answers don’t mislead)
+
+### 2.4 ChangeSets (core)
+
+You already use ChangeSets. Ensure these guardrails from your workflow doc:
+
+* Apply/discard flow and rollback friendliness 
+* “Tombstone/graveyard” behavior: don’t auto-delete money when task deleted 
+
+---
+
+## 3) Unified “Blocks” contract (so your UI stays simple)
+
+Keep one `blocks[]` array. Example union:
+
+```json
+{
+  "summaryHe": "…",
+  "blocks": [
+    { "type": "SuggestionsBlock", "titleHe": "מה אפשר לעשות עכשיו", "skills": [ ... ] },
+    { "type": "QuestionsBlock", "titleHe": "שאלות הבהרה", "questions": [ ... ] },
+    { "type": "ChangeSetBlock", "titleHe": "הצעת שינויים", "changeSet": { "ops": [ ... ] } },
+    { "type": "ChatBlock", "markdownHe": "…" }
+  ]
+}
+```
+
+Important: v7 requires **English keys** in machine payload; Hebrew in values. 
+
+---
+
+## 4) Skill catalog (full set)
+
+### A) Always-available conversation skills
+
+#### 1) `CONSULTANT_CHAT`
+
+**Purpose:** “smart consultant” conversation; can reason, explain, brainstorm, advise.
+**Outputs:** `ChatBlock` + `SuggestionsBlock` (recommended skills).
+**Tools:** optional RAG search (project docs), *no web search by default*.
+
+When it should recommend Clarifications:
+
+* user asks “generate tasks/elements/accounting/quote” → it recommends running the gated flow (Clarifications first).
+
+---
+
+### B) Clarification gate (required before major builders)
+
+#### 2) `CLARIFICATIONS_GATE`
+
+**Purpose:** ask 3–8 *blocking* questions for the chosen target builder.
+**Inputs:** `targetSkillId`, project state digest.
+**Outputs:** `QuestionsBlock` + `SuggestionsBlock` with “Continue → Run Builder” disabled until answered.
+
+Design rules:
+
+* Questions must be short, practical, studio-real.
+* Offer defaults/assumptions as pickable options.
+* Use your studio phases + constraints (install hours, access, approvals), consistent with your workflow patterns. 
+
+---
+
+### C) Major Builder skills (ChangeSet creators)
+
+These always run **only** after Clarifications are satisfied.
+
+#### 3) `ELEMENTS_BUILDER_FULL`
+
+**Goal:** create/edit/merge elements into a canonical structure (source of truth).
+**Output:** ChangeSet ops for elements.
+**Notes:** It must flag safety-critical items (overhead hanging / child-facing / load-bearing) as warnings in Suggestions (not auto actions) per your guardrail rules. 
+
+#### 4) `TASKS_BUILDER_FULL`
+
+**Goal:** generate “best state” tasks in one go:
+
+* phases, dependencies, estimates, checklists, tags, element links
+  v7 requires task granularity and atomic checklists. 
+
+**Output:** ChangeSet ops for tasks.
+
+#### 5) `ACCOUNTING_BUILDER_FULL` (BOM + Labor)
+
+**Goal:** produce cost lines *linked to tasks* (or temp tasks)
+Core rule in v7: every cost-bearing task produces accounting lines and ties to task. 
+
+Also incorporate management overhead lines and meals patterns (but again: no auto-running separate auditor). 
+
+**Pricing model alignment**
+Your pricing playbook indicates a common formula: overhead 15% + management/salary 30% + profit 15% (= 1.60x). 
+(Your UI currently uses risk/overhead/profit; we’ll support both: store default percentages per project and allow per-quote overrides.)
+
+#### 6) `QUOTE_WRITER_FULL`
+
+**Goal:** turn approved accounting snapshot into Hebrew client quote: scope, assumptions, options, schedule, terms. Your playbook provides a dedicated Quote Writer contract and “quote hygiene” requirements. 
+
+**Output:** QuoteDraftBlock and/or ChangeSet for `quotes` table.
+
+---
+
+### D) Review / diagnostics skills (manual)
+
+#### 7) `GAP_AUDIT` (your Completeness Auditor, but manual)
+
+Your v7 says “must run every time” and even adds missing tasks/lines. 
+**But your product decision overrides auto-run**, so we implement:
+
+* When run manually: it produces a **SuggestionsBlock** listing gaps and optionally an “Apply Fix ChangeSet” button.
+* It checks the same gap categories: transport, install constraints, teardown/storage, consumables. 
+
+#### 8) `RISK_REVIEW`
+
+Timeline + operational risk:
+
+* event date proximity
+* dependencies blocked by approvals/measurements
+* crew-size assumptions
+  Outputs: SuggestionsBlock + optional “create risk tasks” ChangeSet.
+
+---
+
+### E) Procurement / research helpers (some can use web search)
+
+#### 9) `BUYING_ASSISTANT` (per material line)
+
+Your workflow playbook already defines it: propose 3–6 options, lead time, pros/cons, questions. 
+
+**Web search:** Allowed (optional toggle), because it’s explicitly “options research”.
+
+#### 10) `RESEARCH_INSPIRATION`
+
+Moodboard references, build patterns, material alternatives.
+**Web search:** Allowed (primary use-case).
+**Outputs:** SuggestionsBlock with references + next actions (no ChangeSet unless user asks).
+
+#### 11) `RESEARCH_PRICING_ESTIMATES` (optional, if you want)
+
+For early stage ballparks; must label estimates and confidence (High/Med/Low) consistent with accounting craft rules. 
+
+**Web search:** Allowed, but strongly constrained:
+
+* never overwrite “last paid” or known Management Hub prices
+* always mark as estimate
+
+---
+
+### F) Specialized production skills (no web search)
+
+#### 12) `PRINT_QA`
+
+Validates print specs + common failure modes (scale, bleed, DPI, profile, cut path). Your playbook calls this out as its own “mini-world” and QA flow. 
+
+**Tools:** file inspection (local), no web.
+
+#### 13) `RECEIPT_PARSE_AND_MAP`
+
+Extract fields from receipt photo → propose mapping to vendor + element + accounting line, using the “expense ledger” structure in your pricing playbook (vendor, amount, date, invoice number, details, payment method). 
+
+**Tools:** image/text extraction (your pipeline), no web.
+
+---
+
+## 5) Skill recommendation engine (instant, no LLM)
+
+### 5.1 ProjectStateDigest (computed query)
+
+Build a digest similar to:
+
+* `elementsCount`, `elementsDraftCount`, `elementsApprovedCount`
+* `tasksCount`, `tasksBlockedCount`, `tasksHaveDepsPct`
+* `accountingHasLines`, `accountingLinkedToTasksPct`
+* `quoteStatus` (none/draft/approved)
+* `eventDateDaysAway`
+* `printsPendingQaCount`
+* `receiptsUnmappedCount`
+
+### 5.2 Scoring rules (deterministic)
+
+Return top 5 “Recommended skills now” + grouped secondary.
+
+Examples:
+
+* No elements → recommend `CLARIFICATIONS_GATE(target=ELEMENTS_BUILDER_FULL)` + `CONSULTANT_CHAT`
+* Has elements but no tasks → gate→tasks
+* Has tasks but no accounting → gate→accounting
+* Has accounting but no quote → gate→quote
+* Prints uploaded → `PRINT_QA`
+* Receipts uploaded/unmapped → `RECEIPT_PARSE_AND_MAP`
+
+This matches your desire: user sees suggested skills immediately and can start chatting.
+
+---
+
+## 6) Agent UI design (uses your existing structured rendering)
+
+### 6.1 Layout
+
+**Left / Center:** Chat stream
+**Right panel:** Skill Center (or top bar)
+
+Skill Center sections:
+
+1. **Recommended now** (auto from state digest)
+2. **All skills** (search + categories)
+3. **Run configuration** (per run):
+
+   * Model preset
+   * Toggles: “Allow web search” (only if skill supports)
+   * Toggle: “Use project docs (RAG)”
+   * Scope selectors (selected elements / selected tasks / selected accounting lines)
+
+### 6.2 Structured blocks rendering (already in your UI)
+
+* `SuggestionsBlock`: clickable skill cards + “why”
+* `QuestionsBlock`: designated answer inputs (per question) + “Submit answers”
+* `ChangeSetBlock`: diff-like preview + “Apply” / “Discard”
+
+### 6.3 Clarifications gating UX (critical)
+
+When user clicks “Generate Tasks”:
+
+* UI runs `CLARIFICATIONS_GATE(target=TASKS_BUILDER_FULL)`
+* After answering:
+
+  * UI shows a pinned CTA: **“Run Tasks Builder (creates ChangeSet)”**
+  * Clicking runs builder and produces ChangeSet for approval
+
+---
+
+## 7) Tooling & “which skills can use web search”
+
+### 7.1 Web search allowed skills (explicit toggle)
+
+* `RESEARCH_INSPIRATION` ✅
+* `BUYING_ASSISTANT` ✅
+* `RESEARCH_PRICING_ESTIMATES` ✅ (if you add it)
+
+Everything else: 🚫 by default (predictability + avoids hallucinated prices/terms).
+
+### 7.2 RAG search tool (project docs)
+
+Allowed (optional toggle) for:
+
+* `CONSULTANT_CHAT` (if user asks “what did we decide?”)
+* `CLARIFICATIONS_GATE` (to avoid re-asking things already answered)
+* All builders (to reference uploaded plans/specs)
+
+Your repo already has a retrieval pipeline (`knowledge.dynamicSearch`) that can support this. 
+
+---
+
+## 8) Execution pipeline (backend “Skill Runner”)
+
+### 8.1 `runSkill(projectId, skillId, params)`
+
+Steps:
+
+1. Load skill definition from `skills`
+2. Compute context bundle:
+
+   * project + elements + tasks + accounting + quote snapshot
+   * selected IDs from params
+   * clarification answers (if any)
+   * relevant doc summaries (optional)
+3. Enforce preconditions:
+
+   * If skill requires clarifications and not satisfied → run `CLARIFICATIONS_GATE` instead
+4. Call LLM with:
+
+   * shared header (v7) + skill addon
+   * tool permissions (web search only if allowed + toggled)
+5. Validate strict JSON:
+
+   * ensure no Hebrew keys (hard rule) 
+   * validate `lineType` is only material/work 
+6. Store `skillRun` + normalized blocks
+7. Return blocks to UI
+
+### 8.2 ChangeSet apply
+
+* Resolve temp IDs (taskTempOrId) per v7 linking strategy 
+* Apply ops transactionally
+* If conflict: show “cannot apply” with targeted fix suggestions (don’t silently partially apply)
+
+---
+
+## 9) Safety & quality rules (enforced consistently)
+
+From your playbook guardrails:
+
+* Safety critical flags (overhead/child-facing/load-bearing) → always warn and require human check. 
+* Printing brand-critical → proof/test print step. 
+* Measurements unconfirmed → tasks blocked + clarification task. 
+* Never auto-delete money when deleting tasks; tombstone instead. 
+
+And from v7:
+
+* Task sizing and checklist atomicity. 
+* Accounting must link to tasks. 
+
+---
+
+## 10) Detailed implementation plan (epics → tasks)
+
+### Epic 1 — Skills platform foundation
+
+1. Implement `skills` table + `/admin/skills` editor hardening (versioning, changelog, rollback) 
+2. Implement `skillRuns` table
+3. Implement `runSkill` Convex action (LLM call + strict JSON validation + store blocks)
+4. Implement block normalizer + schema validation
+5. Implement “tool permissions” layer per skill
+
+**Done when:** you can run a dummy skill and render its blocks.
+
+---
+
+### Epic 2 — ProjectStateDigest + instant recommendations
+
+1. Implement `getProjectStateDigest(projectId)` query
+2. Implement `recommendSkills(digest)` scoring function (pure)
+3. UI: show “Recommended now” skill cards on Agent tab load
+4. Add “why” tooltips per recommended skill
+
+**Done when:** opening Agent tab immediately shows correct recommended skills without LLM.
+
+---
+
+### Epic 3 — Clarifications gate (2-step flows)
+
+1. Implement `CLARIFICATIONS_GATE` skill + QuestionsBlock renderer
+2. Store answers in `clarificationAnswers` (raw, not summarized)
+3. Add UI CTA “Continue → Run target builder”
+4. Enforce gating in backend: builder skills cannot run unless clarifications satisfied (or user explicitly overrides with “run anyway” checkbox)
+
+**Done when:** clicking any builder always leads to clarifications first.
+
+---
+
+### Epic 4 — ChangeSet UX + safety
+
+1. ChangeSet preview UI (diff grouped by entity type)
+2. Apply/discard endpoints (transactional apply)
+3. Tombstone behavior for deletes (task/line removal) per guardrails 
+4. Temp ID resolution (taskTempOrId strategy) 
+
+---
+
+### Epic 5 — Major Builder skills (v7-aligned)
+
+Implement each as prompt addon + validation rules:
+
+1. `ELEMENTS_BUILDER_FULL`
+2. `TASKS_BUILDER_FULL` (granularity + phases + checklists) 
+3. `ACCOUNTING_BUILDER_FULL` (task-linked lines, management/meals sections) 
+4. `QUOTE_WRITER_FULL` (scope, assumptions, options) 
+
+---
+
+### Epic 6 — Review skills (manual)
+
+1. `GAP_AUDIT` (manual completeness check, produces suggestions + optional fix ChangeSet)
+2. `RISK_REVIEW`
+
+---
+
+### Epic 7 — Research & procurement skills (web search allowed)
+
+1. Web-search tool integration only for allowed skills (toggle)
+2. `BUYING_ASSISTANT` (per material line) 
+3. `RESEARCH_INSPIRATION`
+4. (Optional) `RESEARCH_PRICING_ESTIMATES` with confidence labeling rules 
+
+---
+
+### Epic 8 — Specialized production automations
+
+1. `PRINT_QA` flow: file upload → inspect → issues → approval gate (proof/test print) 
+2. `RECEIPT_PARSE_AND_MAP`: receipt photo → extracted ledger fields → user approve → create/match accounting line 
+
+---
+
+### Epic 9 — Observability & evaluation loop
+
+1. Add run-level telemetry: which suggestions were clicked/applied
+2. Failure taxonomy: JSON invalid, missing links, underestimated labor, missing transport, etc. (your doc suggests turning failures into shared header rules) 
+3. “Used outputs” marking to feed prompt improvements later 
+
+---
+
+## 11) Testing plan (to prevent “skills drama” regressions)
+
+### Contract tests (must-have)
+
+* Reject Hebrew keys in JSON (hard rule) 
+* Validate `lineType` ∈ {material, work} 
+* Every accounting line links to taskId/taskTempOrId 
+
+### Scenario tests (end-to-end)
+
+* New project → recommended skills show
+* “Generate tasks” → clarifications → tasks changeset → apply
+* Tasks → accounting builder → linked lines created
+* Accounting → quote writer → quote draft created
+
+### UI tests
+
+* QuestionsBlock input + submit
+* ChangeSet apply/discard
+* Suggestions skill cards trigger correct `runSkill`
+
+---
+
+## 12) One important prompt update you should do (v7 → v7.1)
+
+Because your product decision changed:
+
+* v7 says “Completeness Auditor must run every time” and “If missing -> add tasks + cost lines.” 
+* Your decision: **never auto-run** and never auto-add without explicit user choice.
+
+So create **v7.1 shared header** where:
+
+* “Completeness audit is required as an internal self-check, but missing items should be returned as Suggestions unless the current skill is GAP_AUDIT.”
+
+That keeps the studio-real discipline, while respecting your UX.
+
