@@ -2,8 +2,11 @@
 
 export function ReviewBlock({ block }: { block: any }) {
   const title = block.titleHe ?? block.title_he ?? "Review";
-  const sections = block.sections ?? [];
-  const risks = block.risksHe ?? block.risks_he ?? [];
+  const sections = Array.isArray(block.sections) ? block.sections : [];
+  
+  let rawRisks = block.risksHe ?? block.risks_he;
+  if (typeof rawRisks === 'string') rawRisks = [rawRisks];
+  const risks = Array.isArray(rawRisks) ? rawRisks : [];
 
   return (
     <div className="rounded-xl border border-amber-200 bg-white p-4 shadow-sm space-y-3" dir="auto">
