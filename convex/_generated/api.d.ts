@@ -15,6 +15,7 @@ import type * as agent_tasks from "../agent_tasks.js";
 import type * as changeSets from "../changeSets.js";
 import type * as customers from "../customers.js";
 import type * as debug from "../debug.js";
+import type * as debug_inspect from "../debug_inspect.js";
 import type * as drafts from "../drafts.js";
 import type * as elementImages from "../elementImages.js";
 import type * as elements from "../elements.js";
@@ -47,6 +48,7 @@ import type * as skills_runner from "../skills/runner.js";
 import type * as suggestions from "../suggestions.js";
 import type * as taskRevisions from "../taskRevisions.js";
 import type * as tasks from "../tasks.js";
+import type * as test_chat from "../test_chat.js";
 import type * as trelloSync from "../trelloSync.js";
 import type * as users from "../users.js";
 
@@ -64,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   changeSets: typeof changeSets;
   customers: typeof customers;
   debug: typeof debug;
+  debug_inspect: typeof debug_inspect;
   drafts: typeof drafts;
   elementImages: typeof elementImages;
   elements: typeof elements;
@@ -96,6 +99,7 @@ declare const fullApi: ApiFromModules<{
   suggestions: typeof suggestions;
   taskRevisions: typeof taskRevisions;
   tasks: typeof tasks;
+  test_chat: typeof test_chat;
   trelloSync: typeof trelloSync;
   users: typeof users;
 }>;

@@ -165,7 +165,7 @@ function BlockRenderer({
 }) {
   const applyChangeSet = useMutation(api.changeSets.applyChangeSet);
   const discardChangeSet = useMutation(api.changeSets.discardChangeSet);
-  const sendUserMessage = useMutation(api.skills.runner.sendUserMessage);
+  const sendMessageAndRun = useAction(api.skills.runner.sendMessageAndRun);
 
   if (block.type === "ChatBlock") return <ChatBlock block={block} />;
   if (block.type === "QuestionsBlock") return <QuestionsBlock block={block} conversationId={conversationId} projectId={projectId} />;
@@ -173,7 +173,8 @@ function BlockRenderer({
     return (
       <SuggestionBlock
         block={block}
-        onSubmit={(text) => sendUserMessage({
+        onSubmit={(text) => sendMessageAndRun({
+          projectId,
           conversationId,
           text
         })}

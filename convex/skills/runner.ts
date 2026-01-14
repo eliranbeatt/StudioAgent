@@ -209,6 +209,16 @@ export const buildContext = internalQuery({
       .take(1);
     const latestQuote = quoteVersions[0];
 
+    const projectFiles = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .take(20);
+
+    const memoryDocs = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .take(20);
+
     const scopeElementIds = args.params?.scope?.elementIds;
     const scopedElements = Array.isArray(scopeElementIds)
       ? elements.filter((e: any) => scopeElementIds.includes(e._id))
@@ -216,11 +226,26 @@ export const buildContext = internalQuery({
 
     return {
       projectContext: {
+        id: project?._id,
+        name: project?.name,
         summaryHe: project?.overviewSummary ?? project?.description ?? "",
+        description: project?.description,
+        userNotes: project?.notes,
+        details: project?.details,
         clientHe: project?.clientName ?? undefined,
         eventDate: project?.details?.eventDate ?? project?.eventDate ?? undefined,
         locationHe: project?.details?.location ?? undefined,
       },
+      files: projectFiles.map((f: any) => ({
+        fileName: f.fileName,
+        summary: f.summary ?? f.extractedInfo?.summary,
+        extractedTextSnippet: f.extractedText ? f.extractedText.slice(0, 800) : undefined
+      })),
+      memories: memoryDocs.map((m: any) => ({
+        title: m.title_he,
+        content: m.contentMd_he ?? m.rawText_he,
+        summary: m.aiSummary?.summaryMd_he
+      })),
       elements: {
         approved: scopedElements
           .filter((e: any) => e.status !== "drafting" && e.status !== "archived")
@@ -679,39 +704,56 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
 }
 
 function normalizeBlocks(rawBlocks: any[]): any[] {
-  return rawBlocks.map(block => {
+  return rawBlocks.flatMap(block => {
+    let processed = { ...block };
+
     // 1. Handle blocks wrapped in a key named after the type (e.g. { "QuestionsBlock": [...] })
-    if (!block.type) {
-      if (block.QuestionsBlock && Array.isArray(block.QuestionsBlock)) {
-        return {
+    if (!processed.type) {
+      if (processed.QuestionsBlock && Array.isArray(processed.QuestionsBlock)) {
+        processed = {
           type: "QuestionsBlock",
-          questions: block.QuestionsBlock.map((q: any, i: number) => {
+          questions: processed.QuestionsBlock.map((q: any, i: number) => {
             if (typeof q === "string") return { id: `q${i}`, textHe: q };
             return q;
           })
         };
       }
-      if (block.ChatBlock) return { type: "ChatBlock", markdownHe: block.ChatBlock };
-      if (block.SuggestionBlock) return { type: "SuggestionsBlock", ...block.SuggestionBlock };
-      if (block.SuggestionsBlock) return { type: "SuggestionsBlock", ...block.SuggestionsBlock };
-      if (block.ChangeSetBlock) return { type: "ChangeSetBlock", ...block.ChangeSetBlock };
-      if (block.ReviewBlock) return { type: "ReviewBlock", ...block.ReviewBlock };
-      if (block.ShoppingPlanBlock) return { type: "ShoppingPlanBlock", ...block.ShoppingPlanBlock };
-      if (block.PrintQaBlock) return { type: "PrintQaBlock", ...block.PrintQaBlock };
-      if (block.ReceiptBlock) return { type: "ReceiptBlock", ...block.ReceiptBlock };
-      if (block.RunbookBlock) return { type: "RunbookBlock", ...block.RunbookBlock };
-      if (block.DailyPlanBlock) return { type: "DailyPlanBlock", ...block.DailyPlanBlock };
+      else if (processed.ChatBlock) processed = { type: "ChatBlock", markdownHe: processed.ChatBlock };
+      else if (processed.SuggestionBlock) processed = { type: "SuggestionsBlock", ...processed.SuggestionBlock };
+      else if (processed.SuggestionsBlock) processed = { type: "SuggestionsBlock", ...processed.SuggestionsBlock };
+      else if (processed.ChangeSetBlock) processed = { type: "ChangeSetBlock", ...processed.ChangeSetBlock };
+      else if (processed.ReviewBlock) processed = { type: "ReviewBlock", ...processed.ReviewBlock };
+      else if (processed.ShoppingPlanBlock) processed = { type: "ShoppingPlanBlock", ...processed.ShoppingPlanBlock };
+      else if (processed.PrintQaBlock) processed = { type: "PrintQaBlock", ...processed.PrintQaBlock };
+      else if (processed.ReceiptBlock) processed = { type: "ReceiptBlock", ...processed.ReceiptBlock };
+      else if (processed.RunbookBlock) processed = { type: "RunbookBlock", ...processed.RunbookBlock };
+      else if (processed.DailyPlanBlock) processed = { type: "DailyPlanBlock", ...processed.DailyPlanBlock };
     }
 
     // 2. If it's a QuestionsBlock but questions are just strings, wrap them
-    if (block.type === "QuestionsBlock" && Array.isArray(block.questions)) {
-      block.questions = block.questions.map((q: any, i: number) => {
+    if (processed.type === "QuestionsBlock" && Array.isArray(processed.questions)) {
+      processed.questions = processed.questions.map((q: any, i: number) => {
         if (typeof q === "string") return { id: `q${i}`, textHe: q };
         return q;
       });
     }
 
-    return normalizeBlockFields(block);
+    // 3. Normalize fields (snake_case -> camelCase)
+    processed = normalizeBlockFields(processed);
+
+    // 4. Split mixed content (Markdown + Other)
+    // If a block has markdownHe/text but is NOT ChatBlock, split it.
+    if (processed.type !== "ChatBlock") {
+      const text = processed.markdownHe || (processed.text !== processed.titleHe ? processed.text : undefined);
+      if (text && typeof text === "string" && text.length > 0) {
+        const chatBlock = { type: "ChatBlock", markdownHe: text };
+        const mainBlock = { ...processed };
+        // Optional: delete mainBlock.markdownHe to clean up
+        return [chatBlock, mainBlock];
+      }
+    }
+
+    return [processed];
   });
 }
 
