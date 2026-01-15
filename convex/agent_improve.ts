@@ -2,6 +2,7 @@ import { action, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { completionWithTracing } from "./lib/llm";
 import OpenAI from "openai";
 
 // Schema for the Improver output
@@ -368,7 +369,7 @@ export const runImproveAgent = action({
         // For "Thinking" models, we might just prompt.
 
         try {
-            const completion = await client.chat.completions.create({
+            const completion = await completionWithTracing(ctx, {
                 model,
                 messages: [
                     { role: "system", content: systemMsg },
@@ -376,9 +377,12 @@ export const runImproveAgent = action({
                 ],
                 response_format: { type: "json_object" },
                 reasoning_effort: "medium"
+            }, {
+                projectId: args.projectId,
+                runId: `improve-${Date.now()}`
             });
 
-            const raw = completion.choices[0].message.content;
+            const raw = (completion as any).choices[0].message.content;
             console.log("--------------- AI RAW OUTPUT ---------------");
             console.log(raw);
             console.log("---------------------------------------------");

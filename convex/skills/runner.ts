@@ -1,8 +1,8 @@
 import { searchWeb } from "../lib/webSearch";
 import { SHARED_HEADER } from "./prompts";
+import { completionWithTracing } from "../lib/llm";
 import { mutation, internalMutation, query, internalQuery, action } from "../_generated/server";
 import { v } from "convex/values";
-import OpenAI from "openai";
 import { api, internal } from "../_generated/api";
 
 const OPENAI_MODEL = "gpt-4o";
@@ -85,6 +85,7 @@ export const sendMessageAndRun = action({
     projectId: v.id("projects"),
     conversationId: v.id("agentConversations"),
     text: v.string(),
+    skillId: v.optional(v.string())
   },
   handler: async (ctx, args) => {
     // 1. Save User Message
@@ -93,13 +94,11 @@ export const sendMessageAndRun = action({
       text: args.text,
     });
 
-    // 2. Trigger Consultant Chat
-    // We don't await the result blocks here necessarily, unless we want to optimistic update?
-    // But the runSkill updates the DB with blocks.
+    // 2. Trigger Chat or Specific Skill
     await ctx.runAction(api.skills.runner.runSkill, {
       projectId: args.projectId,
       conversationId: args.conversationId,
-      skillId: "CONSULTANT_CHAT",
+      skillId: args.skillId ?? "CONSULTANT_CHAT",
       params: { source: "user_chat" },
     });
   }
@@ -580,7 +579,6 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
     ];
   }
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const tools: any[] = [];
 
   if (allowedTools?.webSearch) {
@@ -623,14 +621,16 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
   let loopCount = 0;
   while (loopCount < 5) {
     loopCount++;
-    const response = await client.chat.completions.create({
+    loopCount++;
+    const response = await completionWithTracing(ctx, {
       model: model ?? OPENAI_MODEL,
       messages: messages,
       tools: tools.length > 0 ? tools : undefined,
-      // response_format: { type: "json_object" }, // Relaxed to allow tool calls
+    }, {
+      projectId: contextInfo?.projectId,
+      conversationId: contextInfo?.conversationId,
     });
-
-    const message = response.choices[0].message;
+    const message = (response as any).choices[0].message;
     messages.push(message);
 
     if (message.tool_calls && message.tool_calls.length > 0) {

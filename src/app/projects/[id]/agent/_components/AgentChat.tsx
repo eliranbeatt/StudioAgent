@@ -173,11 +173,16 @@ function BlockRenderer({
     return (
       <SuggestionBlock
         block={block}
-        onSubmit={(text) => sendMessageAndRun({
-          projectId,
-          conversationId,
-          text
-        })}
+        onSubmit={(text, payload) => {
+          // Extract skill ID from payload if present
+          const skillId = payload?.targetSkillId ?? payload?.skillId ?? payload?.action;
+          sendMessageAndRun({
+            projectId,
+            conversationId,
+            text,
+            skillId: typeof skillId === "string" ? skillId : undefined
+          });
+        }}
       />
     );
   }

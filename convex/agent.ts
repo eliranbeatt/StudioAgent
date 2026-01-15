@@ -2,10 +2,65 @@ import { mutation, query, internalMutation, action } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import OpenAI from "openai";
 import { searchWeb } from "./lib/webSearch";
+import { completionWithTracing } from "./lib/llm";
+import OpenAI from "openai";
 
 const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV7";
+
+const STAGE_SUGGESTIONS: Record<string, Array<{ id: string; label_he: string; why_he: string }>> = {
+  IDEATION: [
+    {
+      id: "suggest_elements",
+      label_he: "להציע 3-5 אלמנטים/קונספטים אפשריים",
+      why_he: "ממפה כיוונים ריאליים ומהיר לבחירה.",
+    },
+    {
+      id: "ask_clarifications",
+      label_he: "לנסח שאלות חידוד קצרות",
+      why_he: "סוגר חסרים לפני ירידה לפרטים.",
+    },
+    {
+      id: "rough_budget",
+      label_he: "להעריך טווח תקציב ולוחות זמנים",
+      why_he: "נותן מסגרת החלטה מוקדמת.",
+    },
+  ],
+  QUOTE: [
+    {
+      id: "create_bom",
+      label_he: "ליצור BOM בסיסי לחומרים",
+      why_he: "מסדר חומרים ועלויות למבנה הצעת מחיר.",
+    },
+    {
+      id: "generate_quote",
+      label_he: "לחשב הצעת מחיר גרסה חדשה",
+      why_he: "יוצר גרסת Quote עם סיכומי עלות.",
+    },
+    {
+      id: "ask_clarifications",
+      label_he: "לשאול שאלות להשלמת פרטים",
+      why_he: "מוודא שכל הנתונים קיימים לפני התמחור.",
+    },
+  ],
+  BREAKDOWN: [
+    {
+      id: "build_tasks",
+      label_he: "לפרק למשימות עם צ׳קליסטים ותזמונים",
+      why_he: "מאפשר ביצוע בפועל וסטטוס.",
+    },
+    {
+      id: "logistics_bundle",
+      label_he: "להוסיף הובלה/התקנה/פירוק אם רלוונטי",
+      why_he: "סוגר את מחזור החיים המלא.",
+    },
+    {
+      id: "ask_clarifications",
+      label_he: "לשאול שאלות להשלמת פרטים",
+      why_he: "מוודא שהביצוע ברור וללא חורים.",
+    },
+  ],
+};
 
 const SYSTEM_PROMPT = `You are an AI studio producer for "Emlly Studio" in Tel Aviv (set design + fabrication + installs + rentals + printing).
 Your outputs must be practical (buildable, priceable, installable) - not demo-level.
@@ -556,9 +611,9 @@ export const agentRespond = action({
     if (!hasTitle && userMessages.length >= 2 && process.env.OPENAI_API_KEY) {
       const titleInputs = userMessages.slice(0, 2).map((msg) => String(msg.text_he ?? "").trim());
       if (titleInputs.every((text) => text.length > 0)) {
+
         try {
-          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-          const completion = await client.chat.completions.create({
+          const completion = await completionWithTracing(ctx, {
             model: "gpt-4o-mini",
             temperature: 0.2,
             max_tokens: 20,
@@ -573,8 +628,11 @@ export const agentRespond = action({
                 content: `Message 1: ${titleInputs[0]}\nMessage 2: ${titleInputs[1]}\nTitle:`,
               },
             ],
+          }, {
+            projectId: conversation.projectId,
+            conversationId: args.conversationId
           });
-          let title = String(completion.choices[0]?.message?.content ?? "").trim();
+          let title = String((completion as any).choices[0]?.message?.content ?? "").trim();
           title = title.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "");
           title = title.replace(/[.?!]+$/g, "");
           title = title.replace(/\s+/g, " ").trim();
@@ -670,6 +728,23 @@ export const agentRespond = action({
       }
     }
 
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "web_search",
+          description: "Search the web for real-time information, prices, specs, or vendors.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Search query" },
+            },
+            required: ["query"],
+          },
+        },
+      },
+    ];
+
     try {
       if (process.env.OPENAI_API_KEY) {
         const user = await ctx.runQuery(api.users.getViewer);
@@ -683,42 +758,16 @@ export const agentRespond = action({
           reasoningEffort = "medium";
         }
 
-        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const supportsTemperature = (model: string) =>
-          !model.startsWith("gpt-5") && !model.startsWith("o1");
-        const isUnsupportedTemperatureError = (err: any) => {
-          const message = String(err?.message ?? "");
-          return /temperature/i.test(message) && /unsupported/i.test(message);
-        };
+        // Reconstruct messages for LLM
+        const history = [...recentMessages].reverse().map(msg => ({
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.text_he || ""
+        }));
 
-        const forcedAction = selectedAction ? `User selected action: ${selectedAction}. You must execute it.` : "";
-
-        // Initial Message Chain
         let messages: any[] = [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "system", content: DEVELOPER_PROMPT },
-          { role: "system", content: STAGE_MODULES[stage] ?? "" },
-          { role: "system", content: MODE_NUDGES[mode] ?? "" },
-          ...(forcedAction ? [{ role: "system", content: forcedAction }] : []),
-          { role: "user", content: `Context JSON: \n${JSON.stringify(contextPayload)} ` },
-        ];
-
-        // Define Tools
-        const tools: any[] = [
-          {
-            type: "function",
-            function: {
-              name: "web_search",
-              description: "Search the web for real-time information, such as prices, material specs, or instructions. Use this when you need facts not in the context.",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: { type: "string", description: "The search query (e.g. 'Birch Plywood 18mm price Israel')." }
-                },
-                required: ["query"]
-              }
-            }
-          }
+          { role: "system", content: `${SYSTEM_PROMPT}\n\n${DEVELOPER_PROMPT}` },
+          { role: "user", content: `Context: ${JSON.stringify({ ...contextPayload, conversation: undefined })}` },
+          ...history
         ];
 
         let loopCount = 0;
@@ -738,18 +787,22 @@ export const agentRespond = action({
 
           if (reasoningEffort) {
             payload.reasoning_effort = reasoningEffort;
-          } else if (supportsTemperature(targetModel)) {
-            payload.temperature = 0.2;
           }
 
           let stream;
           try {
-            stream = await client.chat.completions.create(payload);
+            stream = await completionWithTracing(ctx, payload, {
+              projectId: conversation.projectId,
+              conversationId: args.conversationId
+            });
           } catch (err: any) {
             if (payload.temperature !== undefined && isUnsupportedTemperatureError(err)) {
               const retryPayload = { ...payload };
               delete retryPayload.temperature;
-              stream = await client.chat.completions.create(retryPayload);
+              stream = await completionWithTracing(ctx, retryPayload, {
+                projectId: conversation.projectId,
+                conversationId: args.conversationId
+              });
             } else {
               throw err;
             }
@@ -770,7 +823,6 @@ export const agentRespond = action({
               responseText += delta.content;
               chunkCount++;
 
-              // Update DB occasionally to create "streaming" effect
               const jsonIndex = responseText.indexOf("```json");
               const isInsideBlock = jsonIndex !== -1 && jsonIndex < responseText.length - 10;
 
@@ -781,7 +833,7 @@ export const agentRespond = action({
                 });
                 if (updateResult?.cancelled) {
                   try { if ((stream as any).controller) (stream as any).controller.abort(); } catch (e) { }
-                  isFinalResponse = true; // Break outer loop
+                  isFinalResponse = true;
                   break;
                 }
                 lastUpdate = Date.now();
@@ -811,20 +863,17 @@ export const agentRespond = action({
           if (isFinalResponse && chunkCount > 0 && responseText.includes("(Cancelled)")) break;
 
           if (currentToolCalls.length > 0) {
-            // Push assistant message (with tool_calls) to history
             messages.push({
               role: "assistant",
               content: currentContent || null,
               tool_calls: currentToolCalls
             });
 
-            // Execute tools
             for (const call of currentToolCalls) {
               if (call.function.name === "web_search") {
                 let args;
                 try { args = JSON.parse(call.function.arguments); } catch (e) { args = { query: "" }; }
 
-                // UI feedback: show what we are doing
                 await ctx.runMutation(internal.agent.updateMessageContent, {
                   messageId: agentMessageId,
                   text_he: responseText + `\n\n*(מחפש: ${args.query})...*`
@@ -838,10 +887,6 @@ export const agentRespond = action({
                   content: JSON.stringify(result)
                 });
 
-                // Clear the "searching" text from the main responseText so it doesn't get persisted permanently in the middle?
-                // Actually, keeping it as a record is fine, or we can rely on the next token update to overwrite it if we didn't commit it to responseText.
-                // But responseText is what we finally save. 
-                // Let's add it to responseText so the user sees the history of actions.
                 responseText += `\n\n*(תוצאות חיפוש עבור "${args.query}" התקבלו)*\n`;
               } else {
                 messages.push({
@@ -851,7 +896,6 @@ export const agentRespond = action({
                 });
               }
             }
-            // Loop continues -> OpenAI parses tool results and gives final answer
           } else {
             isFinalResponse = true;
           }
@@ -1031,64 +1075,13 @@ function ensureNextStepsBlock(
   return blocks;
 }
 
+
+
+
 function buildNextStepSuggestionBlock(
   stage: "IDEATION" | "QUOTE" | "BREAKDOWN"
 ) {
-  const suggestionsByStage: Record<string, Array<{ id: string; label_he: string; why_he: string }>> = {
-    IDEATION: [
-      {
-        id: "suggest_elements",
-        label_he: "להציע 3-5 אלמנטים/קונספטים אפשריים",
-        why_he: "ממפה כיוונים ריאליים ומהיר לבחירה.",
-      },
-      {
-        id: "ask_clarifications",
-        label_he: "לנסח שאלות חידוד קצרות",
-        why_he: "סוגר חסרים לפני ירידה לפרטים.",
-      },
-      {
-        id: "rough_budget",
-        label_he: "להעריך טווח תקציב ולוחות זמנים",
-        why_he: "נותן מסגרת החלטה מוקדמת.",
-      },
-    ],
-    QUOTE: [
-      {
-        id: "create_bom",
-        label_he: "ליצור BOM בסיסי לחומרים",
-        why_he: "מסדר חומרים ועלויות למבנה הצעת מחיר.",
-      },
-      {
-        id: "generate_quote",
-        label_he: "לחשב הצעת מחיר גרסה חדשה",
-        why_he: "יוצר גרסת Quote עם סיכומי עלות.",
-      },
-      {
-        id: "ask_clarifications",
-        label_he: "לשאול שאלות להשלמת פרטים",
-        why_he: "מוודא שכל הנתונים קיימים לפני התמחור.",
-      },
-    ],
-    BREAKDOWN: [
-      {
-        id: "build_tasks",
-        label_he: "לפרק למשימות עם צ׳קליסטים ותזמונים",
-        why_he: "מאפשר ביצוע בפועל וסטטוס.",
-      },
-      {
-        id: "logistics_bundle",
-        label_he: "להוסיף הובלה/התקנה/פירוק אם רלוונטי",
-        why_he: "סוגר את מחזור החיים המלא.",
-      },
-      {
-        id: "ask_clarifications",
-        label_he: "לשאול שאלות להשלמת פרטים",
-        why_he: "מוודא שהביצוע ברור וללא חורים.",
-      },
-    ],
-  };
-
-  const items = suggestionsByStage[stage] ?? suggestionsByStage.IDEATION;
+  const items = STAGE_SUGGESTIONS[stage] ?? STAGE_SUGGESTIONS.IDEATION;
 
   return {
     type: "SuggestionBlock",

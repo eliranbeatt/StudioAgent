@@ -43,7 +43,8 @@ export const execute = action({
             await ctx.runAction(api.skills.runner.sendMessageAndRun, {
                 projectId: project._id,
                 conversationId,
-                text: "Hello, this is a test message. Please respond."
+                text: "Running Shopping Planner via Suggestion Click",
+                skillId: "SHOPPING_PLANNER_WEB"
             });
             console.log("[TEST] Message sent successfully (Action completed).");
         } catch (e: any) {

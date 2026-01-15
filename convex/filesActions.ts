@@ -3,6 +3,7 @@
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import { completionWithTracing } from "./lib/llm";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
 import mammoth from "mammoth";
@@ -24,7 +25,7 @@ export const saveUploadedFile = action({
         const extracted = await extractText(ctx, args.storageId, args.contentType, args.fileName);
         const summary = summarizeText(extracted ?? "");
         const extractedInfo = extracted
-            ? await extractStructuredInfo(extracted, args.fileName)
+            ? await extractStructuredInfo(ctx, extracted, args.fileName, args.projectId)
             : null;
 
         const fileId = await ctx.runMutation(internal.files.saveFileRecord, {
@@ -100,10 +101,9 @@ function summarizeText(text: string) {
     return summary;
 }
 
-async function extractStructuredInfo(text: string, fileName: string) {
+async function extractStructuredInfo(ctx: any, text: string, fileName: string, projectId: any) {
     if (!process.env.OPENAI_API_KEY) return null;
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const prompt = [
         "Extract structured information from the document text.",
         "Return JSON only, with this schema:",
@@ -132,9 +132,12 @@ async function extractStructuredInfo(text: string, fileName: string) {
         completionPayload.temperature = 0.1;
     }
 
-    const completion = await client.chat.completions.create(completionPayload);
+    const completion = await completionWithTracing(ctx, completionPayload, {
+        projectId,
+        runId: "file-extract"
+    });
 
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const raw = (completion as any).choices[0]?.message?.content ?? "";
     try {
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== "object") return null;

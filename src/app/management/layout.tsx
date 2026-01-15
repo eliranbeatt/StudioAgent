@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Users, Package, ShoppingCart, UserCircle, ReceiptText, Tags, Settings } from "lucide-react";
+import { Building2, Users, Package, ShoppingCart, UserCircle, ReceiptText, Tags, Settings, Activity } from "lucide-react";
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +67,15 @@ export default function ManagementLayout({
           >
             <Settings size={20} /> Settings
           </Link>
+          <div className="mt-4 pt-4 border-t">
+            <span className="px-4 text-xs font-semibold text-gray-400 uppercase">System</span>
+            <Link
+              href="/management/tracing"
+              className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              <Activity size={20} /> LLM Traces
+            </Link>
+          </div>
           <div className="mt-4 pt-4 border-t">
             <span className="px-4 text-xs font-semibold text-gray-400 uppercase">Incoming</span>
             <Link

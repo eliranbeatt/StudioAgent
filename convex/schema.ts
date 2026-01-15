@@ -1305,4 +1305,24 @@ export default defineSchema({
     key: v.string(), // e.g. "global"
     value: v.any(),
   }).index("by_key", ["key"]),
+
+  // LLM Traces
+  llmTraces: defineTable({
+    projectId: v.optional(v.id("projects")),
+    conversationId: v.optional(v.union(v.id("conversations"), v.string())), // Relaxed to string to allow any ID type
+    runId: v.optional(v.string()), // skill run id
+    provider: v.string(), // "openai", "gemini", etc.
+    model: v.string(),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    latencyMs: v.number(),
+    status: v.union(v.literal("success"), v.literal("failed")),
+    request: v.any(), // JSON
+    response: v.any(), // JSON
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_run", ["runId"])
+    .index("by_conversation", ["conversationId"]),
 });

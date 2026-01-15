@@ -47,12 +47,14 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       2. If you are CONFIDENT that a specific skill is needed to solve the user's request (e.g. "create tasks", "search for prices"), use the 'run_skill' tool immediately.
       3. If you are UNSURE or there are multiple options, use a 'SuggestionsBlock' to offer skills to the user.
       
-      Available Skills to run or suggest:
+      Available Skills to run or suggest (USE EXACT ID ONLY):
       - TASKS_BUILDER_FULL: For creating task trees.
       - ELEMENTS_BUILDER_FULL: For creating elements.
       - ACCOUNTING_BUILDER_FULL: For creating BOM/Budget.
-      - SHOPPING_PLANNER_WEB: For finding products/prices.
+      - SHOPPING_PLANNER_WEB: For finding products/prices (Use this EXACT ID, do NOT use "RUN_SHOPPING...").
       - GAP_AUDIT: For checking missing items.
+      
+      CRITICAL: Never invent skill IDs. Use ONLY the IDs listed above.
       `,
     },
     model: "gpt-5-mini",
