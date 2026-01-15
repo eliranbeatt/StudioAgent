@@ -90,6 +90,14 @@ export function AgentChat({
             </div>
           ))
         )}
+        {isSending && (
+          <div className="flex justify-start">
+            <div className="bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-2 text-slate-500">
+               <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+               <span>Thinking...</span>
+            </div>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 
