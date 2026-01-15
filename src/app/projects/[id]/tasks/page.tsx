@@ -15,6 +15,7 @@ import { ElementsGroupedList } from "./_components/ElementsGroupedList";
 import { InstallModeView } from "./_components/InstallModeView";
 import { TaskModal } from "./_components/TaskModal";
 import { TrelloConfigModal } from "./_components/TrelloConfigModal";
+import { getTodayDateString } from '../../../../lib/dates'
 
 export default function TasksPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -231,6 +232,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
             checklist: [],
             elementTitle: "General",
             description: "",
+            startDate: getTodayDateString(),
         });
     };
 

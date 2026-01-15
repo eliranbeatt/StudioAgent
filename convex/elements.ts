@@ -1,6 +1,7 @@
-import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
-import { api } from "./_generated/api";
+import { mutation, query } from './_generated/server'
+import { v } from 'convex/values'
+import { api } from './_generated/api'
+import { withDefaultStartDate } from './lib/dates'
 
 // Helper to sync snapshot data to live tables
 export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapshot: any) {
@@ -58,7 +59,7 @@ export async function syncSnapshotToLiveTables(ctx: any, elementId: any, snapsho
       status: taskData.status,
       priority: taskData.priority,
       category: taskData.category,
-      startDate: taskData.startDate,
+      startDate: withDefaultStartDate(taskData.startDate),
       endDate: taskData.endDate,
       estimatedMinutes: taskData.estimatedMinutes,
       assignee: taskData.assignee,

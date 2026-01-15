@@ -1,7 +1,8 @@
-import { mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
-import { v } from "convex/values";
-import { applyChangeSetInternal } from "./drafts";
+import { mutation, query } from './_generated/server'
+import { api } from './_generated/api'
+import { v } from 'convex/values'
+import { applyChangeSetInternal } from './drafts'
+import { withDefaultStartDate } from './lib/dates'
 
 export const updateTaskStatus = mutation({
   args: {
@@ -95,8 +96,12 @@ export const updateTask = mutation({
     const { taskId, patch } = args;
     const task = await ctx.db.get(taskId);
     if (!task) throw new Error("Task not found");
+    const nextPatch = { ...patch }
+    if (Object.prototype.hasOwnProperty.call(patch, 'startDate')) {
+      nextPatch.startDate = withDefaultStartDate(patch.startDate)
+    }
     await ctx.db.patch(taskId, {
-      ...patch,
+      ...nextPatch,
       updatedAt: Date.now(),
     });
     await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, {
@@ -126,6 +131,7 @@ export const createTask = mutation({
     await ctx.db.insert("tasks", {
       projectId,
       ...fields,
+      startDate: withDefaultStartDate(fields.startDate),
       createdAt: Date.now(),
       updatedAt: Date.now(),
       createdBy: "human",

@@ -1,8 +1,9 @@
-import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
-import { Id } from "./_generated/dataModel";
-import { captureSnapshotFromLive } from "./elements";
-import { api, internal } from "./_generated/api";
+import { mutation, query } from './_generated/server'
+import { v } from 'convex/values'
+import { Id } from './_generated/dataModel'
+import { captureSnapshotFromLive } from './elements'
+import { api, internal } from './_generated/api'
+import { withDefaultStartDate } from './lib/dates'
 
 type ElementId = Id<"elements">;
 type TaskId = Id<"tasks">;
@@ -630,7 +631,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("status" in fields) patch.status = toOptional(fields.status);
       if ("priority" in fields) patch.priority = toOptional(fields.priority);
       if ("category" in fields) patch.category = toOptional(fields.category);
-      if ("startDate" in fields) patch.startDate = toOptional(fields.startDate);
+      if ("startDate" in fields) patch.startDate = withDefaultStartDate(fields.startDate);
       if ("endDate" in fields) patch.endDate = toOptional(fields.endDate);
       if ("estimatedMinutes" in fields) patch.estimatedMinutes = toOptional(fields.estimatedMinutes);
       if ("assignee" in fields) patch.assignee = toOptional(fields.assignee);
@@ -674,7 +675,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         status: fields?.status ?? "TODO",
         priority: toOptional(fields?.priority),
         category: toOptional(fields?.category),
-        startDate: toOptional(fields?.startDate),
+        startDate: withDefaultStartDate(fields?.startDate),
         endDate: toOptional(fields?.endDate),
         estimatedMinutes: toOptional(fields?.estimatedMinutes),
         assignee: toOptional(fields?.assignee),
