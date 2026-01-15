@@ -60,14 +60,14 @@ export const runSkill = action({
       }, skillData.skill.model, { projectId, conversationId });
 
       // 5. Save Result (Mutation)
-      await ctx.runMutation(internal.skills.runner.saveRunResult, {
+      const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
         runId,
         conversationId,
         blocks,
         projectId, // needed for ChangeSet creation inside
       });
 
-      return blocks;
+      return savedBlocks;
 
     } catch (error: any) {
       console.error("Skill execution failed:", error);
@@ -378,6 +378,8 @@ export const saveRunResult = internalMutation({
       runId: args.runId,
       createdAt: Date.now(),
     });
+
+    return blocks;
   }
 });
 

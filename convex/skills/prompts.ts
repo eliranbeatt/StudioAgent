@@ -101,8 +101,40 @@ EACH OP object must have kind and payload.
          "plannedQuantity": 4,
          "rateTypeCode": "hour",
          "plannedUnitCost": 50,
-         "plannedTotalCost": 200
-       }
+       "plannedTotalCost": 200
+      }
+    }
+  }
+
+5. materialLine.delete
+   {
+     "kind": "materialLine.delete",
+     "payload": {
+       "lineId": "<materialLineId>"
+     }
+   }
+
+6. workLine.delete
+   {
+     "kind": "workLine.delete",
+     "payload": {
+       "lineId": "<workLineId>"
+     }
+   }
+
+7. accountingLine.delete
+   {
+     "kind": "accountingLine.delete",
+     "payload": {
+       "lineId": "<accountingLineId>"
+     }
+   }
+
+8. task.delete
+   {
+     "kind": "task.delete",
+     "payload": {
+       "taskId": "<taskId>"
      }
    }
 
@@ -146,4 +178,5 @@ export const SKILL_SYSTEM_ADDONS = {
   "RESEARCH_PRICING_ESTIMATES_WEB": "SYSTEM (addon)\r\nYou are RESEARCH_PRICING_ESTIMATES_WEB.\r\nGoal: produce ballpark estimates (not exact) with evidence links + confidence.\r\nRules:\r\n- Never overwrite “last paid” memory; propose a new estimate field.\r\n- Must mark each estimate with confidence and checkedAt.\r\nReturn SuggestionsBlock and optionally a ChangeSet to store estimates.",
   "PRINT_QA": "SYSTEM (addon)\r\nYou are PRINT_QA.\r\nGoal: prevent expensive print mistakes.\r\nValidate file readiness vs PrintPart requirements: size, ratio, bleed, safe area, DPI/resolution, color mode/profile, cut paths, font embedding.\r\nBe conservative: if uncertain, flag and ask.\r\nReturn PrintQaBlock only (plus Suggestions for next step).",
   "RECEIPT_PARSE_AND_MAP": "SYSTEM (addon)\r\nYou are RECEIPT_PARSE_AND_MAP.\r\nGoal: extract receipt/invoice fields and propose mapping:\r\n- vendor/store name\r\n- date\r\n- total amount\r\n- VAT if visible\r\n- line items if visible\r\nThen suggest mapping to: elementId + materialLine/workLine or create a new line (ChangeSet) only if requested.\r\nAsk questions if ambiguous.\r\nReturn ReceiptBlock + SuggestionsBlock (and optional ChangeSetBlock).",
+  "BOM_DUPLICATE_ANALYZER": "SYSTEM (addon)\r\nYou are BOM_DUPLICATE_ANALYZER.\r\nGoal: analyze materialLines and workLines to find duplicates and proposed deletions.\r\nRules:\r\n- Identify duplicates based on similarity in: itemName/roleHe, taskId, elementId, cost.\r\n- When duplicates are found, identify the 'redundant' ones (e.g. less data, or created later if identical).\r\n- Propose DELETION of redundant lines using ops:\r\n  { \"kind\": \"materialLine.delete\", \"payload\": { \"lineId\": \"<ID>\" } }\r\n  { \"kind\": \"workLine.delete\", \"payload\": { \"lineId\": \"<ID>\" } }\r\n- Use the existing line id from context as lineId (accounting.materialLines[].id / accounting.workLines[].id).\r\n- Do NOT delete lines if you are unsure.\r\n- Return ChangeSetBlock with delete ops + ChatBlock explaining what was found.",
 } as const

@@ -947,23 +947,23 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
   // DELETE Handlers
   for (const op of cs.ops) {
     if (op.kind !== "task.delete") continue;
-    const { taskId, taskTempOrId } = op.payload ?? {};
-    const id = resolveFromTemp(taskTempOrId ?? taskId, taskTempMap);
-    if (!id) throw new Error("task.delete requires taskId or taskTempOrId");
+    const { taskId, taskTempOrId, id } = op.payload ?? {};
+    const resolved = resolveFromTemp(taskTempOrId ?? taskId ?? id, taskTempMap);
+    if (!resolved) throw new Error("task.delete requires taskId or taskTempOrId");
 
     // Check if task exists before deleting to be safe, or just delete (idempotent if already gone?)
     // Convex delete throws if not found? No, check docs. Usually better to check.
     // However, for bulk ops, maybe we just try. 
     // Let's rely on standard Convex behavior: delete(id) works if id is valid.
     // If we resolved it, it's an ID.
-    const existing = await ctx.db.get(id);
+    const existing = await ctx.db.get(resolved);
     if (existing) {
-      await ctx.db.delete(id);
+      await ctx.db.delete(resolved);
       await recordAudit(ctx, {
         projectId: cs.projectId,
         changeSetId: auditChangeSetId,
         operation: "softDelete",
-        entityRef: `task:${id}`,
+        entityRef: `task:${resolved}`,
         before: existing,
         after: null,
         appliedAt: now,
@@ -976,18 +976,18 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
   for (const op of cs.ops) {
     if (op.kind !== "materialLine.delete") continue;
-    const { lineId, materialLineId, tempId } = op.payload ?? {};
-    const id = resolveFromTemp(tempId ?? materialLineId ?? lineId, materialLineTempMap);
-    if (!id) throw new Error("materialLine.delete requires lineId");
+    const { lineId, materialLineId, tempId, id } = op.payload ?? {};
+    const resolved = resolveFromTemp(tempId ?? materialLineId ?? lineId ?? id, materialLineTempMap);
+    if (!resolved) throw new Error("materialLine.delete requires lineId");
 
-    const existing = await ctx.db.get(id);
+    const existing = await ctx.db.get(resolved);
     if (existing) {
-      await ctx.db.delete(id);
+      await ctx.db.delete(resolved);
       await recordAudit(ctx, {
         projectId: cs.projectId,
         changeSetId: auditChangeSetId,
         operation: "softDelete",
-        entityRef: `materialLine:${id}`,
+        entityRef: `materialLine:${resolved}`,
         before: existing,
         after: null,
         appliedAt: now,
@@ -998,18 +998,18 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
   for (const op of cs.ops) {
     if (op.kind !== "workLine.delete") continue;
-    const { lineId, workLineId, tempId } = op.payload ?? {};
-    const id = resolveFromTemp(tempId ?? workLineId ?? lineId, workLineTempMap);
-    if (!id) throw new Error("workLine.delete requires lineId");
+    const { lineId, workLineId, tempId, id } = op.payload ?? {};
+    const resolved = resolveFromTemp(tempId ?? workLineId ?? lineId ?? id, workLineTempMap);
+    if (!resolved) throw new Error("workLine.delete requires lineId");
 
-    const existing = await ctx.db.get(id);
+    const existing = await ctx.db.get(resolved);
     if (existing) {
-      await ctx.db.delete(id);
+      await ctx.db.delete(resolved);
       await recordAudit(ctx, {
         projectId: cs.projectId,
         changeSetId: auditChangeSetId,
         operation: "softDelete",
-        entityRef: `workLine:${id}`,
+        entityRef: `workLine:${resolved}`,
         before: existing,
         after: null,
         appliedAt: now,
@@ -1020,18 +1020,18 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
   for (const op of cs.ops) {
     if (op.kind !== "accountingLine.delete") continue;
-    const { lineId, accountingLineId } = op.payload ?? {};
-    const id = accountingLineId ?? lineId; // Accounting lines rarely use tempIds in current flows?
-    if (!id) throw new Error("accountingLine.delete requires lineId");
+    const { lineId, accountingLineId, id } = op.payload ?? {};
+    const resolved = accountingLineId ?? lineId ?? id; // Accounting lines rarely use tempIds in current flows?
+    if (!resolved) throw new Error("accountingLine.delete requires lineId");
 
-    const existing = await ctx.db.get(id);
+    const existing = await ctx.db.get(resolved);
     if (existing) {
-      await ctx.db.delete(id);
+      await ctx.db.delete(resolved);
       await recordAudit(ctx, {
         projectId: cs.projectId,
         changeSetId: auditChangeSetId,
         operation: "softDelete",
-        entityRef: `accountingLine:${id}`,
+        entityRef: `accountingLine:${resolved}`,
         before: existing,
         after: null,
         appliedAt: now,

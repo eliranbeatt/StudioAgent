@@ -10,7 +10,7 @@ export const getProjectDigest = query({
       .query("elements")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
-    
+
     const elementsCount = elements.length;
     const elementsApproved = elements.filter(e => e.status !== "drafting" && e.status !== "archived").length;
 
@@ -19,7 +19,7 @@ export const getProjectDigest = query({
       .query("tasks")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
-    
+
     const tasksCount = tasks.length;
     const tasksWithEstimates = tasks.filter(t => t.estimatedMinutes && t.estimatedMinutes > 0).length;
 
@@ -29,7 +29,7 @@ export const getProjectDigest = query({
       .query("materialLines")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
-    
+
     const hasBudget = lines.length > 0;
 
     // 4. Quote stats
@@ -37,7 +37,7 @@ export const getProjectDigest = query({
       .query("quoteVersions")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
-    
+
     const hasQuote = quotes.length > 0;
 
     return {
@@ -55,59 +55,93 @@ export const getProjectDigest = query({
 export const recommendSkills = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    // In a real implementation, we would call getProjectDigest logic here or separate it.
-    // For efficiency, we'll inline the checks or reuse code if we exported functions.
-    // Since getProjectDigest is a query, we can't call it directly from inside another query easily 
-    // without making it an internal query or helper. Let's just re-fetch for now or assume efficient caching.
-    
-    // Re-fetch logic (simplified for recommendations)
-    const elements = await ctx.db.query("elements").withIndex("by_project", q => q.eq("projectId", args.projectId)).take(1);
+    // 1. Fetch Project State
+    const elements = await ctx.db.query("elements").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).collect();
+    const tasks = await ctx.db.query("tasks").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).collect();
+    const materialLines = await ctx.db.query("materialLines").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).take(1);
+    const quotes = await ctx.db.query("quoteVersions").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).take(1);
+
     const hasElements = elements.length > 0;
-
-    const tasks = await ctx.db.query("tasks").withIndex("by_project", q => q.eq("projectId", args.projectId)).take(1);
     const hasTasks = tasks.length > 0;
+    const hasBudget = materialLines.length > 0;
+    const hasQuote = quotes.length > 0;
 
-    const lines = await ctx.db.query("materialLines").withIndex("by_project", q => q.eq("projectId", args.projectId)).take(1);
-    const hasBudget = lines.length > 0;
+    // Determine Current Stage
+    let currentStage: "ideation" | "planning" | "execution" | "review" = "ideation";
+    if (hasElements) currentStage = "planning";
+    if (hasTasks && hasBudget && hasQuote) currentStage = "execution";
+
+    // Analyze completed "milestone" skills (simplified proxy based on data existence)
+    const completedSkills = new Set<string>();
+    if (hasElements) completedSkills.add("ELEMENTS_BUILDER_FULL");
+    if (hasTasks) completedSkills.add("TASKS_BUILDER_FULL");
+    if (hasBudget) completedSkills.add("ACCOUNTING_BUILDER_FULL");
+    if (hasQuote) completedSkills.add("QUOTE_WRITER_FULL");
+    if (hasElements && hasTasks) completedSkills.add("ELEMENTS_TO_TASKS_SYNC"); // assumed
+
+    // Get all enabled skills
+    const skills = await ctx.db.query("skills").filter((q) => q.eq(q.field("isEnabled"), true)).collect();
 
     const recommendations = [];
 
-    // Rule 1: Empty project -> Consultant or Elements
-    if (!hasElements) {
-      recommendations.push({
-        skillId: "CONSULTANT_CHAT",
-        reasonHe: "להתחיל בתכנון רעיוני",
-      });
-      // We don't have elements builder in the short list yet, but let's assume we might add it.
+    for (const skill of skills) {
+      if (!skill.scheduling) continue;
+
+      let score = 0;
+      let reason = "";
+
+      // Factor 1: Stage Relevance
+      if (skill.scheduling.suggestAtStage?.includes(currentStage)) {
+        score += 10;
+      }
+
+      // Factor 2: Prerequisites met (suggestAfter)
+      // If skill has suggestAfter, ONLY suggest if ALL prerequisites are met OR if it's explicitly allowed to start (e.g. first skill)
+      if (skill.scheduling.suggestAfter && skill.scheduling.suggestAfter.length > 0) {
+        const prereqsMet = skill.scheduling.suggestAfter.every(prereq => completedSkills.has(prereq));
+        if (prereqsMet) {
+          score += 20;
+          reason = "השלב הבא בתהליך";
+        } else {
+          // If prereqs NOT met, punish usage score (hide it)
+          score -= 100;
+        }
+      }
+
+      // Special overrides
+      if (currentStage === "ideation" && skill.skillId === "PROJECT_BRIEF_BUILDER" && !hasElements) {
+        score += 50;
+        reason = "מומלץ להתחלה";
+      }
+
+      if (currentStage === "ideation" && skill.skillId === "CONSULTANT_CHAT") {
+        score += 5;
+        reason = "זמין להתייעצות";
+      }
+
+      // Additional Boosts
+      if (skill.skillId === "GAP_AUDIT" && hasElements && hasTasks) {
+        score += 5;
+        reason = "בדיקת תקינות";
+      }
+
+      if (score > 0) {
+        recommendations.push({
+          ...skill,
+          reasonHe: reason || skill.descriptionHe || "מומלץ כעת"
+        });
+      }
     }
 
-    // Rule 2: Has elements, no tasks -> Tasks Builder
-    if (hasElements && !hasTasks) {
-      recommendations.push({
-        skillId: "TASKS_BUILDER_FULL",
-        reasonHe: "יש אלמנטים, כדאי לבנות תוכנית עבודה",
-      });
-    }
+    // Sort by flow order (naive)
+    const flowOrder: Record<string, number> = { "ideation": 0, "planning": 1, "review": 2, "execution": 3, "optimization": 4 };
 
-    // Rule 3: Always useful -> Audit
-    recommendations.push({
-      skillId: "GAP_AUDIT",
-      reasonHe: "בדיקת שלמות ותקינות",
+    recommendations.sort((a, b) => {
+      const flowDiff = (flowOrder[a.flow] || 99) - (flowOrder[b.flow] || 99);
+      if (flowDiff !== 0) return flowDiff;
+      return 0;
     });
 
-    // Sort by priority (this is a naive sort)
-    // Map to full skill objects
-    const skills = await ctx.db.query("skills").collect(); // Load all skills to map details
-    
-    const recommendedDetails = recommendations.map(rec => {
-      const skill = skills.find(s => s.skillId === rec.skillId);
-      if (!skill) return null;
-      return {
-        ...skill,
-        reasonHe: rec.reasonHe,
-      };
-    }).filter(Boolean);
-
-    return recommendedDetails;
+    return recommendations;
   },
 });
