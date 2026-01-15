@@ -34,7 +34,7 @@ export function SuggestionBlock({ block, onSubmit }: { block: any, onSubmit?: (t
           <button
             key={item.id || i}
             onClick={() => handleSelect(item)}
-            className="w-full text-left p-3 border border-slate-100 rounded bg-slate-50 hover:bg-blue-50 hover:border-blue-200 transition-colors group"
+            className="w-full text-start p-3 border border-slate-100 rounded bg-slate-50 hover:bg-blue-50 hover:border-blue-200 transition-colors group"
           >
             <div className="font-semibold text-xs text-slate-800 group-hover:text-blue-700">
               {item.label_he ?? item.labelHe ?? item.label}

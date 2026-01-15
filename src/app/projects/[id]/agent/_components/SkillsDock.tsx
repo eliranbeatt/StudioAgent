@@ -11,11 +11,13 @@ export function SkillsDock({
   activeConversationId,
   selectedElementIds,
   onEnsureConversation,
+  onSetThinking,
 }: {
   projectId: Id<"projects">;
   activeConversationId: Id<"agentConversations"> | null;
   selectedElementIds?: string[];
   onEnsureConversation: () => Promise<Id<"agentConversations">>;
+  onSetThinking: (thinking: boolean) => void;
 }) {
   const recommendations = useQuery(api.skills.recommender.recommendSkills, { projectId });
   const allSkills = useQuery(api.skills.registry.listEnabledSkills);
@@ -36,6 +38,7 @@ export function SkillsDock({
     }
 
     // 2. Run Skill
+    onSetThinking(true);
     try {
       await runSkill({
         projectId,
@@ -51,6 +54,8 @@ export function SkillsDock({
     } catch (e) {
       console.error("Failed to run skill", e);
       alert("Failed to run skill: " + String(e));
+    } finally {
+      onSetThinking(false);
     }
   };
 

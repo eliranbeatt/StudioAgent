@@ -24,6 +24,7 @@ export default function AgentPage() {
 
   const [activeConversationId, setActiveConversationId] = useState<Id<"agentConversations"> | null>(null);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+  const [isThinking, setIsThinking] = useState(false);
 
   useEffect(() => {
     if (conversations && conversations.length > 0 && !activeConversationId) {
@@ -90,7 +91,12 @@ export default function AgentPage() {
 
       {/* Center: Chat */}
       <div className="flex-1 flex flex-col min-w-0">
-         <AgentChat activeConversationId={activeConversationId} projectId={projectId} />
+         <AgentChat 
+            activeConversationId={activeConversationId} 
+            projectId={projectId} 
+            isThinking={isThinking}
+            onSetThinking={setIsThinking}
+        />
       </div>
 
       {/* Right: Skills Dock */}
@@ -100,6 +106,7 @@ export default function AgentPage() {
             activeConversationId={activeConversationId}
             onEnsureConversation={handleEnsureConversation}
             selectedElementIds={selectedElementIds}
+            onSetThinking={setIsThinking}
         />
       </div>
 

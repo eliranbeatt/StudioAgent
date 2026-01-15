@@ -1222,6 +1222,11 @@ export default defineSchema({
     labelHe: v.string(),
     descriptionHe: v.string(),
     category: v.string(), // "consult", "build", "review", "research", "audit"
+    flow: v.optional(v.string()),
+    scheduling: v.optional(v.object({
+      suggestAfter: v.optional(v.array(v.string())),
+      suggestAtStage: v.optional(v.array(v.string())),
+    })),
     config: v.object({
       requiresClarifications: v.boolean(),
       clarificationsTargetSkillId: v.optional(v.string()),

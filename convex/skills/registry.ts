@@ -7,6 +7,11 @@ export interface SkillDefinition {
   labelHe: string;
   descriptionHe: string;
   category: "consult" | "build" | "review" | "research" | "audit" | "clarify" | "ops";
+  flow: "ideation" | "planning" | "execution" | "review" | "optimization";
+  scheduling?: {
+    suggestAfter?: string[];
+    suggestAtStage?: ("ideation" | "planning" | "execution" | "review")[];
+  };
   config: {
     requiresClarifications: boolean;
     clarificationsTargetSkillId?: string;
@@ -30,9 +35,11 @@ const SYSTEM_HEADER_REF = "studioops_v7_1";
 export const SKILL_CATALOG: SkillDefinition[] = [
   {
     skillId: "CONSULTANT_CHAT",
-    labelHe: "CONSULTANT_CHAT",
-    descriptionHe: "CONSULTANT_CHAT",
+    labelHe: "צ'אט יועץ",
+    descriptionHe: "התייעצות כללית וניהול השיחה",
     category: "consult",
+    flow: "ideation",
+    scheduling: { suggestAtStage: ["ideation", "planning", "execution", "review"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, runSkill: true },
@@ -61,9 +68,10 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "CLARIFICATIONS_GATE",
-    labelHe: "CLARIFICATIONS_GATE",
-    descriptionHe: "CLARIFICATIONS_GATE",
+    labelHe: "שאלות הבהרה",
+    descriptionHe: "שאלות קריטיות לפני ביצוע",
     category: "clarify",
+    flow: "planning",
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -77,9 +85,10 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "CHANGESET_REVIEWER",
-    labelHe: "CHANGESET_REVIEWER",
-    descriptionHe: "CHANGESET_REVIEWER",
+    labelHe: "סקירת שינויים",
+    descriptionHe: "בדיקת הצעות לפני אישור",
     category: "review",
+    flow: "review",
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -93,9 +102,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "PROJECT_BRIEF_BUILDER",
-    labelHe: "PROJECT_BRIEF_BUILDER",
-    descriptionHe: "PROJECT_BRIEF_BUILDER",
+    labelHe: "בניית בריף",
+    descriptionHe: "הגדרת גבולות גזרה לפרויקט",
     category: "build",
+    flow: "ideation",
+    scheduling: { suggestAtStage: ["ideation"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -109,9 +120,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "ELEMENTS_BUILDER_FULL",
-    labelHe: "ELEMENTS_BUILDER_FULL",
-    descriptionHe: "ELEMENTS_BUILDER_FULL",
+    labelHe: "בניית אלמנטים",
+    descriptionHe: "יצירה ועריכה של אלמנטים",
     category: "build",
+    flow: "planning",
+    scheduling: { suggestAfter: ["PROJECT_BRIEF_BUILDER"], suggestAtStage: ["ideation", "planning"] },
     config: {
       requiresClarifications: true,
       clarificationsTargetSkillId: "ELEMENTS_BUILDER_FULL",
@@ -126,9 +139,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "TASKS_BUILDER_FULL",
-    labelHe: "TASKS_BUILDER_FULL",
-    descriptionHe: "TASKS_BUILDER_FULL",
+    labelHe: "בניית משימות",
+    descriptionHe: "גזירת משימות עבודה מאלמנטים",
     category: "build",
+    flow: "planning",
+    scheduling: { suggestAfter: ["ELEMENTS_BUILDER_FULL"], suggestAtStage: ["planning"] },
     config: {
       requiresClarifications: true,
       clarificationsTargetSkillId: "TASKS_BUILDER_FULL",
@@ -143,9 +158,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "ACCOUNTING_BUILDER_FULL",
-    labelHe: "ACCOUNTING_BUILDER_FULL",
-    descriptionHe: "ACCOUNTING_BUILDER_FULL",
+    labelHe: "בניית תמחור",
+    descriptionHe: "יצירת BOM ותמחור שעות",
     category: "build",
+    flow: "planning",
+    scheduling: { suggestAfter: ["TASKS_BUILDER_FULL"], suggestAtStage: ["planning"] },
     config: {
       requiresClarifications: true,
       clarificationsTargetSkillId: "ACCOUNTING_BUILDER_FULL",
@@ -160,9 +177,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "QUOTE_WRITER_FULL",
-    labelHe: "QUOTE_WRITER_FULL",
-    descriptionHe: "QUOTE_WRITER_FULL",
+    labelHe: "הפקת הצעת מחיר",
+    descriptionHe: "יצירת מסמך הצעה ללקוח",
     category: "build",
+    flow: "planning",
+    scheduling: { suggestAfter: ["ACCOUNTING_BUILDER_FULL"], suggestAtStage: ["planning", "review"] },
     config: {
       requiresClarifications: true,
       clarificationsTargetSkillId: "QUOTE_WRITER_FULL",
@@ -177,9 +196,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "ELEMENTS_TO_TASKS_SYNC",
-    labelHe: "ELEMENTS_TO_TASKS_SYNC",
-    descriptionHe: "ELEMENTS_TO_TASKS_SYNC",
+    labelHe: "סנכרון משימות",
+    descriptionHe: "עדכון משימות בעקבות שינוי אלמנטים",
     category: "build",
+    flow: "execution",
+    scheduling: { suggestAfter: ["ELEMENTS_BUILDER_FULL"], suggestAtStage: ["execution"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -193,9 +214,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "TASKS_CRITICAL_PATH_POLISH",
-    labelHe: "TASKS_CRITICAL_PATH_POLISH",
-    descriptionHe: "TASKS_CRITICAL_PATH_POLISH",
+    labelHe: "נתיב קריטי",
+    descriptionHe: "אופטימיזציה של תלויות וזמנים",
     category: "review",
+    flow: "review",
+    scheduling: { suggestAfter: ["TASKS_BUILDER_FULL"], suggestAtStage: ["planning", "review"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -209,9 +232,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "TASK_ACCOUNTING_MAPPING_REPAIR",
-    labelHe: "TASK_ACCOUNTING_MAPPING_REPAIR",
-    descriptionHe: "TASK_ACCOUNTING_MAPPING_REPAIR",
+    labelHe: "תיקון קישורים",
+    descriptionHe: "חיבור מחדש של עלויות למשימות",
     category: "review",
+    flow: "review",
+    scheduling: { suggestAfter: ["ACCOUNTING_BUILDER_FULL"], suggestAtStage: ["planning", "review"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -225,9 +250,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "GAP_AUDIT",
-    labelHe: "GAP_AUDIT",
-    descriptionHe: "GAP_AUDIT",
+    labelHe: "בדיקת חוסרים",
+    descriptionHe: "זיהוי פערים לוגיסטיים ובטיחותיים",
     category: "audit",
+    flow: "review",
+    scheduling: { suggestAtStage: ["planning", "review", "execution"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -241,9 +268,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "RISK_REVIEW",
-    labelHe: "RISK_REVIEW",
-    descriptionHe: "RISK_REVIEW",
+    labelHe: "סקירת סיכונים",
+    descriptionHe: "זיהוי סיכוני לו\"ז ותקציב",
     category: "review",
+    flow: "review",
+    scheduling: { suggestAtStage: ["planning", "review"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -257,9 +286,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "COST_VARIANCE_ANALYZER",
-    labelHe: "COST_VARIANCE_ANALYZER",
-    descriptionHe: "COST_VARIANCE_ANALYZER",
+    labelHe: "ניתוח עלויות",
+    descriptionHe: "השוואת תכנון מול ביצוע בפועל",
     category: "audit",
+    flow: "optimization",
+    scheduling: { suggestAtStage: ["execution", "review"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -273,9 +304,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "DAILY_EXECUTION_PLANNER",
-    labelHe: "DAILY_EXECUTION_PLANNER",
-    descriptionHe: "DAILY_EXECUTION_PLANNER",
+    labelHe: "תכנון יומי",
+    descriptionHe: "הפקת לו\"ז ורשימת משימות ליום העבודה",
     category: "ops",
+    flow: "execution",
+    scheduling: { suggestAtStage: ["execution"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -289,9 +322,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "INSTALL_RUNBOOK_BUILDER",
-    labelHe: "INSTALL_RUNBOOK_BUILDER",
-    descriptionHe: "INSTALL_RUNBOOK_BUILDER",
+    labelHe: "תיק התקנה",
+    descriptionHe: "יצירת מסמך הוראות ורשימת ציוד לשטח",
     category: "build",
+    flow: "execution",
+    scheduling: { suggestAfter: ["TASKS_BUILDER_FULL"], suggestAtStage: ["execution"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
@@ -305,9 +340,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "SHOPPING_PLANNER_WEB",
-    labelHe: "SHOPPING_PLANNER_WEB",
-    descriptionHe: "SHOPPING_PLANNER_WEB",
+    labelHe: "תכנון רכש",
+    descriptionHe: "בניית מסלולי קניות והשוואת מחירים",
     category: "research",
+    flow: "execution",
+    scheduling: { suggestAfter: ["ACCOUNTING_BUILDER_FULL"], suggestAtStage: ["execution"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: true, ragSearch: false, fileInspect: false },
@@ -321,9 +358,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "BUYING_ASSISTANT_WEB",
-    labelHe: "BUYING_ASSISTANT_WEB",
-    descriptionHe: "BUYING_ASSISTANT_WEB",
+    labelHe: "עוזר קניות",
+    descriptionHe: "חיפוש ממוקד למוצר ספציפי",
     category: "research",
+    flow: "execution",
+    scheduling: { suggestAtStage: ["execution"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: true, ragSearch: false, fileInspect: false },
@@ -337,9 +376,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "RESEARCH_INSPIRATION_WEB",
-    labelHe: "RESEARCH_INSPIRATION_WEB",
-    descriptionHe: "RESEARCH_INSPIRATION_WEB",
+    labelHe: "מחקר השראה",
+    descriptionHe: "חיפוש רפרנסים ויזואליים וטכניים",
     category: "research",
+    flow: "ideation",
+    scheduling: { suggestAtStage: ["ideation", "planning"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: true, ragSearch: false, fileInspect: false },
@@ -353,9 +394,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "RESEARCH_PRICING_ESTIMATES_WEB",
-    labelHe: "RESEARCH_PRICING_ESTIMATES_WEB",
-    descriptionHe: "RESEARCH_PRICING_ESTIMATES_WEB",
+    labelHe: "הערכת מחירים",
+    descriptionHe: "אומדן עלויות גס ע\"ב מחירים ברשת",
     category: "research",
+    flow: "planning",
+    scheduling: { suggestAtStage: ["ideation", "planning"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: true, ragSearch: false, fileInspect: false },
@@ -369,9 +412,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "PRINT_QA",
-    labelHe: "PRINT_QA",
-    descriptionHe: "PRINT_QA",
+    labelHe: "בקרת דפוס",
+    descriptionHe: "בדיקת קבצים לדפוס לפני שליחה",
     category: "ops",
+    flow: "execution",
+    scheduling: { suggestAtStage: ["execution"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: true },
@@ -385,9 +430,11 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     skillId: "RECEIPT_PARSE_AND_MAP",
-    labelHe: "RECEIPT_PARSE_AND_MAP",
-    descriptionHe: "RECEIPT_PARSE_AND_MAP",
+    labelHe: "פענוח קבלות",
+    descriptionHe: "הזנת הוצאות אוטומטית מקבצים",
     category: "ops",
+    flow: "optimization",
+    scheduling: { suggestAtStage: ["execution", "review"] },
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: false, ragSearch: false, fileInspect: true },
@@ -396,6 +443,24 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     prompts: {
       systemHeaderRef: SYSTEM_HEADER_REF,
       promptAddon: SKILL_SYSTEM_ADDONS.RECEIPT_PARSE_AND_MAP,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "BOM_DUPLICATE_ANALYZER",
+    labelHe: "בדיקת שורות כפולות בתמחור",
+    descriptionHe: "איתור ומחיקת כפילויות ב-BOM",
+    category: "audit",
+    flow: "review",
+    scheduling: { suggestAtStage: ["planning", "review", "execution"] },
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.BOM_DUPLICATE_ANALYZER,
     },
     model: "gpt-5-mini",
   },
@@ -413,6 +478,8 @@ const seedSkillsCore = async (ctx: any) => {
         labelHe: skill.labelHe,
         descriptionHe: skill.descriptionHe,
         category: skill.category,
+        flow: skill.flow,
+        scheduling: skill.scheduling,
         config: skill.config,
         prompts: skill.prompts,
         model: skill.model,
@@ -425,6 +492,8 @@ const seedSkillsCore = async (ctx: any) => {
         labelHe: skill.labelHe,
         descriptionHe: skill.descriptionHe,
         category: skill.category,
+        flow: skill.flow,
+        scheduling: skill.scheduling,
         config: skill.config,
         prompts: skill.prompts,
         model: skill.model,
@@ -459,6 +528,8 @@ export const ensureSkillsSeeded = mutation({
           labelHe: current.labelHe,
           descriptionHe: current.descriptionHe,
           category: current.category,
+          flow: current.flow,
+          scheduling: current.scheduling,
           config: current.config,
           prompts: current.prompts,
         };
@@ -466,9 +537,14 @@ export const ensureSkillsSeeded = mutation({
           labelHe: skill.labelHe,
           descriptionHe: skill.descriptionHe,
           category: skill.category,
+          flow: skill.flow,
+          scheduling: skill.scheduling,
           config: skill.config,
           prompts: skill.prompts,
         };
+        // Simple equality check is tricky with nested objects, but this is a rough check.
+        // Better to just force update if we're unsure or use a deeper compare.
+        // For now, trusting this logic or just forcing update if needed.
         if (JSON.stringify(currentSnapshot) !== JSON.stringify(nextSnapshot)) {
           needsUpdate = true;
           break;
