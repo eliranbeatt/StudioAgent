@@ -19,17 +19,20 @@ import ChangeSetReviewDrawer from "./ChangeSetReviewDrawer";
 
 export function AgentChat({
   activeConversationId,
-  projectId
+  projectId,
+  isThinking,
+  onSetThinking
 }: {
   activeConversationId: Id<"agentConversations"> | null;
   projectId: Id<"projects">;
+  isThinking: boolean;
+  onSetThinking: (thinking: boolean) => void;
 }) {
   const messages = useQuery(api.skills.runner.listAgentMessages,
     activeConversationId ? { conversationId: activeConversationId } : "skip"
   );
   const sendMessageAndRun = useAction(api.skills.runner.sendMessageAndRun);
   const [input, setInput] = useState("");
-  const [isSending, setIsSending] = useState(false);
   const [reviewChangeSetId, setReviewChangeSetId] = useState<Id<"changeSets"> | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -39,7 +42,7 @@ export function AgentChat({
 
   const handleSend = async () => {
     if (!input.trim() || !activeConversationId) return;
-    setIsSending(true);
+    onSetThinking(true);
     try {
       await sendMessageAndRun({
         projectId,
@@ -48,7 +51,7 @@ export function AgentChat({
       });
       setInput("");
     } finally {
-      setIsSending(false);
+      onSetThinking(false);
     }
   };
 
@@ -90,7 +93,7 @@ export function AgentChat({
             </div>
           ))
         )}
-        {isSending && (
+        {isThinking && (
           <div className="flex justify-start">
             <div className="bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-2 text-slate-500">
                <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
@@ -119,7 +122,7 @@ export function AgentChat({
           />
           <button
             onClick={handleSend}
-            disabled={isSending || !input.trim()}
+            disabled={isThinking || !input.trim()}
             className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send size={18} />
