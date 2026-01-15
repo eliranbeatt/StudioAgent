@@ -5,15 +5,11 @@ import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { CheckCircle, Clock, Copy, FileText, Loader2, Plus } from "lucide-react";
 import { useMemo, useState, use } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import QuotePrintView from "./QuotePrintView";
 
 export default function QuotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const projectId = id as Id<"projects">;
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   const quotes = useQuery(api.quotes.listQuotes, { projectId });
   const selectedQuoteId = useSelectedQuoteId(quotes);
@@ -65,12 +61,6 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
   const [isExporting, setIsExporting] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [logoFileId, setLogoFileId] = useState<Id<"projectFiles"> | "">("");
-
-  const openImprove = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("improve", "1");
-    router.replace(`${pathname}?${params.toString()}`);
-  };
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -137,12 +127,6 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
           <p className="text-gray-500">Generate client-ready quotes with versioning.</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={openImprove}
-            className="px-4 py-2 border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-50"
-          >
-            AI Improve
-          </button>
           <button
             onClick={() => setShowDiff(true)}
             className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"

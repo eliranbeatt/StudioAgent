@@ -10,14 +10,12 @@
 
 import type * as adminHealth from "../adminHealth.js";
 import type * as agent from "../agent.js";
-import type * as agent_improve from "../agent_improve.js";
 import type * as agent_tasks from "../agent_tasks.js";
 import type * as changeSets from "../changeSets.js";
 import type * as customers from "../customers.js";
 import type * as debug_fetch_traces from "../debug_fetch_traces.js";
 import type * as debug_inspect from "../debug_inspect.js";
 import type * as drafts from "../drafts.js";
-import type * as elementImages from "../elementImages.js";
 import type * as elements from "../elements.js";
 import type * as files from "../files.js";
 import type * as filesActions from "../filesActions.js";
@@ -65,14 +63,12 @@ import type {
 declare const fullApi: ApiFromModules<{
   adminHealth: typeof adminHealth;
   agent: typeof agent;
-  agent_improve: typeof agent_improve;
   agent_tasks: typeof agent_tasks;
   changeSets: typeof changeSets;
   customers: typeof customers;
   debug_fetch_traces: typeof debug_fetch_traces;
   debug_inspect: typeof debug_inspect;
   drafts: typeof drafts;
-  elementImages: typeof elementImages;
   elements: typeof elements;
   files: typeof files;
   filesActions: typeof filesActions;

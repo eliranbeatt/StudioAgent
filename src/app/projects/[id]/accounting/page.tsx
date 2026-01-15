@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { use, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -53,9 +52,6 @@ export default function AccountingPage({
 }) {
   const { id } = use(params);
   const projectId = id as Id<"projects">;
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const summary = useQuery(api.financials.getFinancialSummary, { projectId });
   const accounting = useQuery(api.financials.getAccountingView, { projectId });
   const tasksData = useQuery(api.tasks.listForProject, { projectId });
@@ -64,12 +60,6 @@ export default function AccountingPage({
   const ensureElementDraft = useMutation(api.drafts.ensureElementDraft);
   const [tab, setTab] = useState<TabKey>("summary");
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
-
-  const openImprove = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("improve", "1");
-    router.replace(`${pathname}?${params.toString()}`);
-  };
 
   const pendingCount = pendingGraveyard?.length ?? 0;
   const taskOptions: TaskOption[] = tasksData?.tasks ?? [];
@@ -115,12 +105,6 @@ export default function AccountingPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={openImprove}
-            className="text-xs font-semibold uppercase tracking-wider px-3 py-2 rounded-full border border-blue-200 text-blue-700 hover:bg-blue-50"
-          >
-            AI Improve
-          </button>
           <div className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-mono">
             Draft view + reconciliation
           </div>

@@ -4,7 +4,6 @@ import { useMutation, useQuery, useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { use, useCallback, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Task, TaskFilters, TaskViewMode } from "./_components/types";
 import { TasksTopBar } from "./_components/TasksTopBar";
 import { TaskControlsBar } from "./_components/TaskControlsBar";
@@ -20,9 +19,6 @@ import { getTodayDateString } from '../../../../lib/dates'
 export default function TasksPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const projectId = id as Id<"projects">;
-    const router = useRouter();
-    const pathname = usePathname();
-    const searchParams = useSearchParams();
 
     // Queries & Mutations
     const data = useQuery(api.tasks.listForProject, { projectId });
@@ -52,12 +48,6 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
     const [modalSaving, setModalSaving] = useState(false);
     const [showTrelloConfig, setShowTrelloConfig] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
-
-    const openImprove = useCallback(() => {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("improve", "1");
-        router.replace(`${pathname}?${params.toString()}`);
-    }, [pathname, router, searchParams]);
 
     // Raw Data
     const rawTasks = (data?.tasks ?? []) as Task[];
@@ -307,14 +297,6 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
 
     return (
         <div className="p-6 max-w-[1600px] mx-auto text-black h-screen flex flex-col">
-            <div className="flex justify-end mb-4">
-                <button
-                    onClick={openImprove}
-                    className="text-xs font-semibold uppercase tracking-wider px-3 py-2 rounded-full border border-blue-200 text-blue-700 hover:bg-blue-50"
-                >
-                    AI Improve
-                </button>
-            </div>
             <TasksTopBar
                 onEstimate={handleEstimate}
                 isEstimating={isEstimating}

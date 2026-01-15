@@ -70,12 +70,6 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
 
   const selectedElementId = elementParam ?? filtered[0]?.id ?? elements[0]?.id ?? null;
 
-  const openImprove = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("improve", "1");
-    router.replace(`${pathname}?${params.toString()}`);
-  };
-
   useEffect(() => {
     if (!selectedElementId || selectedElementId === elementParam) return;
     const params = new URLSearchParams(searchParams.toString());
@@ -264,12 +258,6 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
                 >
                   <CheckCircle size={12} />
                   {approving ? "Approving..." : "Approve Draft"}
-                </button>
-                <button
-                  onClick={openImprove}
-                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border border-blue-200 text-blue-700 hover:bg-blue-50"
-                >
-                  AI Improve
                 </button>
                 <button
                   onClick={handleDeleteElement}

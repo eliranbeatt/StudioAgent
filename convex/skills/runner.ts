@@ -366,6 +366,23 @@ export const saveRunResult = internalMutation({
       }
     }
 
+    // Auto-create Clarification Session if QuestionsBlock is present
+    const questionsBlock = blocks.find((b: any) => b.type === "QuestionsBlock");
+    if (questionsBlock && questionsBlock.questions && questionsBlock.questions.length > 0) {
+      const run = await ctx.db.get(args.runId);
+      if (run) {
+        await ctx.db.insert("clarificationSessions", {
+          projectId: args.projectId,
+          conversationId: args.conversationId,
+          targetSkillId: run.skillId,
+          questions: questionsBlock.questions,
+          isSatisfied: false,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
     await ctx.db.patch(args.runId, {
       status: "succeeded",
       blocks: blocks,
