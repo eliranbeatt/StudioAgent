@@ -6,6 +6,7 @@ import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
 
 const OPENAI_MODEL = "gpt-4o";
+const SMALL_MODEL = "gpt-5-nano";
 
 // --- Public API (Action) ---
 
@@ -101,10 +102,78 @@ export const sendMessageAndRun = action({
       skillId: args.skillId ?? "CONSULTANT_CHAT",
       params: { source: "user_chat" },
     });
+
+    // 3. Auto-Rename Check
+    const conversation = await ctx.runQuery(internal.skills.runner.getConversation, { conversationId: args.conversationId });
+    if (conversation && conversation.title === "New Session") {
+      const messages = await ctx.runQuery(api.skills.runner.listAgentMessages, { conversationId: args.conversationId });
+      if (messages.length >= 2) {
+        await ctx.runAction(api.skills.runner.generateConversationTitle, {
+          conversationId: args.conversationId,
+          projectId: args.projectId
+        });
+      }
+    }
+  }
+});
+
+export const generateConversationTitle = action({
+  args: {
+    conversationId: v.id("agentConversations"),
+    projectId: v.id("projects")
+  },
+  handler: async (ctx, args) => {
+    const messages = await ctx.runQuery(api.skills.runner.listAgentMessages, { conversationId: args.conversationId });
+    if (messages.length === 0) return;
+
+    // Prepare history text
+    const history = messages.slice(0, 4).map((m: any) => {
+      let content = m.text ?? "";
+      if (m.blocks) {
+        content = m.blocks.map((b: any) => b.markdownHe || b.titleHe || "").join(" ");
+      }
+      return `${m.role}: ${content}`;
+    }).join("\n\n");
+
+    const prompt = `Suggest a very short title (max 5 words) for this conversation. If the language is Hebrew, use Hebrew. Output ONLY the title, no quotes. \n\nConversation:\n${history}`;
+
+    try {
+      const response = await completionWithTracing(ctx, {
+        model: SMALL_MODEL,
+        messages: [{ role: "user", content: prompt }]
+      }, {
+        projectId: args.projectId,
+        conversationId: args.conversationId
+      });
+      
+      const title = (response as any).choices[0].message.content?.trim().replace(/^["']|["']$/g, "");
+      if (title) {
+        await ctx.runMutation(api.skills.runner.renameConversation, {
+          conversationId: args.conversationId,
+          title
+        });
+      }
+    } catch (e) {
+      console.error("Failed to generate title", e);
+    }
   }
 });
 
 // --- Mutations & Queries (Internal) ---
+
+export const renameConversation = mutation({
+  args: { conversationId: v.id("agentConversations"), title: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conversationId, { title: args.title });
+  }
+});
+
+export const getConversation = internalQuery({
+  args: { conversationId: v.id("agentConversations") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.conversationId);
+  }
+});
 
 export const listAgentConversations = query({
   args: { projectId: v.id("projects") },
@@ -218,6 +287,12 @@ export const buildContext = internalQuery({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .take(20);
 
+    const qaPairs = await ctx.db
+      .query("qaPairs")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .take(20);
+
     const scopeElementIds = args.params?.scope?.elementIds;
     const scopedElements = Array.isArray(scopeElementIds)
       ? elements.filter((e: any) => scopeElementIds.includes(e._id))
@@ -244,6 +319,11 @@ export const buildContext = internalQuery({
         title: m.title_he,
         content: m.contentMd_he ?? m.rawText_he,
         summary: m.aiSummary?.summaryMd_he
+      })),
+      qaPairs: qaPairs.map((qa: any) => ({
+        questionHe: qa.question_he,
+        answerHe: qa.answer_he,
+        createdAt: qa.createdAt
       })),
       elements: {
         approved: scopedElements
@@ -469,6 +549,8 @@ export const submitClarifications = mutation({
         updatedAt: Date.now(),
       });
 
+      await persistClarificationAnswers(ctx, fallback, args.answersById);
+
       await ctx.db.insert("agentMessages", {
         conversationId: args.conversationId,
         role: "user",
@@ -486,6 +568,8 @@ export const submitClarifications = mutation({
       updatedAt: Date.now(),
     });
 
+    await persistClarificationAnswers(ctx, session, args.answersById);
+
     // 3. Add User Message to chat
     await ctx.db.insert("agentMessages", {
       conversationId: args.conversationId,
@@ -500,6 +584,62 @@ export const submitClarifications = mutation({
     };
   }
 });
+
+async function persistClarificationAnswers(
+  ctx: any,
+  session: any,
+  answersById: Record<string, string>
+) {
+  const questions = Array.isArray(session?.questions) ? session.questions : [];
+  for (let i = 0; i < questions.length; i++) {
+    const question = questions[i] ?? {};
+    const questionId = question.id ?? `q${i}`;
+    const answer = answersById?.[questionId];
+    if (!answer || !String(answer).trim()) continue;
+
+    const questionText =
+      question.textHe ??
+      question.text_he ??
+      question.question_he ??
+      question.question ??
+      question.labelHe ??
+      question.label ??
+      question.text;
+
+    if (!questionText || !String(questionText).trim()) continue;
+
+    const questionKey = String(questionText).trim().toLowerCase();
+    const existing = await ctx.db
+      .query("qaPairs")
+      .withIndex("by_project_questionKey", (q: any) =>
+        q.eq("projectId", session.projectId).eq("questionKey", questionKey)
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        answer_he: String(answer),
+        source: {
+          sourceType: "CLARIFICATION_BLOCK",
+          conversationId: session.conversationId,
+        },
+      });
+      continue;
+    }
+
+    await ctx.db.insert("qaPairs", {
+      projectId: session.projectId,
+      question_he: String(questionText),
+      questionKey,
+      answer_he: String(answer),
+      source: {
+        sourceType: "CLARIFICATION_BLOCK",
+        conversationId: session.conversationId,
+      },
+      createdAt: Date.now(),
+    });
+  }
+}
 export const saveAgentMessage = internalMutation({
   args: { conversationId: v.id("agentConversations"), blocks: v.any() },
   handler: async (ctx, args) => {
@@ -529,9 +669,17 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
   if (!gateSkill) throw new Error("Clarifications Gate skill not found");
 
   const context = await ctx.runQuery(internal.skills.runner.buildContext, { projectId: args.projectId, params: {} });
+  const clarification = await ctx.runQuery(internal.skills.runner.getLatestClarifications, {
+    projectId: args.projectId,
+    targetSkillId: args.targetSkillId,
+  });
   const gateContext = {
     targetSkillId: args.targetSkillId,
     projectContext: context.projectContext,
+    files: context.files,
+    memories: context.memories,
+    qaPairs: context.qaPairs,
+    priorClarifications: clarification,
     currentState: {
       elements: context.elements,
       tasks: context.tasks,
@@ -549,11 +697,37 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
   // Store Session
   const questionsBlock = blocks.find((b: any) => b.type === "QuestionsBlock");
   if (questionsBlock && questionsBlock.questions) {
+    const filteredQuestions = filterUnansweredQuestions(questionsBlock.questions, {
+      qaPairs: context.qaPairs,
+      priorClarifications: clarification
+    });
+
+    if (filteredQuestions.length === 0) {
+      await ctx.db.insert("clarificationSessions", {
+        projectId: args.projectId,
+        conversationId: args.conversationId,
+        targetSkillId: args.targetSkillId,
+        questions: [],
+        answers: {},
+        isSatisfied: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      return await ctx.runAction(api.skills.runner.runSkill, {
+        projectId: args.projectId,
+        conversationId: args.conversationId,
+        skillId: args.targetSkillId,
+        params: { source: "gate_auto_skip" }
+      });
+    }
+
+    questionsBlock.questions = filteredQuestions;
     await ctx.runMutation(internal.skills.runner.createClarificationSession, {
       projectId: args.projectId,
       conversationId: args.conversationId,
       targetSkillId: args.targetSkillId,
-      questions: questionsBlock.questions
+      questions: filteredQuestions
     });
   }
 
@@ -823,6 +997,56 @@ function normalizeBlockFields(block: any) {
     });
   }
   return normalized;
+}
+
+function filterUnansweredQuestions(
+  questions: any[],
+  context: { qaPairs?: Array<{ questionHe?: string; answerHe?: string }>; priorClarifications?: any }
+) {
+  const normalizedAnswered = new Set<string>();
+  const qaPairs = Array.isArray(context.qaPairs) ? context.qaPairs : [];
+  for (const qa of qaPairs) {
+    const key = normalizeQuestionKey(qa?.questionHe);
+    if (key) normalizedAnswered.add(key);
+  }
+
+  const priorQuestions = context.priorClarifications?.questions ?? [];
+  const priorAnswers = context.priorClarifications?.answers ?? {};
+  const answeredIds = new Set<string>();
+  for (let i = 0; i < priorQuestions.length; i++) {
+    const q = priorQuestions[i] ?? {};
+    const qid = q.id ?? `q${i}`;
+    const answer = priorAnswers?.[qid];
+    if (answer && String(answer).trim()) answeredIds.add(String(qid));
+
+    const key = normalizeQuestionKey(
+      q.textHe ?? q.text_he ?? q.question_he ?? q.question ?? q.labelHe ?? q.label ?? q.text
+    );
+    if (key && answer && String(answer).trim()) normalizedAnswered.add(key);
+  }
+
+  return (questions ?? []).filter((question: any, index: number) => {
+    if (!question) return false;
+    const questionId = String(question.id ?? `q${index}`);
+    if (answeredIds.has(questionId)) return false;
+
+    const key = normalizeQuestionKey(
+      question.textHe ??
+        question.text_he ??
+        question.question_he ??
+        question.question ??
+        question.labelHe ??
+        question.label ??
+        question.text
+    );
+    if (key && normalizedAnswered.has(key)) return false;
+    return true;
+  });
+}
+
+function normalizeQuestionKey(text?: string) {
+  if (!text) return "";
+  return String(text).trim().toLowerCase();
 }
 
 function tryParseJson(text: string) {

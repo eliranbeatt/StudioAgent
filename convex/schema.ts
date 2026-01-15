@@ -1370,7 +1370,9 @@ export default defineSchema({
         v.literal("CLARIFICATION_BLOCK"),
         v.literal("CHAT_PARSE")
       ),
-      conversationId: v.optional(v.id("conversations")),
+      conversationId: v.optional(
+        v.union(v.id("conversations"), v.id("agentConversations"), v.string())
+      ),
       messageId: v.optional(v.id("conversationMessages")),
     }),
     createdAt: v.number(),

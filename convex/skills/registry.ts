@@ -154,7 +154,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       systemHeaderRef: SYSTEM_HEADER_REF,
       promptAddon: SKILL_SYSTEM_ADDONS.TASKS_BUILDER_FULL,
     },
-    model: "gpt-5-mini",
+    model: "gpt-5.2",
   },
   {
     skillId: "ACCOUNTING_BUILDER_FULL",
@@ -173,7 +173,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       systemHeaderRef: SYSTEM_HEADER_REF,
       promptAddon: SKILL_SYSTEM_ADDONS.ACCOUNTING_BUILDER_FULL,
     },
-    model: "gpt-5-mini",
+    model: "gpt-5.2",
   },
   {
     skillId: "QUOTE_WRITER_FULL",
@@ -461,6 +461,24 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     prompts: {
       systemHeaderRef: SYSTEM_HEADER_REF,
       promptAddon: SKILL_SYSTEM_ADDONS.BOM_DUPLICATE_ANALYZER,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "BUILD_PLANNER",
+    labelHe: "תכנון ביצוע (ראשי)",
+    descriptionHe: "ניתוב לתכנון אלמנטים או משימות",
+    category: "ops",
+    flow: "planning",
+    scheduling: { suggestAtStage: ["planning"] },
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.BUILD_PLANNER,
     },
     model: "gpt-5-mini",
   },

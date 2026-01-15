@@ -62,7 +62,9 @@ export const upsertQAPairs = mutation({
     question_he: v.string(),
     answer_he: v.string(),
     sourceType: v.union(v.literal("CLARIFICATION_BLOCK"), v.literal("CHAT_PARSE")),
-    conversationId: v.optional(v.id("conversations")),
+    conversationId: v.optional(
+      v.union(v.id("conversations"), v.id("agentConversations"), v.string())
+    ),
     messageId: v.optional(v.id("conversationMessages")),
   },
   handler: async (ctx, args) => {
