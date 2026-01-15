@@ -729,12 +729,10 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
     }
 
     questionsBlock.questions = filteredQuestions;
-    if (!questionsBlock.continueAction?.payload?.targetSkillId) {
-      questionsBlock.continueAction = {
-        labelHe: questionsBlock.continueAction?.labelHe ?? "המשך",
-        payload: { targetSkillId: args.targetSkillId }
-      };
-    }
+    questionsBlock.continueAction = {
+      labelHe: questionsBlock.continueAction?.labelHe ?? "המשך",
+      payload: { targetSkillId: args.targetSkillId }
+    };
     if (!questionsBlock.followupAction) {
       questionsBlock.followupAction = { labelHe: "שאלו עוד שאלות" };
     }

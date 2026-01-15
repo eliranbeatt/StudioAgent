@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useAction } from "convex/react";
 import { api } from "../../../../../../../convex/_generated/api";
 import { Id } from "../../../../../../../convex/_generated/dataModel";
@@ -28,6 +28,12 @@ export function QuestionsBlock({
   const continueLabel = block.continueAction?.labelHe ?? "Continue";
   const followupLabel = block.followupAction?.labelHe ?? "Ask more questions";
 
+  useEffect(() => {
+    if (!targetSkillId && typeof block?.targetSkillId === "string") {
+      setTargetSkillId(block.targetSkillId);
+    }
+  }, [block?.targetSkillId, targetSkillId]);
+
   const handleToggleOption = (qid: string, option: string) => {
     setSelections((prev) => {
       const current = prev[qid] ?? [];
@@ -51,11 +57,13 @@ export function QuestionsBlock({
     try {
       const result = await submit({ conversationId, answersById: answers });
       setSubmitted(true);
-      const payloadTarget = block.continueAction?.payload?.targetSkillId ?? block.targetSkillId;
-      if (payloadTarget && typeof payloadTarget === "string") {
-        setTargetSkillId(payloadTarget);
-      } else if (result && result.targetSkillId) {
+      if (result && result.targetSkillId) {
         setTargetSkillId(result.targetSkillId);
+      } else {
+        const payloadTarget = block.continueAction?.payload?.targetSkillId ?? block.targetSkillId;
+        if (payloadTarget && typeof payloadTarget === "string") {
+          setTargetSkillId(payloadTarget);
+        }
       }
     } catch (e) {
       console.error(e);
