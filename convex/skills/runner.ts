@@ -90,7 +90,8 @@ export const sendMessageAndRun = action({
     projectId: v.id("projects"),
     conversationId: v.id("agentConversations"),
     text: v.string(),
-    skillId: v.optional(v.string())
+    skillId: v.optional(v.string()),
+    params: v.optional(v.any())
   },
   handler: async (ctx, args) => {
     // 1. Save User Message
@@ -104,7 +105,7 @@ export const sendMessageAndRun = action({
       projectId: args.projectId,
       conversationId: args.conversationId,
       skillId: args.skillId ?? "CONSULTANT_CHAT",
-      params: { source: "user_chat" },
+      params: args.params ? { ...args.params, source: "user_chat" } : { source: "user_chat" },
     });
 
     // 3. Auto-Rename Check
@@ -149,7 +150,7 @@ export const generateConversationTitle = action({
         projectId: args.projectId,
         conversationId: args.conversationId
       });
-      
+
       const title = (response as any).choices[0].message.content?.trim().replace(/^["']|["']$/g, "");
       if (title) {
         await ctx.runMutation(api.skills.runner.renameConversation, {
@@ -1046,13 +1047,13 @@ function filterUnansweredQuestions(
 
     const key = normalizeQuestionKey(
       question.topicKey ??
-        question.textHe ??
-        question.text_he ??
-        question.question_he ??
-        question.question ??
-        question.labelHe ??
-        question.label ??
-        question.text
+      question.textHe ??
+      question.text_he ??
+      question.question_he ??
+      question.question ??
+      question.labelHe ??
+      question.label ??
+      question.text
     );
     if (key && normalizedAnswered.has(key)) return false;
     return true;

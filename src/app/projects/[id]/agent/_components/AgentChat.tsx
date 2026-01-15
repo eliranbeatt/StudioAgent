@@ -191,7 +191,8 @@ function BlockRenderer({
             projectId,
             conversationId,
             text,
-            skillId: typeof skillId === "string" ? skillId : undefined
+            skillId: typeof skillId === "string" ? skillId : undefined,
+            params: payload?.params
           });
         }}
       />

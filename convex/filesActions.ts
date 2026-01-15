@@ -1,7 +1,7 @@
 "use node";
 
 import { action } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { completionWithTracing } from "./lib/llm";
 import OpenAI from "openai";
@@ -38,6 +38,13 @@ export const saveUploadedFile = action({
             summary: extractedInfo?.summary ?? summary ?? undefined,
             extractedInfo: extractedInfo ?? undefined,
         });
+        const knowledgeSnippet = extractedInfo?.summary ?? summary;
+        if (knowledgeSnippet) {
+            await ctx.runAction(api.memory.appendRunningMemory, {
+                projectId: args.projectId,
+                userText: `Uploaded file: ${args.fileName}\nSummary: ${knowledgeSnippet}`,
+            });
+        }
         return { fileId };
     },
 });

@@ -10,6 +10,7 @@ import {
   FileText,
   Layers,
   BrainCircuit,
+  BookOpen,
 } from "lucide-react";
 import { useEffect } from "react";
 import { useQuery } from "convex/react";
@@ -42,6 +43,7 @@ export default function ProjectLayout({
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },
     { name: "Quote", href: `/projects/${projectId}/quote`, icon: FileText },
+    { name: "Knowledge", href: `/projects/${projectId}/knowledge`, icon: BookOpen },
   ];
 
   if (!resolved) {

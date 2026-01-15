@@ -40,9 +40,10 @@ export default function ChangeSetReviewDrawer({
   // Initialize selection when data loads
   useEffect(() => {
     if (changeSet?.ops && selectedIndices.size === 0) {
-      const allIndices = changeSet.ops.map((_, i) => i);
-      const appliedIndices = changeSet.appliedOpIndices ?? [];
-      const unapplied = new Set(allIndices.filter(i => !appliedIndices.includes(i)));
+      const ops = changeSet.ops as any[];
+      const allIndices = ops.map((_, i) => i);
+      const appliedIndices = (changeSet.appliedOpIndices ?? []) as number[];
+      const unapplied = new Set<number>(allIndices.filter(i => !appliedIndices.includes(i)));
       setSelectedIndices(unapplied);
     }
   }, [changeSet?.ops]);

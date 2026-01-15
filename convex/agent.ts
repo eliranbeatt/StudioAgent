@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { searchWeb } from "./lib/webSearch";
-import { completionWithTracing } from "./lib/llm";
+import { completionWithTracing, isUnsupportedTemperatureError } from "./lib/llm";
 import OpenAI from "openai";
 
 const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV7";

@@ -223,4 +223,13 @@ export async function completionWithTracing(
     }
 }
 
+export function isUnsupportedTemperatureError(error: any): boolean {
+  if (!error) return false;
+  const msg = (error.message || "").toLowerCase();
+  return (
+    msg.includes("temperature") && 
+    (msg.includes("not supported") || msg.includes("unsupported"))
+  );
+}
+
 

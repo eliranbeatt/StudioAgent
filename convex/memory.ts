@@ -1,6 +1,6 @@
 import { action, internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import OpenAI from "openai";
 
 // ---------------------------------------------------------
@@ -31,6 +31,7 @@ export const saveRunningMemory = internalMutation({
   args: {
     projectId: v.id("projects"),
     contentMd_he: v.string(),
+    autoAppendEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     // Find existing running memory doc
@@ -42,6 +43,7 @@ export const saveRunningMemory = internalMutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         contentMd_he: args.contentMd_he,
+        autoAppendEnabled: args.autoAppendEnabled ?? existing.autoAppendEnabled,
         updatedAt: Date.now(),
       });
     } else {
@@ -49,6 +51,7 @@ export const saveRunningMemory = internalMutation({
         projectId: args.projectId,
         kind: "RUNNING_MEMORY",
         contentMd_he: args.contentMd_he,
+        autoAppendEnabled: args.autoAppendEnabled ?? true,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -89,10 +92,14 @@ export const upsertQAPairs = mutation({
                 messageId: args.messageId,
             }
         });
+        await ctx.scheduler.runAfter(0, api.memory.appendRunningMemory, {
+          projectId: args.projectId,
+          userText: `Q: ${args.question_he}\nA: ${args.answer_he}`,
+        });
         return existing._id;
     }
 
-    return await ctx.db.insert("qaPairs", {
+    const qaId = await ctx.db.insert("qaPairs", {
         projectId: args.projectId,
         question_he: args.question_he,
         questionKey: key,
@@ -104,6 +111,11 @@ export const upsertQAPairs = mutation({
         },
         createdAt: Date.now(),
     });
+    await ctx.scheduler.runAfter(0, api.memory.appendRunningMemory, {
+      projectId: args.projectId,
+      userText: `Q: ${args.question_he}\nA: ${args.answer_he}`,
+    });
+    return qaId;
   },
 });
 
@@ -186,6 +198,9 @@ export const appendRunningMemory = action({
      
      // 1. Get current memory
      const currentDoc = await ctx.runQuery(internal.memory.getRunningMemory, { projectId: args.projectId });
+     if (currentDoc && currentDoc.autoAppendEnabled === false) {
+        return;
+     }
      const currentText = currentDoc?.contentMd_he || "";
 
      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -238,6 +253,63 @@ export const updateQADigest = action({
   },
 });
 
+export const regenerateRunningMemory = action({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    if (!process.env.OPENAI_API_KEY) return { ok: false };
+
+    const [files, qaPairs] = await Promise.all([
+      ctx.runQuery(api.files.listProjectFiles, { projectId: args.projectId }),
+      ctx.runQuery(api.memory.listQAPairs, { projectId: args.projectId }),
+    ]);
+
+    const fileHighlights = (files ?? [])
+      .map((file: any) => {
+        const summary = file.summary ?? file.extractedInfo?.summary ?? "";
+        if (!summary) return "";
+        return `- ${file.fileName}: ${summary}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    const qaText = (qaPairs ?? [])
+      .map((qa: any) => `Q: ${qa.question_he}\nA: ${qa.answer_he}`)
+      .join("\n---\n");
+
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const model = "gpt-4o-mini";
+
+    const completion = await client.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Create a concise Current Knowledge document in markdown bullet points. Keep it short, factual, and structured. Use the same language as the inputs.",
+        },
+        {
+          role: "user",
+          content: [
+            "Project files:",
+            fileHighlights || "No file summaries available.",
+            "",
+            "Q&A pairs:",
+            qaText || "No Q&A pairs available.",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    const newText = completion.choices[0]?.message?.content ?? "";
+    await ctx.runMutation(internal.memory.saveRunningMemory, {
+      projectId: args.projectId,
+      contentMd_he: newText,
+    });
+
+    return { ok: true };
+  },
+});
+
 // ---------------------------------------------------------
 // Helpers (Queries)
 // ---------------------------------------------------------
@@ -259,6 +331,65 @@ export const getRunningMemory = query({
     }
 });
 
+export const updateRunningMemory = mutation({
+  args: {
+    projectId: v.id("projects"),
+    contentMd_he: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "RUNNING_MEMORY"))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        contentMd_he: args.contentMd_he,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("memoryDocs", {
+        projectId: args.projectId,
+        kind: "RUNNING_MEMORY",
+        contentMd_he: args.contentMd_he,
+        autoAppendEnabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const setRunningMemoryAutoAppend = mutation({
+  args: {
+    projectId: v.id("projects"),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "RUNNING_MEMORY"))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        autoAppendEnabled: args.enabled,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    await ctx.db.insert("memoryDocs", {
+      projectId: args.projectId,
+      kind: "RUNNING_MEMORY",
+      contentMd_he: "",
+      autoAppendEnabled: args.enabled,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const getRecentQAPairs = query({
     args: { projectId: v.id("projects") },
     handler: async (ctx, args) => {
@@ -268,4 +399,15 @@ export const getRecentQAPairs = query({
             .order("desc")
             .take(20);
     }
+});
+
+export const listQAPairs = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("qaPairs")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .collect();
+  },
 });
