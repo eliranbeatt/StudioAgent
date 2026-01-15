@@ -1,0 +1,272 @@
+Got it. Based on your **current output domains** (phases/steps, bringList, safety, checkpoints, quickFixKit, approvals, assumptions) + your stack (Next.js + Convex + ChangeSet pattern), here’s the **clean “do it properly” dev plan** and the **most convenient UI + data layout**.
+
+---
+
+## What will be most convenient (recommended architecture)
+
+### ✅ Canonical truth
+
+* **Tasks remain canonical** for planning, labor/material links, pricing, assignments, history.
+* **Runbook is a separate “Execution artifact”** optimized for install-day flow (sequence + big checkmarks + approvals), but can *link to tasks*.
+
+### ✅ Two levels (both)
+
+1. **Element-level Runbook Template**
+   Stored on the element. Reusable instructions: how to pack/install/QA that element.
+2. **Project-level Runbook Instance (Install Day)**
+   A snapshot created for a specific install date/version, merged from:
+
+   * element templates
+   * project constraints (site access, truck, crew)
+   * selected elements for this run
+
+This gives you: reusability + real install-day usability.
+
+---
+
+## UI solution (best UX with minimal navigation bloat)
+
+### A) Tasks tab → “Install Mode” view (MVP winner)
+
+Add a toggle inside Tasks:
+
+* **Planning** (regular tasks)
+* **Install Mode** (runbook execution UI)
+
+Install Mode layout:
+
+* Left: **Phases** (accordion) with progress bar (done/total)
+* Center: **Steps list** with BIG checkbox + “role” + duration + notes
+* Right rail: sticky panels:
+
+  * **Bring List** (checkboxes + “convert to materials/shopping”)
+  * **Safety** (read-only, with “acknowledge”)
+  * **Checkpoints** (special steps requiring PM sign-off)
+  * **Quick Fix Kit**
+  * **Assumptions** (yellow warning card)
+
+Actions:
+
+* “Generate Runbook” (from skill)
+* “Save as Runbook Instance”
+* “Convert steps → Tasks” (optional, selected steps)
+* “Print / Export PDF”
+* “Start Execution” (locks ordering, enables timestamps)
+
+### B) Element page → “Install Runbook” panel (template)
+
+On each element:
+
+* “Generate Template” (from skill scoped to element)
+* Editable phases/steps
+* “Add step to Tasks” button (only if you want)
+
+**Later:** promote to a dedicated “Install” tab if it becomes daily use.
+
+---
+
+## Data model (Convex) — how to represent your output domains cleanly
+
+### 1) `runbooks`
+
+* `projectId`
+* `scope`: `"project" | "element"`
+* `elementId?`
+* `titleHe`
+* `summaryHe`
+* `status`: `"draft" | "active" | "archived"`
+* `version` (int)
+* `createdBy`, `createdAt`
+* `source`: `"ai" | "manual" | "mixed"`
+
+### 2) `runbookItems` (the execution checklist rows)
+
+Each “sequenceStepsHe” becomes items, plus checkpoints can be items too:
+
+* `runbookId`
+* `phaseId` (or `phaseIndex`)
+* `orderIndex`
+* `kind`: `"step" | "checkpoint" | "approval" | "note"`
+* `textHe`
+* `responsibleHe`
+* `durationMins?`
+* `linkedTaskId?`
+* `linkedElementId?`
+* `status`: `"todo" | "doing" | "done" | "blocked"`
+* `doneAt?`, `doneBy?`
+* `comment?`
+* `attachments?` (photos, PDFs)
+
+### 3) `runbookLists` (bring/safety/kit/checkpoints)
+
+Option A (simpler): store them in `runbooks` as arrays (bringListHe וכו’).
+Option B (better UX): normalize each list as checklist items:
+
+* `runbookListItems`: `{ runbookId, listType, textHe, checked, linkedMaterialLineId?, linkedShoppingItemId? }`
+  Where `listType` ∈ `bringList | safety | quickFixKit | checkpoints`.
+
+**My recommendation:**
+
+* Steps → `runbookItems` (normalized, trackable, timestamps)
+* Lists → `runbookListItems` (so you can check “brought”, “safety acknowledged”, etc.)
+
+### 4) Approvals
+
+Your `safetyApprovalsHe` becomes structured:
+
+* `approvalsRequired`: boolean
+* `approvalStages`: `["preDepart", "postInstallQA", "preTeardown"]`
+* `approvalRecords`: `{ stage, signedBy, signedAt, note }`
+
+---
+
+## Skill contract improvements (small changes that unlock great UI)
+
+Your current block is good, but add **stable IDs + optional metadata**:
+
+* For each phase: `phaseId`, `phaseOrder`
+* For each step: `stepId`, `durationMins?`, `role?`, `isCheckpoint?`, `requiresApprovalStage?`
+
+This prevents UI diff chaos on regeneration and enables partial merges.
+
+---
+
+## Dev plan (phased, production-grade)
+
+### Phase 0 — Contract & validation (1 day)
+
+1. Update SHARED_HEADER RunbookBlock schema:
+
+   * add `phaseId`, `stepId`, optional `durationMins`, optional `role`, optional flags
+2. Add Zod validation + normalization layer:
+
+   * guarantee arrays exist
+   * trim text
+   * auto-generate IDs if missing (hash of text + index)
+
+Deliverable: backend accepts “clean runbook” reliably.
+
+---
+
+### Phase 1 — Backend storage + versioning (core)
+
+1. Convex tables:
+
+   * `runbooks`, `runbookItems`, `runbookListItems`
+2. Mutations:
+
+   * `createRunbookFromBlocks(projectId, scope, elementId?, blocks)`
+   * `setActiveRunbook(projectId, runbookId)`
+   * `toggleRunbookItemDone(itemId)`
+   * `updateRunbookItemText(itemId, textHe)` (for onsite edits)
+   * `signRunbookApproval(runbookId, stage)`
+3. Queries:
+
+   * `getActiveRunbook(projectId)`
+   * `getRunbook(runbookId)` (with items grouped by phase)
+4. Versioning:
+
+   * every regeneration creates a new version (don’t overwrite)
+   * “Set Active” chooses which is used on install day
+
+Deliverable: runbooks exist as first-class entities.
+
+---
+
+### Phase 2 — UI: Install Mode inside Tasks tab (highest value)
+
+1. Add Tasks tab toggle: Planning / Install Mode
+2. Install Mode components:
+
+   * `RunbookPhasesAccordion`
+   * `RunbookStepRow` (big checkbox + role + duration + comments)
+   * `RunbookRightRail` (Bring/Safety/Kit/Assumptions)
+   * `ApprovalBar` (preDepart / postInstallQA / preTeardown)
+3. Editing:
+
+   * inline edit step text
+   * add quick “+ step” under a phase (manual)
+4. Print/export:
+
+   * basic HTML print layout first
+   * later PDF generation (server-side)
+
+Deliverable: you can actually run an install day from the app.
+
+---
+
+### Phase 3 — Element templates + merge to project runbook
+
+1. Element page: “Install Runbook Template”
+
+   * generate + edit + save
+2. Project runbook generator:
+
+   * “Build Install Day Runbook” modal:
+
+     * select elements
+     * select install date
+     * crew size
+   * backend merges templates (and de-dupes bring list)
+3. Links:
+
+   * each step may reference `elementId` so the UI can show “which element this step belongs to”
+
+Deliverable: reuse + scale across projects.
+
+---
+
+### Phase 4 — Connection to Tasks / Accounting (optional but powerful)
+
+Add two explicit actions:
+
+1. **Convert selected runbook steps → tasks**
+
+   * creates tasks tagged `install`
+   * duration mapping (step duration → task estimate)
+2. **Bring list → materials/shopping**
+
+   * “Add item as MaterialLine”
+   * or “Send to Shopping Planner skill” (webSearch-enabled)
+
+This keeps your current INSTALL_RUNBOOK_BUILDER tool-free, but still lets you get supplier links via the Shopping skill.
+
+---
+
+## Tooling / skills orchestration (how it should run)
+
+* INSTALL_RUNBOOK_BUILDER:
+
+  * default: outputs blocks only (your current behavior ✅)
+* UI button “Save as Runbook”:
+
+  * creates `runbooks + runbookItems + runbookListItems`
+* Optional follow-up skill (later):
+
+  * `INSTALL_RUNBOOK_TO_TASKS_SUGGESTER` → produces a ChangeSet for tasks only
+* Optional web step:
+
+  * reuse your Shopping Planner skill for supplier links (don’t bake web into runbook builder)
+
+---
+
+## Testing checklist (must-have)
+
+* Schema validation: reject malformed blocks safely
+* Deterministic ordering: phaseIndex/orderIndex stable
+* Race-safe checkmarks: toggle done is idempotent
+* Offline-ish usability: optimistic UI for checkmarks
+* Regeneration diff: new version doesn’t delete old execution history
+* Permission rules: only PM can sign approvals, crew can check steps
+
+---
+
+## Bottom line recommendation
+
+* **Do NOT** cram runbook into tasks as plain tasks (you’ll lose install-day UX).
+* **Do NOT** make it only a project blob (you’ll lose reuse).
+* **Do THIS:**
+
+  * Runbook as entity (template on element + instance on project)
+  * Tasks remain canonical
+  * Install Mode view inside Tasks tab first (best convenience/ROI)

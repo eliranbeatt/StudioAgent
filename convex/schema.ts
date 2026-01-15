@@ -51,6 +51,32 @@ const StudioWorkType = v.union(
   v.literal("management")
 );
 
+const runbookScope = v.union(v.literal("project"), v.literal("element"));
+const runbookStatus = v.union(v.literal("draft"), v.literal("active"), v.literal("archived"));
+const runbookSource = v.union(v.literal("ai"), v.literal("manual"), v.literal("mixed"));
+
+const runbookItemKind = v.union(
+  v.literal("step"),
+  v.literal("checkpoint"),
+  v.literal("approval"),
+  v.literal("note")
+);
+
+const runbookItemStatus = v.union(
+  v.literal("todo"),
+  v.literal("doing"),
+  v.literal("done"),
+  v.literal("blocked")
+);
+
+const runbookListType = v.union(
+  v.literal("bringList"),
+  v.literal("safety"),
+  v.literal("quickFixKit"),
+  v.literal("checkpoints"),
+  v.literal("assumptions")
+);
+
 const TaskChecklistItem = v.object({
   id: v.string(),
   title: v.string(),
@@ -252,6 +278,81 @@ export default defineSchema({
     .index("by_project_dueDate", ["projectId", "dueDate"])
     .index("by_project_workType", ["projectId", "workType"])
     .index("by_project_plannedStart", ["projectId", "plannedStartDate"]),
+
+  // Runbooks (install-day execution artifacts + element templates)
+  runbooks: defineTable({
+    projectId: v.id("projects"),
+    scope: runbookScope,
+    elementId: v.optional(v.id("elements")),
+    titleHe: v.string(),
+    summaryHe: v.optional(v.string()),
+    status: runbookStatus,
+    version: v.number(),
+    source: runbookSource,
+
+    // Execution state
+    executionStartedAt: v.optional(v.number()),
+    orderingLocked: v.optional(v.boolean()),
+
+    // Approvals
+    approvalsRequired: v.optional(v.boolean()),
+    approvalStages: v.optional(v.array(v.string())),
+    approvalRecords: v.optional(v.array(v.object({
+      stage: v.string(),
+      signedBy: v.string(),
+      signedAt: v.number(),
+      note: v.optional(v.string()),
+    }))),
+
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_scope", ["projectId", "scope"])
+    .index("by_project_scope_status", ["projectId", "scope", "status"])
+    .index("by_project_element", ["projectId", "elementId"]),
+
+  runbookItems: defineTable({
+    projectId: v.id("projects"),
+    runbookId: v.id("runbooks"),
+    phaseId: v.string(),
+    phaseOrder: v.number(),
+    phaseNameHe: v.string(),
+    orderIndex: v.number(),
+    kind: runbookItemKind,
+    textHe: v.string(),
+    responsibleHe: v.optional(v.string()),
+    durationMins: v.optional(v.number()),
+    linkedTaskId: v.optional(v.id("tasks")),
+    linkedElementId: v.optional(v.id("elements")),
+    status: runbookItemStatus,
+    doneAt: v.optional(v.number()),
+    doneBy: v.optional(v.string()),
+    comment: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_runbook", ["runbookId"])
+    .index("by_runbook_phase", ["runbookId", "phaseOrder"])
+    .index("by_project", ["projectId"]),
+
+  runbookListItems: defineTable({
+    projectId: v.id("projects"),
+    runbookId: v.id("runbooks"),
+    listType: runbookListType,
+    orderIndex: v.number(),
+    textHe: v.string(),
+    checked: v.boolean(),
+    checkedAt: v.optional(v.number()),
+    checkedBy: v.optional(v.string()),
+    linkedMaterialLineId: v.optional(v.id("materialLines")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_runbook", ["runbookId"])
+    .index("by_runbook_type", ["runbookId", "listType"])
+    .index("by_project", ["projectId"]),
 
   // Task Revisions (Draft Patch Layer)
   taskRevisions: defineTable({

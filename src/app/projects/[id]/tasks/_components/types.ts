@@ -69,7 +69,7 @@ export type Task = {
   revisionNumber?: number;
 };
 
-export type TaskViewMode = "kanban" | "gantt" | "elements" | "studio";
+export type TaskViewMode = "kanban" | "gantt" | "elements" | "studio" | "install";
 
 export type TaskFilters = {
     assignee?: string;

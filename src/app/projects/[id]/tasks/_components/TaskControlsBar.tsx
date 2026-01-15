@@ -1,4 +1,4 @@
-import { KanbanSquare, GanttChart, Layers, Grid, Search, Filter, X } from "lucide-react";
+import { KanbanSquare, GanttChart, Layers, Grid, CheckSquare, Search, Filter, X } from "lucide-react";
 import { TaskViewMode, TaskFilters } from "./types";
 
 type TaskControlsBarProps = {
@@ -36,6 +36,7 @@ export function TaskControlsBar({
             <ViewButton active={view === "gantt"} onClick={() => setView("gantt")} icon={GanttChart} label="Gantt" />
             <ViewButton active={view === "elements"} onClick={() => setView("elements")} icon={Layers} label="Elements" />
             <ViewButton active={view === "studio"} onClick={() => setView("studio")} icon={Grid} label="Studio" />
+          <ViewButton active={view === "install"} onClick={() => setView("install")} icon={CheckSquare} label="Install" />
         </div>
 
         {/* Search & Filters */}

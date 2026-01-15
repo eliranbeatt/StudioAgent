@@ -6,6 +6,8 @@ export function RunbookBlock({ block }: { block: any }) {
   const bringList = block.bringListHe ?? block.bringList_he ?? [];
   const safety = block.safetyHe ?? block.safety_he ?? [];
   const checkpoints = block.checkpointsHe ?? block.checkpoints_he ?? [];
+  const quickFixKit = block.quickFixKitHe ?? block.quickFixKit_he ?? [];
+  const assumptions = block.assumptionsHe ?? block.assumptions_he ?? [];
 
   return (
     <div className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm space-y-3" dir="auto">
@@ -53,6 +55,20 @@ export function RunbookBlock({ block }: { block: any }) {
       {checkpoints.length > 0 && (
         <div className="text-[11px] text-indigo-800 border-t border-indigo-100 pt-2">
           {checkpoints.map((item: string, idx: number) => (
+            <div key={idx}>- {item}</div>
+          ))}
+        </div>
+      )}
+      {quickFixKit.length > 0 && (
+        <div className="text-[11px] text-indigo-800 border-t border-indigo-100 pt-2">
+          {quickFixKit.map((item: string, idx: number) => (
+            <div key={idx}>- {item}</div>
+          ))}
+        </div>
+      )}
+      {assumptions.length > 0 && (
+        <div className="text-[11px] text-indigo-800 border-t border-indigo-100 pt-2">
+          {assumptions.map((item: string, idx: number) => (
             <div key={idx}>- {item}</div>
           ))}
         </div>

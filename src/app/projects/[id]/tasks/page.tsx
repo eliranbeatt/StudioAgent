@@ -12,6 +12,7 @@ import { KanbanBoard } from "./_components/KanbanBoard";
 import { GanttView } from "./_components/GanttView";
 import { StudioBoard } from "./_components/StudioBoard";
 import { ElementsGroupedList } from "./_components/ElementsGroupedList";
+import { InstallModeView } from "./_components/InstallModeView";
 import { TaskModal } from "./_components/TaskModal";
 import { TrelloConfigModal } from "./_components/TrelloConfigModal";
 
@@ -380,6 +381,12 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                             onTaskClick={setSelectedTaskId}
                             onChecklistToggle={handleChecklistToggle}
                         />
+                    </div>
+                )}
+
+                {view === "install" && (
+                    <div className="h-full overflow-y-auto">
+                        <InstallModeView projectId={projectId} />
                     </div>
                 )}
             </div>

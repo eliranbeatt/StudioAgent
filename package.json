@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "codegen": "convex codegen",
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "prebuild": "node -e \"if (!process.env.VERCEL) { require('child_process').execSync('npm run codegen', {stdio: 'inherit'}) }\"",
     "build": "next build",
     "start": "next start",

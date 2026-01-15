@@ -120,7 +120,7 @@ Supported blocks (use what fits):
 - ShoppingPlanBlock: { type:"ShoppingPlanBlock", titleHe, objective, trips:[...], totals:{...}, assumptionsHe:[...] }
 - PrintQaBlock: { type:"PrintQaBlock", overallStatus, issues:[...], questionsHe:[...], vendorNotesHe:[...] }
 - ReceiptBlock: { type:"ReceiptBlock", extracted:{...}, mappingSuggestions:[...], questionsHe:[...] }
-- RunbookBlock: { type:"RunbookBlock", titleHe, phases:[...], bringListHe:[...], safetyHe:[...], checkpointsHe:[...] }
+- RunbookBlock: { type:"RunbookBlock", titleHe, summaryHe?, phases:[...], bringListHe:[...], safetyHe:[...], checkpointsHe:[...], quickFixKitHe?:[...], assumptionsHe?:[...], approvalsRequired?:boolean, approvalStages?:["preDepart"|"postInstallQA"|"preTeardown"|...] }
 - DailyPlanBlock: { type:"DailyPlanBlock", date, prioritiesHe:[...], scheduleHe:[...], blockersHe:[...], shoppingHe:[...] }`;
 
 export const SKILL_SYSTEM_ADDONS = {

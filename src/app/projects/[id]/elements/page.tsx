@@ -21,6 +21,7 @@ import {
   X,
   Plus,
 } from "lucide-react";
+import { ElementRunbookTemplatePanel } from "./ElementRunbookTemplatePanel";
 
 type SnapshotEntity = {
   id?: string;
@@ -390,6 +391,14 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
                   ))}
                 </div>
               )}
+            </SectionCard>
+
+            <SectionCard title="Install Runbook Template" icon={ClipboardList}>
+              <ElementRunbookTemplatePanel
+                projectId={projectId}
+                elementId={composite.element.id as Id<"elements">}
+                elementTitle={composite.element.title}
+              />
             </SectionCard>
 
             <SectionCard title="Draft Snapshot" icon={StickyNote}>

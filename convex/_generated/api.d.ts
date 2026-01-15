@@ -16,6 +16,7 @@ import type * as changeSets from "../changeSets.js";
 import type * as customers from "../customers.js";
 import type * as debug from "../debug.js";
 import type * as debug_fetch_traces from "../debug_fetch_traces.js";
+import type * as runbooks from "../runbooks.js";
 import type * as debug_inspect from "../debug_inspect.js";
 import type * as debug_skills from "../debug_skills.js";
 import type * as drafts from "../drafts.js";
@@ -53,6 +54,7 @@ import type * as taskRevisions from "../taskRevisions.js";
 import type * as tasks from "../tasks.js";
 import type * as test_chat from "../test_chat.js";
 import type * as tracing from "../tracing.js";
+  runbooks: typeof runbooks;
 import type * as trelloSync from "../trelloSync.js";
 import type * as users from "../users.js";
 
