@@ -26,6 +26,7 @@ export function QuestionsBlock({
   const [submitted, setSubmitted] = useState(false);
   const [targetSkillId, setTargetSkillId] = useState<string | null>(null);
   const continueLabel = block.continueAction?.labelHe ?? "Continue";
+  const followupLabel = block.followupAction?.labelHe ?? "Ask more questions";
 
   const handleToggleOption = (qid: string, option: string) => {
     setSelections((prev) => {
@@ -50,8 +51,8 @@ export function QuestionsBlock({
     try {
       const result = await submit({ conversationId, answersById: answers });
       setSubmitted(true);
-      const payloadTarget = block.continueAction?.payload?.targetSkillId;
-      if (payloadTarget) {
+      const payloadTarget = block.continueAction?.payload?.targetSkillId ?? block.targetSkillId;
+      if (payloadTarget && typeof payloadTarget === "string") {
         setTargetSkillId(payloadTarget);
       } else if (result && result.targetSkillId) {
         setTargetSkillId(result.targetSkillId);
@@ -79,17 +80,40 @@ export function QuestionsBlock({
     }
   };
 
+  const handleFollowup = async () => {
+    if (!targetSkillId) return;
+    try {
+      await runSkill({
+        projectId,
+        conversationId,
+        skillId: targetSkillId,
+        params: { forceClarifications: true, source: "clarifications_followup" }
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to run clarifications: " + String(e));
+    }
+  };
+
   if (submitted) {
     return (
       <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex flex-col items-center gap-3">
         <div className="text-xs text-green-700 font-medium">Answers submitted successfully.</div>
         {targetSkillId && (
-          <button
-            onClick={handleContinue}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-full hover:bg-green-700 transition-colors"
-          >
-            {continueLabel} <ArrowRight size={14} />
-          </button>
+          <>
+            <button
+              onClick={handleContinue}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-full hover:bg-green-700 transition-colors"
+            >
+              {continueLabel} <ArrowRight size={14} />
+            </button>
+            <button
+              onClick={handleFollowup}
+              className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-700 text-xs font-bold rounded-full hover:bg-green-100 transition-colors"
+            >
+              {followupLabel}
+            </button>
+          </>
         )}
       </div>
     )

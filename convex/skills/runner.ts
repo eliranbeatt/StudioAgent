@@ -27,6 +27,10 @@ export const runSkill = action({
 
     if (!skillData.skill) throw new Error(`Skill ${skillId} not found`);
 
+    if (params?.forceClarifications) {
+      return await runGateLogic(ctx, { projectId, conversationId, targetSkillId: skillId, targetSkillLabel: skillData.skill.labelHe });
+    }
+
     if (skillData.isGateBlocked) {
       // Run Gate Logic
       return await runGateLogic(ctx, { projectId, conversationId, targetSkillId: skillId, targetSkillLabel: skillData.skill.labelHe });
@@ -322,6 +326,7 @@ export const buildContext = internalQuery({
       })),
       qaPairs: qaPairs.map((qa: any) => ({
         questionHe: qa.question_he,
+        questionKey: qa.questionKey,
         answerHe: qa.answer_he,
         createdAt: qa.createdAt
       })),
@@ -608,7 +613,8 @@ async function persistClarificationAnswers(
 
     if (!questionText || !String(questionText).trim()) continue;
 
-    const questionKey = String(questionText).trim().toLowerCase();
+    const topicKey = normalizeQuestionKey(question.topicKey);
+    const questionKey = topicKey || String(questionText).trim().toLowerCase();
     const existing = await ctx.db
       .query("qaPairs")
       .withIndex("by_project_questionKey", (q: any) =>
@@ -723,6 +729,16 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
     }
 
     questionsBlock.questions = filteredQuestions;
+    if (!questionsBlock.continueAction?.payload?.targetSkillId) {
+      questionsBlock.continueAction = {
+        labelHe: questionsBlock.continueAction?.labelHe ?? "המשך",
+        payload: { targetSkillId: args.targetSkillId }
+      };
+    }
+    if (!questionsBlock.followupAction) {
+      questionsBlock.followupAction = { labelHe: "שאלו עוד שאלות" };
+    }
+    questionsBlock.targetSkillId = args.targetSkillId;
     await ctx.runMutation(internal.skills.runner.createClarificationSession, {
       projectId: args.projectId,
       conversationId: args.conversationId,
@@ -1001,12 +1017,12 @@ function normalizeBlockFields(block: any) {
 
 function filterUnansweredQuestions(
   questions: any[],
-  context: { qaPairs?: Array<{ questionHe?: string; answerHe?: string }>; priorClarifications?: any }
+  context: { qaPairs?: Array<{ questionHe?: string; questionKey?: string; answerHe?: string }>; priorClarifications?: any }
 ) {
   const normalizedAnswered = new Set<string>();
   const qaPairs = Array.isArray(context.qaPairs) ? context.qaPairs : [];
   for (const qa of qaPairs) {
-    const key = normalizeQuestionKey(qa?.questionHe);
+    const key = normalizeQuestionKey(qa?.questionKey || qa?.questionHe);
     if (key) normalizedAnswered.add(key);
   }
 
@@ -1020,7 +1036,7 @@ function filterUnansweredQuestions(
     if (answer && String(answer).trim()) answeredIds.add(String(qid));
 
     const key = normalizeQuestionKey(
-      q.textHe ?? q.text_he ?? q.question_he ?? q.question ?? q.labelHe ?? q.label ?? q.text
+      q.topicKey ?? q.textHe ?? q.text_he ?? q.question_he ?? q.question ?? q.labelHe ?? q.label ?? q.text
     );
     if (key && answer && String(answer).trim()) normalizedAnswered.add(key);
   }
@@ -1031,7 +1047,8 @@ function filterUnansweredQuestions(
     if (answeredIds.has(questionId)) return false;
 
     const key = normalizeQuestionKey(
-      question.textHe ??
+      question.topicKey ??
+        question.textHe ??
         question.text_he ??
         question.question_he ??
         question.question ??
