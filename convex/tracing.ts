@@ -46,3 +46,27 @@ export const get = query({
     return await ctx.db.get(args.id);
   },
 });
+
+export const analytics = query({
+  args: {
+    since: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const traces = await ctx.db
+      .query("llmTraces")
+      .order("desc")
+      .filter((q) => q.gte(q.field("_creationTime"), args.since))
+      .collect();
+
+    return traces.map((t) => ({
+      _id: t._id,
+      _creationTime: t._creationTime,
+      projectId: t.projectId,
+      model: t.model,
+      provider: t.provider,
+      inputTokens: t.inputTokens,
+      outputTokens: t.outputTokens,
+      status: t.status,
+    }));
+  },
+});

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Users, Package, ShoppingCart, UserCircle, ReceiptText, Tags, Settings, Activity } from "lucide-react";
+import { Building2, Users, Package, ShoppingCart, UserCircle, ReceiptText, Tags, Settings, Activity, BarChart3 } from "lucide-react";
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +69,12 @@ export default function ManagementLayout({
           </Link>
           <div className="mt-4 pt-4 border-t">
             <span className="px-4 text-xs font-semibold text-gray-400 uppercase">System</span>
+            <Link
+              href="/management/analytics"
+              className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              <BarChart3 size={20} /> LLM Analytics
+            </Link>
             <Link
               href="/management/tracing"
               className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
