@@ -17,6 +17,10 @@ import {
   X,
 } from "lucide-react";
 
+import { AccountingSummaryBlock } from "./AccountingSummaryBlock";
+import { ApprovedBudgetRow } from "./ApprovedBudgetRow";
+import { ElementBreakdownTable } from "./ElementBreakdownTable";
+
 type TabKey = "summary" | "materials" | "labor";
 
 type MaterialLine = {
@@ -82,14 +86,12 @@ export default function AccountingPage({
   const tasksData = useQuery(api.tasks.listForProject, { projectId });
   const pendingGraveyard = useQuery(api.graveyard.listPending, { projectId });
   const applyChangeSet = useMutation(api.drafts.applyChangeSet);
-  const ensureElementDraft = useMutation(api.drafts.ensureElementDraft);
-  const ensureProjectCostDraft = useMutation(api.drafts.ensureProjectCostDraft);
+  
   const [tab, setTab] = useState<TabKey>("summary");
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
   const pendingCount = pendingGraveyard?.length ?? 0;
   const taskOptions: TaskOption[] = tasksData?.tasks ?? [];
-
 
   if (!summary || !accounting) {
     return <div className="p-8">Loading accounting data...</div>;
@@ -127,12 +129,12 @@ export default function AccountingPage({
             Accounting
           </h2>
           <p className="text-gray-500 text-sm mt-1">
-            Baseline, forecast, and line-item edits powered by draft snapshots.
+            Baseline, forecast, and live line-item edits.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-mono">
-            Draft view + reconciliation
+          <div className="px-3 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-mono font-bold">
+            Live View
           </div>
         </div>
       </div>
@@ -191,8 +193,6 @@ export default function AccountingPage({
           tasks={taskOptions}
           savingLineId={savingLineId}
           onApplyOps={handleApplyOps}
-          onEnsureElementDraft={ensureElementDraft}
-          onEnsureProjectCostDraft={ensureProjectCostDraft}
           onSavingLineId={setSavingLineId}
         />
       ) : null}
@@ -204,18 +204,12 @@ export default function AccountingPage({
           tasks={taskOptions}
           savingLineId={savingLineId}
           onApplyOps={handleApplyOps}
-          onEnsureElementDraft={ensureElementDraft}
-          onEnsureProjectCostDraft={ensureProjectCostDraft}
           onSavingLineId={setSavingLineId}
         />
       ) : null}
     </div>
   );
 }
-
-import { AccountingSummaryBlock } from "./AccountingSummaryBlock";
-import { ApprovedBudgetRow } from "./ApprovedBudgetRow";
-import { ElementBreakdownTable } from "./ElementBreakdownTable";
 
 function SummaryTab({
   projectId,
@@ -248,16 +242,12 @@ function SummaryTab({
   );
 }
 
-
-
 function MaterialsTab({
   projectId,
   accounting,
   tasks,
   savingLineId,
   onApplyOps,
-  onEnsureElementDraft,
-  onEnsureProjectCostDraft,
   onSavingLineId,
 }: {
   projectId: Id<"projects">;
@@ -271,65 +261,39 @@ function MaterialsTab({
     patchOps: any[];
     reason: string;
   }) => Promise<void>;
-  onEnsureElementDraft: (args: {
-    projectId: Id<"projects">;
-    elementId: Id<"elements">;
-  }) => Promise<{ draftId: string; revisionNumber: number }>;
-  onEnsureProjectCostDraft: (args: {
-    projectId: Id<"projects">;
-  }) => Promise<{ draftId: string; revisionNumber: number }>;
   onSavingLineId: (value: string | null) => void;
 }) {
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
 
   const resolveDraft = async ({
     draftType,
-    draftId,
-    revisionNumber,
     elementId,
+    revisionNumber,
   }: {
     draftType: "element" | "projectCost";
-    draftId?: string;
-    revisionNumber?: number;
     elementId?: Id<"elements">;
+    revisionNumber?: number;
   }) => {
-    if (draftId && revisionNumber !== undefined) {
-      return { draftId, revisionNumber };
-    }
     if (draftType === "element" && elementId) {
-      return await onEnsureElementDraft({ projectId, elementId });
+      return { draftId: elementId as string, revisionNumber: revisionNumber ?? 0 };
     }
-    if (draftType === "projectCost") {
-      return await onEnsureProjectCostDraft({ projectId });
-    }
-    return { draftId: undefined, revisionNumber: undefined };
+    return { draftId: projectId as string, revisionNumber: 0 };
   };
 
   const addMaterialLine = async ({
     draftType,
-    draftId,
-    revisionNumber,
     elementId,
+    revisionNumber,
     order,
   }: {
     draftType: "element" | "projectCost";
-    draftId?: string;
-    revisionNumber?: number;
     elementId?: Id<"elements">;
+    revisionNumber?: number;
     order?: number;
   }) => {
     try {
-      const resolved = await resolveDraft({
-        draftType,
-        draftId,
-        revisionNumber,
-        elementId,
-      });
-
-      if (!resolved.draftId || resolved.revisionNumber === undefined) {
-        alert("Failed to resolve draft.");
-        return;
-      }
+      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
+      if (!resolved.draftId) return;
 
       const id = `mat_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       const patchOps = [
@@ -364,30 +328,19 @@ function MaterialsTab({
   const handleDeleteLine = async ({
     lineId,
     draftType,
-    draftId,
-    revisionNumber,
     elementId,
+    revisionNumber,
   }: {
     lineId: string;
     draftType: "element" | "projectCost";
-    draftId?: string;
-    revisionNumber?: number;
     elementId?: Id<"elements">;
+    revisionNumber?: number;
   }) => {
     if (!confirm("Delete this material line?")) return;
 
     try {
-      const resolved = await resolveDraft({
-        draftType,
-        draftId,
-        revisionNumber,
-        elementId,
-      });
-
-      if (!resolved.draftId || resolved.revisionNumber === undefined) {
-        alert("Could not create/find draft for deletion.");
-        return;
-      }
+      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
+      if (!resolved.draftId) return;
 
       await onApplyOps({
         draftType,
@@ -409,17 +362,15 @@ function MaterialsTab({
     direction,
     lines,
     draftType,
-    draftId,
-    revisionNumber,
     elementId,
+    revisionNumber,
   }: {
     lineId: string;
     direction: -1 | 1;
     lines: MaterialLine[];
     draftType: "element" | "projectCost";
-    draftId?: string;
-    revisionNumber?: number;
     elementId?: Id<"elements">;
+    revisionNumber?: number;
   }) => {
     const sorted = sortLines(lines);
     const index = sorted.findIndex((line) => line.id === lineId);
@@ -427,17 +378,8 @@ function MaterialsTab({
     if (index === -1 || !target) return;
 
     try {
-      const resolved = await resolveDraft({
-        draftType,
-        draftId,
-        revisionNumber,
-        elementId,
-      });
-
-      if (!resolved.draftId || resolved.revisionNumber === undefined) {
-        alert("Failed to resolve draft.");
-        return;
-      }
+      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
+      if (!resolved.draftId) return;
 
       const currentOrder = getLineOrderValue(sorted[index], index);
       const targetOrder = getLineOrderValue(target, index + direction);
@@ -495,9 +437,8 @@ function MaterialsTab({
                 onClick={() =>
                   addMaterialLine({
                     draftType: "element",
-                    draftId: element.draftId,
-                    revisionNumber: element.revisionNumber,
                     elementId: element.elementId,
+                    revisionNumber: element.revisionNumber,
                     order: getNextOrder(element.materials),
                   })
                 }
@@ -526,9 +467,8 @@ function MaterialsTab({
                           direction: -1,
                           lines: sortedMaterials,
                           draftType: "element",
-                          draftId: element.draftId,
-                          revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
+                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onMoveDown={() =>
@@ -537,18 +477,16 @@ function MaterialsTab({
                           direction: 1,
                           lines: sortedMaterials,
                           draftType: "element",
-                          draftId: element.draftId,
-                          revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
+                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onDelete={() =>
                         handleDeleteLine({
                           lineId: line.id,
                           draftType: "element",
-                          draftId: element.draftId,
-                          revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
+                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onSave={async (next) => {
@@ -556,15 +494,10 @@ function MaterialsTab({
                         try {
                           const resolved = await resolveDraft({
                             draftType: "element",
-                            draftId: element.draftId,
-                            revisionNumber: element.revisionNumber,
                             elementId: element.elementId,
+                            revisionNumber: element.revisionNumber,
                           });
-
-                          if (!resolved.draftId || resolved.revisionNumber === undefined) {
-                            alert("Failed to resolve draft");
-                            return;
-                          }
+                          if (!resolved.draftId) return;
 
                           const patchOps = buildMaterialPatchOps(line.id, next);
                           await onApplyOps({
@@ -605,7 +538,6 @@ function MaterialsTab({
               onClick={() =>
                 addMaterialLine({
                   draftType: "projectCost",
-                  draftId: accounting.projectCosts.draftId,
                   revisionNumber: accounting.projectCosts.revisionNumber,
                   order: getNextOrder(accounting.projectCosts.materials),
                 })
@@ -619,7 +551,7 @@ function MaterialsTab({
             {accounting.projectCosts.materials.length === 0 ? (
               <div className="p-6 text-sm text-gray-500">No materials</div>
             ) : (
-              sortLines(accounting.projectCosts.materials).map(
+              sortLines(accounting.projectCosts.materials as MaterialLine[]).map(
                 (line: MaterialLine, index: number, lines: MaterialLine[]) => (
                   <MaterialLineRow
                     key={line.id}
@@ -635,7 +567,6 @@ function MaterialsTab({
                         direction: -1,
                         lines,
                         draftType: "projectCost",
-                        draftId: accounting.projectCosts.draftId,
                         revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
@@ -645,7 +576,6 @@ function MaterialsTab({
                         direction: 1,
                         lines,
                         draftType: "projectCost",
-                        draftId: accounting.projectCosts.draftId,
                         revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
@@ -653,7 +583,6 @@ function MaterialsTab({
                       handleDeleteLine({
                         lineId: line.id,
                         draftType: "projectCost",
-                        draftId: accounting.projectCosts.draftId,
                         revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
@@ -662,11 +591,9 @@ function MaterialsTab({
                       try {
                         const resolved = await resolveDraft({
                           draftType: "projectCost",
-                          draftId: accounting.projectCosts.draftId,
                           revisionNumber: accounting.projectCosts.revisionNumber,
                         });
-
-                        if (!resolved.draftId || resolved.revisionNumber === undefined) return;
+                        if (!resolved.draftId) return;
 
                         const patchOps = buildMaterialPatchOps(line.id, next);
                         await onApplyOps({
@@ -700,8 +627,6 @@ function LaborTab({
   tasks,
   savingLineId,
   onApplyOps,
-  onEnsureElementDraft,
-  onEnsureProjectCostDraft,
   onSavingLineId,
 }: {
   projectId: Id<"projects">;
@@ -715,65 +640,39 @@ function LaborTab({
     patchOps: any[];
     reason: string;
   }) => Promise<void>;
-  onEnsureElementDraft: (args: {
-    projectId: Id<"projects">;
-    elementId: Id<"elements">;
-  }) => Promise<{ draftId: string; revisionNumber: number }>;
-  onEnsureProjectCostDraft: (args: {
-    projectId: Id<"projects">;
-  }) => Promise<{ draftId: string; revisionNumber: number }>;
   onSavingLineId: (value: string | null) => void;
 }) {
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
 
   const resolveDraft = async ({
     draftType,
-    draftId,
-    revisionNumber,
     elementId,
+    revisionNumber,
   }: {
     draftType: "element" | "projectCost";
-    draftId?: string;
-    revisionNumber?: number;
     elementId?: Id<"elements">;
+    revisionNumber?: number;
   }) => {
-    if (draftId && revisionNumber !== undefined) {
-      return { draftId, revisionNumber };
-    }
     if (draftType === "element" && elementId) {
-      return await onEnsureElementDraft({ projectId, elementId });
+      return { draftId: elementId as string, revisionNumber: revisionNumber ?? 0 };
     }
-    if (draftType === "projectCost") {
-      return await onEnsureProjectCostDraft({ projectId });
-    }
-    return { draftId: undefined, revisionNumber: undefined };
+    return { draftId: projectId as string, revisionNumber: 0 };
   };
 
   const addLaborLine = async ({
     draftType,
-    draftId,
-    revisionNumber,
     elementId,
+    revisionNumber,
     order,
   }: {
     draftType: "element" | "projectCost";
-    draftId?: string;
-    revisionNumber?: number;
     elementId?: Id<"elements">;
+    revisionNumber?: number;
     order?: number;
   }) => {
     try {
-      const resolved = await resolveDraft({
-        draftType,
-        draftId,
-        revisionNumber,
-        elementId,
-      });
-
-      if (!resolved.draftId || resolved.revisionNumber === undefined) {
-        alert("Failed to resolve draft.");
-        return;
-      }
+      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
+      if (!resolved.draftId) return;
 
       const id = `lab_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       const patchOps = [
@@ -806,30 +705,19 @@ function LaborTab({
   const handleDeleteLine = async ({
     lineId,
     draftType,
-    draftId,
-    revisionNumber,
     elementId,
+    revisionNumber,
   }: {
     lineId: string;
     draftType: "element" | "projectCost";
-    draftId?: string;
-    revisionNumber?: number;
     elementId?: Id<"elements">;
+    revisionNumber?: number;
   }) => {
     if (!confirm("Delete this labor line?")) return;
 
     try {
-      const resolved = await resolveDraft({
-        draftType,
-        draftId,
-        revisionNumber,
-        elementId,
-      });
-
-      if (!resolved.draftId || resolved.revisionNumber === undefined) {
-        alert("Could not create/find draft for deletion.");
-        return;
-      }
+      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
+      if (!resolved.draftId) return;
 
       await onApplyOps({
         draftType,
@@ -851,17 +739,15 @@ function LaborTab({
     direction,
     lines,
     draftType,
-    draftId,
-    revisionNumber,
     elementId,
+    revisionNumber,
   }: {
     lineId: string;
     direction: -1 | 1;
     lines: LaborLine[];
     draftType: "element" | "projectCost";
-    draftId?: string;
-    revisionNumber?: number;
     elementId?: Id<"elements">;
+    revisionNumber?: number;
   }) => {
     const sorted = sortLines(lines);
     const index = sorted.findIndex((line) => line.id === lineId);
@@ -869,17 +755,8 @@ function LaborTab({
     if (index === -1 || !target) return;
 
     try {
-      const resolved = await resolveDraft({
-        draftType,
-        draftId,
-        revisionNumber,
-        elementId,
-      });
-
-      if (!resolved.draftId || resolved.revisionNumber === undefined) {
-        alert("Failed to resolve draft.");
-        return;
-      }
+      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
+      if (!resolved.draftId) return;
 
       const currentOrder = getLineOrderValue(sorted[index], index);
       const targetOrder = getLineOrderValue(target, index + direction);
@@ -937,9 +814,8 @@ function LaborTab({
                 onClick={() =>
                   addLaborLine({
                     draftType: "element",
-                    draftId: element.draftId,
-                    revisionNumber: element.revisionNumber,
                     elementId: element.elementId,
+                    revisionNumber: element.revisionNumber,
                     order: getNextOrder(element.labor),
                   })
                 }
@@ -968,9 +844,8 @@ function LaborTab({
                           direction: -1,
                           lines: sortedLabor,
                           draftType: "element",
-                          draftId: element.draftId,
-                          revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
+                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onMoveDown={() =>
@@ -979,18 +854,16 @@ function LaborTab({
                           direction: 1,
                           lines: sortedLabor,
                           draftType: "element",
-                          draftId: element.draftId,
-                          revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
+                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onDelete={() =>
                         handleDeleteLine({
                           lineId: line.id,
                           draftType: "element",
-                          draftId: element.draftId,
-                          revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
+                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onSave={async (next) => {
@@ -998,15 +871,10 @@ function LaborTab({
                         try {
                           const resolved = await resolveDraft({
                             draftType: "element",
-                            draftId: element.draftId,
-                            revisionNumber: element.revisionNumber,
                             elementId: element.elementId,
+                            revisionNumber: element.revisionNumber,
                           });
-
-                          if (!resolved.draftId || resolved.revisionNumber === undefined) {
-                            alert("Failed to resolve draft");
-                            return;
-                          }
+                          if (!resolved.draftId) return;
 
                           const patchOps = buildLaborPatchOps(line.id, next);
                           await onApplyOps({
@@ -1047,7 +915,6 @@ function LaborTab({
               onClick={() =>
                 addLaborLine({
                   draftType: "projectCost",
-                  draftId: accounting.projectCosts.draftId,
                   revisionNumber: accounting.projectCosts.revisionNumber,
                   order: getNextOrder(accounting.projectCosts.labor),
                 })
@@ -1061,7 +928,7 @@ function LaborTab({
             {accounting.projectCosts.labor.length === 0 ? (
               <div className="p-6 text-sm text-gray-500">No labor</div>
             ) : (
-              sortLines(accounting.projectCosts.labor).map(
+              sortLines(accounting.projectCosts.labor as LaborLine[]).map(
                 (line: LaborLine, index: number, lines: LaborLine[]) => (
                   <LaborLineRow
                     key={line.id}
@@ -1077,7 +944,6 @@ function LaborTab({
                         direction: -1,
                         lines,
                         draftType: "projectCost",
-                        draftId: accounting.projectCosts.draftId,
                         revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
@@ -1087,7 +953,6 @@ function LaborTab({
                         direction: 1,
                         lines,
                         draftType: "projectCost",
-                        draftId: accounting.projectCosts.draftId,
                         revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
@@ -1095,7 +960,6 @@ function LaborTab({
                       handleDeleteLine({
                         lineId: line.id,
                         draftType: "projectCost",
-                        draftId: accounting.projectCosts.draftId,
                         revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
@@ -1104,11 +968,9 @@ function LaborTab({
                       try {
                         const resolved = await resolveDraft({
                           draftType: "projectCost",
-                          draftId: accounting.projectCosts.draftId,
                           revisionNumber: accounting.projectCosts.revisionNumber,
                         });
-
-                        if (!resolved.draftId || resolved.revisionNumber === undefined) return;
+                        if (!resolved.draftId) return;
 
                         const patchOps = buildLaborPatchOps(line.id, next);
                         await onApplyOps({
@@ -1738,8 +1600,6 @@ function formatGap(amount: number) {
   const sign = amount > 0 ? "+" : "";
   return `${sign}${amount.toLocaleString()} NIS`;
 }
-
-
 
 function TabButton({
   active,

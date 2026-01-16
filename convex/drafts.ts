@@ -1,16 +1,20 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { applyPatchOps, PatchOp } from "./patch";
 import { runReconciliation } from "./reconciliation";
-import { findExistingReservation, reserveStockInternal } from "./inventory_helpers";
-import { query } from "./_generated/server";
-import { captureSnapshotFromLive, captureProjectCostSnapshot } from "./elements";
+import { 
+  captureSnapshotFromLive, 
+  syncSnapshotToLiveTables,
+  captureProjectCostSnapshot,
+  syncProjectCostSnapshotToLiveTables
+} from "./elements";
+import { internal } from "./_generated/api";
 
 type DraftType = "element" | "projectCost";
 
 type ApplyChangeSetArgs = {
   draftType: DraftType;
-  draftId: string;
+  draftId: string; // repurposed as elementId or containerId
   projectId: any;
   patchOps: PatchOp[];
   baseRevisionNumber: number;
@@ -20,21 +24,33 @@ type ApplyChangeSetArgs = {
 };
 
 export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs) {
-  // @ts-ignore
-  const draft = await ctx.db.get(args.draftId as any);
+  const now = Date.now();
+  let snapshot: any;
+  let elementId: any = null;
 
-  if (!draft) throw new Error("Draft not found");
-  if (draft.revisionNumber !== args.baseRevisionNumber) {
-    throw new Error("REVISION_CONFLICT");
+  // 1. Identify Target & Capture Snapshot
+  if (args.draftType === "element") {
+    elementId = ctx.db.normalizeId("elements", args.draftId);
+    if (!elementId) throw new Error("Invalid elementId");
+    const element = await ctx.db.get(elementId);
+    if (!element) throw new Error("Element not found");
+    if (element.rev !== undefined && element.rev !== args.baseRevisionNumber && args.baseRevisionNumber !== 0) {
+      throw new Error("REVISION_CONFLICT");
+    }
+    snapshot = await captureSnapshotFromLive(ctx, elementId);
+  } else {
+    snapshot = await captureProjectCostSnapshot(ctx, args.projectId);
   }
 
-  const { snapshot: patchedSnapshot } = applyPatchOps(draft.workingSnapshot, args.patchOps);
+  // 2. Apply Patches
+  const { snapshot: patchedSnapshot } = applyPatchOps(snapshot, args.patchOps);
 
+  // 3. Reconcile
   const reconciliation = await runReconciliation(ctx, {
     draftType: args.draftType,
     draftId: args.draftId,
     projectId: args.projectId,
-    revisionNumber: draft.revisionNumber + 1,
+    revisionNumber: args.baseRevisionNumber + 1,
     snapshot: patchedSnapshot,
   });
 
@@ -43,6 +59,18 @@ export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs)
     reconciliation.safeFixes.autoApplyOps
   );
 
+  // 4. Sync Back to Live
+  if (args.draftType === "element") {
+    await syncSnapshotToLiveTables(ctx, elementId, reconciledSnapshot);
+    await ctx.db.patch(elementId, {
+      rev: (snapshot.rev ?? 0) + 1,
+      updatedAt: now,
+    });
+  } else {
+    await syncProjectCostSnapshotToLiveTables(ctx, args.projectId, reconciledSnapshot);
+  }
+
+  // 5. Audit Record
   const stageStr = (args.createdFrom?.stage ?? "IDEATION").toUpperCase();
   const stage = ["IDEATION", "QUOTE", "BREAKDOWN"].includes(stageStr) ? stageStr : "IDEATION";
 
@@ -51,28 +79,20 @@ export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs)
     stage: stage as "IDEATION" | "QUOTE" | "BREAKDOWN",
     status: "APPLIED",
     ops: [{
-      kind: "draft.patch",
+      kind: "live.patch",
       payload: {
         draftType: args.draftType,
-        draftId: args.draftId,
+        targetId: args.draftId,
         patchOps: args.patchOps,
         baseRevisionNumber: args.baseRevisionNumber,
       }
     }],
     reason_he: args.reason,
-    appliedAt: Date.now(),
-    createdAt: Date.now(),
+    appliedAt: now,
+    createdAt: now,
   });
 
-
-
-  await ctx.db.patch(draft._id, {
-    workingSnapshot: reconciledSnapshot,
-    revisionNumber: draft.revisionNumber + 1,
-    updatedAt: Date.now(),
-  });
-
-  await ensureStockReservations(ctx, args.projectId, reconciledSnapshot);
+  await ctx.scheduler.runAfter(0, internal.projectsStage.recomputeStage, { projectId: args.projectId });
 
   return {
     ok: true,
@@ -80,57 +100,11 @@ export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs)
     draftType: args.draftType,
     draftId: args.draftId,
     baseRevisionNumber: args.baseRevisionNumber,
-    newRevisionNumber: draft.revisionNumber + 1,
+    newRevisionNumber: args.baseRevisionNumber + 1,
     acceptedPatchOps: args.patchOps,
     serverAppliedSafeFixOps,
     reconciliation,
-
   };
-}
-
-async function ensureStockReservations(ctx: any, projectId: any, snapshot: any) {
-  const materialsMap = snapshot?.materials?.byId ?? {};
-  for (const [materialId, materialLine] of Object.entries<any>(materialsMap)) {
-    const procurement = materialLine?.procurement ?? {};
-    if (procurement.mode !== "stock" || procurement.reserve !== true) {
-      continue;
-    }
-
-    const inventoryItemId = procurement.inventoryItemId;
-    if (!inventoryItemId) {
-      continue;
-    }
-
-    const existingReservation = await findExistingReservation(ctx, {
-      projectId,
-      inventoryItemId,
-      materialLineId: materialId,
-    });
-    if (existingReservation) {
-      continue;
-    }
-
-    const qty = Number(materialLine?.qty ?? 0);
-    if (qty <= 0) {
-      continue;
-    }
-
-    const result = await reserveStockInternal(
-      ctx,
-      {
-        projectId,
-        inventoryItemId,
-        elementId: materialLine?.elementId,
-        materialLineId: materialId,
-        qty,
-      },
-      { allowOverbook: false }
-    );
-
-    if (!result.reserved) {
-      continue;
-    }
-  }
 }
 
 export const applyChangeSet = mutation({
@@ -166,89 +140,18 @@ export const ensureElementDraft = mutation({
   handler: async (ctx, args) => {
     const element = await ctx.db.get(args.elementId);
     if (!element) throw new Error("Element not found");
-
-    if (element.currentDraftId) {
-      const draft = await ctx.db.get(element.currentDraftId);
-      if (draft && (draft.status === "open" || draft.status === "needsReview")) {
-        return { draftId: draft._id, revisionNumber: draft.revisionNumber };
-      }
-    }
-
-    const snapshot = await captureSnapshotFromLive(ctx, element._id);
-    const schemaVersion = 1;
-
-    const now = Date.now();
-    const draftId = await ctx.db.insert("elementDrafts", {
-      elementId: element._id,
-      projectId: args.projectId,
-      status: "open",
-      revisionNumber: 1,
-      createdFrom: { tab: "Accounting", stage: "planning" },
-      workingSnapshot: snapshot,
-      schemaVersion,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await ctx.db.patch(element._id, {
-      currentDraftId: draftId,
-      status: "drafting",
-      updatedAt: now,
-    });
-
-    return { draftId, revisionNumber: 1 };
+    return { draftId: element._id, revisionNumber: element.rev ?? 0 };
   },
 });
 
 export const listOpenDrafts = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    const drafts = await ctx.db
-      .query("elementDrafts")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .filter((q) =>
-        q.or(q.eq(q.field("status"), "open"), q.eq(q.field("status"), "needsReview"))
-      )
-      .collect();
-
-    const results: Array<{
-      draftType: "element" | "projectCost";
-      draftId: string;
-      elementId?: string;
-      title: string;
-      revisionNumber: number;
-    }> = [];
-
-    for (const draft of drafts) {
-      const element = await ctx.db.get(draft.elementId);
-      results.push({
-        draftType: "element",
-        draftId: draft._id,
-        elementId: draft.elementId,
-        title: element?.title ?? "Untitled Element",
-        revisionNumber: draft.revisionNumber,
-      });
-    }
-
-    const project = await ctx.db.get(args.projectId);
-    if (project?.projectCostContainerId) {
-      const container = await ctx.db.get(project.projectCostContainerId);
-      if (container?.currentDraftId) {
-        const pcDraft = await ctx.db.get(container.currentDraftId);
-        if (pcDraft && (pcDraft.status === "open" || pcDraft.status === "needsReview")) {
-          results.push({
-            draftType: "projectCost",
-            draftId: pcDraft._id,
-            title: "Project Level Costs",
-            revisionNumber: pcDraft.revisionNumber,
-          });
-        }
-      }
-    }
-
-    return results;
+    // No-op: Drafts no longer exist
+    return [];
   },
 });
+
 export const ensureProjectCostDraft = mutation({
   args: {
     projectId: v.id("projects"),
@@ -256,77 +159,6 @@ export const ensureProjectCostDraft = mutation({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) throw new Error("Project not found");
-
-    let containerId = project.projectCostContainerId;
-
-    // 1. Ensure Container Exists
-    if (!containerId) {
-      containerId = await ctx.db.insert("projectCostContainers", {
-        projectId: args.projectId,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      await ctx.db.patch(args.projectId, { projectCostContainerId: containerId });
-    }
-
-    const container = await ctx.db.get(containerId);
-
-    // 2. Check if Draft Exists
-    if (container?.currentDraftId) {
-      const draft = await ctx.db.get(container.currentDraftId);
-      if (draft && (draft.status === "open" || draft.status === "needsReview")) {
-        return { draftId: draft._id, revisionNumber: draft.revisionNumber };
-      }
-    }
-
-    // 3. Find/Create System Element (Schema Constraint workaround)
-    let systemElement = await ctx.db
-      .query("elements")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .filter((q) => q.eq(q.field("type"), "mixed"))
-      // We can identifying it by title or adds a tagging field later. 
-      // For now, let's look for exact title match to avoid dupes.
-      .collect()
-      .then(els => els.find(e => e.title === "System: Project Costs" && e.status === "archived"));
-
-    if (!systemElement) {
-      // Create new hidden element
-      const elementId = await ctx.db.insert("elements", {
-        projectId: args.projectId,
-        title: "System: Project Costs",
-        type: "mixed",
-        status: "archived", // "Hidden" from normal views
-        tags: ["system", "project-costs"],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      systemElement = await ctx.db.get(elementId);
-    }
-
-    if (!systemElement) throw new Error("Failed to create system element");
-
-    // 4. Create Draft with manually captured snapshot
-    const snapshot = await captureProjectCostSnapshot(ctx, args.projectId);
-    const schemaVersion = 1;
-    const now = Date.now();
-
-    const draftId = await ctx.db.insert("elementDrafts", {
-      elementId: systemElement._id,
-      projectId: args.projectId,
-      status: "open",
-      revisionNumber: 1,
-      createdFrom: { tab: "Accounting", stage: "planning", type: "projectCost" },
-      workingSnapshot: snapshot,
-      schemaVersion,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await ctx.db.patch(containerId, {
-      currentDraftId: draftId,
-      updatedAt: now,
-    });
-
-    return { draftId, revisionNumber: 1 };
+    return { draftId: project.projectCostContainerId ?? args.projectId, revisionNumber: 0 };
   },
 });

@@ -12,12 +12,7 @@ export const getStageSignals = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .first());
 
-    const hasDraftElements = !!(await ctx.db
-      .query("elements")
-      .withIndex("by_project_status", (q) =>
-        q.eq("projectId", args.projectId).eq("status", "drafting")
-      )
-      .first());
+    const hasDraftElements = false; // Draft mode removed
 
     const hasApprovedForQuoteElements = !!(await ctx.db
       .query("elements")

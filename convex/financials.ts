@@ -279,6 +279,7 @@ function applyMargins(
 
 async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
   const project = await ctx.db.get(projectId);
+  if (!project) return null;
 
   const elements = await ctx.db
     .query("elements")
@@ -295,71 +296,6 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
     .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
     .collect();
 
-  const receipts = await ctx.db
-    .query("receipts")
-    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
-    .collect();
-  const receiptItems: any[] = [];
-  for (const receipt of receipts) {
-    const items = await ctx.db
-      .query("receiptItems")
-      .withIndex("by_receipt", (q: any) => q.eq("receiptId", receipt._id))
-      .collect();
-    receiptItems.push(...items);
-  }
-
-  const draftMaterialActuals = new Map<string, { total: number; qty: number }>();
-  const draftWorkActuals = new Map<string, { total: number; qty: number }>();
-
-  for (const item of receiptItems) {
-    const qty = item.qty ?? 0;
-    const total = item.total ?? (item.unitPrice ?? 0) * (item.qty ?? 0);
-
-    if (item.mappedDraftMaterialId) {
-      const entry = draftMaterialActuals.get(item.mappedDraftMaterialId) ?? {
-        total: 0,
-        qty: 0,
-      };
-      entry.total += total;
-      entry.qty += qty;
-      draftMaterialActuals.set(item.mappedDraftMaterialId, entry);
-    }
-
-    if (item.mappedDraftWorkId) {
-      const entry = draftWorkActuals.get(item.mappedDraftWorkId) ?? {
-        total: 0,
-        qty: 0,
-      };
-      entry.total += total;
-      entry.qty += qty;
-      draftWorkActuals.set(item.mappedDraftWorkId, entry);
-    }
-  }
-
-  const drafts = await ctx.db
-    .query("elementDrafts")
-    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
-    .filter((q: any) =>
-      q.or(q.eq(q.field("status"), "open"), q.eq(q.field("status"), "needsReview"))
-    )
-    .collect();
-
-  const draftByElement = new Map<string, typeof drafts[0]>();
-  for (const d of drafts) {
-    draftByElement.set(d.elementId, d);
-  }
-
-  let projectCostDraft: any = null;
-  if (project?.projectCostContainerId) {
-    const container = await ctx.db.get(project.projectCostContainerId);
-    if (container?.currentDraftId) {
-      projectCostDraft = await ctx.db.get(container.currentDraftId);
-      if (projectCostDraft && !["open", "needsReview"].includes(projectCostDraft.status)) {
-        projectCostDraft = null;
-      }
-    }
-  }
-
   const isSystemProjectCostElement = (el: any) => {
     const tags = new Set(el.tags ?? []);
     return tags.has("system") && tags.has("project-costs");
@@ -367,62 +303,38 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
 
   let totalMaterials = 0;
   let totalLabor = 0;
-
   let actualMaterials = 0;
   let actualLabor = 0;
 
   const elementViews = elements
-    .filter((el: any) => {
-      if (isSystemProjectCostElement(el)) return false;
-      if (projectCostDraft?.elementId && el._id === projectCostDraft.elementId) return false;
-      return true;
-    })
+    .filter((el: any) => !isSystemProjectCostElement(el))
     .map((el: any) => {
-    const draft = draftByElement.get(el._id);
-
-    let materials, labor;
-    let draftId, revisionNumber;
-
-    if (draft) {
-      materials = extractFromSnapshot(
-        draft.workingSnapshot,
-        "materials",
-        draftMaterialActuals
-      );
-      labor = extractFromSnapshot(
-        draft.workingSnapshot,
-        "labor",
-        draftWorkActuals
-      );
-      draftId = draft._id;
-      revisionNumber = draft.revisionNumber;
-    } else {
       const fromDB = extractFromDB(el._id, matLines, workLines);
-      materials = fromDB.materials;
-      labor = fromDB.labor;
-    }
+      const materials = fromDB.materials;
+      const labor = fromDB.labor;
 
-    const elMatTotal = materials.reduce((s: number, x: any) => s + x.total, 0);
-    const elLabTotal = labor.reduce((s: number, x: any) => s + x.total, 0);
-    const elMatActual = materials.reduce(
-      (s: number, x: any) => s + Number(x.actualTotal ?? 0),
-      0
-    );
-    const elLabActual = labor.reduce(
-      (s: number, x: any) => s + Number(x.actualTotal ?? 0),
-      0
-    );
+      const elMatTotal = materials.reduce((s: number, x: any) => s + x.total, 0);
+      const elLabTotal = labor.reduce((s: number, x: any) => s + x.total, 0);
+      const elMatActual = materials.reduce(
+        (s: number, x: any) => s + Number(x.actualTotal ?? 0),
+        0
+      );
+      const elLabActual = labor.reduce(
+        (s: number, x: any) => s + Number(x.actualTotal ?? 0),
+        0
+      );
 
-    totalMaterials += elMatTotal;
-    totalLabor += elLabTotal;
-    actualMaterials += elMatActual;
-    actualLabor += elLabActual;
+      totalMaterials += elMatTotal;
+      totalLabor += elLabTotal;
+      actualMaterials += elMatActual;
+      actualLabor += elLabActual;
 
       return {
         elementId: el._id,
         title: el.title,
-        draftId,
-        revisionNumber,
+        draftId: el._id, // Repurpose elementId as draftId for UI compatibility
+        draftType: "element",
+        revisionNumber: el.rev ?? 0,
         materials,
         labor,
         totals: {
@@ -436,25 +348,9 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
       };
     });
 
-  let pcMaterials, pcLabor, pcDraftId, pcRevisionNumber;
-  if (projectCostDraft) {
-    pcMaterials = extractFromSnapshot(
-      projectCostDraft.workingSnapshot,
-      "materials",
-      draftMaterialActuals
-    );
-    pcLabor = extractFromSnapshot(
-      projectCostDraft.workingSnapshot,
-      "labor",
-      draftWorkActuals
-    );
-    pcDraftId = projectCostDraft._id;
-    pcRevisionNumber = projectCostDraft.revisionNumber;
-  } else {
-    const fromDB = extractFromDB(undefined, matLines, workLines);
-    pcMaterials = fromDB.materials;
-    pcLabor = fromDB.labor;
-  }
+  const fromDB_PC = extractFromDB(undefined, matLines, workLines);
+  const pcMaterials = fromDB_PC.materials;
+  const pcLabor = fromDB_PC.labor;
 
   const pcMatTotal = pcMaterials.reduce((s: number, x: any) => s + x.total, 0);
   const pcLabTotal = pcLabor.reduce((s: number, x: any) => s + x.total, 0);
@@ -473,8 +369,9 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
   actualLabor += pcLabActual;
 
   const projectCosts = {
-    draftId: pcDraftId,
-    revisionNumber: pcRevisionNumber,
+    draftId: project.projectCostContainerId ?? projectId,
+    draftType: "projectCost",
+    revisionNumber: 0, // Containers don't have rev yet
     materials: pcMaterials,
     labor: pcLabor,
     totals: {

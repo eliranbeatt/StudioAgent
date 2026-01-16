@@ -46,11 +46,9 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
   const [error, setError] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingElement, setSavingElement] = useState(false);
-  const [approving, setApproving] = useState(false);
 
   const listData = useQuery(api.elements.listByProject, { projectId });
   const applyChangeSet = useMutation(api.drafts.applyChangeSet);
-  const approveDraft = useMutation(api.elements.approveElementDraft);
   const updateElementMeta = useMutation(api.elements.updateElementMeta);
   const deleteElement = useMutation(api.elements.deleteElement);
   const elementParam = searchParams.get("element");
@@ -102,7 +100,7 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
 
   const draftMeta = composite?.base?.draftMeta ?? null;
   const hasDraft = Boolean(draftMeta?.draftId);
-  const canEdit = hasDraft && !savingDraft;
+  const canEdit = !!composite && !savingDraft;
   const selectedElement = composite?.element ?? null;
 
   const applyDraftOps = async (patchOps: any[], reason: string) => {
@@ -126,19 +124,6 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
       setError(err?.message ?? "Failed to update draft.");
     } finally {
       setSavingDraft(false);
-    }
-  };
-
-  const handleApprove = async () => {
-    if (!selectedElement) return;
-    setApproving(true);
-    setError(null);
-    try {
-      await approveDraft({ elementId: selectedElement.id as Id<"elements"> });
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to approve draft.");
-    } finally {
-      setApproving(false);
     }
   };
 
@@ -252,14 +237,6 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
                   ))
                 )}
                 <button
-                  onClick={handleApprove}
-                  disabled={!hasDraft || approving}
-                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-black text-white disabled:opacity-50"
-                >
-                  <CheckCircle size={12} />
-                  {approving ? "Approving..." : "Approve Draft"}
-                </button>
-                <button
                   onClick={handleDeleteElement}
                   className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border border-rose-200 text-rose-600 hover:bg-rose-50"
                 >
@@ -275,22 +252,15 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
               <StatCard label="Budget (labor)" value={formatCurrency(composite.canon.laborTotal)} />
             </div>
 
-            <SectionCard title="Details & Draft Status" icon={BadgeCheck}>
+            <SectionCard title="Details & Revision Status" icon={BadgeCheck}>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-gray-600">
                 <DetailRow label="Updated" value={formatDate(composite.element.updatedAt)} />
-                <DetailRow label="Draft" value={formatDraftMeta(composite.base.draftMeta)} />
-                <DetailRow label="Approved" value={formatApprovedMeta(composite.base.revisionMeta)} />
-              </div>
-              <div className="mt-4 text-xs text-gray-500">
-                Base snapshot source:{" "}
-                <span className="font-semibold text-gray-700">
-                  {composite.base.source ?? "none"}
-                </span>
+                <DetailRow label="Live Rev" value={formatDraftMeta(composite.base?.draftMeta)} />
               </div>
 
               <ElementMetaEditor
                 element={composite.element}
-                description={String(composite.base.spec?.description ?? "")}
+                description={String(composite.base?.spec?.description ?? "")}
                 disabled={savingElement || savingDraft}
                 onSaveMeta={async (next) => {
                   setSavingElement(true);
@@ -389,9 +359,9 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
               />
             </SectionCard>
 
-            <SectionCard title="Draft Snapshot" icon={StickyNote}>
+            <SectionCard title="Live Snapshot" icon={StickyNote}>
               <SnapshotSection
-                spec={composite.base.spec}
+                spec={composite.base?.spec}
                 canEdit={canEdit}
                 onSaveTask={(taskId, next) => {
                   const patchOps = [
@@ -493,10 +463,10 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
                 <DetailRow label="Print parts" value={`${composite.links.printing.printParts.length}`} />
               </div>
               <div className="mt-4 space-y-2">
-                {composite.links.history.length === 0 ? (
+                {!composite.links.history || composite.links.history.length === 0 ? (
                   <EmptyState label="No approved revisions yet." />
                 ) : (
-                  composite.links.history.map((version) => (
+                  composite.links.history.map((version: any) => (
                     <div
                       key={version.id}
                       className="rounded-lg border border-gray-100 bg-white px-4 py-3 text-xs text-gray-600"
@@ -537,8 +507,8 @@ function formatDate(value?: number) {
 }
 
 function formatDraftMeta(meta: any) {
-  if (!meta) return "No open draft";
-  return `Rev ${meta.revisionNumber} • ${meta.status}`;
+  if (!meta) return "--";
+  return `Rev ${meta.revisionNumber}`;
 }
 
 function formatApprovedMeta(meta: any) {
@@ -833,7 +803,7 @@ function SnapshotSection({
     subcontract.length === 0 &&
     notes.length === 0
   ) {
-    return <EmptyState label="No draft snapshot data yet." />;
+    return <EmptyState label="No live snapshot data yet." />;
   }
 
   return (

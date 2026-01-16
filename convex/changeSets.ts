@@ -473,7 +473,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
   for (const op of cs.ops) {
     if (op.kind !== "element.create") continue;
-    const { tempId, element, draft } = op.payload ?? {};
+    const { tempId, element } = op.payload ?? {};
 
     const elementTitle = element?.title || "Untitled Element";
     const elementType = element?.type ?? "build";
@@ -482,35 +482,14 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       projectId: cs.projectId,
       title: elementTitle,
       type: elementType,
-      status: "drafting",
+      status: "approvedForQuote",
       tags: [],
+      rev: 1,
       createdAt: now,
       updatedAt: now,
     });
 
     if (tempId) elementTempMap.set(tempId, elementId);
-
-    const draftId = await ctx.db.insert("elementDrafts", {
-      elementId,
-      projectId: cs.projectId,
-      status: "open",
-      revisionNumber: 1,
-      createdFrom: { changeSetId: sourceChangeSetId },
-      workingSnapshot: draft?.workingSnapshot ?? {
-        title: elementTitle,
-        tasks: { byId: {} },
-        labor: { byId: {} },
-        materials: { byId: {} },
-        subcontract: { byId: {} },
-        notes: [],
-        meta: { version: 1 }
-      },
-      schemaVersion: 1,
-      createdAt: now,
-      updatedAt: now
-    });
-
-    await ctx.db.patch(elementId, { currentDraftId: draftId });
     elementsToBump.add(elementId);
   }
 
@@ -1442,7 +1421,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
   for (const op of cs.ops) {
     if (op.kind !== "element.patch") continue;
-    const { elementTempOrId, elementId: directElementId, patch, draftPatch } = op.payload ?? {};
+    const { elementTempOrId, elementId: directElementId, patch } = op.payload ?? {};
     const elementId = resolveElementId(elementTempOrId ?? directElementId);
 
     if (!elementId) throw new Error("element.patch requires elementId or elementTempOrId");
@@ -1453,19 +1432,6 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (patch && Object.keys(patch).length > 0) {
       await ctx.db.patch(elementId, {
         ...patch,
-        updatedAt: now,
-      });
-    }
-
-    if (draftPatch?.merge && element.currentDraftId) {
-      const draft = await ctx.db.get(element.currentDraftId);
-      if (!draft) throw new Error("element.patch draft not found");
-      const merged = {
-        ...(draft.workingSnapshot ?? {}),
-        ...(draftPatch.merge ?? {}),
-      };
-      await ctx.db.patch(draft._id, {
-        workingSnapshot: merged,
         updatedAt: now,
       });
     }
@@ -1579,18 +1545,9 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (el) {
       await ctx.db.patch(el._id, {
         rev: (el.rev ?? 0) + 1,
-        hasUnapprovedChanges: true,
+        hasUnapprovedChanges: false,
         updatedAt: Date.now(),
       });
-
-      // --- CRITICAL FIX: Sync Live Data -> Draft Snapshot ---
-      if (el.currentDraftId) {
-        const liveSnapshot = await captureSnapshotFromLive(ctx, el._id);
-        await ctx.db.patch(el.currentDraftId, {
-          workingSnapshot: liveSnapshot,
-          updatedAt: Date.now(),
-        });
-      }
     }
   }
 
