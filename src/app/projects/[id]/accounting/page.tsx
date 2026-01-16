@@ -942,8 +942,8 @@ function MaterialLineRow({
           : "text-gray-500";
 
   return (
-    <div className="p-4 grid grid-cols-1 md:grid-cols-10 gap-3 items-center text-sm">
-      <div className="md:col-span-2">
+    <div className="p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-center text-sm">
+      <div className="md:col-span-3">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Name
         </div>
@@ -982,6 +982,14 @@ function MaterialLineRow({
       </div>
       <div className="md:col-span-1">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
+          Planned Total
+        </div>
+        <div className="w-full border border-gray-100 bg-gray-50 rounded-md px-3 py-2 text-sm text-gray-600">
+          {(active.qty * active.unitCost).toLocaleString()}
+        </div>
+      </div>
+      <div className="md:col-span-1">
+        <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Actual Qty
         </div>
         <input
@@ -1014,6 +1022,16 @@ function MaterialLineRow({
           }
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
         />
+      </div>
+      <div className="md:col-span-1">
+        <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
+          Actual Total
+        </div>
+        <div className="w-full border border-gray-100 bg-gray-50 rounded-md px-3 py-2 text-sm text-gray-600">
+          {actualTotal !== null && actualTotal !== undefined
+            ? actualTotal.toLocaleString()
+            : "--"}
+        </div>
       </div>
       <div className="md:col-span-2">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
@@ -1063,13 +1081,7 @@ function MaterialLineRow({
         )}
       </div>
       <div className="md:col-span-1 text-xs text-gray-500">
-        <div className="uppercase font-semibold text-gray-400">Actual</div>
-        <div className="font-mono text-gray-700">
-          {actualTotal === null || actualTotal === undefined
-            ? "--"
-            : `${Math.round(actualTotal).toLocaleString()} NIS`}
-        </div>
-        <div className="mt-2 uppercase font-semibold text-gray-400">Variance</div>
+        <div className="uppercase font-semibold text-gray-400">Variance</div>
         <div className={`font-mono ${gapClass}`}>
           {gapTotal === null ? "--" : formatGap(gapTotal)}
         </div>
@@ -1172,8 +1184,8 @@ function LaborLineRow({
           : "text-gray-500";
 
   return (
-    <div className="p-4 grid grid-cols-1 md:grid-cols-10 gap-3 items-center text-sm">
-      <div className="md:col-span-2">
+    <div className="p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-center text-sm">
+      <div className="md:col-span-3">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Role
         </div>
@@ -1210,6 +1222,14 @@ function LaborLineRow({
       </div>
       <div className="md:col-span-1">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
+          Planned Total
+        </div>
+        <div className="w-full border border-gray-100 bg-gray-50 rounded-md px-3 py-2 text-sm text-gray-600">
+          {(active.qty * active.rate).toLocaleString()}
+        </div>
+      </div>
+      <div className="md:col-span-1">
+        <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Actual Qty
         </div>
         <input
@@ -1241,6 +1261,16 @@ function LaborLineRow({
           }
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
         />
+      </div>
+      <div className="md:col-span-1">
+        <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
+          Actual Total
+        </div>
+        <div className="w-full border border-gray-100 bg-gray-50 rounded-md px-3 py-2 text-sm text-gray-600">
+          {actualTotal !== null && actualTotal !== undefined
+            ? actualTotal.toLocaleString()
+            : "--"}
+        </div>
       </div>
       <div className="md:col-span-2">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
@@ -1290,13 +1320,7 @@ function LaborLineRow({
         )}
       </div>
       <div className="md:col-span-1 text-xs text-gray-500">
-        <div className="uppercase font-semibold text-gray-400">Actual</div>
-        <div className="font-mono text-gray-700">
-          {actualTotal === null || actualTotal === undefined
-            ? "--"
-            : `${Math.round(actualTotal).toLocaleString()} NIS`}
-        </div>
-        <div className="mt-2 uppercase font-semibold text-gray-400">Variance</div>
+        <div className="uppercase font-semibold text-gray-400">Variance</div>
         <div className={`font-mono ${gapClass}`}>
           {gapTotal === null ? "--" : formatGap(gapTotal)}
         </div>
