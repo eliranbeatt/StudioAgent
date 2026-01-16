@@ -266,6 +266,7 @@ export const createFromRunbookBlock = mutation({
 
     const normalized = normalizeRunbookBlock(args.runbookBlock)
 
+
     const existing = await ctx.db
       .query('runbooks')
       .withIndex('by_project_scope', (q) => q.eq('projectId', args.projectId).eq('scope', args.scope))

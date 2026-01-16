@@ -75,6 +75,7 @@ export const createDraftFromUi = mutation({
     inputs: v.object({
       projectDescription: v.optional(v.string()),
       specs: v.optional(v.string()),
+      manualPriceNis: v.optional(v.number()),
       includeFlags: v.optional(
         v.object({
           includeElements: v.boolean(),
@@ -295,9 +296,17 @@ export const generateQuoteV2 = action({
 
     const overhead = totalDirectCost * margins.overheadPct;
     const risk = totalDirectCost * margins.riskPct;
-    const profit = totalDirectCost * margins.profitPct;
-    const grandTotal = totalDirectCost + overhead + risk + profit;
-    const ratio = totalDirectCost > 0 ? grandTotal / totalDirectCost : 0;
+    let profit = totalDirectCost * margins.profitPct;
+    const computedGrandTotal = totalDirectCost + overhead + risk + profit;
+    const manualSubtotal =
+      typeof quote.inputs?.manualPriceNis === "number" && quote.inputs.manualPriceNis > 0
+        ? quote.inputs.manualPriceNis
+        : null;
+    const sellSubtotal = manualSubtotal ?? computedGrandTotal;
+    if (manualSubtotal !== null) {
+      profit = sellSubtotal - totalDirectCost - overhead - risk;
+    }
+    const ratio = totalDirectCost > 0 ? sellSubtotal / totalDirectCost : 0;
 
     const sellBreakdown = sections.map((section) => ({
       groupName_he: section.title,
@@ -305,7 +314,7 @@ export const generateQuoteV2 = action({
       sellSubtotalNIS: Math.round(section.directCost * ratio),
     }));
     if (sellBreakdown.length > 0) {
-      const targetTotal = Math.round(grandTotal);
+      const targetTotal = Math.round(sellSubtotal);
       const currentTotal = sellBreakdown.reduce(
         (sum, item) => sum + Number(item.sellSubtotalNIS ?? 0),
         0
@@ -318,14 +327,18 @@ export const generateQuoteV2 = action({
     }
 
     const currency = overview.project.currency || "NIS";
-    const vatNote_he =
-      currency === "NIS" ? "לא כולל מע\"מ" : "לא כולל מסים מקומיים";
-    const priceLabel =
-      currency === "NIS" ? "סה\"כ לפני מע\"מ" : "סה\"כ לפני מסים";
+    const vatRate = 0.18;
+    const vatAmount = sellSubtotal * vatRate;
+    const totalWithVat = sellSubtotal + vatAmount;
+    const vatNote_he = "VAT 18%";
+    const priceLabel = "Subtotal before VAT";
+    const totalWithVatLabel = "Total incl. VAT";
+    const vatLabel = "VAT (18%)";
     const priceSummary = {
-      subtotalBeforeVat: Math.round(grandTotal),
+      subtotalBeforeVat: Math.round(sellSubtotal),
+      vatAmount: Math.round(vatAmount),
       vatNote_he,
-      total: Math.round(grandTotal),
+      total: Math.round(totalWithVat),
     };
 
     const formatCurrency = (value: number) =>
@@ -370,7 +383,9 @@ export const generateQuoteV2 = action({
           ]
         : [],
       priceSummary_he: [
-        `${priceLabel}: ${formatCurrency(Math.round(grandTotal))}`,
+        `${priceLabel}: ${formatCurrency(Math.round(sellSubtotal))}`,
+        `${vatLabel}: ${formatCurrency(Math.round(vatAmount))}`,
+        `${totalWithVatLabel}: ${formatCurrency(Math.round(totalWithVat))}`,
       ],
       options_he: includeFlags.includeOptions ? [] : [],
       agreements_he: includeFlags.includeAgreements
@@ -406,6 +421,7 @@ export const generateQuoteV2 = action({
     });
 
     const quoteBlocks = mergeQuoteBlocks(llmBlocks, templateBlocks);
+    quoteBlocks.priceSummary_he = templateBlocks.priceSummary_he;
 
     const quoteText_he = buildQuoteText(quoteBlocks, includeFlags);
     const contentHash = simpleHash(
@@ -431,7 +447,7 @@ export const generateQuoteV2 = action({
           overhead,
           risk,
           profit,
-          grandTotal,
+          grandTotal: sellSubtotal,
         },
         priceSummary,
         sellBreakdown,

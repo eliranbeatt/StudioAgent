@@ -501,6 +501,24 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     },
     model: "gpt-5-mini",
   },
+  {
+    skillId: "TASKS_SYNC_FROM_LABOR_LINES",
+    labelHe: "סנכרון משימות מעבודה",
+    descriptionHe: "יצירת משימות וקישורן לשורות עבודה",
+    category: "build",
+    flow: "execution",
+    scheduling: { suggestAfter: ["ACCOUNTING_BUILDER_FULL"], suggestAtStage: ["planning", "execution"] },
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.TASKS_SYNC_FROM_LABOR_LINES,
+    },
+    model: "gpt-5.2",
+  },
 ];
 
 const seedSkillsCore = async (ctx: any) => {

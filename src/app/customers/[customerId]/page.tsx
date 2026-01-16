@@ -1,11 +1,11 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../../../convex/_generated/api";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Building, Calendar, Folder } from "lucide-react";
-import { Id } from "../../../convex/_generated/dataModel";
+import { Id } from "../../../../convex/_generated/dataModel";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -86,7 +86,7 @@ export default function CustomerDetailPage() {
               projects.map((p) => (
                 <tr key={p._id} className="hover:bg-gray-50 group">
                   <td className="px-6 py-4 font-medium text-gray-900">
-                    <Link href={`/projects/${p._id}/overview`} className="flex items-center gap-2 hover:underline">
+                    <Link href={`/projects/${p._id}/agent`} className="flex items-center gap-2 hover:underline">
                       <Folder size={16} className="text-gray-400" />
                       {p.name}
                     </Link>

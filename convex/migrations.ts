@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { normalizeName, newBusinessId } from "./lib/normalize";
 import { Id } from "./_generated/dataModel";
 import { calculateCost } from "./lib/pricing";
-import { approveElementDraft } from "./elements";
+import { api } from "./_generated/api";
 
 export const backfillElementRevs = internalMutation({
   args: {},
@@ -216,7 +216,7 @@ export const flushAllDrafts = mutation({
           if (!dryRun) {
             // We reuse the existing logic which merges draft snapshot to live tables
             // and marks draft as approved.
-            await approveElementDraft(ctx, { elementId: (draft as any).elementId });
+            await ctx.runMutation(api.elements.approveElementDraft, { elementId: (draft as any).elementId });
           }
           processed++;
         } catch (e: any) {

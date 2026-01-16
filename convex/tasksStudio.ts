@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 
 export const listGlobal = query({
   args: {
@@ -14,20 +15,28 @@ export const listGlobal = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let q = ctx.db.query("tasks");
+    let tasks;
 
     // Optimization: Use index if a strong filter is present
     if (args.projectId) {
-      q = q.withIndex("by_project", (q) => q.eq("projectId", args.projectId));
+      tasks = await ctx.db.query("tasks")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId!))
+        .collect();
     } else if (args.status) {
-      q = q.withIndex("by_status", (q) => q.eq("status", args.status));
+      tasks = await ctx.db.query("tasks")
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .collect();
     } else if (args.workType) {
-      q = q.withIndex("by_workType", (q) => q.eq("workType", args.workType as any));
+      tasks = await ctx.db.query("tasks")
+        .withIndex("by_workType", (q) => q.eq("workType", args.workType as any))
+        .collect();
     } else if (args.dueFrom) {
-       q = q.withIndex("by_dueDate", (q) => q.gte("dueDate", args.dueFrom!));
+       tasks = await ctx.db.query("tasks")
+        .withIndex("by_dueDate", (q) => q.gte("dueDate", args.dueFrom!))
+        .collect();
+    } else {
+       tasks = await ctx.db.query("tasks").collect();
     }
-
-    let tasks = await q.collect();
 
     // In-memory filtering for the rest
     if (args.projectId) {
@@ -79,7 +88,7 @@ export const listGlobal = query({
     const projectIds = Array.from(new Set(tasks.map(t => t.projectId)));
     const projectsMap = new Map();
     await Promise.all(projectIds.map(async (pid) => {
-      const p = await ctx.db.get(pid);
+      const p = await ctx.db.get(pid as Id<"projects">);
       if (p) projectsMap.set(pid, p);
     }));
 

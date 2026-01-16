@@ -241,6 +241,7 @@ export const updateProjectDetails = mutation({
     id: v.id("projects"),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("active"), v.literal("archived"), v.literal("lead"), v.literal("production"), v.literal("done"), v.literal("rejected"))),
     projectTypes: v.optional(v.array(v.string())),
     details: v.optional(
       v.object({
@@ -260,6 +261,7 @@ export const updateProjectDetails = mutation({
     const updates: Record<string, any> = { updatedAt: Date.now() };
     if (args.name !== undefined) updates.name = args.name;
     if (args.description !== undefined) updates.description = args.description;
+    if (args.status !== undefined) updates.status = args.status;
     if (args.projectTypes !== undefined) updates.projectTypes = args.projectTypes;
     if (args.details !== undefined) {
       const cleanDetails = Object.fromEntries(

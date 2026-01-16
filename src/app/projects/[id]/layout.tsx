@@ -4,13 +4,11 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
-  Bot,
   Calculator,
   ListTodo,
   FileText,
   Layers,
   BrainCircuit,
-  BookOpen,
 } from "lucide-react";
 import { useEffect } from "react";
 import { useQuery } from "convex/react";
@@ -38,12 +36,10 @@ export default function ProjectLayout({
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
     { name: "Agent (New)", href: `/projects/${projectId}/agent`, icon: BrainCircuit },
-    { name: "AgenticEshet", href: `/projects/${projectId}/studio`, icon: Bot },
     { name: "Elements", href: `/projects/${projectId}/elements`, icon: Layers },
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },
     { name: "Quote", href: `/projects/${projectId}/quote`, icon: FileText },
-    { name: "Knowledge", href: `/projects/${projectId}/knowledge`, icon: BookOpen },
   ];
 
   if (!resolved) {

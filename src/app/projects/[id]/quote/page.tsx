@@ -51,6 +51,7 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
   const [projectDescription, setProjectDescription] = useState("");
   const [specs, setSpecs] = useState("");
   const [validUntil, setValidUntil] = useState("");
+  const [manualPriceNis, setManualPriceNis] = useState("");
   const [elementsMode, setElementsMode] = useState<"bySection" | "byElement">("byElement");
   const [includeElements, setIncludeElements] = useState(true);
   const [includeTerms, setIncludeTerms] = useState(true);
@@ -65,11 +66,17 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
+      const manualPriceValue = Number(manualPriceNis.replace(/,/g, "").trim());
+      const manualPrice =
+        Number.isFinite(manualPriceValue) && manualPriceValue > 0
+          ? manualPriceValue
+          : undefined;
       const quoteId = await createDraftFromUi({
         projectId,
         inputs: {
           projectDescription: projectDescription || overview?.project?.description || undefined,
           specs,
+          manualPriceNis: manualPrice,
           validUntil: validUntil || undefined,
           logoFileId: logoFileId || undefined,
           includeFlags: {
@@ -324,6 +331,17 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
             />
           </div>
           <div>
+            <label className="text-sm font-medium text-gray-700">Manual Price (Subtotal before VAT)</label>
+            <input
+              value={manualPriceNis}
+              onChange={(event) => setManualPriceNis(event.target.value)}
+              className="mt-2 w-full border rounded-lg p-3 text-sm"
+              placeholder="Override subtotal before VAT"
+              inputMode="decimal"
+            />
+            <p className="mt-1 text-xs text-gray-400">If set, this overrides the accounting total for the quote.</p>
+          </div>
+          <div>
             <label className="text-sm font-medium text-gray-700">Logo</label>
             <select
               value={logoFileId}
@@ -470,7 +488,7 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
                     </p>
                   </div>
                   <span className="text-sm text-gray-500">
-                    {quoteItem.totals?.grandTotal?.toLocaleString() ?? 0} ?
+                    {(quoteItem.priceSummary?.total ?? quoteItem.totals?.grandTotal ?? 0).toLocaleString()} ?
                   </span>
                 </button>
               ))}

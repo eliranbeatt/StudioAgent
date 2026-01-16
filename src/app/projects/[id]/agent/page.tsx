@@ -20,12 +20,15 @@ export default function AgentPage() {
   const conversations = useQuery(api.skills.runner.listAgentConversations as any, 
     projectId ? { projectId } : "skip"
   );
+  const elementsData = useQuery(api.elements.listByProject, projectId ? { projectId } : "skip");
+
   const createConversation = useMutation(api.skills.runner.createAgentConversation);
   const renameConversation = useMutation(api.skills.runner.renameConversation);
   const generateTitle = useAction(api.skills.runner.generateConversationTitle);
 
   const [activeConversationId, setActiveConversationId] = useState<Id<"agentConversations"> | null>(null);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+  const [hasInitializedSelection, setHasInitializedSelection] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
 
   // Renaming state
@@ -39,6 +42,14 @@ export default function AgentPage() {
       setActiveConversationId(conversations[0]._id);
     }
   }, [conversations, activeConversationId]);
+
+  useEffect(() => {
+    if (!hasInitializedSelection && elementsData?.elements) {
+      const allIds = elementsData.elements.map((e: any) => e.id);
+      setSelectedElementIds(allIds);
+      setHasInitializedSelection(true);
+    }
+  }, [elementsData, hasInitializedSelection]);
 
   const handleEnsureConversation = async () => {
     if (activeConversationId) return activeConversationId;

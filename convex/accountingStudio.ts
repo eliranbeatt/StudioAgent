@@ -8,12 +8,14 @@ export const getGlobalSummary = query({
     currency: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let q = ctx.db.query("projects");
+    let projects;
     if (args.projectStatus) {
-      q = q.withIndex("by_status", (q) => q.eq("status", args.projectStatus!));
+      projects = await ctx.db.query("projects")
+        .withIndex("by_status", (q) => q.eq("status", args.projectStatus!))
+        .collect();
+    } else {
+      projects = await ctx.db.query("projects").collect();
     }
-    
-    let projects = await q.collect();
 
     if (args.customerId) {
       projects = projects.filter(p => p.customerId === args.customerId);

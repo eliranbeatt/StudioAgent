@@ -473,11 +473,48 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (op.kind !== "element.create") continue;
     const { tempId, element, draft } = op.payload ?? {};
 
-    // Fallback to "Untitled Element" if title is missing
     const elementTitle = element?.title || "Untitled Element";
+    const elementType = element?.type ?? "build";
 
-    const VALID_ELEMENT_TYPES = ["build", "rent", "print", "transport", "install", "subcontract", "mixed"];
-    let elementType = element?.type ?? "build";
+    const elementId = await ctx.db.insert("elements", {
+      projectId: cs.projectId,
+      title: elementTitle,
+      type: elementType,
+      status: "drafting",
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    if (tempId) elementTempMap.set(tempId, elementId);
+
+    const draftId = await ctx.db.insert("elementDrafts", {
+      elementId,
+      projectId: cs.projectId,
+      status: "open",
+      revisionNumber: 1,
+      createdFrom: { changeSetId: sourceChangeSetId },
+      workingSnapshot: draft?.workingSnapshot ?? {
+        title: elementTitle,
+        tasks: { byId: {} },
+        labor: { byId: {} },
+        materials: { byId: {} },
+        subcontract: { byId: {} },
+        notes: [],
+        meta: { version: 1 }
+      },
+      schemaVersion: 1,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    await ctx.db.patch(elementId, { currentDraftId: draftId });
+    elementsToBump.add(elementId);
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "vendor.create") continue;
+    const { tempId, fields } = op.payload ?? {};
     if (!fields?.name) throw new Error("vendor.create requires fields.name");
 
     let vendorId: VendorId;
@@ -1375,6 +1412,82 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     });
 
     elementsToBump.add(elementId);
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "taskAccountingLink.create") continue;
+
+    // Payload can be directly fields (if normalized) or wrapped
+    const fields = op.payload.fields ?? op.payload;
+
+    // Resolve Task ID (might be temp from this changeset)
+    const rawTaskId = resolveFromTemp(fields.taskId, taskTempMap) ?? fields.taskId;
+    const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
+
+    // Resolve WorkLine ID (usually existing, but support temp)
+    const rawWorkLineId = resolveFromTemp(fields.workLineId, workLineTempMap) ?? fields.workLineId;
+    const workLineId = rawWorkLineId ? ctx.db.normalizeId("workLines", rawWorkLineId) : undefined;
+
+    if (!taskId || !workLineId) {
+      console.warn("Skipping taskAccountingLink.create: Missing taskId or workLineId", fields);
+      continue;
+    }
+
+    const lineType = fields.lineType === "labor" ? "labor" : "material"; // default/fallback logic if needed, but schema enforces union? No, helper does.
+    // Schema says v.union(v.literal("labor"), v.literal("material"))
+
+    // Check overlap to avoid duplicates
+    const existing = await ctx.db
+      .query("taskAccountingLinks")
+      .withIndex("by_project_task", (q: any) => q.eq("projectId", cs.projectId).eq("taskId", taskId))
+      .filter((q: any) =>
+        q.eq(q.field("workLineId"), workLineId)
+      )
+      .first();
+
+    if (!existing) {
+      await ctx.db.insert("taskAccountingLinks", {
+        projectId: cs.projectId,
+        taskId,
+        lineType: fields.lineType ?? "labor", // Defaulting to labor per skill purpose, but respected if passed
+        workLineId,
+        allocatedHours: fields.allocatedHours ? Number(fields.allocatedHours) : undefined,
+        createdBy: "ai",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "taskAccountingLink.delete") continue;
+    const fields = op.payload.fields ?? op.payload;
+
+    if (fields.linkId) {
+      await ctx.db.delete(fields.linkId);
+      continue;
+    }
+
+    if (fields.taskId && fields.workLineId) {
+      // Find by composite key
+      const rawTaskId = resolveFromTemp(fields.taskId, taskTempMap) ?? fields.taskId;
+      const taskId = ctx.db.normalizeId("tasks", rawTaskId);
+
+      const rawWorkLineId = resolveFromTemp(fields.workLineId, workLineTempMap) ?? fields.workLineId;
+      const workLineId = ctx.db.normalizeId("workLines", rawWorkLineId);
+
+      if (taskId && workLineId) {
+        const existing = await ctx.db
+          .query("taskAccountingLinks")
+          .withIndex("by_project_task", (q: any) => q.eq("projectId", cs.projectId).eq("taskId", taskId))
+          .filter((q: any) => q.eq(q.field("workLineId"), workLineId))
+          .collect(); // collect all duplicates just in case
+
+        for (const link of existing) {
+          await ctx.db.delete(link._id);
+        }
+      }
+    }
   }
 
   // Bump Revisions for all affected elements (once per element)

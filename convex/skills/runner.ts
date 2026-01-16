@@ -906,6 +906,7 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
       model: model ?? OPENAI_MODEL,
       messages: messages,
       tools: tools.length > 0 ? tools : undefined,
+      response_format: { type: "json_object" },
     }, {
       projectId: contextInfo?.projectId,
       conversationId: contextInfo?.conversationId,

@@ -372,6 +372,23 @@ export default defineSchema({
   }).index("by_task", ["taskId"])
     .index("by_project_status", ["projectId", "status"]),
 
+  // Task Accounting Links (Join Table)
+  taskAccountingLinks: defineTable({
+    projectId: v.id("projects"),
+    taskId: v.id("tasks"),
+    lineType: v.union(v.literal("labor"), v.literal("material")),
+    workLineId: v.id("workLines"), // For now assuming simple id, but if we support material later we might need a generic lineId or separate columns
+    allocatedHours: v.optional(v.number()),
+    createdBy: v.union(v.literal("human"), v.literal("ai")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_task", ["taskId"])
+    .index("by_workLine", ["workLineId"])
+    .index("by_project_task", ["projectId", "taskId"])
+    .index("by_project_workLine", ["projectId", "workLineId"]),
+
   // Trello Sync Runs
   trelloSyncRuns: defineTable({
     projectId: v.id("projects"),
@@ -681,6 +698,7 @@ export default defineSchema({
     inputs: v.optional(v.object({
       projectDescription: v.optional(v.string()),
       specs: v.optional(v.string()),
+      manualPriceNis: v.optional(v.number()),
       includeFlags: v.optional(v.object({
         includeElements: v.boolean(),
         elementsMode: v.union(v.literal("bySection"), v.literal("byElement")),

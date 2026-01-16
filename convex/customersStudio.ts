@@ -7,13 +7,15 @@ export const listCustomersStudio = query({
     query: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let q = ctx.db.query("customers");
+    let customers;
     
     if (args.status) {
-      q = q.withIndex("by_status", (q) => q.eq("status", args.status));
+      customers = await ctx.db.query("customers")
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .collect();
+    } else {
+      customers = await ctx.db.query("customers").collect();
     }
-
-    let customers = await q.collect();
 
     if (args.query) {
       const lowerQuery = args.query.toLowerCase();
