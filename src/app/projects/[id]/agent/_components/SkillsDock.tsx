@@ -28,6 +28,18 @@ export function SkillsDock({
   const [showAll, setShowAll] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
 
+  const hiddenSkillIds = new Set([
+    'RECEIPT_PARSE_AND_MAP',
+    'BUYING_ASSISTANT_WEB',
+    'DAILY_EXECUTION_PLANNER',
+    'COST_VARIANCE_ANALYZER',
+    'QUOTE_WRITER_FULL',
+    'PROJECT_BRIEF_BUILDER',
+    'CHANGESET_REVIEWER',
+    'CLARIFICATIONS_GATE',
+    'CONSULTANT_CHAT',
+  ])
+
   useEffect(() => {
     ensureSkillsSeeded();
   }, [ensureSkillsSeeded]);
@@ -70,12 +82,18 @@ export function SkillsDock({
   if (!recommendations) return <div className="p-4 text-xs text-gray-400">Loading skills...</div>;
 
   const displayedSkills = showAll ? (allSkills ?? []) : recommendations
+  const visibleSkills = displayedSkills.filter((skill: any) => !hiddenSkillIds.has(skill.skillId))
   const filteredSkills = selectedTagIds.length === 0
-    ? displayedSkills
-    : displayedSkills.filter((skill: any) => selectedTagIds.every((tagId) => (skill.tagIds ?? []).includes(tagId)))
+    ? visibleSkills
+    : visibleSkills.filter((skill: any) => selectedTagIds.every((tagId) => (skill.tagIds ?? []).includes(tagId)))
 
   const orderedGroups = (tagDefinitions?.groups ?? []).slice().sort((a: any, b: any) => a.order - b.order)
   const orderedTags = (tagDefinitions?.tags ?? []).slice().sort((a: any, b: any) => a.order - b.order)
+  const categoryTagLabelById = new Map(
+    orderedTags
+      .filter((tag: any) => tag.groupId === 'category')
+      .map((tag: any) => [tag.id, tag.labelHe])
+  )
   const tagsByGroup = orderedGroups.map((group: any) => ({
     ...group,
     tags: orderedTags.filter((tag: any) => tag.groupId === group.id),
@@ -83,7 +101,7 @@ export function SkillsDock({
 
   const toggleTag = (tagId: string) => {
     setSelectedTagIds((prev) => (
-      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+      prev.includes(tagId) ? [] : [tagId]
     ))
   }
 
@@ -175,16 +193,10 @@ export function SkillsDock({
                 ))}
               </div>
             )}
-            {skill.category === "audit" && (
-                <div className="mt-2 inline-block px-2 py-0.5 rounded text-[10px] bg-orange-50 text-orange-700 font-medium">
-                    Audit
-                </div>
-            )}
-             {/* Show category tag if showing all */}
-             {showAll && skill.category && skill.category !== "audit" && (
-                <div className="mt-2 inline-block px-2 py-0.5 rounded text-[10px] bg-slate-50 text-slate-500 border border-slate-100 font-medium">
-                    {skill.category}
-                </div>
+            {showAll && skill.category && categoryTagLabelById.size > 0 && (
+              <div className="mt-2 inline-block px-2 py-0.5 rounded text-[10px] bg-slate-50 text-slate-500 border border-slate-100 font-medium">
+                {categoryTagLabelById.get(`category:${skill.category}`) ?? skill.category}
+              </div>
             )}
           </div>
         ))}

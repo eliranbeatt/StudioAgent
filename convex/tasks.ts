@@ -1,8 +1,21 @@
 import { mutation, query } from './_generated/server'
-import { api } from './_generated/api'
+import { api, internal } from './_generated/api'
 import { v } from 'convex/values'
-import { applyChangeSetInternal } from './drafts'
 import { withDefaultStartDate } from './lib/dates'
+
+const normalizeEstimatedFields = (fields: { estimatedHours?: number; estimatedMinutes?: number }) => {
+  const nextFields = { ...fields }
+  const hasHours = Object.prototype.hasOwnProperty.call(fields, 'estimatedHours')
+  const hasMinutes = Object.prototype.hasOwnProperty.call(fields, 'estimatedMinutes')
+  if (!hasHours && !hasMinutes) return nextFields
+  const hours = Number.isFinite(fields.estimatedHours) ? Number(fields.estimatedHours) : undefined
+  const minutes = Number.isFinite(fields.estimatedMinutes) ? Number(fields.estimatedMinutes) : undefined
+  if (hours !== undefined && minutes === undefined) nextFields.estimatedMinutes = hours * 60
+  if (minutes !== undefined && hours === undefined) nextFields.estimatedHours = minutes / 60
+  if (hours === undefined) delete nextFields.estimatedHours
+  if (minutes === undefined) delete nextFields.estimatedMinutes
+  return nextFields
+}
 
 export const updateTaskStatus = mutation({
   args: {
@@ -20,7 +33,7 @@ export const updateTaskStatus = mutation({
       updatedAt: Date.now(),
     });
 
-    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, {
+    await ctx.scheduler.runAfter(0, internal.projectsStage.recomputeStage, {
       projectId: args.projectId,
     });
     return { ok: true };
@@ -43,7 +56,7 @@ export const updateTask = mutation({
     const { taskId, patch } = args;
     const task = await ctx.db.get(taskId);
     if (!task) throw new Error("Task not found");
-    const nextPatch = { ...patch }
+    let nextPatch: any = normalizeEstimatedFields(patch)
     if (Object.prototype.hasOwnProperty.call(patch, 'startDate')) {
       nextPatch.startDate = withDefaultStartDate(patch.startDate)
     }
@@ -51,7 +64,7 @@ export const updateTask = mutation({
       ...nextPatch,
       updatedAt: Date.now(),
     });
-    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, {
+    await ctx.scheduler.runAfter(0, internal.projectsStage.recomputeStage, {
       projectId: task.projectId,
     });
   },
@@ -68,6 +81,7 @@ export const createTask = mutation({
     category: v.optional(v.string()),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
+    estimatedHours: v.optional(v.number()),
     estimatedMinutes: v.optional(v.number()),
     assignee: v.optional(v.string()),
     assigneeIds: v.optional(v.array(v.id("employees"))),
@@ -75,15 +89,17 @@ export const createTask = mutation({
   },
   handler: async (ctx, args) => {
     const { projectId, ...fields } = args;
+    const normalizedFields = normalizeEstimatedFields(fields);
     await ctx.db.insert("tasks", {
       projectId,
-      ...fields,
+      title: fields.title,
+      ...normalizedFields,
       startDate: withDefaultStartDate(fields.startDate),
       createdAt: Date.now(),
       updatedAt: Date.now(),
       createdBy: "human",
-    });
-    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, {
+    } as any);
+    await ctx.scheduler.runAfter(0, internal.projectsStage.recomputeStage, {
       projectId,
     });
   },
@@ -168,6 +184,16 @@ export const listForProject = query({
           sectionLabelHe: l.sectionLabelHe,
         }));
 
+        const checklist = Array.isArray(task.checklist)
+          ? task.checklist.map((item: any, index: number) => ({
+            ...item,
+            order: Number.isFinite(item.order) ? item.order : index,
+            estimatedHours:
+              item?.estimatedHours ??
+              (Number.isFinite(item?.estimatedMinutes) ? item.estimatedMinutes / 60 : undefined),
+          }))
+          : task.checklist;
+
         return {
           id: task._id,
           title: task.title,
@@ -178,13 +204,14 @@ export const listForProject = query({
           startDate: task.startDate,
           endDate: task.endDate,
           dueDate: task.dueDate,
-          estimatedMinutes: task.estimatedMinutes,
+          estimatedHours:
+            task.estimatedHours ?? (task.estimatedMinutes !== undefined ? task.estimatedMinutes / 60 : undefined),
           stage: task.stage,
           workType: task.workType,
           workTypeLabelHe: task.workTypeLabelHe,
           plannedStartDate: task.plannedStartDate,
           plannedEndDate: task.plannedEndDate,
-          checklist: task.checklist,
+          checklist,
           accountingLinks: task.accountingLinks,
           assignee: task.assignee,
           assigneeIds: task.assigneeIds,

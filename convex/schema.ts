@@ -83,6 +83,7 @@ const TaskChecklistItem = v.object({
   description: v.optional(v.string()),
   workType: v.optional(StudioWorkType),
   workTypeLabelHe: v.optional(v.string()),
+  estimatedHours: v.optional(v.number()),
   estimatedMinutes: v.optional(v.number()),
   order: v.optional(v.number()),
   done: v.optional(v.boolean()),
@@ -231,6 +232,7 @@ export default defineSchema({
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
     dueDate: v.optional(v.number()),
+    estimatedHours: v.optional(v.number()),
     estimatedMinutes: v.optional(v.number()),
     assignee: v.optional(v.string()),
     dependencies: v.optional(v.array(v.string())), // Task IDs
@@ -579,6 +581,9 @@ export default defineSchema({
     receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
     createdFromChangeSetId: v.optional(v.id("changeSets")),
     dedupKey: v.optional(v.string()),
+    status: v.optional(v.string()), // e.g. "todo", "done"
+    assignee: v.optional(v.string()),
+    assigneeId: v.optional(v.id("employees")),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
@@ -1243,7 +1248,7 @@ export default defineSchema({
     skillId: v.string(), // Unique key e.g. "elements_builder_full"
     labelHe: v.string(),
     descriptionHe: v.string(),
-    category: v.string(), // "consult", "build", "review", "research", "audit"
+      category: v.string(), // "planning", "tasks", "knowledge", "review", "shopping"
     flow: v.optional(v.string()),
     scheduling: v.optional(v.object({
       suggestAfter: v.optional(v.array(v.string())),

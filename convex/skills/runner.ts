@@ -318,6 +318,11 @@ export const buildContext = internalQuery({
       .query("workLines")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .take(200);
+    const taskAccountingLinks = await ctx.db
+      .query("taskAccountingLinks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .take(500);
+
     const quoteVersions = await ctx.db
       .query("quoteVersions")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -407,8 +412,30 @@ export const buildContext = internalQuery({
         stage: t.stage,
         workType: t.workType,
         workTypeLabelHe: t.workTypeLabelHe,
-        estimatedMinutes: t.estimatedMinutes,
+        estimatedHours:
+          t.estimatedHours ?? (t.estimatedMinutes !== undefined ? t.estimatedMinutes / 60 : undefined),
         elementId: t.elementId,
+        category: t.category, // Added category as it's needed for the skill
+        descriptionHe: t.description, // Mapping description to descriptionHe as best effort
+      })),
+      laborWorkLines: workLines.map((line: any) => ({
+        id: line._id,
+        elementId: line.elementId,
+        roleHe: line.roleHe, // Matches schema field
+        titleHe: line.roleHe ?? line.title, // For AI matching logic
+        workType: line.workType,
+        hoursPlanned: line.plannedQuantity ?? 0,
+        hoursActual: 0,
+        notesHe: line.notes,
+        isOverhead: line.isManagement ?? false,
+        status: line.status,
+        assignee: line.assignee,
+      })),
+      existingLinks: taskAccountingLinks.map((l: any) => ({
+        taskId: l.taskId,
+        workLineId: l.workLineId,
+        lineType: l.lineType,
+        allocatedHours: l.allocatedHours
       })),
       accounting: {
         materialLines: materialLines.map((line: any) => ({
@@ -434,6 +461,8 @@ export const buildContext = internalQuery({
           plannedTotalCost: line.plannedTotalCost,
           taskId: line.taskId,
           elementId: line.elementId,
+          status: line.status,
+          assignee: line.assignee,
         })),
       },
       quote: latestQuote
@@ -487,14 +516,138 @@ export const saveRunResult = internalMutation({
 
         // Normalize ops to match schema { kind, payload }
         const rawOps = Array.isArray(block.changeSet.ops) ? block.changeSet.ops : [];
+
+        // MACRO EXPANSION: task.syncFromLabor
+        // Goal: fetch authoritative data from workLine and generate strict task.patch
+        const syncOps = rawOps.filter((op: any) => (op.kind === "task.syncFromLabor" || op.op === "task.syncFromLabor"));
+        if (syncOps.length > 0) {
+          // 1. Gather IDs
+          const workLineIds = [...new Set(syncOps.map((op: any) => op.payload?.workLineId).filter((id: any) => typeof id === "string"))];
+          const taskIds = [...new Set(syncOps.map((op: any) => op.payload?.taskId).filter((id: any) => typeof id === "string"))];
+
+          // 2. Fetch Work Lines & Existing Links
+          const [workLines, existingLinks] = await Promise.all([
+            Promise.all(workLineIds.map((id: string) => ctx.db.get(id as any))),
+            ctx.db.query("taskAccountingLinks")
+              .withIndex("by_project", (q: any) => q.eq("projectId", args.projectId))
+              .collect() // Fetching all for project might be heavy, but safe for now. Optimally we'd filter.
+          ]);
+
+          const workLineMap = new Map();
+          workLines.forEach((wl: any) => { if (wl) workLineMap.set(wl._id, wl); });
+
+          // 3. Expand Ops
+          for (let i = 0; i < rawOps.length; i++) {
+            const op = rawOps[i];
+            if (op.kind === "task.syncFromLabor" || op.op === "task.syncFromLabor") {
+              const wl = workLineMap.get(op.payload?.workLineId);
+              const targetTaskId = op.payload?.taskId;
+
+              if (wl && targetTaskId) {
+                // A. Generate Task Patch
+                rawOps[i] = {
+                  kind: "task.patch",
+                  payload: {
+                    taskId: targetTaskId,
+                    fields: {
+                      title: wl.roleHe || wl.title, // Enforce title sync
+                      estimatedHours: wl.plannedQuantity, // Enforce hours sync
+                    }
+                  }
+                };
+
+                // B. Enforce 1:1 Linkage (Clean up messy links)
+                // Findings existing links for this Task OR this WorkLine
+                const relatedLinks = existingLinks.filter((l: any) =>
+                  l.taskId === targetTaskId || l.workLineId === wl._id
+                );
+
+                // We want EXACTLY ONE link: { taskId: targetTaskId, workLineId: wl._id }
+                // Any link that involves either side but isn't THIS specific pair must be deleted.
+                // Any link that IS this pair must be kept (or created if missing).
+
+                let linkExists = false;
+
+                for (const link of relatedLinks) {
+                  const isCorrectPair = (link.taskId === targetTaskId && link.workLineId === wl._id);
+
+                  if (isCorrectPair) {
+                    linkExists = true;
+                  } else {
+                    // It's a conflict! 
+                    // e.g. Task is linked to OldWorkLine, or WorkLine is linked to OtherTask
+                    // We generate a delete op.
+                    // Check if we already added a delete op (to avoid dups)? 
+                    // The Set in ops normalized list will handle it or we just append.
+                    rawOps.push({
+                      kind: "taskAccountingLink.delete",
+                      payload: { linkId: link._id }
+                    });
+                  }
+                }
+
+                if (!linkExists) {
+                  rawOps.push({
+                    kind: "taskAccountingLink.create",
+                    payload: {
+                      taskId: targetTaskId,
+                      lineType: "labor",
+                      workLineId: wl._id,
+                      allocatedHours: wl.plannedQuantity
+                    }
+                  });
+                }
+
+              } else {
+                // Fallback if workLine not found: just ignore or let it fail downstream? 
+                // We'll mark it unknown so it gets filtered or tracked
+                rawOps[i] = { kind: "unknown", payload: { error: "WorkLine not found for sync", ...op.payload } };
+              }
+            }
+          }
+        }
         const normalizedOps = rawOps.map((op: any) => {
           if (op.kind && op.payload) return op; // Already correct
 
-          const kind = op.kind ?? op.op ?? "unknown";
-          // Payload is everything else
+          let kind = op.kind ?? op.op;
           const payload = { ...op };
           delete payload.kind;
           delete payload.op;
+          delete payload.entity; // Remove entity/action from payload as they are metadata for kind mapping
+          delete payload.action;
+
+          if (!kind && op.entity && op.action) {
+            const e = op.entity;
+            const a = op.action;
+            if (e === "task") {
+              if (a === "create") kind = "task.create";
+              if (a === "update") kind = "task.patch";
+              if (a === "archive") {
+                kind = "task.patch";
+                // Ensure fields object exists
+                if (!payload.fields) payload.fields = {};
+                payload.fields.status = "archived";
+              }
+            } else if (e === "taskAccountingLink") {
+              if (a === "upsert" || a === "create") kind = "taskAccountingLink.create";
+              if (a === "delete") kind = "taskAccountingLink.delete";
+            } else if (e === "workLine") {
+              if (a === "create") kind = "workLine.create";
+              if (a === "update") kind = "workLine.patch";
+              if (a === "delete") kind = "workLine.delete";
+            } else if (e === "materialLine") {
+              if (a === "create") kind = "materialLine.create";
+              if (a === "update") kind = "materialLine.patch";
+              if (a === "delete") kind = "materialLine.delete";
+            }
+          }
+
+          // Compatibility Fix: Normalize "update" to "patch" if the model guessed wrong
+          if (kind === "task.update") kind = "task.patch";
+          if (kind === "workLine.update") kind = "workLine.patch";
+          if (kind === "materialLine.update") kind = "materialLine.patch";
+
+          if (!kind) kind = "unknown";
 
           return { kind, payload };
         });
@@ -1018,6 +1171,16 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
 
     let blocks = parsed.blocks || parsed;
     if (!Array.isArray(blocks)) blocks = [blocks];
+
+    // Handle sibling changeSet (new pattern)
+    if (parsed.changeSet && typeof parsed.changeSet === "object" && Array.isArray(parsed.changeSet.ops)) {
+      blocks.push({
+        type: "ChangeSetBlock",
+        titleHe: parsed.changeSet.titleHe || parsed.summaryHe || "שינויים מוצעים",
+        summaryHe: parsed.changeSet.summaryHe,
+        changeSet: parsed.changeSet
+      });
+    }
 
     // Preserve summaryHe if it exists on the parent object
     if (parsed.summaryHe && typeof parsed.summaryHe === "string") {

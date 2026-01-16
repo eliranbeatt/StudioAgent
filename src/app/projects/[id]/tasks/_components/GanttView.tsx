@@ -45,8 +45,8 @@ export function GanttView({ tasks, onTaskClick }: GanttViewProps) {
         }
       }
 
-      const estimatedMinutes = t.estimatedMinutes || 90;
-      const visualDurationMs = estimatedMinutes * 60 * 1000 * SCALE_FACTOR;
+      const estimatedHours = t.estimatedHours || 1.5;
+      const visualDurationMs = estimatedHours * 60 * 60 * 1000 * SCALE_FACTOR;
 
       let end = t.endDate ? Date.parse(t.endDate) : (t.plannedEndDate ? Date.parse(t.plannedEndDate) : null);
 
@@ -61,7 +61,7 @@ export function GanttView({ tasks, onTaskClick }: GanttViewProps) {
         ...t,
         start,
         end,
-        realMinutes: estimatedMinutes,
+        realHours: estimatedHours,
         visualDurationMs
       });
     });
@@ -212,11 +212,11 @@ export function GanttView({ tasks, onTaskClick }: GanttViewProps) {
                             width: `${width}%`,
                           }}
                           onClick={() => onTaskClick(task.id)}
-                          title={`${task.title} (${Math.round(task.realMinutes / 60 * 10) / 10}h)`}
+                          title={`${task.title} (${Math.round(task.realHours * 10) / 10}h)`}
                         >
                           {/* Removed width condition to always show if possible */}
                           <div className="px-1 text-[9px] text-white/95 truncate font-medium w-full text-center leading-none">
-                            {Math.round(task.realMinutes / 60 * 10) / 10}h
+                            {Math.round(task.realHours * 10) / 10}h
                           </div>
                         </div>
                       </div>

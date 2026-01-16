@@ -15,7 +15,7 @@
 
 ## Plan
 1. Snapshot task schema
-   - Define fields: id, title, description, status, domain, priority, category, startDate, endDate, estimatedMinutes/duration, dependencies, steps, subtasks, assignee, links to materials/labor.
+   - Define fields: id, title, description, status, domain, priority, category, startDate, endDate, estimatedHours/duration, dependencies, steps, subtasks, assignee, links to materials/labor.
    - Update element creation and task generation to include required defaults.
 
 2. Backend updates

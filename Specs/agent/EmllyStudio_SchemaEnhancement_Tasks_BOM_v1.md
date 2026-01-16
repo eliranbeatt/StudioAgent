@@ -60,7 +60,7 @@ Add these fields to `tasks` (all **optional** to keep backwards compatibility, b
 - `workType` (`StudioWorkType`)
 - `plannedStartDate` (string, `YYYY-MM-DD`) — date-only
 - `plannedEndDate` (string, `YYYY-MM-DD`)
-- `estimatedMinutes` (number) — quick rollup for gantt and crew planning
+- `estimatedHours` (number) — quick rollup for gantt and crew planning
 - `checklist` (array of checklist items) — the *atomic particles*
 
 ### 2.3 Checklist item shape (`TaskChecklistItem`)
@@ -68,7 +68,7 @@ Add these fields to `tasks` (all **optional** to keep backwards compatibility, b
 - `title` (string) — Hebrew action (“לחתוך צינורות לפי מידות”)
 - `description` (string, optional) — brief practical note
 - `workType` (`StudioWorkType`, optional)
-- `estimatedMinutes` (number, optional)
+- `estimatedHours` (number, optional)
 - `order` (number)
 - `done` (boolean)
 - `dependsOnItemIds` (string[], optional)
@@ -87,7 +87,7 @@ const TaskChecklistItem = v.object({
   title: v.string(),
   description: v.optional(v.string()),
   workType: v.optional(StudioWorkType),
-  estimatedMinutes: v.optional(v.number()),
+  estimatedHours: v.optional(v.number()),
   order: v.number(),
   done: v.boolean(),
   dependsOnItemIds: v.optional(v.array(v.string())),
@@ -121,7 +121,7 @@ export default defineSchema({
     workType: v.optional(StudioWorkType),
     plannedStartDate: v.optional(v.string()), // "YYYY-MM-DD"
     plannedEndDate: v.optional(v.string()),
-    estimatedMinutes: v.optional(v.number()),
+    estimatedHours: v.optional(v.number()),
     checklist: v.optional(v.array(TaskChecklistItem)),
   })
     .index("by_project", ["projectId"])
@@ -240,10 +240,10 @@ Recommended additions:
     "workType": "fabrication_metal",
     "plannedStartDate": "2026-01-10",
     "plannedEndDate": "2026-01-11",
-    "estimatedMinutes": 180,
+    "estimatedHours": 3,
     "dependencies": ["taskId1", "taskId2"],
     "checklist": [
-      { "id":"c1","title":"…","order":0,"done":false,"estimatedMinutes":30 }
+      { "id":"c1","title":"…","order":0,"done":false,"estimatedHours": 0.5 }
     ]
   }
 }
@@ -255,7 +255,7 @@ Recommended additions:
 
 ### 5.1 “Big tasks with atomic checklists”
 - Parent task = 1–4 hours, named as a meaningful studio chunk.
-- Checklist items = 5–30 minutes each, actionable, tool-aware, finish-defined.
+- Checklist items = 0.1�0.5 hours each, actionable, tool-aware, finish-defined.
 - Every parent task must have **≥6** checklist items unless truly trivial.
 
 ### 5.2 Dates rule
@@ -280,3 +280,6 @@ For any build element:
    - date chips
    - checklist with progress bar
 4. Update Planning/Accounting agents prompts (see Prompt Pack V3).
+
+
+

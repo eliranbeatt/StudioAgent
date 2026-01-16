@@ -15,7 +15,12 @@ export const runEstimator = mutation({
     
     // 2. Filter tasks needing estimate or dependency update
     // Simple heuristic: if estimate is missing or 0
-    const needsEstimate = tasks.filter(t => !t.estimatedMinutes || t.estimatedMinutes === 0);
+    const needsEstimate = tasks.filter((t) => {
+        const hours =
+            t.estimatedHours ??
+            (t.estimatedMinutes !== undefined ? t.estimatedMinutes / 60 : undefined);
+        return !hours || hours === 0;
+    });
     
     if (needsEstimate.length === 0) return { count: 0 };
 
@@ -25,7 +30,7 @@ export const runEstimator = mutation({
     let count = 0;
     
     for (const task of needsEstimate) {
-        const est = estimateMinutesForTask(task);
+        const est = estimateHoursForTask(task);
         
         // Check for existing draft
         const existingDraft = await ctx.db
@@ -34,7 +39,7 @@ export const runEstimator = mutation({
             .filter((q) => q.eq(q.field("status"), "draft"))
             .first();
 
-        const patch = { estimatedMinutes: est };
+        const patch = { estimatedHours: est };
 
         if (existingDraft) {
              await ctx.db.patch(existingDraft._id, {
@@ -65,33 +70,33 @@ export const runEstimator = mutation({
 
 
 
-function estimateMinutesForTask(task: any) {
+function estimateHoursForTask(task: any) {
   const title = String(task?.title ?? "").toLowerCase();
   const category = String(task?.category ?? "").toLowerCase();
 
-  const domainMinutes: Record<string, number> = {
-    planning: 120,
-    design: 180,
-    procurement: 90,
-    fabrication: 240,
-    finishing: 180,
-    print: 120,
-    installation: 240,
-    logistics: 90,
-    qa: 60,
-    admin: 60,
+  const domainHours: Record<string, number> = {
+    planning: 2,
+    design: 3,
+    procurement: 1.5,
+    fabrication: 4,
+    finishing: 3,
+    print: 2,
+    installation: 4,
+    logistics: 1.5,
+    qa: 1,
+    admin: 1,
   };
 
   const matchKeyword = (keywords: string[]) =>
     keywords.some((keyword) => title.includes(keyword));
 
-  if (matchKeyword(["install", "setup", "on-site"])) return 240;
-  if (matchKeyword(["fabricate", "build", "assembly", "joinery"])) return 240;
-  if (matchKeyword(["finish", "surface", "paint", "sand"])) return 180;
-  if (matchKeyword(["design", "draw", "concept", "moodboard"])) return 180;
-  if (matchKeyword(["procure", "vendor", "order", "purchase"])) return 90;
-  if (matchKeyword(["qa", "quality", "test"])) return 60;
-  if (matchKeyword(["pack", "ship", "logistics", "transport"])) return 90;
+  if (matchKeyword(["install", "setup", "on-site"])) return 4;
+  if (matchKeyword(["fabricate", "build", "assembly", "joinery"])) return 4;
+  if (matchKeyword(["finish", "surface", "paint", "sand"])) return 3;
+  if (matchKeyword(["design", "draw", "concept", "moodboard"])) return 3;
+  if (matchKeyword(["procure", "vendor", "order", "purchase"])) return 1.5;
+  if (matchKeyword(["qa", "quality", "test"])) return 1;
+  if (matchKeyword(["pack", "ship", "logistics", "transport"])) return 1.5;
 
-  return domainMinutes[category] ?? 90;
+  return domainHours[category] ?? 1.5;
 }

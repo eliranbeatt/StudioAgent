@@ -32,6 +32,12 @@ export function StudioTopNav() {
       icon: Users,
       isActive: (path: string) => path.startsWith("/customers"),
     },
+    {
+      name: "Management",
+      href: "/management",
+      icon: ListTodo,
+      isActive: (path: string) => path.startsWith("/management"),
+    },
   ];
 
   return (
@@ -50,11 +56,10 @@ export function StudioTopNav() {
             <Link
               key={tab.name}
               href={tab.href}
-              className={`flex items-center gap-2 h-full border-b-2 px-1 transition-colors ${
-                active
-                  ? "border-black text-black font-medium"
-                  : "border-transparent text-gray-500 hover:text-gray-800"
-              }`}
+              className={`flex items-center gap-2 h-full border-b-2 px-1 transition-colors ${active
+                ? "border-black text-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-800"
+                }`}
             >
               <tab.icon size={18} />
               {tab.name}

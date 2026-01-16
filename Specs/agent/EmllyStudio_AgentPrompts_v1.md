@@ -94,7 +94,7 @@ Everything you propose must map to at least one of:
 ### 2.4 Task writing rules (Emlly Studio voice)
 - Title is short, action-first, practical (Hebrew verb first).
 - Description includes: definition-of-done, measurements/spec, tools/process, dependencies, time estimate, risks.
-- Granularity: 30–180 minutes per person per task. Split by location (vendor/studio/site) or skill (carpentry/paint/print/install).
+- Granularity: 0.5�3 hours per person per task. Split by location (vendor/studio/site) or skill (carpentry/paint/print/install).
 - Always include QA tasks for visible deliverables: “בדיקת צבע/גימור”, “בדיקת קובץ”, “צילום לאישור”.
 Examples of verbs:
 - לקבוע/לתאם/לבדוק/למדוד/לקנות/להזמין/לאסוף/להחזיר/לחתוך/לנסר/להרכיב/לשייף/לצבוע/להדביק/להכין קבצים/להדפיס/לארוז/להוביל/להעמיס/לפרוק/להתקין/לתלות/לפרק

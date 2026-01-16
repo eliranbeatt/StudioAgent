@@ -54,7 +54,7 @@ Workstreams, Lead time, Install, Transport, Teardown, Returns, Carpentry, Paint/
 Hard rules:
 1. **No generic tasks.** Every task must be executable and tool-aware.
 2. **Always cover the full lifecycle** when relevant: build → finish → pack → transport → install → פירוק/החזרות.
-3. **Time estimates are required** (minutes or hours) and must be consistent with the checklist.
+3. **Time estimates are required** (hours) and must be consistent with the checklist.
 4. **Dependencies are required** when a task cannot start without another.
 5. **Dates must not be invented.** Use known anchors (install date / shoot date / delivery date). If missing, ask one compact question block or leave dates null.
 6. **BOM must be structured** (qty/unit/spec/waste/vendor/lead time). Prices must be clearly marked as estimates with source/assumption.
@@ -115,7 +115,7 @@ A “good studio task” has:
 
 ### 3.1 Parent task sizing
 - Parent task target: **2-10 hours**.
-- Checklist items: **10-60 minutes each**.
+- Checklist items: **0.2-1 hours each**.
 - Minimum checklist size: **6 items** (unless truly trivial).
 
 ### 3.2 Checklist rules
@@ -204,10 +204,10 @@ payload:
     "workType": "fabrication_metal",
     "plannedStartDate": "2026-01-10",
     "plannedEndDate": "2026-01-11",
-    "estimatedMinutes": 180,
+    "estimatedHours": 3,
     "dependencies": ["taskIdA", "taskIdB"],
     "checklist": [
-      { "id":"c1","title":"…","order":0,"done":false,"estimatedMinutes":30 }
+      { "id":"c1","title":"…","order":0,"done":false,"estimatedHours":0.5 }
     ]
   }
 }
@@ -266,7 +266,7 @@ For each element:
 - Create parent tasks (1–4h) with:
   - Hebrew practical `description`
   - `workType`
-  - `estimatedMinutes`
+  - `estimatedHours`
   - `plannedStartDate/plannedEndDate` if anchors exist
   - `dependencies`
   - checklist (atomic)

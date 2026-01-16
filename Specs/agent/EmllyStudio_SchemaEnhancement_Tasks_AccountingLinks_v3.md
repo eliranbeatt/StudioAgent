@@ -46,8 +46,8 @@
   Optional override for display (Hebrew).
 - `plannedStartDate?: string` (YYYY-MM-DD)
 - `plannedEndDate?: string` (YYYY-MM-DD)
-- `estimatedMinutes?: number`  
-  Total planned minutes for this task.
+- `estimatedHours?: number`  
+  Total planned hours for this task.
 
 **NEW: accounting linkage (multi-line)**
 - `accountingLinks?: AccountingLink[]`
@@ -153,19 +153,19 @@ Your current `accountingLineType + accountingLineId` supports only **one** line 
 ## 3) Task sizing rules (enforced by agent + validated lightly in UI)
 
 ### 3.1 Task duration targets
-**Small task:** 60–240 minutes (1–4 hours)  
-**Large task:** 240–960 minutes (½ day to 2 days)  
-**Hard cap:** if > 960 minutes → split into multiple tasks.
+**Small task:** 1�4 hours  
+**Large task:** 4�16 hours (1/2 day to 2 days)  
+**Hard cap:** if > 16 hours → split into multiple tasks.
 
 ### 3.2 Checklist sizing rules
-Checklist item target: **5–30 minutes** each.
+Checklist item target: **0.1�0.5 hours** each.
 
-- For **small tasks (1–4h)**: typically **6–18** checklist items
-- For **large tasks (½–2 days)**: typically **12–40** checklist items  
-  (some items can be 45–90 min if unavoidable, but prefer splitting)
+- For **small tasks (1�4h)**: typically **6�18** checklist items
+- For **large tasks (1/2�2 days)**: typically **12�40** checklist items  
+  (some items can be 0.75�1.5h if unavoidable, but prefer splitting)
 
 ### 3.3 Consistency rule
-`sum(checklist.estimatedMinutes)` should be **~80–120%** of task `estimatedMinutes`.  
+`sum(checklist.estimatedHours)` should be **~80–120%** of task `estimatedHours`.  
 (agents should keep it tighter, but allow reality)
 
 ---
@@ -245,7 +245,7 @@ accountingLinks: v.optional(v.array(v.object({
 }))),
 plannedStartDate: v.optional(v.string()),
 plannedEndDate: v.optional(v.string()),
-estimatedMinutes: v.optional(v.number()),
+estimatedHours: v.optional(v.number()),
 workType: v.optional(v.string()),
 workTypeLabelHe: v.optional(v.string()),
 description: v.optional(v.string()),
@@ -280,3 +280,6 @@ When task is “mixed” (labor + materials):
   - `materialLine` for packaging (קרטונים/ספוגים/ניילון נצמד)
 
 ---
+
+
+

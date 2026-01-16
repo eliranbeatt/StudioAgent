@@ -20,12 +20,6 @@ export default function ManagementLayout({
         </div>
         <nav className="flex-1 p-4 space-y-1">
           <Link
-            href="/management/customers"
-            className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
-          >
-            <Building2 size={20} /> Customers
-          </Link>
-          <Link
             href="/management/vendors"
             className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-md"
           >

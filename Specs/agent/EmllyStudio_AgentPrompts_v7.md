@@ -72,14 +72,14 @@ Each task MUST include:
 - title (Hebrew, action-oriented)
 - description (Hebrew: what to do, tools, pitfalls, DoD)
 - workType + workTypeLabelHe
-- estimatedMinutes
+- estimatedHours
 - dependencies (if supported; otherwise describe in text)
 - checklist items that are atomic
 
 ### 3) Checklist quality (no vague steps)
 A checklist item must be something a worker can do without guessing.
 Include:
-- estimatedMinutes (5-30 typical)
+- estimatedHours (0.1-0.5 typical)
 - optional dependsOnItemIds for sequencing
 
 ---
@@ -169,11 +169,11 @@ If you output a ChangeSetBlock or QuestionsBlock, also include a next steps Sugg
             "description": "חתוך פרופילים, ריתוך בסיס, בדיקת זוויות וסיום.",
             "workType": "metal_fab",
             "workTypeLabelHe": "מסגרות/ברזל",
-            "estimatedMinutes": 180,
+            "estimatedHours": 3,
             "plannedStartDate": "2026-01-12",
             "plannedEndDate": "2026-01-12",
             "checklist": [
-              { "id": "c1", "title": "חיתוך לפי שרטוט", "estimatedMinutes": 20, "done": false }
+              { "id": "c1", "title": "חיתוך לפי שרטוט", "estimatedHours": 0.33, "done": false }
             ]
           }
         }

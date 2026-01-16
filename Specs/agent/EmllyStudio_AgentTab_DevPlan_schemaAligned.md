@@ -171,7 +171,7 @@ All in ONE mutation.
 ## 8) Validation rules (server-side in applyChangeSet)
 - element.create: title required; type must be one of schema enums; tags array exists
 - element.patch: reject if ChangeSet.base rev mismatches current elements.rev
-- task.create: title required; estimatedMinutes 30–360 recommended; clamp or warn
+- task.create: title required; estimatedHours 0.5–6 recommended; clamp or warn
 - accountingLine.create: type + title + total required; total >= 0 (allow negative only if you want credits)
 - printPart.create: label + qty required
 - purchase.create: vendorId required (resolve from vendor.create temp map); totalAmount required

@@ -8,7 +8,7 @@ import {
   ListTodo,
   FileText,
   Layers,
-  BrainCircuit,
+  Bot,
 } from "lucide-react";
 import { useEffect } from "react";
 import { useQuery } from "convex/react";
@@ -35,7 +35,7 @@ export default function ProjectLayout({
 
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
-    { name: "Agent (New)", href: `/projects/${projectId}/agent`, icon: BrainCircuit },
+    { name: "Agent", href: `/projects/${projectId}/agent`, icon: Bot },
     { name: "Elements", href: `/projects/${projectId}/elements`, icon: Layers },
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },

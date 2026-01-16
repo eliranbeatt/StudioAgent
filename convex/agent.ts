@@ -74,9 +74,9 @@ Language policy (STRICT):
 Hard rules:
 1. No generic tasks. Every task must be executable and tool-aware.
 2. Always cover the full lifecycle when relevant: build + finish + pack + transport + install + teardown/returns.
-3. Time estimates are required (minutes or hours) and must be consistent with the checklist.
+3. Time estimates are required (hours) and must be consistent with the checklist.
 4. Dependencies are required when a task cannot start without another.
-5. Dates: If anchors are missing, default 'plannedStartDate' to TODAY. Schedule tasks assuming a 10-hour workday. If a day is full (>10h work), move subsequent/dependent tasks to the next day. Calculate 'plannedEndDate' = start + estimatedMinutes. Always populate 'estimatedMinutes' (default 90 if unknown).
+5. Dates: If anchors are missing, default 'plannedStartDate' to TODAY. Schedule tasks assuming a 10-hour workday. If a day is full (>10h work), move subsequent/dependent tasks to the next day. Calculate 'plannedEndDate' = start + estimatedHours. Always populate 'estimatedHours' (default 1.5 if unknown).
 6. BOM must be structured (qty/unit/spec/waste/vendor/lead time). Prices must be clearly marked as estimates with source/assumption.
 7. When the deliverable leaves the studio (mall / set / event), create:
    - a Transport element (or tasks under a transport workstream),
@@ -183,10 +183,10 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
     "workTypeLabelHe": "...",
     "plannedStartDate": "YYYY-MM-DD",
     "plannedEndDate": "YYYY-MM-DD",
-    "estimatedMinutes": 180,
+    "estimatedHours": 3,
     "dependencies": ["taskIdA", "taskIdB"],
     "checklist": [
-      { "id":"c1","title":"...","order":0,"done":false,"estimatedMinutes":30,"workType":"...","workTypeLabelHe":"..." }
+      { "id":"c1","title":"...","order":0,"done":false,"estimatedHours":0.5,"workType":"...","workTypeLabelHe":"..." }
     ]
   }
 }
@@ -202,10 +202,10 @@ Allowed ChangeSet ops kinds & payloads (use 'tempId' to link new items):
       "workTypeLabelHe": "...",
       "plannedStartDate": "YYYY-MM-DD",
       "plannedEndDate": "YYYY-MM-DD",
-      "estimatedMinutes": 180,
+      "estimatedHours": 3,
       "dependencies": ["taskIdA", "taskIdB"],
       "checklist": [
-        { "id":"c1","title":"...","order":0,"done":false,"estimatedMinutes":30,"workType":"...","workTypeLabelHe":"..." }
+        { "id":"c1","title":"...","order":0,"done":false,"estimatedHours":0.5,"workType":"...","workTypeLabelHe":"..." }
       ]
     }
   }
@@ -1844,14 +1844,14 @@ export const estimateTaskDependencies = mutation({
       if (!taskId) continue;
 
       const shouldEstimate =
-        task.estimatedMinutes === undefined ||
-        task.estimatedMinutes === null ||
-        Number(task.estimatedMinutes) <= 0;
+        task.estimatedHours === undefined ||
+        task.estimatedHours === null ||
+        Number(task.estimatedHours) <= 0;
       if (shouldEstimate) {
         patchOps.push({
           op: "replace",
-          path: `/tasks/byId/${taskId}/estimatedMinutes`,
-          value: estimateMinutesForTask(task),
+          path: `/tasks/byId/${taskId}/estimatedHours`,
+          value: estimateHoursForTask(task),
         });
       }
 
@@ -1996,35 +1996,35 @@ function buildTasksFromContext(
   return Array.from(unique.values());
 }
 
-function estimateMinutesForTask(task: any) {
+function estimateHoursForTask(task: any) {
   const title = String(task?.title ?? "").toLowerCase();
   const domain = String(task?.domain ?? "").toLowerCase();
 
-  const domainMinutes: Record<string, number> = {
-    planning: 120,
-    design: 180,
-    procurement: 90,
-    fabrication: 240,
-    finishing: 180,
-    print: 120,
-    installation: 240,
-    logistics: 90,
-    qa: 60,
-    admin: 60,
+  const domainHours: Record<string, number> = {
+    planning: 2,
+    design: 3,
+    procurement: 1.5,
+    fabrication: 4,
+    finishing: 3,
+    print: 2,
+    installation: 4,
+    logistics: 1.5,
+    qa: 1,
+    admin: 1,
   };
 
   const matchKeyword = (keywords: string[]) =>
     keywords.some((keyword) => title.includes(keyword));
 
-  if (matchKeyword(["install", "setup", "on-site"])) return 240;
-  if (matchKeyword(["fabricate", "build", "assembly", "joinery"])) return 240;
-  if (matchKeyword(["finish", "surface", "paint", "sand"])) return 180;
-  if (matchKeyword(["design", "draw", "concept", "moodboard"])) return 180;
-  if (matchKeyword(["procure", "vendor", "order", "purchase"])) return 90;
-  if (matchKeyword(["qa", "quality", "test"])) return 60;
-  if (matchKeyword(["pack", "ship", "logistics", "transport"])) return 90;
+  if (matchKeyword(["install", "setup", "on-site"])) return 4;
+  if (matchKeyword(["fabricate", "build", "assembly", "joinery"])) return 4;
+  if (matchKeyword(["finish", "surface", "paint", "sand"])) return 3;
+  if (matchKeyword(["design", "draw", "concept", "moodboard"])) return 3;
+  if (matchKeyword(["procure", "vendor", "order", "purchase"])) return 1.5;
+  if (matchKeyword(["qa", "quality", "test"])) return 1;
+  if (matchKeyword(["pack", "ship", "logistics", "transport"])) return 1.5;
 
-  return domainMinutes[domain] ?? 90;
+  return domainHours[domain] ?? 1.5;
 }
 
 function parseStructuredFields(content: string) {

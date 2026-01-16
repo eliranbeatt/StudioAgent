@@ -7,7 +7,7 @@ export type TaskChecklistItem = {
   title: string;
   description?: string;
   workType?: string;
-  estimatedMinutes?: number;
+  estimatedHours?: number;
   order: number;
   done: boolean;
   dependsOnItemIds?: string[];
@@ -40,7 +40,7 @@ export type Task = {
   startDate?: string;
   endDate?: string;
   dueDate?: number;
-  estimatedMinutes?: number;
+  estimatedHours?: number;
   stage?: string;
   workType?: string;
   plannedStartDate?: string;

@@ -25,15 +25,15 @@ purchasing -> "קניות/רכש"
 management -> "ניהול"
 
 TASK SIZING RULES (HARD CONSTRAINTS):
-- Small task: 60-240 minutes (1-4 hours)
-- Large task: 240-960 minutes (1/2 day to 2 days)
-- If > 960 minutes -> split into multiple tasks
+- Small task: 1-4 hours
+- Large task: 4-16 hours (1/2 day to 2 days)
+- If > 16 hours -> split into multiple tasks
 
 CHECKLIST RULES:
-- Checklist items are atomic execution steps (5-30 minutes typical).
+- Checklist items are atomic execution steps (0.1-0.5 hours typical).
 - Small task: 6-18 checklist items
 - Large task: 12-40 checklist items
-- Sum checklist minutes should be ~80-120% of task estimatedMinutes.
+- Sum checklist hours should be ~80-120% of task estimatedHours.
 
 TASK <-> ACCOUNTING LINKING (MUST-DO):
 For every cost-bearing task:
@@ -68,7 +68,7 @@ Example skeleton (keys must be EN):
   "summaryHe": "....עברית....",
   "changeSet": {
     "ops": [
-      { "op": "task.create", "data": { "title": "עברית", "description": "עברית", "workType": "metal_fab", "workTypeLabelHe": "מסגרות/מתכת", "estimatedMinutes": 180, "checklist": [...] } },
+      { "op": "task.create", "data": { "title": "עברית", "description": "עברית", "workType": "metal_fab", "workTypeLabelHe": "מסגרות/מתכת", "estimatedHours": 3, "checklist": [...] } },
       { "op": "workLine.create", "data": { "taskId": "<id>", "roleHe": "מסגר", "rateTypeCode": "hour", "rateTypeLabelHe": "שעה", "plannedQuantity": 3, "plannedUnitCost": 220 } },
       { "op": "materialLine.create", "data": { "taskId": "<id>", "itemName": "דיסק השחזה 125 מ״מ", "quantity": 2, "unitCode": "ea", "unitLabelHe": "יח׳" } },
       { "op": "task.patch", "data": { "taskId": "<id>", "appendAccountingLinks": [ { "lineType": "work", "lineId": "<id>" } ] } }

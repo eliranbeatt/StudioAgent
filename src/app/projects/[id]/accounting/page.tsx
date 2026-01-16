@@ -7,6 +7,8 @@ import Link from "next/link";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   Plus,
@@ -22,6 +24,7 @@ type MaterialLine = {
   name: string;
   qty: number;
   unitCost: number;
+  order?: number;
   actualQty?: number;
   actualUnitCost?: number;
   actualTotal?: number;
@@ -33,6 +36,7 @@ type LaborLine = {
   role: string;
   qty: number;
   rate: number;
+  order?: number;
   actualQty?: number;
   actualRate?: number;
   actualTotal?: number;
@@ -43,6 +47,27 @@ type TaskOption = {
   id: string;
   title: string;
   elementTitle?: string;
+};
+
+const getLineOrderValue = (line: { order?: number }, fallback: number) =>
+  Number.isFinite(line.order) ? (line.order as number) : fallback;
+
+const sortLines = <T extends { id: string; order?: number }>(lines: T[]) =>
+  lines
+    .map((line, index) => ({
+      line,
+      order: getLineOrderValue(line, index),
+      index,
+    }))
+    .sort((a, b) => a.order - b.order || a.index - b.index)
+    .map((entry) => entry.line);
+
+const getNextOrder = (lines: Array<{ order?: number }>) => {
+  if (!lines.length) return 1;
+  const maxOrder = Math.max(
+    ...lines.map((line, index) => getLineOrderValue(line, index))
+  );
+  return maxOrder + 1;
 };
 
 export default function AccountingPage({
@@ -285,11 +310,13 @@ function MaterialsTab({
     draftId,
     revisionNumber,
     elementId,
+    order,
   }: {
     draftType: "element" | "projectCost";
     draftId?: string;
     revisionNumber?: number;
     elementId?: Id<"elements">;
+    order?: number;
   }) => {
     try {
       const resolved = await resolveDraft({
@@ -314,6 +341,7 @@ function MaterialsTab({
             name: "New material",
             qty: 1,
             unitCost: 0,
+            order: order ?? 1,
             links: { taskIds: [] },
             procurement: { mode: "purchase" },
             needPurchase: true,
@@ -376,109 +404,191 @@ function MaterialsTab({
     }
   };
 
+  const handleMoveLine = async ({
+    lineId,
+    direction,
+    lines,
+    draftType,
+    draftId,
+    revisionNumber,
+    elementId,
+  }: {
+    lineId: string;
+    direction: -1 | 1;
+    lines: MaterialLine[];
+    draftType: "element" | "projectCost";
+    draftId?: string;
+    revisionNumber?: number;
+    elementId?: Id<"elements">;
+  }) => {
+    const sorted = sortLines(lines);
+    const index = sorted.findIndex((line) => line.id === lineId);
+    const target = sorted[index + direction];
+    if (index === -1 || !target) return;
+
+    try {
+      const resolved = await resolveDraft({
+        draftType,
+        draftId,
+        revisionNumber,
+        elementId,
+      });
+
+      if (!resolved.draftId || resolved.revisionNumber === undefined) {
+        alert("Failed to resolve draft.");
+        return;
+      }
+
+      const currentOrder = getLineOrderValue(sorted[index], index);
+      const targetOrder = getLineOrderValue(target, index + direction);
+
+      await onApplyOps({
+        draftType,
+        draftId: resolved.draftId,
+        baseRevisionNumber: resolved.revisionNumber,
+        patchOps: [
+          { op: "replace", path: `/materials/byId/${lineId}/order`, value: targetOrder },
+          { op: "replace", path: `/materials/byId/${target.id}/order`, value: currentOrder },
+        ],
+        reason: "Reorder material line",
+      });
+    } catch (e: any) {
+      console.error(e);
+      alert(`Failed to reorder line: ${e.message}`);
+    }
+  };
+
   return (
     <div className="space-y-8">
-      {accounting.elements.map((element: any) => (
-        <div
-          key={element.elementId}
-          className="bg-white border border-gray-100 rounded-xl shadow-sm"
-        >
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() =>
-                  setCollapsedByElement((prev) => ({
-                    ...prev,
-                    [element.elementId]: !prev[element.elementId],
-                  }))
-                }
-                className="text-gray-400 hover:text-gray-700"
-              >
-                {collapsedByElement[element.elementId] ? (
-                  <ChevronRight size={16} />
-                ) : (
-                  <ChevronDown size={16} />
-                )}
-              </button>
-              <div>
-                <div className="font-semibold text-gray-900">{element.title}</div>
-                <div className="text-xs text-gray-500">
-                  Materials: {element.totals.materials.toLocaleString()} NIS
+      {accounting.elements.map((element: any) => {
+        const sortedMaterials = sortLines(element.materials as MaterialLine[]);
+        return (
+          <div
+            key={element.elementId}
+            className="bg-white border border-gray-100 rounded-xl shadow-sm"
+          >
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() =>
+                    setCollapsedByElement((prev) => ({
+                      ...prev,
+                      [element.elementId]: !prev[element.elementId],
+                    }))
+                  }
+                  className="text-gray-400 hover:text-gray-700"
+                >
+                  {collapsedByElement[element.elementId] ? (
+                    <ChevronRight size={16} />
+                  ) : (
+                    <ChevronDown size={16} />
+                  )}
+                </button>
+                <div>
+                  <div className="font-semibold text-gray-900">{element.title}</div>
+                  <div className="text-xs text-gray-500">
+                    Materials: {element.totals.materials.toLocaleString()} NIS
+                  </div>
                 </div>
               </div>
+              <button
+                onClick={() =>
+                  addMaterialLine({
+                    draftType: "element",
+                    draftId: element.draftId,
+                    revisionNumber: element.revisionNumber,
+                    elementId: element.elementId,
+                    order: getNextOrder(element.materials),
+                  })
+                }
+                className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
+              >
+                <Plus size={14} /> Add line
+              </button>
             </div>
-            <button
-              onClick={() =>
-                addMaterialLine({
-                  draftType: "element",
-                  draftId: element.draftId,
-                  revisionNumber: element.revisionNumber,
-                  elementId: element.elementId,
-                })
-              }
-              className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
-            >
-              <Plus size={14} /> Add line
-            </button>
-          </div>
-          {collapsedByElement[element.elementId] ? null : (
-            <div className="divide-y">
-              {element.materials.length === 0 ? (
-                <div className="p-6 text-sm text-gray-500">No materials</div>
-              ) : (
-                element.materials.map((line: MaterialLine) => (
-                  <MaterialLineRow
-                    key={line.id}
-                    line={line}
-                    tasks={tasks}
-                    projectId={projectId}
-                    saving={savingLineId === line.id}
-                    onDelete={() =>
-                      handleDeleteLine({
-                        lineId: line.id,
-                        draftType: "element",
-                        draftId: element.draftId,
-                        revisionNumber: element.revisionNumber,
-                        elementId: element.elementId,
-                      })
-                    }
-                    onSave={async (next) => {
-                      onSavingLineId(line.id);
-                      try {
-                        const resolved = await resolveDraft({
+            {collapsedByElement[element.elementId] ? null : (
+              <div className="divide-y">
+                {sortedMaterials.length === 0 ? (
+                  <div className="p-6 text-sm text-gray-500">No materials</div>
+                ) : (
+                  sortedMaterials.map((line: MaterialLine, index: number) => (
+                    <MaterialLineRow
+                      key={line.id}
+                      line={line}
+                      tasks={tasks}
+                      projectId={projectId}
+                      saving={savingLineId === line.id}
+                      canMoveUp={index > 0}
+                      canMoveDown={index < sortedMaterials.length - 1}
+                      onMoveUp={() =>
+                        handleMoveLine({
+                          lineId: line.id,
+                          direction: -1,
+                          lines: sortedMaterials,
                           draftType: "element",
                           draftId: element.draftId,
                           revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
-                        });
-
-                        if (!resolved.draftId || resolved.revisionNumber === undefined) {
-                          alert("Failed to resolve draft");
-                          return;
-                        }
-
-                        const patchOps = buildMaterialPatchOps(line.id, next);
-                        await onApplyOps({
-                          draftType: "element",
-                          draftId: resolved.draftId,
-                          baseRevisionNumber: resolved.revisionNumber,
-                          patchOps,
-                          reason: "Update material line",
-                        });
-                      } catch (e: any) {
-                        console.error(e);
-                        alert(`Failed to save: ${e.message}`);
-                      } finally {
-                        onSavingLineId(null);
+                        })
                       }
-                    }}
-                  />
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      ))}
+                      onMoveDown={() =>
+                        handleMoveLine({
+                          lineId: line.id,
+                          direction: 1,
+                          lines: sortedMaterials,
+                          draftType: "element",
+                          draftId: element.draftId,
+                          revisionNumber: element.revisionNumber,
+                          elementId: element.elementId,
+                        })
+                      }
+                      onDelete={() =>
+                        handleDeleteLine({
+                          lineId: line.id,
+                          draftType: "element",
+                          draftId: element.draftId,
+                          revisionNumber: element.revisionNumber,
+                          elementId: element.elementId,
+                        })
+                      }
+                      onSave={async (next) => {
+                        onSavingLineId(line.id);
+                        try {
+                          const resolved = await resolveDraft({
+                            draftType: "element",
+                            draftId: element.draftId,
+                            revisionNumber: element.revisionNumber,
+                            elementId: element.elementId,
+                          });
+
+                          if (!resolved.draftId || resolved.revisionNumber === undefined) {
+                            alert("Failed to resolve draft");
+                            return;
+                          }
+
+                          const patchOps = buildMaterialPatchOps(line.id, next);
+                          await onApplyOps({
+                            draftType: "element",
+                            draftId: resolved.draftId,
+                            baseRevisionNumber: resolved.revisionNumber,
+                            patchOps,
+                            reason: "Update material line",
+                          });
+                        } catch (e: any) {
+                          console.error(e);
+                          alert(`Failed to save: ${e.message}`);
+                        } finally {
+                          onSavingLineId(null);
+                        }
+                      }}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {accounting.projectCosts ? (
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm">
@@ -497,6 +607,7 @@ function MaterialsTab({
                   draftType: "projectCost",
                   draftId: accounting.projectCosts.draftId,
                   revisionNumber: accounting.projectCosts.revisionNumber,
+                  order: getNextOrder(accounting.projectCosts.materials),
                 })
               }
               className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -508,49 +619,73 @@ function MaterialsTab({
             {accounting.projectCosts.materials.length === 0 ? (
               <div className="p-6 text-sm text-gray-500">No materials</div>
             ) : (
-              accounting.projectCosts.materials.map((line: MaterialLine) => (
-                <MaterialLineRow
-                  key={line.id}
-                  line={line}
-                  tasks={tasks}
-                  projectId={projectId}
-                  saving={savingLineId === line.id}
-                  onDelete={() =>
-                    handleDeleteLine({
-                      lineId: line.id,
-                      draftType: "projectCost",
-                      draftId: accounting.projectCosts.draftId,
-                      revisionNumber: accounting.projectCosts.revisionNumber,
-                    })
-                  }
-                  onSave={async (next) => {
-                    onSavingLineId(line.id);
-                    try {
-                      const resolved = await resolveDraft({
+              sortLines(accounting.projectCosts.materials).map(
+                (line: MaterialLine, index: number, lines: MaterialLine[]) => (
+                  <MaterialLineRow
+                    key={line.id}
+                    line={line}
+                    tasks={tasks}
+                    projectId={projectId}
+                    saving={savingLineId === line.id}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < lines.length - 1}
+                    onMoveUp={() =>
+                      handleMoveLine({
+                        lineId: line.id,
+                        direction: -1,
+                        lines,
                         draftType: "projectCost",
                         draftId: accounting.projectCosts.draftId,
                         revisionNumber: accounting.projectCosts.revisionNumber,
-                      });
-
-                      if (!resolved.draftId || resolved.revisionNumber === undefined) return;
-
-                      const patchOps = buildMaterialPatchOps(line.id, next);
-                      await onApplyOps({
-                        draftType: "projectCost",
-                        draftId: resolved.draftId,
-                        baseRevisionNumber: resolved.revisionNumber,
-                        patchOps,
-                        reason: "Update project cost material",
-                      });
-                    } catch (e: any) {
-                      console.error(e);
-                      alert(`Failed to save: ${e.message}`);
-                    } finally {
-                      onSavingLineId(null);
+                      })
                     }
-                  }}
-                />
-              ))
+                    onMoveDown={() =>
+                      handleMoveLine({
+                        lineId: line.id,
+                        direction: 1,
+                        lines,
+                        draftType: "projectCost",
+                        draftId: accounting.projectCosts.draftId,
+                        revisionNumber: accounting.projectCosts.revisionNumber,
+                      })
+                    }
+                    onDelete={() =>
+                      handleDeleteLine({
+                        lineId: line.id,
+                        draftType: "projectCost",
+                        draftId: accounting.projectCosts.draftId,
+                        revisionNumber: accounting.projectCosts.revisionNumber,
+                      })
+                    }
+                    onSave={async (next) => {
+                      onSavingLineId(line.id);
+                      try {
+                        const resolved = await resolveDraft({
+                          draftType: "projectCost",
+                          draftId: accounting.projectCosts.draftId,
+                          revisionNumber: accounting.projectCosts.revisionNumber,
+                        });
+
+                        if (!resolved.draftId || resolved.revisionNumber === undefined) return;
+
+                        const patchOps = buildMaterialPatchOps(line.id, next);
+                        await onApplyOps({
+                          draftType: "projectCost",
+                          draftId: resolved.draftId,
+                          baseRevisionNumber: resolved.revisionNumber,
+                          patchOps,
+                          reason: "Update project cost material",
+                        });
+                      } catch (e: any) {
+                        console.error(e);
+                        alert(`Failed to save: ${e.message}`);
+                      } finally {
+                        onSavingLineId(null);
+                      }
+                    }}
+                  />
+                )
+              )
             )}
           </div>
         </div>
@@ -619,11 +754,13 @@ function LaborTab({
     draftId,
     revisionNumber,
     elementId,
+    order,
   }: {
     draftType: "element" | "projectCost";
     draftId?: string;
     revisionNumber?: number;
     elementId?: Id<"elements">;
+    order?: number;
   }) => {
     try {
       const resolved = await resolveDraft({
@@ -648,6 +785,7 @@ function LaborTab({
             role: "New role",
             qty: 1,
             rate: 0,
+            order: order ?? 1,
             links: { taskIds: [] },
           },
         },
@@ -708,109 +846,191 @@ function LaborTab({
     }
   };
 
+  const handleMoveLine = async ({
+    lineId,
+    direction,
+    lines,
+    draftType,
+    draftId,
+    revisionNumber,
+    elementId,
+  }: {
+    lineId: string;
+    direction: -1 | 1;
+    lines: LaborLine[];
+    draftType: "element" | "projectCost";
+    draftId?: string;
+    revisionNumber?: number;
+    elementId?: Id<"elements">;
+  }) => {
+    const sorted = sortLines(lines);
+    const index = sorted.findIndex((line) => line.id === lineId);
+    const target = sorted[index + direction];
+    if (index === -1 || !target) return;
+
+    try {
+      const resolved = await resolveDraft({
+        draftType,
+        draftId,
+        revisionNumber,
+        elementId,
+      });
+
+      if (!resolved.draftId || resolved.revisionNumber === undefined) {
+        alert("Failed to resolve draft.");
+        return;
+      }
+
+      const currentOrder = getLineOrderValue(sorted[index], index);
+      const targetOrder = getLineOrderValue(target, index + direction);
+
+      await onApplyOps({
+        draftType,
+        draftId: resolved.draftId,
+        baseRevisionNumber: resolved.revisionNumber,
+        patchOps: [
+          { op: "replace", path: `/labor/byId/${lineId}/order`, value: targetOrder },
+          { op: "replace", path: `/labor/byId/${target.id}/order`, value: currentOrder },
+        ],
+        reason: "Reorder labor line",
+      });
+    } catch (e: any) {
+      console.error(e);
+      alert(`Failed to reorder line: ${e.message}`);
+    }
+  };
+
   return (
     <div className="space-y-8">
-      {accounting.elements.map((element: any) => (
-        <div
-          key={element.elementId}
-          className="bg-white border border-gray-100 rounded-xl shadow-sm"
-        >
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() =>
-                  setCollapsedByElement((prev) => ({
-                    ...prev,
-                    [element.elementId]: !prev[element.elementId],
-                  }))
-                }
-                className="text-gray-400 hover:text-gray-700"
-              >
-                {collapsedByElement[element.elementId] ? (
-                  <ChevronRight size={16} />
-                ) : (
-                  <ChevronDown size={16} />
-                )}
-              </button>
-              <div>
-                <div className="font-semibold text-gray-900">{element.title}</div>
-                <div className="text-xs text-gray-500">
-                  Labor: {element.totals.labor.toLocaleString()} NIS
+      {accounting.elements.map((element: any) => {
+        const sortedLabor = sortLines(element.labor as LaborLine[]);
+        return (
+          <div
+            key={element.elementId}
+            className="bg-white border border-gray-100 rounded-xl shadow-sm"
+          >
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() =>
+                    setCollapsedByElement((prev) => ({
+                      ...prev,
+                      [element.elementId]: !prev[element.elementId],
+                    }))
+                  }
+                  className="text-gray-400 hover:text-gray-700"
+                >
+                  {collapsedByElement[element.elementId] ? (
+                    <ChevronRight size={16} />
+                  ) : (
+                    <ChevronDown size={16} />
+                  )}
+                </button>
+                <div>
+                  <div className="font-semibold text-gray-900">{element.title}</div>
+                  <div className="text-xs text-gray-500">
+                    Labor: {element.totals.labor.toLocaleString()} NIS
+                  </div>
                 </div>
               </div>
+              <button
+                onClick={() =>
+                  addLaborLine({
+                    draftType: "element",
+                    draftId: element.draftId,
+                    revisionNumber: element.revisionNumber,
+                    elementId: element.elementId,
+                    order: getNextOrder(element.labor),
+                  })
+                }
+                className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
+              >
+                <Plus size={14} /> Add line
+              </button>
             </div>
-            <button
-              onClick={() =>
-                addLaborLine({
-                  draftType: "element",
-                  draftId: element.draftId,
-                  revisionNumber: element.revisionNumber,
-                  elementId: element.elementId,
-                })
-              }
-              className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
-            >
-              <Plus size={14} /> Add line
-            </button>
-          </div>
-          {collapsedByElement[element.elementId] ? null : (
-            <div className="divide-y">
-              {element.labor.length === 0 ? (
-                <div className="p-6 text-sm text-gray-500">No labor</div>
-              ) : (
-                element.labor.map((line: LaborLine) => (
-                  <LaborLineRow
-                    key={line.id}
-                    line={line}
-                    tasks={tasks}
-                    projectId={projectId}
-                    saving={savingLineId === line.id}
-                    onDelete={() =>
-                      handleDeleteLine({
-                        lineId: line.id,
-                        draftType: "element",
-                        draftId: element.draftId,
-                        revisionNumber: element.revisionNumber,
-                        elementId: element.elementId,
-                      })
-                    }
-                    onSave={async (next) => {
-                      onSavingLineId(line.id);
-                      try {
-                        const resolved = await resolveDraft({
+            {collapsedByElement[element.elementId] ? null : (
+              <div className="divide-y">
+                {sortedLabor.length === 0 ? (
+                  <div className="p-6 text-sm text-gray-500">No labor</div>
+                ) : (
+                  sortedLabor.map((line: LaborLine, index: number) => (
+                    <LaborLineRow
+                      key={line.id}
+                      line={line}
+                      tasks={tasks}
+                      projectId={projectId}
+                      saving={savingLineId === line.id}
+                      canMoveUp={index > 0}
+                      canMoveDown={index < sortedLabor.length - 1}
+                      onMoveUp={() =>
+                        handleMoveLine({
+                          lineId: line.id,
+                          direction: -1,
+                          lines: sortedLabor,
                           draftType: "element",
                           draftId: element.draftId,
                           revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
-                        });
-
-                        if (!resolved.draftId || resolved.revisionNumber === undefined) {
-                          alert("Failed to resolve draft");
-                          return;
-                        }
-
-                        const patchOps = buildLaborPatchOps(line.id, next);
-                        await onApplyOps({
-                          draftType: "element",
-                          draftId: resolved.draftId,
-                          baseRevisionNumber: resolved.revisionNumber,
-                          patchOps,
-                          reason: "Update labor line",
-                        });
-                      } catch (e: any) {
-                        console.error(e);
-                        alert(`Failed to save: ${e.message}`);
-                      } finally {
-                        onSavingLineId(null);
+                        })
                       }
-                    }}
-                  />
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      ))}
+                      onMoveDown={() =>
+                        handleMoveLine({
+                          lineId: line.id,
+                          direction: 1,
+                          lines: sortedLabor,
+                          draftType: "element",
+                          draftId: element.draftId,
+                          revisionNumber: element.revisionNumber,
+                          elementId: element.elementId,
+                        })
+                      }
+                      onDelete={() =>
+                        handleDeleteLine({
+                          lineId: line.id,
+                          draftType: "element",
+                          draftId: element.draftId,
+                          revisionNumber: element.revisionNumber,
+                          elementId: element.elementId,
+                        })
+                      }
+                      onSave={async (next) => {
+                        onSavingLineId(line.id);
+                        try {
+                          const resolved = await resolveDraft({
+                            draftType: "element",
+                            draftId: element.draftId,
+                            revisionNumber: element.revisionNumber,
+                            elementId: element.elementId,
+                          });
+
+                          if (!resolved.draftId || resolved.revisionNumber === undefined) {
+                            alert("Failed to resolve draft");
+                            return;
+                          }
+
+                          const patchOps = buildLaborPatchOps(line.id, next);
+                          await onApplyOps({
+                            draftType: "element",
+                            draftId: resolved.draftId,
+                            baseRevisionNumber: resolved.revisionNumber,
+                            patchOps,
+                            reason: "Update labor line",
+                          });
+                        } catch (e: any) {
+                          console.error(e);
+                          alert(`Failed to save: ${e.message}`);
+                        } finally {
+                          onSavingLineId(null);
+                        }
+                      }}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {accounting.projectCosts ? (
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm">
@@ -829,6 +1049,7 @@ function LaborTab({
                   draftType: "projectCost",
                   draftId: accounting.projectCosts.draftId,
                   revisionNumber: accounting.projectCosts.revisionNumber,
+                  order: getNextOrder(accounting.projectCosts.labor),
                 })
               }
               className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -840,49 +1061,73 @@ function LaborTab({
             {accounting.projectCosts.labor.length === 0 ? (
               <div className="p-6 text-sm text-gray-500">No labor</div>
             ) : (
-              accounting.projectCosts.labor.map((line: LaborLine) => (
-                <LaborLineRow
-                  key={line.id}
-                  line={line}
-                  tasks={tasks}
-                  projectId={projectId}
-                  saving={savingLineId === line.id}
-                  onDelete={() =>
-                    handleDeleteLine({
-                      lineId: line.id,
-                      draftType: "projectCost",
-                      draftId: accounting.projectCosts.draftId,
-                      revisionNumber: accounting.projectCosts.revisionNumber,
-                    })
-                  }
-                  onSave={async (next) => {
-                    onSavingLineId(line.id);
-                    try {
-                      const resolved = await resolveDraft({
+              sortLines(accounting.projectCosts.labor).map(
+                (line: LaborLine, index: number, lines: LaborLine[]) => (
+                  <LaborLineRow
+                    key={line.id}
+                    line={line}
+                    tasks={tasks}
+                    projectId={projectId}
+                    saving={savingLineId === line.id}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < lines.length - 1}
+                    onMoveUp={() =>
+                      handleMoveLine({
+                        lineId: line.id,
+                        direction: -1,
+                        lines,
                         draftType: "projectCost",
                         draftId: accounting.projectCosts.draftId,
                         revisionNumber: accounting.projectCosts.revisionNumber,
-                      });
-
-                      if (!resolved.draftId || resolved.revisionNumber === undefined) return;
-
-                      const patchOps = buildLaborPatchOps(line.id, next);
-                      await onApplyOps({
-                        draftType: "projectCost",
-                        draftId: resolved.draftId,
-                        baseRevisionNumber: resolved.revisionNumber,
-                        patchOps,
-                        reason: "Update project cost labor",
-                      });
-                    } catch (e: any) {
-                      console.error(e);
-                      alert(`Failed to save: ${e.message}`);
-                    } finally {
-                      onSavingLineId(null);
+                      })
                     }
-                  }}
-                />
-              ))
+                    onMoveDown={() =>
+                      handleMoveLine({
+                        lineId: line.id,
+                        direction: 1,
+                        lines,
+                        draftType: "projectCost",
+                        draftId: accounting.projectCosts.draftId,
+                        revisionNumber: accounting.projectCosts.revisionNumber,
+                      })
+                    }
+                    onDelete={() =>
+                      handleDeleteLine({
+                        lineId: line.id,
+                        draftType: "projectCost",
+                        draftId: accounting.projectCosts.draftId,
+                        revisionNumber: accounting.projectCosts.revisionNumber,
+                      })
+                    }
+                    onSave={async (next) => {
+                      onSavingLineId(line.id);
+                      try {
+                        const resolved = await resolveDraft({
+                          draftType: "projectCost",
+                          draftId: accounting.projectCosts.draftId,
+                          revisionNumber: accounting.projectCosts.revisionNumber,
+                        });
+
+                        if (!resolved.draftId || resolved.revisionNumber === undefined) return;
+
+                        const patchOps = buildLaborPatchOps(line.id, next);
+                        await onApplyOps({
+                          draftType: "projectCost",
+                          draftId: resolved.draftId,
+                          baseRevisionNumber: resolved.revisionNumber,
+                          patchOps,
+                          reason: "Update project cost labor",
+                        });
+                      } catch (e: any) {
+                        console.error(e);
+                        alert(`Failed to save: ${e.message}`);
+                      } finally {
+                        onSavingLineId(null);
+                      }
+                    }}
+                  />
+                )
+              )
             )}
           </div>
         </div>
@@ -896,6 +1141,10 @@ function MaterialLineRow({
   tasks,
   projectId,
   saving,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onDelete,
   onSave,
 }: {
@@ -903,6 +1152,10 @@ function MaterialLineRow({
   tasks: TaskOption[];
   projectId: Id<"projects">;
   saving: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onDelete: () => void;
   onSave: (next: MaterialLine) => Promise<void>;
 }) {
@@ -938,8 +1191,9 @@ function MaterialLineRow({
       : gapTotal > 0
         ? "text-green-600"
         : gapTotal < 0
-          ? "text-red-600"
-          : "text-gray-500";
+        ? "text-red-600"
+        : "text-gray-500";
+  const moveDisabled = saving || isEditing;
 
   return (
     <div className="p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-center text-sm">
@@ -1092,6 +1346,32 @@ function MaterialLineRow({
         ) : null}
       </div>
       <div className="flex items-center gap-2 md:col-span-1">
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={moveDisabled || !canMoveUp}
+            className={`p-1 rounded ${moveDisabled || !canMoveUp
+              ? "text-gray-300"
+              : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              }`}
+            aria-label="Move material line up"
+          >
+            <ArrowUp size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={moveDisabled || !canMoveDown}
+            className={`p-1 rounded ${moveDisabled || !canMoveDown
+              ? "text-gray-300"
+              : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              }`}
+            aria-label="Move material line down"
+          >
+            <ArrowDown size={14} />
+          </button>
+        </div>
         {isEditing ? (
           <>
             <button
@@ -1138,6 +1418,10 @@ function LaborLineRow({
   tasks,
   projectId,
   saving,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onDelete,
   onSave,
 }: {
@@ -1145,6 +1429,10 @@ function LaborLineRow({
   tasks: TaskOption[];
   projectId: Id<"projects">;
   saving: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onDelete: () => void;
   onSave: (next: LaborLine) => Promise<void>;
 }) {
@@ -1180,8 +1468,9 @@ function LaborLineRow({
       : gapTotal > 0
         ? "text-green-600"
         : gapTotal < 0
-          ? "text-red-600"
-          : "text-gray-500";
+        ? "text-red-600"
+        : "text-gray-500";
+  const moveDisabled = saving || isEditing;
 
   return (
     <div className="p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-center text-sm">
@@ -1331,6 +1620,32 @@ function LaborLineRow({
         ) : null}
       </div>
       <div className="flex items-center gap-2 md:col-span-1">
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={moveDisabled || !canMoveUp}
+            className={`p-1 rounded ${moveDisabled || !canMoveUp
+              ? "text-gray-300"
+              : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              }`}
+            aria-label="Move labor line up"
+          >
+            <ArrowUp size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={moveDisabled || !canMoveDown}
+            className={`p-1 rounded ${moveDisabled || !canMoveDown
+              ? "text-gray-300"
+              : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              }`}
+            aria-label="Move labor line down"
+          >
+            <ArrowDown size={14} />
+          </button>
+        </div>
         {isEditing ? (
           <>
             <button

@@ -97,9 +97,11 @@ function normalizeChecklist(list: any) {
       description: item.description ? String(item.description) : undefined,
       workType: normalizeWorkType(item.workType),
       workTypeLabelHe: item.workTypeLabelHe ? String(item.workTypeLabelHe) : undefined,
-      estimatedMinutes: Number.isFinite(item.estimatedMinutes)
-        ? Number(item.estimatedMinutes)
-        : undefined,
+      estimatedHours: Number.isFinite(item.estimatedHours)
+        ? Number(item.estimatedHours)
+        : Number.isFinite(item.estimatedMinutes)
+          ? Number(item.estimatedMinutes) / 60
+          : undefined,
       order: Number.isFinite(item.order) ? Number(item.order) : index,
       done: typeof item.done === "boolean" ? item.done : undefined,
       dependsOnItemIds: Array.isArray(item.dependsOnItemIds)
@@ -621,7 +623,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("category" in fields) patch.category = toOptional(fields.category);
       if ("startDate" in fields) patch.startDate = withDefaultStartDate(fields.startDate);
       if ("endDate" in fields) patch.endDate = toOptional(fields.endDate);
-      if ("estimatedMinutes" in fields) patch.estimatedMinutes = toOptional(fields.estimatedMinutes);
+      if ("estimatedHours" in fields) patch.estimatedHours = toOptional(fields.estimatedHours);
       if ("assignee" in fields) patch.assignee = toOptional(fields.assignee);
       // New V3 fields
       if ("stage" in fields) patch.stage = normalizeStage(fields?.stage);
@@ -665,7 +667,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         category: toOptional(fields?.category),
         startDate: withDefaultStartDate(fields?.startDate),
         endDate: toOptional(fields?.endDate),
-        estimatedMinutes: toOptional(fields?.estimatedMinutes),
+        estimatedHours: toOptional(fields?.estimatedHours),
         assignee: toOptional(fields?.assignee),
         dependencies: undefined,
         // New V3 fields
@@ -849,6 +851,9 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       sourceLabelHe: fields.sourceLabelHe ?? undefined,
       source: fields.source ?? undefined,
       confidence: fields.confidence ?? undefined,
+      status: fields.status ?? undefined,
+      assignee: fields.assignee ?? undefined,
+      assigneeId: fields.assigneeId ?? undefined,
       createdFromChangeSetId: sourceChangeSetId,
       dedupKey: toOptional(fields.dedupKey),
       createdAt: now,
@@ -886,7 +891,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if ("category" in fields) patch.category = toOptional(fields.category);
     if ("startDate" in fields) patch.startDate = toOptional(fields.startDate);
     if ("endDate" in fields) patch.endDate = toOptional(fields.endDate);
-    if ("estimatedMinutes" in fields) patch.estimatedMinutes = toOptional(fields.estimatedMinutes);
+    if ("estimatedHours" in fields) patch.estimatedHours = toOptional(fields.estimatedHours);
     if ("assignee" in fields) patch.assignee = toOptional(fields.assignee);
     if ("plannedStartDate" in fields) patch.plannedStartDate = toOptional(fields.plannedStartDate);
     if ("plannedEndDate" in fields) patch.plannedEndDate = toOptional(fields.plannedEndDate);
@@ -927,6 +932,71 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       changeSetId: auditChangeSetId,
       operation: "update",
       entityRef: `task:${resolvedTaskId}`,
+      before,
+      after,
+      appliedAt: now,
+    });
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "workLine.patch") continue;
+    const { lineId, workLineId, tempId, id, fields } = op.payload ?? {};
+    const resolved = resolveFromTemp(tempId ?? workLineId ?? lineId ?? id, workLineTempMap);
+    if (!resolved) throw new Error("workLine.patch requires lineId");
+    if (!fields || typeof fields !== "object") continue;
+
+    const before = await ctx.db.get(resolved);
+    const patch: any = {};
+    if ("roleHe" in fields) patch.roleHe = toOptional(fields.roleHe);
+    if ("notes" in fields) patch.notes = toOptional(fields.notes);
+    if ("status" in fields) patch.status = toOptional(fields.status);
+    if ("assignee" in fields) patch.assignee = toOptional(fields.assignee);
+    if ("assigneeId" in fields) patch.assigneeId = toOptional(fields.assigneeId);
+    if ("plannedQuantity" in fields) patch.plannedQuantity = toOptional(fields.plannedQuantity);
+    if ("plannedUnitCost" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost);
+    if ("plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost);
+    if ("workType" in fields) patch.workType = normalizeWorkType(fields.workType);
+    if ("workTypeLabelHe" in fields) patch.workTypeLabelHe = toOptional(fields.workTypeLabelHe);
+
+    await ctx.db.patch(resolved, { ...patch, updatedAt: now });
+    const after = await ctx.db.get(resolved);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "update",
+      entityRef: `workLine:${resolved}`,
+      before,
+      after,
+      appliedAt: now,
+    });
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "materialLine.patch") continue;
+    const { lineId, materialLineId, tempId, id, fields } = op.payload ?? {};
+    const resolved = resolveFromTemp(tempId ?? materialLineId ?? lineId ?? id, materialLineTempMap);
+    if (!resolved) throw new Error("materialLine.patch requires lineId");
+    if (!fields || typeof fields !== "object") continue;
+
+    const before = await ctx.db.get(resolved);
+    const patch: any = {};
+    if ("itemName" in fields) patch.itemName = toOptional(fields.itemName);
+    if ("spec" in fields) patch.spec = toOptional(fields.spec);
+    if ("quantity" in fields) patch.quantity = toOptional(fields.quantity);
+    if ("unitCode" in fields) patch.unitCode = normalizeUnitCode(fields.unitCode);
+    if ("plannedUnitCost" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost);
+    if ("plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost);
+    if ("vendorName" in fields) patch.vendorName = toOptional(fields.vendorName);
+    if ("notes" in fields) patch.notes = toOptional(fields.notes);
+    if ("workType" in fields) patch.workType = normalizeWorkType(fields.workType);
+
+    await ctx.db.patch(resolved, { ...patch, updatedAt: now });
+    const after = await ctx.db.get(resolved);
+    await recordAudit(ctx, {
+      projectId: cs.projectId,
+      changeSetId: auditChangeSetId,
+      operation: "update",
+      entityRef: `materialLine:${resolved}`,
       before,
       after,
       appliedAt: now,
@@ -1421,7 +1491,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const fields = op.payload.fields ?? op.payload;
 
     // Resolve Task ID (might be temp from this changeset)
-    const rawTaskId = resolveFromTemp(fields.taskId, taskTempMap) ?? fields.taskId;
+    const rawTaskId = resolveFromTemp(fields.taskId ?? fields.taskTempOrId, taskTempMap) ?? fields.taskId;
     const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
 
     // Resolve WorkLine ID (usually existing, but support temp)
@@ -1456,6 +1526,18 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         createdAt: now,
         updatedAt: now,
       });
+    } else {
+      // Upsert behavior: update if exists
+      const patch: any = {};
+      if (fields.allocatedHours !== undefined) patch.allocatedHours = Number(fields.allocatedHours);
+      if (fields.lineType !== undefined) patch.lineType = fields.lineType;
+
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(existing._id, {
+          ...patch,
+          updatedAt: now,
+        });
+      }
     }
   }
 
@@ -1470,7 +1552,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
     if (fields.taskId && fields.workLineId) {
       // Find by composite key
-      const rawTaskId = resolveFromTemp(fields.taskId, taskTempMap) ?? fields.taskId;
+      const rawTaskId = resolveFromTemp(fields.taskId ?? fields.taskTempOrId, taskTempMap) ?? fields.taskId;
       const taskId = ctx.db.normalizeId("tasks", rawTaskId);
 
       const rawWorkLineId = resolveFromTemp(fields.workLineId, workLineTempMap) ?? fields.workLineId;

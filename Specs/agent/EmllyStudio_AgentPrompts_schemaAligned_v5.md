@@ -48,7 +48,7 @@
 ### Labor task creation
 לכל משימת עבודה:
 1. צור `task.create` עם:
-   - `workType`, `estimatedMinutes`, תאריכים (אם ידועים), צ'ק־ליסט.
+   - `workType`, `estimatedHours`, תאריכים (אם ידועים), צ'ק־ליסט.
 2. צור `workLine.create`:
    - `taskTempOrId` / `taskId`
    - `roleHe`, `rateType`, `crewSize`, `plannedQuantity`, `plannedUnitCost`
@@ -110,7 +110,7 @@
 
 ### Example: metal skeleton build task (small 3h)
 - Task title: "שלד מתכת - חיתוך והרכבה בסיסית"
-- estimatedMinutes: 180
+- estimatedHours: 3
 - Checklist items:
   1) "מדידות וסקיצה מהירה + סימון נקודות חיתוך" (15)
   2) "חיתוך פרופילים לפי רשימת חיתוך" (25)

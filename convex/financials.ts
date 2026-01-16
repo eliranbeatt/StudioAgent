@@ -509,32 +509,34 @@ function extractFromSnapshot(
   const map = snapshot?.[type]?.byId ?? {};
   return Object.values(map)
     .filter((item: any) => !item.deletedAt)
-    .map((item: any) => ({
-    id: item.id,
-    name: item.name ?? item.role ?? "Untitled",
-    title: item.name ?? item.role ?? "Untitled",
-    role: item.role,
-    qty: Number(item.qty ?? 0),
-    unitCost: Number(item.unitCost ?? item.rate ?? 0),
-    rate: Number(item.unitCost ?? item.rate ?? 0),
-    total: Number(item.qty ?? 0) * Number(item.unitCost ?? item.rate ?? 0),
-    actualQty: actuals.get(item.id)?.qty ?? item.actualQty,
-    actualUnitCost:
-      actuals.get(item.id)?.qty
-        ? actuals.get(item.id)!.total / actuals.get(item.id)!.qty
-        : item.actualUnitCost,
-    actualRate:
-      actuals.get(item.id)?.qty
-        ? actuals.get(item.id)!.total / actuals.get(item.id)!.qty
-        : item.actualRate,
-    actualTotal:
-      actuals.get(item.id)?.total ??
-      (item.actualQty !== undefined &&
-      (item.actualUnitCost !== undefined || item.actualRate !== undefined)
-        ? Number(item.actualQty ?? 0) * Number(item.actualUnitCost ?? item.actualRate ?? 0)
-        : undefined),
-    taskIds: item.links?.taskIds ?? [],
-  }));
+    .map((item: any, index: number) => ({
+      id: item.id,
+      name: item.name ?? item.role ?? "Untitled",
+      title: item.name ?? item.role ?? "Untitled",
+      role: item.role,
+      qty: Number(item.qty ?? 0),
+      unitCost: Number(item.unitCost ?? item.rate ?? 0),
+      rate: Number(item.unitCost ?? item.rate ?? 0),
+      total: Number(item.qty ?? 0) * Number(item.unitCost ?? item.rate ?? 0),
+      order: Number.isFinite(item.order) ? item.order : index,
+      actualQty: actuals.get(item.id)?.qty ?? item.actualQty,
+      actualUnitCost:
+        actuals.get(item.id)?.qty
+          ? actuals.get(item.id)!.total / actuals.get(item.id)!.qty
+          : item.actualUnitCost,
+      actualRate:
+        actuals.get(item.id)?.qty
+          ? actuals.get(item.id)!.total / actuals.get(item.id)!.qty
+          : item.actualRate,
+      actualTotal:
+        actuals.get(item.id)?.total ??
+        (item.actualQty !== undefined &&
+        (item.actualUnitCost !== undefined || item.actualRate !== undefined)
+          ? Number(item.actualQty ?? 0) * Number(item.actualUnitCost ?? item.actualRate ?? 0)
+          : undefined),
+      taskIds: item.links?.taskIds ?? [],
+    }))
+    .sort((a: any, b: any) => Number(a.order ?? 0) - Number(b.order ?? 0));
 }
 
 function extractFromDB(
@@ -542,14 +544,18 @@ function extractFromDB(
   matLines: any[],
   workLines: any[]
 ) {
-  const relevantMaterials = matLines.filter(
+  const relevantMaterials = matLines
+    .filter(
     (line) => line.elementId === elId && (!elId ? !line.elementId : true)
-  );
-  const relevantLabor = workLines.filter(
+    )
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  const relevantLabor = workLines
+    .filter(
     (line) => line.elementId === elId && (!elId ? !line.elementId : true)
-  );
+    )
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
-  const materials = relevantMaterials.map((line) => ({
+  const materials = relevantMaterials.map((line, index) => ({
     id: line._id,
     name: line.itemName ?? "Untitled Material",
     title: line.itemName ?? "Untitled Material",
@@ -557,11 +563,12 @@ function extractFromDB(
     unitCost: line.plannedUnitCost ?? 0,
     total:
       line.plannedTotalCost ?? (line.quantity ?? 0) * (line.plannedUnitCost ?? 0),
+    order: line.createdAt ?? index,
     actualTotal: line.actualTotalCost ?? undefined,
     taskIds: [],
   }));
 
-  const labor = relevantLabor.map((line) => ({
+  const labor = relevantLabor.map((line, index) => ({
     id: line._id,
     role: line.roleHe ?? "Untitled Role",
     title: line.roleHe ?? "Untitled Role",
@@ -570,6 +577,7 @@ function extractFromDB(
     total:
       line.plannedTotalCost ??
       (line.plannedQuantity ?? 0) * (line.plannedUnitCost ?? 0),
+    order: line.createdAt ?? index,
     actualTotal: line.actualTotalCost ?? undefined,
     taskIds: [],
   }));

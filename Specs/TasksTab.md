@@ -23,7 +23,7 @@ The `tasks` table is the core entity. Key fields include:
   - `accountingSectionId`: ID of the linked Accounting Section.
   - `accountingLineId` / `accountingLineType`: Link to specific material or work lines in accounting.
   - `questId`: Link to a Quest (if applicable).
-- **Gantt/Timing**: `estimatedDuration` (ms), `estimatedMinutes`, `startDate`, `endDate`, `dependencies` (list of task IDs).
+- **Gantt/Timing**: `estimatedDuration` (ms), `estimatedHours`, `startDate`, `endDate`, `dependencies` (list of task IDs).
 - **Details**: `steps` (string array), `subtasks` (object array), `assignee`.
 - **Metadata**: `source` (user vs agent), `createdAt`, `updatedAt`.
 
@@ -60,7 +60,7 @@ The `tasks` table is the core entity. Key fields include:
 - **`listByProject`**: Returns all tasks for a project. Supports filtering by `itemId`.
 - **`createTask`**: Creates a new task. Calculates the next `taskNumber`.
 - **`updateTask`**: Updates task fields.
-  - Automatically calculates `estimatedDuration` from `estimatedMinutes`.
+  - Automatically calculates `estimatedDuration` from `estimatedHours`.
   - Attempts to link `accountingSectionId` if `itemId` is provided and a matching section exists.
 - **`deleteTask`**: Removes a task.
 - **`ensureTaskNumbers`**: Maintenance function to ensure all tasks have sequential `taskNumber`s.

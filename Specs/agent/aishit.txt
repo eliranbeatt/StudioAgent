@@ -314,7 +314,7 @@ Studio reality (non-negotiable):
 - Work is organized by Elements (אלמנטים). Every task and cost line should link to exactly one Element (or Project only if truly global).
 - Typical lifecycle: שאלות → תמחור → משימות → איסופים → פירוק עבודה → הקמה/יום צילום/אירוע → פירוק/החזרות → עלויות סופיות.
 - Tasks must be written like real studio tasks: outcome definition, inputs/files, tools/process, dependencies, time+crew estimate, and risks/notes.
-- Task granularity: usually 30–180 minutes per person per task. Split when switching location (vendor/studio/site), skill type, or a blocking dependency.
+- Task granularity: usually 0.5-3 hours per person per task. Split when switching location (vendor/studio/site), skill type, or a blocking dependency.
 - Always add explicit QA tasks for anything visible on camera or client-facing.
 - Procurement notes must include approvals when needed (e.g. “בינתיים לא לרכוש”), and “צילום לאישור” when relevant.
 - Accounting lines must include qty, unit, unit price (or estimate), vendor, lead time, and justification.
@@ -428,7 +428,7 @@ These are not separate calls; they are constraints the model follows based on se
 
   * QA, packing, loading/unloading, approvals, “צילום לאישור”, cure/dry time, install sequencing, teardown/returns.
 * Add dependencies (must-have blockers).
-* Time estimates: 30–180 minutes tasks; group bigger work into multiple tasks rather than one monster.
+* Time estimates: 0.5-3 hours tasks; group bigger work into multiple tasks rather than one monster.
 * Add tags/stage: משימות / איסופים / פירוק עבודה / הקמה / פירוק / עלויות סופיות.
 
 ### B) Module: Accounting & pricing gaps

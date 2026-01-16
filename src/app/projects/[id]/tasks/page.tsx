@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
-import { use, useCallback, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { Task, TaskFilters, TaskViewMode } from "./_components/types";
 import { TasksTopBar } from "./_components/TasksTopBar";
 import { TaskControlsBar } from "./_components/TaskControlsBar";
@@ -159,6 +159,18 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
         };
     }, [effectiveTasks, data?.elements, employeeOptions, getAssigneeLabel]);
 
+    useEffect(() => {
+        setFilters({});
+    }, [projectId]);
+
+    useEffect(() => {
+        if (!filters.elementId || !data?.elements) return;
+        const hasElement = data.elements.some((element) => element.elementId === filters.elementId);
+        if (!hasElement) {
+            setFilters((prev) => ({ ...prev, elementId: undefined }));
+        }
+    }, [data?.elements, filters.elementId]);
+
     // Maps
     const taskById = useMemo(() => new Map(effectiveTasks.map((t) => [t.id, t])), [effectiveTasks]);
 
@@ -226,7 +238,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                 category: patch.category,
                 startDate: patch.startDate,
                 endDate: patch.endDate,
-                estimatedMinutes: patch.estimatedMinutes,
+                estimatedHours: patch.estimatedHours,
                 assigneeIds: patch.assigneeIds,
                 checklist: patch.checklist,
                 elementId: patch.elementId as Id<"elements">,
@@ -271,7 +283,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
             category: task.category,
             startDate: task.startDate,
             endDate: task.endDate,
-            estimatedMinutes: task.estimatedMinutes,
+            estimatedHours: task.estimatedHours,
             assigneeIds: task.assigneeIds,
             assignee: task.assignee,
             checklist: nextChecklist,

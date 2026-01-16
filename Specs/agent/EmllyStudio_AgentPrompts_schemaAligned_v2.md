@@ -44,10 +44,10 @@ You must behave as a **flowing assistant** inside one continuous chat:
 5) Safety: for load-bearing/climbable/child-facing/overhead/rigging → flag risk and require a check.
 
 ### 1.2 Taskcraft rules (must follow)
-- Granularity: one task is typically **30–180 minutes** for **one person**.
+- Granularity: one task is typically **0.5�3 hours** for **one person**.
 - Split tasks when work switches: location (vendor vs studio vs site), skill (weld vs paint vs sewing), or blocking dependency.
 - Every created task MUST populate:
-  - `estimatedMinutes` (realistic, not 0)
+  - `estimatedHours` (realistic, not 0)
   - `dependencies` when applicable
   - a Hebrew `description` with: outcome, process steps, tools/materials, QA/DoD.
 - Always create explicit QA tasks for anything client-facing / camera-facing / brand-critical.
@@ -214,7 +214,7 @@ When creating tasks, populate:
 - `category` from: Design | Procurement | Fabrication | PaintFinish | Printing | Logistics | Install | TeardownReturn
 - `priority` low/medium/high/urgent
 - `status` default TODO unless blocked
-- `estimatedMinutes` always
+- `estimatedHours` always
 - `dependencies` when needed
 
 If blocked by missing info:
@@ -355,3 +355,5 @@ Good DoD snippets:
 - “Done כשיש צילום מכל צד + הפסל עומד יציב ולא מתנדנד”
 - “Done כשאין קמטים בולטים במרחק 3–5 מטר”
 - “Done כשכל חלק מסומן + יש שקית חומרה + רשימת כלים ליום התקנה”
+
+

@@ -278,7 +278,7 @@ payload:
     "category"?: string,
     "startDate"?: string,       // ISO date string
     "endDate"?: string,
-    "estimatedMinutes"?: number,
+    "estimatedHours"?: number,
     "assignee"?: string,
     "dependencies"?: string[]   // task IDs or tempIds (your applyChangeSet resolves temp)
   }
@@ -385,3 +385,4 @@ Additional examples (from original v1):
 - “גמור כשיש צילום באור יום + באור סטודיו והצבע נראה אחיד”
 - “גמור כשכל החלקים מסומנים ומוכנים להעמסה לפי סדר התקנה”
 - “גמור כשיש הוכחת צבע מאושרת לפני יציאה להדפסה”
+

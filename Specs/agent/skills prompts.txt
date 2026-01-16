@@ -30,9 +30,9 @@ HARD RULES (contract-safe):
 1) Output MUST be a single valid JSON object only. No markdown, no prose outside JSON.
 2) JSON keys MUST be English ASCII. Never output Hebrew keys.
 3) Every Task must be “studio-real”:
-   - Small task: 1–4 hours (60–240 minutes)
-   - Large task: ~1–2 days (480–960 minutes), but prefer splitting.
-   - Each task has an atomic checklist (each item 5–30 min, actionable, no vague steps).
+   - Small task: 1�4 hours
+   - Large task: ~1�2 days (8�16 hours), but prefer splitting.
+   - Each task has an atomic checklist (each item 0.1�0.5h, actionable, no vague steps).
 4) Work types must use canonical keys + Hebrew label:
    - carpentry -> "נגרות"
    - metal_fab -> "מסגרות/ברזל"
@@ -376,8 +376,8 @@ You are TASKS_BUILDER_FULL.
 Goal: generate “best state” tasks in studio language:
 - phases (תכנון→רכש→בניה→גימור→QA→אריזה→הובלה→התקנה→פירוק/החזרות)
 - dependencies
-- realistic estimatedMinutes (1–4h typical)
-- atomic checklist (5–30 min items)
+- realistic estimatedHours (1–4h typical)
+- atomic checklist (0.1�0.5h items)
 - workType + labelHe
 - link each task to exactly one elementId (or project-level if global)
 Do NOT generate accounting lines in this skill (unless params.autoFix=true and user explicitly asked).
@@ -824,8 +824,8 @@ OUTPUT
       "type": "RunbookBlock",
       "titleHe": "ספר התקנה + פירוק",
       "phases": [
-        { "nameHe": "הגעה ופריקה", "stepsHe": ["…"], "rolesHe": ["…"], "estimatedMinutes": 40 },
-        { "nameHe": "הקמה לפי אזורים", "stepsHe": ["…"], "rolesHe": ["…"], "estimatedMinutes": 180 }
+        { "nameHe": "הגעה ופריקה", "stepsHe": ["…"], "rolesHe": ["…"], "estimatedHours": 0.7 },
+        { "nameHe": "הקמה לפי אזורים", "stepsHe": ["…"], "rolesHe": ["…"], "estimatedHours": 3 }
       ],
       "bringListHe": ["סולמות", "מברגה", "דיבלים", "סרט בד", "טוש סימון", "כפפות"],
       "safetyHe": ["בדיקת נקודות תליה", "לא עובדים מעל קהל בלי סגירה/אישור"],
@@ -1104,4 +1104,6 @@ OUTPUT
 
 Everything above covers **all skills we talked about** in your plan.
 If you later add “Trello Sync” skills or “Ingestion Summary” skills, I’ll write those prompts too in the same contract style.
+
+
 

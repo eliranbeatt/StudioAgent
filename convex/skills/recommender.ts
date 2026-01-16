@@ -22,7 +22,12 @@ export const getProjectDigest = query({
       .collect();
 
     const tasksCount = tasks.length;
-    const tasksWithEstimates = tasks.filter(t => t.estimatedMinutes && t.estimatedMinutes > 0).length;
+    const tasksWithEstimates = tasks.filter((t) => {
+      const hours =
+        t.estimatedHours ??
+        (t.estimatedMinutes !== undefined ? t.estimatedMinutes / 60 : undefined);
+      return hours !== undefined && hours > 0;
+    }).length;
 
     // 3. Accounting stats
     // Checking materialLines for now as proxy

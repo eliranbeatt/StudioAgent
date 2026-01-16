@@ -375,9 +375,9 @@ function TaskCardContent({
       ) : null}
 
       <div className="flex items-center gap-2 text-[10px] text-gray-500">
-        {task.estimatedMinutes ? (
+        {task.estimatedHours ? (
             <span className="inline-flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
-            <Clock size={10} /> {formatMinutes(task.estimatedMinutes)}
+            <Clock size={10} /> {formatHours(task.estimatedHours)}
             </span>
         ) : null}
         
@@ -437,12 +437,10 @@ function TaskCardContent({
   );
 }
 
-function formatMinutes(minutes?: number) {
-  if (!minutes || !Number.isFinite(minutes)) return "--";
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const remaining = minutes % 60;
-  return remaining > 0 ? `${hours}h ${remaining}m` : `${hours}h`;
+function formatHours(hours?: number) {
+  if (!hours || !Number.isFinite(hours)) return "--";
+  const rounded = Math.round(hours * 10) / 10;
+  return `${rounded}h`;
 }
 
 function formatWorkType(value: string) {

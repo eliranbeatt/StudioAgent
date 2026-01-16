@@ -50,7 +50,9 @@ export function RunbookBlock({ block, projectId }: { block: any, projectId: Id<"
               </div>
             )}
             {phase.estimatedMinutes !== undefined && (
-              <div className="text-xs text-indigo-600 mt-2">Estimated: {phase.estimatedMinutes} min</div>
+              <div className="text-xs text-indigo-600 mt-2">
+                Estimated: {formatHours(phase.estimatedMinutes)}h
+              </div>
             )}
           </div>
         ))}
@@ -133,4 +135,10 @@ export function RunbookBlock({ block, projectId }: { block: any, projectId: Id<"
       </div>
     </div>
   );
+}
+
+function formatHours(minutes?: number) {
+  if (!minutes || !Number.isFinite(minutes)) return "0";
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return String(hours);
 }

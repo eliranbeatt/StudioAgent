@@ -176,7 +176,8 @@ export const getTasksForElements = query({
           id: task._id,
           title: task.title,
           status: task.status,
-          estimatedMinutes: task.estimatedMinutes,
+          estimatedHours:
+            task.estimatedHours ?? (task.estimatedMinutes !== undefined ? task.estimatedMinutes / 60 : undefined),
           dedupKey: task.dedupKey,
         })),
       });

@@ -48,7 +48,7 @@ The Gantt Tab provides a visual timeline representation of project tasks. It all
   - **Args**: `taskId` and partial task fields (including `startDate`, `endDate`, `dependencies`).
   - **Logic**:
     - Updates the specified fields.
-    - **Duration Handling**: If `estimatedMinutes` is updated, it automatically recalculates `estimatedDuration` (in ms).
+    - **Duration Handling**: If `estimatedHours` is updated, it automatically recalculates `estimatedDuration` (in ms).
     - **Accounting Link**: If `itemId` is set but `accountingSectionId` is missing, it attempts to find and link the corresponding accounting section.
 
 - **`createTask` (Mutation)**

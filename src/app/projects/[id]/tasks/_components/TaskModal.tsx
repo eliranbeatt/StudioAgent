@@ -232,10 +232,18 @@ export function TaskModal({ task, employees, elements, onClose, onSave, onDuplic
                 onChange={(v) => handleChange("endDate", v)}
               />
               <InputField
-                label="Duration (Min)"
-                value={String(effectiveTask.estimatedMinutes ?? "")}
+                label="Duration (Hours)"
+                value={String(effectiveTask.estimatedHours ?? "")}
                 type="number"
-                onChange={(v) => handleChange("estimatedMinutes", parseInt(v) || 0)}
+                step="0.1"
+                onChange={(v) => {
+                  if (v === "") {
+                    handleChange("estimatedHours", undefined);
+                    return;
+                  }
+                  const hours = Number(v);
+                  handleChange("estimatedHours", Number.isFinite(hours) ? hours : undefined);
+                }}
               />
             </div>
 
@@ -411,13 +419,26 @@ function SelectField({ label, value, options, onChange }: { label: string, value
   )
 }
 
-function InputField({ label, value, type = "text", onChange }: { label: string, value: string, type?: string, onChange: (v: string) => void }) {
+function InputField({
+  label,
+  value,
+  type = "text",
+  step,
+  onChange,
+}: {
+  label: string,
+  value: string,
+  type?: string,
+  step?: string,
+  onChange: (v: string) => void
+}) {
   return (
     <div className="space-y-1.5">
       <label className="text-xs uppercase font-bold text-gray-400 tracking-wider">{label}</label>
       <input
         type={type}
         value={value}
+        step={step}
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black/5 bg-white transition"
       />

@@ -177,7 +177,7 @@ Each task MUST include:
 - title (Hebrew, action-oriented)
 - description (Hebrew: what to do, tools, pitfalls, definition-of-done)
 - workType + workTypeLabelHe
-- estimatedMinutes
+- estimatedHours
 - dependencies (if your schema supports; otherwise describe in text)
 - checklist items that are atomic
 
@@ -187,7 +187,7 @@ A checklist item must be something a worker can do without guessing:
 ❌ “לבנות שלד”
 
 Checklist items should include:
-- estimatedMinutes (5–30 typical)
+- estimatedHours (0.1–0.5 typical)
 - optional dependsOnItemIds for sequencing
 
 ---
@@ -271,11 +271,11 @@ You output a SINGLE JSON object with:
           "description": "עברית: סדר עבודה, כלים, בטיחות, DoD…",
           "workType": "metal_fab",
           "workTypeLabelHe": "מסגרות/מתכת",
-          "estimatedMinutes": 180,
+          "estimatedHours": 3,
           "plannedStartDate": "2026-01-12",
           "plannedEndDate": "2026-01-12",
           "checklist": [
-            { "id": "c1", "title": "סידור חלקים על ג׳יג + בדיקת פלס", "estimatedMinutes": 15, "done": false }
+            { "id": "c1", "title": "סידור חלקים על ג׳יג + בדיקת פלס", "estimatedHours": 0.25, "done": false }
           ]
         }
       },
