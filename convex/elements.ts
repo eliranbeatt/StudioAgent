@@ -300,102 +300,15 @@ export async function captureSnapshotFromLive(ctx: any, elementId: any) {
   return snapshot;
 }
 
+// Deprecated: No-op as drafts are removed
 export const approveElementDraft = mutation({
   args: {
     elementId: v.id("elements"),
     approvedBy: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    const element = await ctx.db.get(args.elementId);
-    if (!element) throw new Error("Element not found.");
-    if (!element.currentDraftId) throw new Error("No open draft found.");
-
-    const draft = await ctx.db.get(element.currentDraftId);
-    if (!draft) throw new Error("Draft not found.");
-
-    // Idempotency: removed to allow re-approving/fixing inconsistent states.
-    // If draft.status === "approved", we allow creating a new version to ensure live tables are synced.
-
-    if (draft.status !== "open" && draft.status !== "needsReview" && draft.status !== "approved") {
-      throw new Error(`Draft is not in a strictly open state (current status: ${draft.status}).`);
-    }
-
-    // --- CAPTURE LIVE STATE AS TRUTH ---
-    // Instead of trusting the draft snapshot (which might be stale due to direct live edits),
-    // we rebuild the snapshot from the current live tables. This ensures no data loss.
-    const liveSnapshot = await captureSnapshotFromLive(ctx, args.elementId);
-
-    // --- SAFETY CHECK ---
-    // If Live state is completely empty but Draft has data, it implies the user might be working 
-    // in "Draft Only" mode (System 1) where live tables are not used until approval. 
-    // In that case, we should prefer the Draft.
-    // Otherwise, we prefer Live (System 2) to capture recent manual/agent edits.
-
-    const liveTasks = Object.keys(liveSnapshot.tasks?.byId ?? {}).length;
-    const liveLines = Object.keys(liveSnapshot.accounting?.byId ?? {}).length;
-    const liveParts = Object.keys(liveSnapshot.printing?.byId ?? {}).length;
-    const liveIsEmpty = liveTasks === 0 && liveLines === 0 && liveParts === 0;
-
-    const draftSnapshot = draft.workingSnapshot ?? {};
-    const draftTasks = Object.keys(draftSnapshot.tasks?.byId ?? {}).length;
-    const draftLines = Array.isArray(draftSnapshot.accounting?.lines)
-      ? draftSnapshot.accounting.lines.length
-      : Object.keys(draftSnapshot.accounting?.byId ?? {}).length; // Handle both formats
-    const draftParts = Array.isArray(draftSnapshot.printing?.parts)
-      ? draftSnapshot.printing.parts.length
-      : Object.keys(draftSnapshot.printing?.byId ?? {}).length;
-
-    const draftHasData = draftTasks > 0 || draftLines > 0 || draftParts > 0;
-
-    let snapshotToUse = liveSnapshot;
-    if (liveIsEmpty && draftHasData) {
-      console.log(`[Approve] Live is empty but Draft has data (${draftTasks} tasks). Preferring Draft.`);
-      snapshotToUse = draftSnapshot;
-    }
-
-    // Ensure the captured snapshot is what we use for the version AND the sync (no-op sync essentially)
-    const updatedSnapshot = await syncSnapshotToLiveTables(ctx, args.elementId, snapshotToUse);
-
-    const latestVersion = await ctx.db
-      .query("elementVersions")
-      .withIndex("by_element", (q) => q.eq("elementId", args.elementId))
-      .order("desc")
-      .first();
-
-    const now = Date.now();
-    const versionNumber = latestVersion ? latestVersion.versionNumber + 1 : 1;
-
-    // Create the version with the UPDATED snapshot (containing real IDs)
-    const versionId = await ctx.db.insert("elementVersions", {
-      elementId: args.elementId,
-      projectId: element.projectId,
-      versionNumber,
-      status: "approved",
-      tags: element.tags ?? [],
-      summary: `Approved from draft ${draft._id}`,
-      snapshot: updatedSnapshot,
-      schemaVersion: draft.schemaVersion ?? 1,
-      approvedBy: args.approvedBy,
-      approvedAt: now,
-      createdAt: now,
-    });
-
-    await ctx.db.patch(args.elementId, {
-      currentApprovedVersionId: versionId,
-      status: "approvedForQuote",
-      updatedAt: now,
-    });
-
-    await ctx.db.patch(draft._id, {
-      status: "approved",
-      baseVersionId: versionId,
-      workingSnapshot: updatedSnapshot, // Update draft with real IDs too
-      updatedAt: now,
-    });
-
-    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: element.projectId });
-
-    return { ok: true, versionId };
+    // No-op
+    return { ok: true, versionId: null };
   },
 });
 
@@ -444,21 +357,10 @@ export const listByProject = query({
       printCounts.set(part.elementId, (printCounts.get(part.elementId) ?? 0) + 1);
     }
 
-    const draftMeta = new Map<string, { id: string; status: string; revisionNumber: number; updatedAt: number }>();
     const approvedMeta = new Map<string, { id: string; versionNumber: number; approvedAt?: number }>();
 
     for (const element of elements) {
-      if (element.currentDraftId) {
-        const draft = await ctx.db.get(element.currentDraftId);
-        if (draft) {
-          draftMeta.set(element._id, {
-            id: draft._id,
-            status: draft.status,
-            revisionNumber: draft.revisionNumber,
-            updatedAt: draft.updatedAt,
-          });
-        }
-      }
+      // Draft fetching removed
       if (element.currentApprovedVersionId) {
         const version = await ctx.db.get(element.currentApprovedVersionId);
         if (version) {
@@ -483,7 +385,7 @@ export const listByProject = query({
         taskCount: tasksByElement.get(element._id) ?? 0,
         budget: totalsByElement.get(element._id) ?? { materials: 0, labor: 0, total: 0 },
         printPartsCount: printCounts.get(element._id) ?? 0,
-        draft: draftMeta.get(element._id) ?? null,
+        draft: null, // Removed
         approved: approvedMeta.get(element._id) ?? null,
       })),
     };
@@ -500,19 +402,13 @@ export const getComposite = query({
     const element = await ctx.db.get(args.elementId);
     if (!element || element.projectId !== args.projectId) return null;
 
-    const draft = element.currentDraftId ? await ctx.db.get(element.currentDraftId) : null;
     const approved = element.currentApprovedVersionId
       ? await ctx.db.get(element.currentApprovedVersionId)
       : null;
 
-    const preferDraft = args.preferDraft ?? true;
-    const baseSource = preferDraft && draft ? "draft" : approved ? "approved" : draft ? "draft" : null;
-    const baseSpec =
-      baseSource === "draft"
-        ? draft?.workingSnapshot ?? {}
-        : baseSource === "approved"
-          ? approved?.snapshot ?? {}
-          : {};
+    // Always prefer live/approved, ignore draft
+    const baseSource = "approved";
+    const baseSpec = {}; // Not used actively anymore
 
     const tasks = await ctx.db
       .query("tasks")
@@ -565,14 +461,7 @@ export const getComposite = query({
             createdAt: approved.createdAt,
           }
           : null,
-        draftMeta: draft
-          ? {
-            draftId: draft._id,
-            revisionNumber: draft.revisionNumber,
-            status: draft.status,
-            updatedAt: draft.updatedAt,
-          }
-          : null,
+        draftMeta: null,
       },
       canon: {
         tasksCount: tasks.length,
@@ -709,13 +598,7 @@ export const deleteElement = mutation({
     const element = await ctx.db.get(args.elementId);
     if (!element) throw new Error("Element not found.");
 
-    const drafts = await ctx.db
-      .query("elementDrafts")
-      .withIndex("by_element", (q) => q.eq("elementId", args.elementId))
-      .collect();
-    for (const draft of drafts) {
-      await ctx.db.delete(draft._id);
-    }
+    // Draft deletion removed (preserved for now)
 
     const versions = await ctx.db
       .query("elementVersions")
@@ -750,9 +633,60 @@ export const deleteElement = mutation({
     }
 
     await ctx.db.delete(args.elementId);
-    
+
     await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: element.projectId });
-    
+
     return { ok: true };
   },
 });
+
+export async function captureProjectCostSnapshot(ctx: any, projectId: any) {
+  // --- Fetch Live Data (Items without elementId) ---
+  const existingMaterialLines = await ctx.db
+    .query("materialLines")
+    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+    .collect();
+
+  const existingWorkLines = await ctx.db
+    .query("workLines")
+    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+    .collect();
+
+  // Filter for items with NO elementId
+  const projectMaterials = existingMaterialLines.filter((l: any) => !l.elementId);
+  const projectLabor = existingWorkLines.filter((l: any) => !l.elementId);
+
+  // --- Construct Snapshot ---
+  const snapshot: any = {
+    tasks: { byId: {} },
+    materials: { byId: {} },
+    labor: { byId: {} },
+    printing: { byId: {} },
+  };
+
+  // Materials
+  for (const l of projectMaterials) {
+    snapshot.materials.byId[l._id] = {
+      id: l._id,
+      name: l.itemName ?? "Untitled Material",
+      qty: l.quantity ?? 0,
+      unitCost: l.plannedUnitCost ?? 0,
+      total: l.plannedTotalCost ?? (l.quantity ?? 0) * (l.plannedUnitCost ?? 0),
+      actualUnitCost: l.actualUnitCost,
+      actualTotalCost: l.actualTotalCost,
+    };
+  }
+
+  // Labor
+  for (const l of projectLabor) {
+    snapshot.labor.byId[l._id] = {
+      id: l._id,
+      role: l.roleHe ?? "Untitled Role",
+      qty: l.plannedQuantity ?? 0,
+      rate: l.plannedUnitCost ?? 0,
+      total: l.plannedTotalCost ?? (l.plannedQuantity ?? 0) * (l.plannedUnitCost ?? 0),
+    };
+  }
+
+  return snapshot;
+}

@@ -16,6 +16,32 @@ import { TaskModal } from "./_components/TaskModal";
 import { TrelloConfigModal } from "./_components/TrelloConfigModal";
 import { getTodayDateString } from '../../../../lib/dates'
 
+const generateId = () => Math.random().toString(36).substr(2, 9);
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const getNextDuplicateTitle = (title: string, tasks: Task[]) => {
+    const baseTitle = title.replace(/\s*\(\d+\)\s*$/, "").trim();
+    const baseRegex = new RegExp(`^${escapeRegExp(baseTitle)}\\s*\\((\\d+)\\)\\s*$`);
+    let maxNumber = 0;
+
+    tasks.forEach((task) => {
+        const taskTitle = String(task.title ?? "").trim();
+        if (!taskTitle) return;
+        if (taskTitle === baseTitle) {
+            maxNumber = Math.max(maxNumber, 0);
+            return;
+        }
+        const match = taskTitle.match(baseRegex);
+        if (match) {
+            const value = Number(match[1]);
+            if (!Number.isNaN(value)) maxNumber = Math.max(maxNumber, value);
+        }
+    });
+
+    return `${baseTitle} (${maxNumber + 1})`;
+};
+
 export default function TasksPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const projectId = id as Id<"projects">;
@@ -226,6 +252,35 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
         });
     };
 
+    const handleDuplicateTask = (task: Task) => {
+        const elementTitle =
+            task.elementTitle ??
+            filterOptions.elements.find((el) => el.id === task.elementId)?.title ??
+            "No Element";
+        const nextChecklist = (task.checklist ?? []).map((item, index) => ({
+            ...item,
+            id: generateId(),
+            order: item.order ?? index,
+        }));
+        setDraftTask({
+            id: "new-task",
+            title: getNextDuplicateTitle(task.title, effectiveTasks),
+            description: task.description ?? "",
+            status: task.status ?? "todo",
+            priority: task.priority ?? "normal",
+            category: task.category,
+            startDate: task.startDate,
+            endDate: task.endDate,
+            estimatedMinutes: task.estimatedMinutes,
+            assigneeIds: task.assigneeIds,
+            assignee: task.assignee,
+            checklist: nextChecklist,
+            elementId: task.elementId,
+            elementTitle: elementTitle,
+        });
+        setSelectedTaskId(null);
+    };
+
     const handleChecklistToggle = async (taskId: string, itemId: string) => {
         const task = taskById.get(taskId);
         if (!task?.checklist) return;
@@ -382,6 +437,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                     elements={filterOptions.elements}
                     onClose={() => setSelectedTaskId(null)}
                     onSave={handleTaskSave}
+                    onDuplicate={() => handleDuplicateTask(selectedTask)}
                     draftMode={!!selectedTask.isDraft}
                     isSaving={modalSaving}
                 />

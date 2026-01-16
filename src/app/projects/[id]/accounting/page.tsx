@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import Link from "next/link";
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -58,6 +58,7 @@ export default function AccountingPage({
   const pendingGraveyard = useQuery(api.graveyard.listPending, { projectId });
   const applyChangeSet = useMutation(api.drafts.applyChangeSet);
   const ensureElementDraft = useMutation(api.drafts.ensureElementDraft);
+  const ensureProjectCostDraft = useMutation(api.drafts.ensureProjectCostDraft);
   const [tab, setTab] = useState<TabKey>("summary");
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
@@ -166,6 +167,7 @@ export default function AccountingPage({
           savingLineId={savingLineId}
           onApplyOps={handleApplyOps}
           onEnsureElementDraft={ensureElementDraft}
+          onEnsureProjectCostDraft={ensureProjectCostDraft}
           onSavingLineId={setSavingLineId}
         />
       ) : null}
@@ -178,6 +180,7 @@ export default function AccountingPage({
           savingLineId={savingLineId}
           onApplyOps={handleApplyOps}
           onEnsureElementDraft={ensureElementDraft}
+          onEnsureProjectCostDraft={ensureProjectCostDraft}
           onSavingLineId={setSavingLineId}
         />
       ) : null}
@@ -229,6 +232,7 @@ function MaterialsTab({
   savingLineId,
   onApplyOps,
   onEnsureElementDraft,
+  onEnsureProjectCostDraft,
   onSavingLineId,
 }: {
   projectId: Id<"projects">;
@@ -246,23 +250,34 @@ function MaterialsTab({
     projectId: Id<"projects">;
     elementId: Id<"elements">;
   }) => Promise<{ draftId: string; revisionNumber: number }>;
+  onEnsureProjectCostDraft: (args: {
+    projectId: Id<"projects">;
+  }) => Promise<{ draftId: string; revisionNumber: number }>;
   onSavingLineId: (value: string | null) => void;
 }) {
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
 
-  const resolveElementDraft = async ({
+  const resolveDraft = async ({
+    draftType,
     draftId,
     revisionNumber,
     elementId,
   }: {
+    draftType: "element" | "projectCost";
     draftId?: string;
     revisionNumber?: number;
-    elementId: Id<"elements">;
+    elementId?: Id<"elements">;
   }) => {
     if (draftId && revisionNumber !== undefined) {
       return { draftId, revisionNumber };
     }
-    return await onEnsureElementDraft({ projectId, elementId });
+    if (draftType === "element" && elementId) {
+      return await onEnsureElementDraft({ projectId, elementId });
+    }
+    if (draftType === "projectCost") {
+      return await onEnsureProjectCostDraft({ projectId });
+    }
+    return { draftId: undefined, revisionNumber: undefined };
   };
 
   const addMaterialLine = async ({
@@ -276,40 +291,46 @@ function MaterialsTab({
     revisionNumber?: number;
     elementId?: Id<"elements">;
   }) => {
-    if (draftType === "element" && elementId) {
-      const resolved = await resolveElementDraft({
+    try {
+      const resolved = await resolveDraft({
+        draftType,
         draftId,
         revisionNumber,
         elementId,
       });
-      draftId = resolved.draftId;
-      revisionNumber = resolved.revisionNumber;
-    }
-    if (!draftId || revisionNumber === undefined) return;
 
-    const id = `mat_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const patchOps = [
-      {
-        op: "add",
-        path: `/materials/byId/${id}`,
-        value: {
-          id,
-          name: "New material",
-          qty: 1,
-          unitCost: 0,
-          links: { taskIds: [] },
-          procurement: { mode: "purchase" },
-          needPurchase: true,
+      if (!resolved.draftId || resolved.revisionNumber === undefined) {
+        alert("Failed to resolve draft.");
+        return;
+      }
+
+      const id = `mat_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const patchOps = [
+        {
+          op: "add",
+          path: `/materials/byId/${id}`,
+          value: {
+            id,
+            name: "New material",
+            qty: 1,
+            unitCost: 0,
+            links: { taskIds: [] },
+            procurement: { mode: "purchase" },
+            needPurchase: true,
+          },
         },
-      },
-    ];
-    await onApplyOps({
-      draftType,
-      draftId,
-      baseRevisionNumber: revisionNumber,
-      patchOps,
-      reason: "Add material line",
-    });
+      ];
+      await onApplyOps({
+        draftType,
+        draftId: resolved.draftId,
+        baseRevisionNumber: resolved.revisionNumber,
+        patchOps,
+        reason: "Add material line",
+      });
+    } catch (e: any) {
+      console.error(e);
+      alert(`Failed to add line: ${e.message}`);
+    }
   };
 
   const handleDeleteLine = async ({
@@ -326,26 +347,33 @@ function MaterialsTab({
     elementId?: Id<"elements">;
   }) => {
     if (!confirm("Delete this material line?")) return;
-    if (draftType === "element" && elementId) {
-      const resolved = await resolveElementDraft({
+
+    try {
+      const resolved = await resolveDraft({
+        draftType,
         draftId,
         revisionNumber,
         elementId,
       });
-      draftId = resolved.draftId;
-      revisionNumber = resolved.revisionNumber;
-    }
-    if (!draftId || revisionNumber === undefined) return;
 
-    await onApplyOps({
-      draftType,
-      draftId,
-      baseRevisionNumber: revisionNumber,
-      patchOps: [
-        { op: "tombstone", path: `/materials/byId/${lineId}`, value: { deletedAt: "now" } },
-      ],
-      reason: "Delete material line",
-    });
+      if (!resolved.draftId || resolved.revisionNumber === undefined) {
+        alert("Could not create/find draft for deletion.");
+        return;
+      }
+
+      await onApplyOps({
+        draftType,
+        draftId: resolved.draftId,
+        baseRevisionNumber: resolved.revisionNumber,
+        patchOps: [
+          { op: "tombstone", path: `/materials/byId/${lineId}`, value: { deletedAt: "now" } },
+        ],
+        reason: "Delete material line",
+      });
+    } catch (e: any) {
+      console.error(e);
+      alert(`Failed to delete line: ${e.message}`);
+    }
   };
 
   return (
@@ -417,11 +445,18 @@ function MaterialsTab({
                     onSave={async (next) => {
                       onSavingLineId(line.id);
                       try {
-                        const resolved = await resolveElementDraft({
+                        const resolved = await resolveDraft({
+                          draftType: "element",
                           draftId: element.draftId,
                           revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
                         });
+
+                        if (!resolved.draftId || resolved.revisionNumber === undefined) {
+                          alert("Failed to resolve draft");
+                          return;
+                        }
+
                         const patchOps = buildMaterialPatchOps(line.id, next);
                         await onApplyOps({
                           draftType: "element",
@@ -430,6 +465,9 @@ function MaterialsTab({
                           patchOps,
                           reason: "Update material line",
                         });
+                      } catch (e: any) {
+                        console.error(e);
+                        alert(`Failed to save: ${e.message}`);
                       } finally {
                         onSavingLineId(null);
                       }
@@ -488,20 +526,25 @@ function MaterialsTab({
                   onSave={async (next) => {
                     onSavingLineId(line.id);
                     try {
-                      if (
-                        !accounting.projectCosts.draftId ||
-                        accounting.projectCosts.revisionNumber === undefined
-                      ) {
-                        return;
-                      }
+                      const resolved = await resolveDraft({
+                        draftType: "projectCost",
+                        draftId: accounting.projectCosts.draftId,
+                        revisionNumber: accounting.projectCosts.revisionNumber,
+                      });
+
+                      if (!resolved.draftId || resolved.revisionNumber === undefined) return;
+
                       const patchOps = buildMaterialPatchOps(line.id, next);
                       await onApplyOps({
                         draftType: "projectCost",
-                        draftId: accounting.projectCosts.draftId,
-                        baseRevisionNumber: accounting.projectCosts.revisionNumber,
+                        draftId: resolved.draftId,
+                        baseRevisionNumber: resolved.revisionNumber,
                         patchOps,
                         reason: "Update project cost material",
                       });
+                    } catch (e: any) {
+                      console.error(e);
+                      alert(`Failed to save: ${e.message}`);
                     } finally {
                       onSavingLineId(null);
                     }
@@ -523,6 +566,7 @@ function LaborTab({
   savingLineId,
   onApplyOps,
   onEnsureElementDraft,
+  onEnsureProjectCostDraft,
   onSavingLineId,
 }: {
   projectId: Id<"projects">;
@@ -540,23 +584,34 @@ function LaborTab({
     projectId: Id<"projects">;
     elementId: Id<"elements">;
   }) => Promise<{ draftId: string; revisionNumber: number }>;
+  onEnsureProjectCostDraft: (args: {
+    projectId: Id<"projects">;
+  }) => Promise<{ draftId: string; revisionNumber: number }>;
   onSavingLineId: (value: string | null) => void;
 }) {
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
 
-  const resolveElementDraft = async ({
+  const resolveDraft = async ({
+    draftType,
     draftId,
     revisionNumber,
     elementId,
   }: {
+    draftType: "element" | "projectCost";
     draftId?: string;
     revisionNumber?: number;
-    elementId: Id<"elements">;
+    elementId?: Id<"elements">;
   }) => {
     if (draftId && revisionNumber !== undefined) {
       return { draftId, revisionNumber };
     }
-    return await onEnsureElementDraft({ projectId, elementId });
+    if (draftType === "element" && elementId) {
+      return await onEnsureElementDraft({ projectId, elementId });
+    }
+    if (draftType === "projectCost") {
+      return await onEnsureProjectCostDraft({ projectId });
+    }
+    return { draftId: undefined, revisionNumber: undefined };
   };
 
   const addLaborLine = async ({
@@ -570,38 +625,44 @@ function LaborTab({
     revisionNumber?: number;
     elementId?: Id<"elements">;
   }) => {
-    if (draftType === "element" && elementId) {
-      const resolved = await resolveElementDraft({
+    try {
+      const resolved = await resolveDraft({
+        draftType,
         draftId,
         revisionNumber,
         elementId,
       });
-      draftId = resolved.draftId;
-      revisionNumber = resolved.revisionNumber;
-    }
-    if (!draftId || revisionNumber === undefined) return;
 
-    const id = `lab_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const patchOps = [
-      {
-        op: "add",
-        path: `/labor/byId/${id}`,
-        value: {
-          id,
-          role: "New role",
-          qty: 1,
-          rate: 0,
-          links: { taskIds: [] },
+      if (!resolved.draftId || resolved.revisionNumber === undefined) {
+        alert("Failed to resolve draft.");
+        return;
+      }
+
+      const id = `lab_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const patchOps = [
+        {
+          op: "add",
+          path: `/labor/byId/${id}`,
+          value: {
+            id,
+            role: "New role",
+            qty: 1,
+            rate: 0,
+            links: { taskIds: [] },
+          },
         },
-      },
-    ];
-    await onApplyOps({
-      draftType,
-      draftId,
-      baseRevisionNumber: revisionNumber,
-      patchOps,
-      reason: "Add labor line",
-    });
+      ];
+      await onApplyOps({
+        draftType,
+        draftId: resolved.draftId,
+        baseRevisionNumber: resolved.revisionNumber,
+        patchOps,
+        reason: "Add labor line",
+      });
+    } catch (e: any) {
+      console.error(e);
+      alert(`Failed to add line: ${e.message}`);
+    }
   };
 
   const handleDeleteLine = async ({
@@ -618,26 +679,33 @@ function LaborTab({
     elementId?: Id<"elements">;
   }) => {
     if (!confirm("Delete this labor line?")) return;
-    if (draftType === "element" && elementId) {
-      const resolved = await resolveElementDraft({
+
+    try {
+      const resolved = await resolveDraft({
+        draftType,
         draftId,
         revisionNumber,
         elementId,
       });
-      draftId = resolved.draftId;
-      revisionNumber = resolved.revisionNumber;
-    }
-    if (!draftId || revisionNumber === undefined) return;
 
-    await onApplyOps({
-      draftType,
-      draftId,
-      baseRevisionNumber: revisionNumber,
-      patchOps: [
-        { op: "tombstone", path: `/labor/byId/${lineId}`, value: { deletedAt: "now" } },
-      ],
-      reason: "Delete labor line",
-    });
+      if (!resolved.draftId || resolved.revisionNumber === undefined) {
+        alert("Could not create/find draft for deletion.");
+        return;
+      }
+
+      await onApplyOps({
+        draftType,
+        draftId: resolved.draftId,
+        baseRevisionNumber: resolved.revisionNumber,
+        patchOps: [
+          { op: "tombstone", path: `/labor/byId/${lineId}`, value: { deletedAt: "now" } },
+        ],
+        reason: "Delete labor line",
+      });
+    } catch (e: any) {
+      console.error(e);
+      alert(`Failed to delete line: ${e.message}`);
+    }
   };
 
   return (
@@ -709,11 +777,18 @@ function LaborTab({
                     onSave={async (next) => {
                       onSavingLineId(line.id);
                       try {
-                        const resolved = await resolveElementDraft({
+                        const resolved = await resolveDraft({
+                          draftType: "element",
                           draftId: element.draftId,
                           revisionNumber: element.revisionNumber,
                           elementId: element.elementId,
                         });
+
+                        if (!resolved.draftId || resolved.revisionNumber === undefined) {
+                          alert("Failed to resolve draft");
+                          return;
+                        }
+
                         const patchOps = buildLaborPatchOps(line.id, next);
                         await onApplyOps({
                           draftType: "element",
@@ -722,6 +797,9 @@ function LaborTab({
                           patchOps,
                           reason: "Update labor line",
                         });
+                      } catch (e: any) {
+                        console.error(e);
+                        alert(`Failed to save: ${e.message}`);
                       } finally {
                         onSavingLineId(null);
                       }
@@ -780,20 +858,25 @@ function LaborTab({
                   onSave={async (next) => {
                     onSavingLineId(line.id);
                     try {
-                      if (
-                        !accounting.projectCosts.draftId ||
-                        accounting.projectCosts.revisionNumber === undefined
-                      ) {
-                        return;
-                      }
+                      const resolved = await resolveDraft({
+                        draftType: "projectCost",
+                        draftId: accounting.projectCosts.draftId,
+                        revisionNumber: accounting.projectCosts.revisionNumber,
+                      });
+
+                      if (!resolved.draftId || resolved.revisionNumber === undefined) return;
+
                       const patchOps = buildLaborPatchOps(line.id, next);
                       await onApplyOps({
                         draftType: "projectCost",
-                        draftId: accounting.projectCosts.draftId,
-                        baseRevisionNumber: accounting.projectCosts.revisionNumber,
+                        draftId: resolved.draftId,
+                        baseRevisionNumber: resolved.revisionNumber,
                         patchOps,
                         reason: "Update project cost labor",
                       });
+                    } catch (e: any) {
+                      console.error(e);
+                      alert(`Failed to save: ${e.message}`);
                     } finally {
                       onSavingLineId(null);
                     }
@@ -864,11 +947,11 @@ function MaterialLineRow({
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Name
         </div>
-        <input
+        <AutoResizeTextarea
           value={active.name}
           disabled={!isEditing || saving}
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
+          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm min-h-[38px]"
         />
       </div>
       <div className="md:col-span-1">
@@ -1094,11 +1177,11 @@ function LaborLineRow({
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Role
         </div>
-        <input
+        <AutoResizeTextarea
           value={active.role}
           disabled={!isEditing || saving}
           onChange={(e) => setDraft({ ...draft, role: e.target.value })}
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
+          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm min-h-[38px]"
         />
       </div>
       <div className="md:col-span-1">
@@ -1336,5 +1419,45 @@ function TabButton({
     >
       {children}
     </button>
+  );
+}
+
+function AutoResizeTextarea({
+  value,
+  onChange,
+  disabled,
+  className,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adjustHeight = () => {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  };
+
+  useEffect(() => {
+    adjustHeight();
+  }, [value]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={(e) => {
+        onChange(e);
+        adjustHeight();
+      }}
+      disabled={disabled}
+      className={`${className} overflow-hidden resize-none`}
+      rows={1}
+    />
   );
 }

@@ -1,6 +1,6 @@
 import { Task, TaskChecklistItem } from "./types";
 import { useState, useEffect } from "react";
-import { X, Save, MessageSquare, Sparkles, Trash2, Plus } from "lucide-react";
+import { X, Save, MessageSquare, Sparkles, Trash2, Plus, Copy } from "lucide-react";
 
 type TaskModalProps = {
   task: Task;
@@ -8,13 +8,14 @@ type TaskModalProps = {
   elements: Array<{ id: string; title: string }>;
   onClose: () => void;
   onSave: (patch: Partial<Task>) => Promise<void>;
+  onDuplicate?: () => void;
   draftMode: boolean;
   isSaving: boolean;
 };
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-export function TaskModal({ task, employees, elements, onClose, onSave, draftMode, isSaving }: TaskModalProps) {
+export function TaskModal({ task, employees, elements, onClose, onSave, onDuplicate, draftMode, isSaving }: TaskModalProps) {
   const [formData, setFormData] = useState<Partial<Task>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [activeTab, setActiveTab] = useState<"details" | "chat">("details");
@@ -134,6 +135,15 @@ export function TaskModal({ task, employees, elements, onClose, onSave, draftMod
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {onDuplicate && (
+              <button
+                onClick={onDuplicate}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                <Copy size={16} />
+                Duplicate
+              </button>
+            )}
             <button
               onClick={handleSave}
               disabled={!hasChanges || isSaving}

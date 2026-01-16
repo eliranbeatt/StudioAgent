@@ -8,11 +8,13 @@
  * @module
  */
 
+import type * as accountingStudio from "../accountingStudio.js";
 import type * as adminHealth from "../adminHealth.js";
 import type * as agent from "../agent.js";
 import type * as agent_tasks from "../agent_tasks.js";
 import type * as changeSets from "../changeSets.js";
 import type * as customers from "../customers.js";
+import type * as customersStudio from "../customersStudio.js";
 import type * as debug_fetch_traces from "../debug_fetch_traces.js";
 import type * as debug_inspect from "../debug_inspect.js";
 import type * as drafts from "../drafts.js";
@@ -47,9 +49,11 @@ import type * as skills_prompts from "../skills/prompts.js";
 import type * as skills_recommender from "../skills/recommender.js";
 import type * as skills_registry from "../skills/registry.js";
 import type * as skills_runner from "../skills/runner.js";
+import type * as skills_tags from "../skills/tags.js";
 import type * as suggestions from "../suggestions.js";
 import type * as taskRevisions from "../taskRevisions.js";
 import type * as tasks from "../tasks.js";
+import type * as tasksStudio from "../tasksStudio.js";
 import type * as test_chat from "../test_chat.js";
 import type * as tracing from "../tracing.js";
 import type * as trelloSync from "../trelloSync.js";
@@ -62,11 +66,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accountingStudio: typeof accountingStudio;
   adminHealth: typeof adminHealth;
   agent: typeof agent;
   agent_tasks: typeof agent_tasks;
   changeSets: typeof changeSets;
   customers: typeof customers;
+  customersStudio: typeof customersStudio;
   debug_fetch_traces: typeof debug_fetch_traces;
   debug_inspect: typeof debug_inspect;
   drafts: typeof drafts;
@@ -101,9 +107,11 @@ declare const fullApi: ApiFromModules<{
   "skills/recommender": typeof skills_recommender;
   "skills/registry": typeof skills_registry;
   "skills/runner": typeof skills_runner;
+  "skills/tags": typeof skills_tags;
   suggestions: typeof suggestions;
   taskRevisions: typeof taskRevisions;
   tasks: typeof tasks;
+  tasksStudio: typeof tasksStudio;
   test_chat: typeof test_chat;
   tracing: typeof tracing;
   trelloSync: typeof trelloSync;

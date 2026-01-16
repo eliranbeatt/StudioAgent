@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "../_generated/server";
 import { SKILL_SYSTEM_ADDONS } from "./prompts";
+import { addSkillTags, TAG_DEFINITIONS, TAG_GROUPS } from './tags'
 
 export interface SkillDefinition {
   skillId: string;
@@ -426,7 +427,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       systemHeaderRef: SYSTEM_HEADER_REF,
       promptAddon: SKILL_SYSTEM_ADDONS.RESEARCH_PRICING_ESTIMATES_WEB,
     },
-    model: "gpt-5-mini",
+    model: "gpt-5.2",
   },
   {
     skillId: "PRINT_QA",
@@ -596,9 +597,20 @@ export const ensureSkillsSeeded = mutation({
 export const listEnabledSkills = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const skills = await ctx.db
       .query("skills")
       .filter((q) => q.eq(q.field("isEnabled"), true))
       .collect();
+    return skills.map((skill) => addSkillTags(skill));
+  },
+});
+
+export const listSkillTagDefinitions = query({
+  args: {},
+  handler: async () => {
+    return {
+      groups: TAG_GROUPS,
+      tags: TAG_DEFINITIONS,
+    }
   },
 });

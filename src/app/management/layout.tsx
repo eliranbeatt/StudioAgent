@@ -9,7 +9,7 @@ export default function ManagementLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen bg-gray-50 text-black">
+    <div className="flex h-full bg-gray-50 text-black">
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r flex flex-col">
         <div className="p-6 border-b">

@@ -277,7 +277,11 @@ export default defineSchema({
     .index("by_project_updatedAt", ["projectId", "updatedAt"])
     .index("by_project_dueDate", ["projectId", "dueDate"])
     .index("by_project_workType", ["projectId", "workType"])
-    .index("by_project_plannedStart", ["projectId", "plannedStartDate"]),
+    .index("by_project_plannedStart", ["projectId", "plannedStartDate"])
+    .index("by_status", ["status"])
+    .index("by_assignee", ["assignee"])
+    .index("by_dueDate", ["dueDate"])
+    .index("by_workType", ["workType"]),
 
   // Runbooks (install-day execution artifacts + element templates)
   runbooks: defineTable({

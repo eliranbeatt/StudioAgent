@@ -360,13 +360,24 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
     }
   }
 
+  const isSystemProjectCostElement = (el: any) => {
+    const tags = new Set(el.tags ?? []);
+    return tags.has("system") && tags.has("project-costs");
+  };
+
   let totalMaterials = 0;
   let totalLabor = 0;
 
   let actualMaterials = 0;
   let actualLabor = 0;
 
-  const elementViews = elements.map((el: any) => {
+  const elementViews = elements
+    .filter((el: any) => {
+      if (isSystemProjectCostElement(el)) return false;
+      if (projectCostDraft?.elementId && el._id === projectCostDraft.elementId) return false;
+      return true;
+    })
+    .map((el: any) => {
     const draft = draftByElement.get(el._id);
 
     let materials, labor;
@@ -407,23 +418,23 @@ async function buildAccountingView(ctx: any, projectId: Id<"projects">) {
     actualMaterials += elMatActual;
     actualLabor += elLabActual;
 
-    return {
-      elementId: el._id,
-      title: el.title,
-      draftId,
-      revisionNumber,
-      materials,
-      labor,
-      totals: {
-        materials: elMatTotal,
-        labor: elLabTotal,
-        total: elMatTotal + elLabTotal,
-        actualMaterials: elMatActual,
-        actualLabor: elLabActual,
-        actualTotal: elMatActual + elLabActual,
-      },
-    };
-  });
+      return {
+        elementId: el._id,
+        title: el.title,
+        draftId,
+        revisionNumber,
+        materials,
+        labor,
+        totals: {
+          materials: elMatTotal,
+          labor: elLabTotal,
+          total: elMatTotal + elLabTotal,
+          actualMaterials: elMatActual,
+          actualLabor: elLabActual,
+          actualTotal: elMatActual + elLabActual,
+        },
+      };
+    });
 
   let pcMaterials, pcLabor, pcDraftId, pcRevisionNumber;
   if (projectCostDraft) {

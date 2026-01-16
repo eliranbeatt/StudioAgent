@@ -13,70 +13,17 @@ export const updateTaskStatus = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) throw new Error("Task not found");
-    if (!task.elementId) throw new Error("Task is not associated with an element");
+    // Removed legacy checks for element association requiring draft flow
 
-    const element = await ctx.db.get(task.elementId);
-    if (!element) throw new Error("Element not found");
-
-    let draftId = element.currentDraftId;
-    let baseRevisionNumber = 0;
-
-    if (!draftId) {
-      // Create new draft logic
-      let snapshot = {};
-      let schemaVersion = 1;
-      if (element.currentApprovedVersionId) {
-        const version = await ctx.db.get(element.currentApprovedVersionId);
-        if (version) {
-          snapshot = version.snapshot;
-          schemaVersion = version.schemaVersion;
-        }
-      }
-
-      draftId = await ctx.db.insert("elementDrafts", {
-        elementId: element._id,
-        projectId: args.projectId,
-        status: "open",
-        revisionNumber: 1,
-        createdFrom: { tab: "Tasks", stage: "planning" },
-        workingSnapshot: snapshot,
-        schemaVersion,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-
-      await ctx.db.patch(element._id, {
-        currentDraftId: draftId,
-        status: "drafting",
-        updatedAt: Date.now(),
-      });
-      baseRevisionNumber = 1;
-    } else {
-      const draft = await ctx.db.get(draftId);
-      if (!draft) throw new Error("Draft not found");
-      baseRevisionNumber = draft.revisionNumber;
-    }
-
-    // Now apply change set
-    const result = await applyChangeSetInternal(ctx, {
-      draftType: "element",
-      draftId: draftId!,
-      projectId: args.projectId,
-      patchOps: [
-        {
-          op: "replace",
-          path: `/tasks/byId/${task._id}/status`,
-          value: args.status,
-        },
-      ],
-      baseRevisionNumber,
-      reason: "Update task status (Kanban)",
-      createdFrom: { tab: "Tasks", stage: "planning" },
+    await ctx.db.patch(args.taskId, {
+      status: args.status,
+      updatedAt: Date.now(),
     });
+
     await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, {
       projectId: args.projectId,
     });
-    return result;
+    return { ok: true };
   },
 });
 
@@ -167,19 +114,7 @@ export const listForProject = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
-    // 4. Fetch ElementDrafts
-    const allDrafts = await ctx.db
-      .query("elementDrafts")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .collect();
-    const draftById = new Map(allDrafts.map((d) => [d._id, d]));
-
-    // 5. Fetch Task Revisions (Drafts)
-    const draftRevisions = await ctx.db
-      .query("taskRevisions")
-      .withIndex("by_project_status", (q) => q.eq("projectId", args.projectId).eq("status", "draft"))
-      .collect();
-    const revisionByTaskId = new Map(draftRevisions.map((r) => [r.taskId, r]));
+    // 4. (Drafts removed)
 
     // Build Maps
     const tasksByElement = new Map<string, typeof allTasks>();
@@ -211,7 +146,6 @@ export const listForProject = query({
     // Transform
     const results = elements.map(element => {
       const elementTasks = tasksByElement.get(element._id) ?? [];
-      const draft = element.currentDraftId ? draftById.get(element.currentDraftId) : null;
 
       const mappedTasks = elementTasks.map(task => {
         const materialLines = materialLinesByTask.get(task._id) ?? [];
@@ -233,8 +167,6 @@ export const listForProject = query({
           sectionKey: l.sectionKey,
           sectionLabelHe: l.sectionLabelHe,
         }));
-
-        const revision = revisionByTaskId.get(task._id);
 
         return {
           id: task._id,
@@ -262,13 +194,10 @@ export const listForProject = query({
           // New fields
           isDraft: task.isDraft,
           draftOfTaskId: task.draftOfTaskId,
-          draftRevisionId: revision?._id ?? task.draftRevisionId, // Prefer active revision
-          draftPatch: revision?.patch, // The draft changes
+          draftRevisionId: task.draftRevisionId,
+          draftPatch: undefined,
           elementSubtaskId: task.elementSubtaskId,
           aiThreadId: task.aiThreadId,
-
-          draftId: draft?._id,
-          revisionNumber: draft?.revisionNumber,
         };
       });
 

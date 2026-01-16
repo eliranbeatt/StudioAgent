@@ -928,11 +928,6 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
         if (tc.function.name === "run_skill") {
           const args = JSON.parse(tc.function.arguments);
           if (contextInfo) {
-            // Call the skill action
-            // Note: We don't await the full chain if we want to just trigger it, 
-            // but here we want the result to feed back to the orchestrator?
-            // The orchestrator just needs to know it ran.
-            // Actually, runSkill returns `blocks`. We can feed that back.
             try {
               const resultBlocks = await ctx.runAction(api.skills.runner.runSkill, {
                 projectId: contextInfo.projectId,
@@ -943,7 +938,7 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
               messages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
-                content: JSON.stringify({ status: "success", resultSummary: "Skill executed successfully. Results added to chat." }) // Simplified for token limits
+                content: JSON.stringify({ status: "success", resultSummary: "Skill executed successfully. Results added to chat." })
               });
             } catch (e: any) {
               messages.push({
@@ -964,6 +959,51 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
       continue; // Loop again to let LLM process tool results
     }
 
+    // FALLBACK: Check for text-embedded tool calls (e.g. {"tool_call": ...})
+    // This handles models that output tool calls as JSON objects in content instead of native calls.
+    const contentText = message.content || "";
+    const embeddedToolCalls: any[] = [];
+    // Regex to match {"tool_call": ... } objects. 
+    // Captures the full JSON object. Note: nested braces might break simple regex, but this covers common cases.
+    const rawToolRegex = /\{"tool_call":\s*\{(?:[^{}]|{[^{}]*})*\}\}/g;
+    let match;
+    while ((match = rawToolRegex.exec(contentText)) !== null) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        if (parsed.tool_call) embeddedToolCalls.push(parsed.tool_call);
+      } catch (e) {
+        // Ignore parse errors, likely not a valid tool call
+      }
+    }
+
+    if (embeddedToolCalls.length > 0) {
+      console.log("Found embedded tool calls:", embeddedToolCalls.length);
+      // We must synthesize a tool response conversation turn.
+      // Since these didn't come from a real "assistant" with tool_calls, we have to be careful.
+      // We'll treat them as if the assistant asked for them.
+      // But we can't easily modify the previous 'assistant' message object structure retrospectively without native tool_calls.
+      // So instead, we will just APPEND a 'user' or 'system' role message with the results, or inject them into the context.
+
+      // Better strategy: Execute them, and append a "system" message with the results.
+      const results = [];
+      for (const tc of embeddedToolCalls) {
+        if (tc.name === "web_search") {
+          const args = tc.arguments;
+          const result = await searchWeb(args.query);
+          results.push(`Tool 'web_search' (${args.query}) result: ${JSON.stringify(result)}`);
+        }
+        // Add other tools if needed
+      }
+
+      if (results.length > 0) {
+        messages.push({
+          role: "system",
+          content: `Tool Execution Results:\n${results.join("\n\n")}\n\nUse these results to formulate your response.`
+        });
+        continue; // Loop again
+      }
+    }
+
     // Final response
     const content = message.content;
     if (!content) throw new Error("Empty response from LLM");
@@ -974,8 +1014,17 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
       return [{ type: "ChatBlock", markdownHe: content }];
     }
 
+
     let blocks = parsed.blocks || parsed;
     if (!Array.isArray(blocks)) blocks = [blocks];
+
+    // Preserve summaryHe if it exists on the parent object
+    if (parsed.summaryHe && typeof parsed.summaryHe === "string") {
+      blocks.unshift({
+        type: "ChatBlock",
+        markdownHe: parsed.summaryHe
+      });
+    }
 
     return normalizeBlocks(blocks);
   }
@@ -1152,8 +1201,24 @@ function tryParseJson(text: string) {
     }
 
     const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "");
-    const parsed = JSON.parse(cleaned);
-    if (parsed && typeof parsed === "object") return parsed;
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch (e) {
+      // Failed to parse cleaned text. Try to find the first '{' and last '}'
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const jsonCandidate = text.substring(firstBrace, lastBrace + 1);
+        try {
+          const parsed = JSON.parse(jsonCandidate);
+          if (parsed && typeof parsed === "object") return parsed;
+        } catch (e2) {
+          // Still failed
+        }
+      }
+    }
+    return null;
   } catch (e) {
     return null;
   }

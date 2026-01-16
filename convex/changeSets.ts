@@ -478,55 +478,6 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
     const VALID_ELEMENT_TYPES = ["build", "rent", "print", "transport", "install", "subcontract", "mixed"];
     let elementType = element?.type ?? "build";
-    if (!VALID_ELEMENT_TYPES.includes(elementType)) {
-      console.warn(`Invalid element type "${elementType}" normalized to "build"`);
-      elementType = "build";
-    }
-
-    const elementId = await ctx.db.insert("elements", {
-      projectId: cs.projectId,
-      title: elementTitle,
-      type: elementType,
-      status: element?.status ?? "drafting",
-      tags: Array.isArray(element?.tags) ? element.tags : [],
-      rev: 1,
-      hasUnapprovedChanges: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const draftId = await ctx.db.insert("elementDrafts", {
-      elementId,
-      projectId: cs.projectId,
-      status: draft?.status ?? "open",
-      revisionNumber: 1,
-      createdFrom: draft?.createdFrom ?? { tab: "agent", stage: cs.stage },
-      workingSnapshot: draft?.workingSnapshot ?? {},
-      schemaVersion: Number(draft?.schemaVersion ?? 1),
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await ctx.db.patch(elementId, { currentDraftId: draftId });
-
-    if (tempId) elementTempMap.set(tempId, elementId);
-    // Newly created elements start at rev 1, no need to bump.
-
-    const createdElement = await ctx.db.get(elementId);
-    await recordAudit(ctx, {
-      projectId: cs.projectId,
-      changeSetId: auditChangeSetId,
-      operation: "create",
-      entityRef: `element:${elementId}`,
-      before: null,
-      after: createdElement,
-      appliedAt: now,
-    });
-  }
-
-  for (const op of cs.ops) {
-    if (op.kind !== "vendor.create") continue;
-    const { tempId, fields } = op.payload ?? {};
     if (!fields?.name) throw new Error("vendor.create requires fields.name");
 
     let vendorId: VendorId;
@@ -1609,29 +1560,29 @@ export const updateChangeSetOp = mutation({
 
     const newOps = [...cs.ops];
     const op = newOps[args.opIndex];
-    
+
     // Deep merge patch into payload
     // Simple shallow merge for now, but usually fields are in payload.fields
     // We assume patch is the new fields object or part of it
     // Let's assume patch is { fields: { ... } } or similar structure
     // Or just merge at top level of op.payload
-    
+
     // If patch has "fields", we merge fields
     const currentPayload = op.payload ?? {};
     const patchPayload = args.patch.payload ?? args.patch; // flexible input
 
     const nextPayload = { ...currentPayload };
-    
+
     if (patchPayload.fields) {
-        nextPayload.fields = { ...(currentPayload.fields ?? {}), ...patchPayload.fields };
+      nextPayload.fields = { ...(currentPayload.fields ?? {}), ...patchPayload.fields };
     } else {
-        // Fallback: merge top level keys if not using fields structure
-        Object.assign(nextPayload, patchPayload);
+      // Fallback: merge top level keys if not using fields structure
+      Object.assign(nextPayload, patchPayload);
     }
 
     newOps[args.opIndex] = {
-        ...op,
-        payload: nextPayload
+      ...op,
+      payload: nextPayload
     };
 
     await ctx.db.patch(args.changeSetId, {

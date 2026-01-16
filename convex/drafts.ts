@@ -4,7 +4,7 @@ import { applyPatchOps, PatchOp } from "./patch";
 import { runReconciliation } from "./reconciliation";
 import { findExistingReservation, reserveStockInternal } from "./inventory_helpers";
 import { query } from "./_generated/server";
-import { captureSnapshotFromLive } from "./elements";
+import { captureSnapshotFromLive, captureProjectCostSnapshot } from "./elements";
 
 type DraftType = "element" | "projectCost";
 
@@ -247,5 +247,86 @@ export const listOpenDrafts = query({
     }
 
     return results;
+  },
+});
+export const ensureProjectCostDraft = mutation({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) throw new Error("Project not found");
+
+    let containerId = project.projectCostContainerId;
+
+    // 1. Ensure Container Exists
+    if (!containerId) {
+      containerId = await ctx.db.insert("projectCostContainers", {
+        projectId: args.projectId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      await ctx.db.patch(args.projectId, { projectCostContainerId: containerId });
+    }
+
+    const container = await ctx.db.get(containerId);
+
+    // 2. Check if Draft Exists
+    if (container?.currentDraftId) {
+      const draft = await ctx.db.get(container.currentDraftId);
+      if (draft && (draft.status === "open" || draft.status === "needsReview")) {
+        return { draftId: draft._id, revisionNumber: draft.revisionNumber };
+      }
+    }
+
+    // 3. Find/Create System Element (Schema Constraint workaround)
+    let systemElement = await ctx.db
+      .query("elements")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .filter((q) => q.eq(q.field("type"), "mixed"))
+      // We can identifying it by title or adds a tagging field later. 
+      // For now, let's look for exact title match to avoid dupes.
+      .collect()
+      .then(els => els.find(e => e.title === "System: Project Costs" && e.status === "archived"));
+
+    if (!systemElement) {
+      // Create new hidden element
+      const elementId = await ctx.db.insert("elements", {
+        projectId: args.projectId,
+        title: "System: Project Costs",
+        type: "mixed",
+        status: "archived", // "Hidden" from normal views
+        tags: ["system", "project-costs"],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      systemElement = await ctx.db.get(elementId);
+    }
+
+    if (!systemElement) throw new Error("Failed to create system element");
+
+    // 4. Create Draft with manually captured snapshot
+    const snapshot = await captureProjectCostSnapshot(ctx, args.projectId);
+    const schemaVersion = 1;
+    const now = Date.now();
+
+    const draftId = await ctx.db.insert("elementDrafts", {
+      elementId: systemElement._id,
+      projectId: args.projectId,
+      status: "open",
+      revisionNumber: 1,
+      createdFrom: { tab: "Accounting", stage: "planning", type: "projectCost" },
+      workingSnapshot: snapshot,
+      schemaVersion,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(containerId, {
+      currentDraftId: draftId,
+      updatedAt: now,
+    });
+
+    return { draftId, revisionNumber: 1 };
   },
 });

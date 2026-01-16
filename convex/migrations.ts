@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { normalizeName, newBusinessId } from "./lib/normalize";
 import { Id } from "./_generated/dataModel";
 import { calculateCost } from "./lib/pricing";
+import { approveElementDraft } from "./elements";
 
 export const backfillElementRevs = internalMutation({
   args: {},
@@ -190,4 +191,46 @@ export const backfillTraceCosts = mutation({
       updated,
     };
   }
+});
+
+export const flushAllDrafts = mutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    // 1. Fetch all elements with open/needsReview status drafts
+    const elementDrafts = await ctx.db
+      .query("elementDrafts")
+      .filter((q: any) =>
+        q.or(
+          q.eq(q.field("status"), "open"),
+          q.eq(q.field("status"), "needsReview")
+        )
+      )
+      .collect();
+
+    let processed = 0;
+    let errors = 0;
+
+    for (const draft of elementDrafts) {
+      if ((draft as any).elementId) {
+        try {
+          if (!dryRun) {
+            // We reuse the existing logic which merges draft snapshot to live tables
+            // and marks draft as approved.
+            await approveElementDraft(ctx, { elementId: (draft as any).elementId });
+          }
+          processed++;
+        } catch (e: any) {
+          console.error(`Failed to flush draft ${draft._id}: ${e.message}`);
+          errors++;
+        }
+      }
+    }
+
+    return {
+      dryRun,
+      totalOpenDrafts: elementDrafts.length,
+      processed,
+      errors
+    };
+  },
 });

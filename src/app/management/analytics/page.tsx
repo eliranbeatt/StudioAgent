@@ -49,7 +49,7 @@ export default function AnalyticsPage() {
       perModel.set(modelLabel, (perModel.get(modelLabel) || 0) + cost);
 
       const projectName = trace.projectId
-        ? projectNameById.get(trace.projectId) || "Unknown project"
+        ? (projectNameById.get(trace.projectId as any) as string) || "Unknown project"
         : "Unassigned";
       perProject.set(projectName, (perProject.get(projectName) || 0) + cost);
 

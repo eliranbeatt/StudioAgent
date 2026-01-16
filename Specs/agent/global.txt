@@ -1,0 +1,385 @@
+
+# Epic E — Global Navigation (Studio level)
+
+## Goal
+
+Add a **persistent studio-level top navigation** that is visible **everywhere** (including inside projects) and provides these **primary tabs**:
+
+* **Projects** → `/projects` (already exists)
+* **Customers** → `/customers` (new studio-level page, separate from `/management/customers`)
+* **Tasks** → `/tasks` (new global tasks page)
+* **Accounting** → `/accounting` (new global accounting dashboard)
+
+This must **coexist cleanly** with what you already have:
+
+* Global shell + sidebar (Projects / RAG Chat / Ingestion / Management / Admin)
+* Management Hub (`/management/*`) with its own internal sidebar and all ops tooling
+* Project workspace (`/projects/[id]/*`) with project sidebar tabs (Overview / Agent / Studio / Elements / Accounting / Tasks / Quote / Knowledge / Receipts / Graveyard / Suggested…)
+
+---
+
+# 1) Information Architecture update
+
+## 1.1 Primary nav (new): “Studio Tabs”
+
+A new top bar in the **global shell**:
+
+**Projects | Customers | Tasks | Accounting**
+
+### Active rules
+
+* Any route starting with `/projects` → **Projects** tab is active
+* `/customers` and `/customers/[id]` → **Customers**
+* `/tasks` → **Tasks**
+* `/accounting` → **Accounting**
+* Everything else (RAG/ingestion/management/admin) doesn’t activate Studio Tabs, but the bar remains visible.
+
+## 1.2 Three more nav categories (explicit, aligns to your current app)
+
+You already have “tools/admin/ops” areas. We’ll formalize them into **3 categories** (for sidebar grouping + mental model consistency):
+
+1. **Tools**
+
+   * RAG Chat (`/rag-chat`)
+   * Ingestion (`/ingestion`, `/ingestion/connectors`)
+
+2. **Ops Hub**
+
+   * Management (`/management`) *(keeps its own internal sidebar: customers/vendors/catalog/prices/purchases/receipts/employees/settings/tracing/proposed…)*
+
+3. **System / Admin**
+
+   * Admin root (`/admin`)
+   * Skills (`/admin/skills`)
+   * Enrichment (`/admin/enrichment`)
+
+So the experience becomes:
+
+* **Top bar = Studio execution views**
+* **Sidebar = Tooling/Ops/System entry points** (grouped, not removed)
+
+---
+
+# 2) Routing + Layout implementation
+
+## 2.1 Where to implement
+
+You already have:
+
+* `app/layout.tsx` (global shell: Inter + Convex client provider + theme)
+* `app/projects/[id]/layout.tsx` (project shell: project header + project tabs)
+
+### Change
+
+Add a new client component rendered inside the global shell:
+
+* `src/components/nav/StudioTopNav.tsx` (new)
+* (optional) `src/components/nav/SidebarNav.tsx` update to group links into the 3 categories above
+
+**`app/layout.tsx`**
+
+* Render `<StudioTopNav />` above `<main>{children}</main>`
+* Keep existing providers (`ConvexClientProvider`, `ThinkingModeProvider`, theme globals) intact
+
+**`app/projects/[id]/layout.tsx`**
+
+* No change required except spacing: project header/tabs should render *below* the top nav
+
+## 2.2 New routes to add (App Router)
+
+Add studio-level pages:
+
+* `app/customers/page.tsx`
+* `app/customers/[customerId]/page.tsx`
+* `app/tasks/page.tsx`
+* `app/accounting/page.tsx`
+
+Keep Management Hub untouched at `/management/*`.
+
+---
+
+# 3) Data + Convex plan (update based on what you already have)
+
+## 3.1 Customers: **already exists**
+
+Your app already has:
+
+* Customer autocomplete in **NewProjectDialog** using `api.customers.listActive`
+* Management customers UI using `api.customers.listWithContacts`, `findOrCreateByName`, `addContact`
+
+So Epic E **does NOT add** a new customers table.
+
+### What we add for studio-level customers pages
+
+Create a new “studio customers view API” layer (thin wrappers around existing tables/queries), so `/customers` doesn’t need to reuse the management UI wholesale:
+
+**Convex additions (recommended file: `convex/customersStudio.ts`)**
+
+* `listCustomersStudio({ status?: "active"|"archived", query?: string })`
+
+  * returns minimal rows: `id, name, status, contactsCount?, updatedAt`
+* `getCustomerStudio({ customerId })`
+
+  * customer core info + contacts summary
+* `listProjectsByCustomer({ customerId, includeArchived?: boolean })`
+
+  * returns: `projectId, projectName, projectStatus, updatedAt, eventDate?`
+* `getCustomerRollups({ customerId })` (phase 2)
+
+  * totals: quoted vs planned vs actual (if receipts exist)
+
+> Implementation detail: you can reuse existing customer ids (Convex `Id<"customers">`) or a slug field if you already have one. Don’t invent a second “customerId business id” unless you already store it.
+
+## 3.2 Projects linkage (don’t re-design; just use what’s there)
+
+NewProjectDialog already selects/creates customers, and `api.projects.createProjectFromModal` stores the chosen customer. Epic E only requires that `/customers/[id]` can query projects by customer.
+
+If your `projects` table already has `customerId`, add (or confirm) an index:
+
+* `projects.by_customerId`
+
+If you only store `customerName`, add `customerId` now (migration-safe, additive) and keep snapshot `customerName` for display stability.
+
+## 3.3 Global Tasks: add a global query + indexes
+
+You already have robust project tasks UI and a `tasks` table; but project pages likely query by `projectId`.
+
+Add:
+
+**Convex query: `tasks.listGlobal({ filters, pagination })`**
+Filters:
+
+* `projectId?`
+* `assigneeId?` (employees)
+* `workType?` (your StudioWorkType / category mapping)
+* `status?`
+* `dueFrom?, dueTo?`
+* `text?` (search title/description)
+
+Returns:
+
+* task fields + `projectName`, `customerName/customerId` (join via projects table)
+
+**Indexes (only if missing)**
+
+* `tasks.by_projectId` (likely exists)
+* `tasks.by_status`
+* `tasks.by_assigneeId`
+* `tasks.by_dueDate`
+* `tasks.by_workType` (or by category enum)
+
+## 3.4 Global Accounting: aggregate view query
+
+You already have a project accounting workspace (`/projects/[id]/accounting`) with Summary/Materials/Labor, and you also have receipts flows (management-wide + project-specific).
+
+Add:
+
+**Convex query: `accounting.getGlobalSummary({ projectStatus?: "active"|"archived", customerId?: Id, currency?: string })`**
+Returns:
+
+* Global totals:
+
+  * `plannedMaterialsTotal`
+  * `plannedLaborTotal`
+  * `plannedCostTotal`
+  * `sellTotal` (using project margin fields)
+* Per-project rows:
+
+  * `projectId, projectName, customerName`
+  * `materialsTotal, laborTotal`
+  * `riskPct, overheadPct, profitPct`
+  * `sellTotal`
+  * `approvedBudget` (from approved quote/baseline if you store it)
+  * `gap` fields (if you already compute them in project summary)
+
+**How to compute**
+
+* MVP: compute planned totals by summing `materialLines` + `workLines` grouped by `projectId` (your dataset scale is studio-scale; this is fine)
+* If you want actuals: sum approved receipt line allocations (only if already modeled cleanly)
+
+---
+
+# 4) UI build plan (the “screen” + pages)
+
+## 4.1 StudioTopNav component (new)
+
+**File**
+
+* `src/components/nav/StudioTopNav.tsx`
+
+**UI**
+
+* Sticky top bar
+* 4 tabs with active underline/pill:
+
+  * Projects (folder icon)
+  * Customers (users icon)
+  * Tasks (checklist icon)
+  * Accounting (calculator icon)
+
+**Behavior**
+
+* Uses `usePathname()` to set active
+* Uses `next/link` for navigation
+* Must render across:
+
+  * `/projects`
+  * `/projects/[id]/*`
+  * `/management/*`
+  * `/admin/*`
+  * `/rag-chat`, `/ingestion/*`
+
+**Spacing**
+
+* Ensure it doesn’t fight the project header: top nav (global) → project header (project layout) → project tabs
+
+## 4.2 `/customers` (studio-level)
+
+**File**
+
+* `app/customers/page.tsx`
+
+**Layout**
+
+* Header row: “Customers” + “New Customer”
+* Search input
+* Table:
+
+  * Name
+  * Contacts count
+  * Active projects count
+  * Last updated
+  * Actions: Open
+
+**Implementation shortcut**
+
+* Reuse the same underlying mutations you already use in `/management/customers` (`findOrCreateByName`, add basic update fields), but keep this UI lighter than management.
+
+## 4.3 `/customers/[customerId]`
+
+**File**
+
+* `app/customers/[customerId]/page.tsx`
+
+**Sections**
+
+* Customer header card: name + contacts summary
+* Tabs:
+
+  * Projects (list + links into `/projects/[id]/overview`)
+  * Notes (optional, if you store)
+  * Rollups (phase 2): quoted/planned/actual
+
+## 4.4 `/tasks` (global)
+
+**File**
+
+* `app/tasks/page.tsx`
+
+**UI**
+
+* Filter bar:
+
+  * Project (dropdown)
+  * Assignee (dropdown)
+  * Work type/category
+  * Status
+  * Due date range
+* Table view first (fastest + most “ops”):
+
+  * Task title
+  * Project (link)
+  * Element (if stored)
+  * Assignee
+  * Status
+  * Due
+  * Work type
+  * Quick action: “Open in project” → `/projects/[id]/tasks?taskId=...`
+
+**Reuse**
+
+* Reuse row rendering styles from project tasks UI; don’t port kanban/gantt initially.
+
+## 4.5 `/accounting` (global)
+
+**File**
+
+* `app/accounting/page.tsx`
+
+**UI**
+
+* Top cards:
+
+  * Total planned materials
+  * Total planned labor
+  * Total planned cost
+  * Total planned sell (after margins)
+* Table per project:
+
+  * Project name (link to `/projects/[id]/accounting`)
+  * Customer
+  * Materials / Labor
+  * Risk/Overhead/Profit % (display; edit stays project-level unless you already have global defaults)
+  * Sell total
+  * Approved budget (if available)
+  * Gap rows (if your accounting summary already provides those semantics)
+
+---
+
+# 5) Integration points (explicit)
+
+## 5.1 Management Hub stays the “ops toolbox”
+
+Do not move:
+
+* Vendors / Catalog / Prices / Purchases / Receipts / Employees / Settings / Tracing / Proposed
+  They remain under `/management/*` with the existing management sidebar.
+
+Studio tabs are **execution views**; Management is **back-office ops**.
+
+## 5.2 Receipts integration (optional but aligned)
+
+Because you already have:
+
+* `/management/receipts` (cross-project)
+* `/projects/[id]/receipts` (project)
+  You can later add:
+* From `/accounting` per-project row: “Actuals available” badge if approved receipts exist
+
+## 5.3 Trello integration (nice-to-have, not required for Epic E)
+
+Global Tasks rows can optionally show “Synced” state if you can join to trello mapping data, but don’t block the Epic on it.
+
+---
+
+# 6) Build phases (safe, minimal disruption)
+
+## Phase 1 — Shell + nav
+
+1. Add `StudioTopNav` component
+2. Render it in `app/layout.tsx`
+3. Update sidebar grouping labels into 3 categories (Tools / Ops Hub / System/Admin)
+
+## Phase 2 — Studio pages (MVP)
+
+4. Add `/customers`, `/customers/[id]` pages using existing customers APIs + new thin “studio queries”
+5. Add `/tasks` using new `tasks.listGlobal`
+6. Add `/accounting` using new `accounting.getGlobalSummary`
+
+## Phase 3 — Polish
+
+7. Deep links from global pages into project tabs
+8. Empty states + loading states aligned to your existing patterns
+9. Consistent header bars and spacing across pages
+
+---
+
+# 7) Definition of Done
+
+* A persistent top bar shows: **Projects | Customers | Tasks | Accounting**
+* It stays visible and behaves correctly inside `/projects/[id]/*`
+* `/customers`, `/tasks`, `/accounting` work end-to-end with Convex
+* Management Hub and Admin remain intact and accessible (no regressions)
+
+---
+

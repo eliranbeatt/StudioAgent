@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { SKILL_CATALOG } from "./registry";
+import { addSkillTags } from './tags'
 
 export const getProjectDigest = query({
   args: { projectId: v.id("projects") },
@@ -127,7 +128,7 @@ export const recommendSkills = query({
 
       if (score > 0) {
         recommendations.push({
-          ...skill,
+          ...addSkillTags(skill),
           reasonHe: reason || skill.descriptionHe || "מומלץ כעת"
         });
       }
@@ -151,3 +152,4 @@ export const recommendSkills = query({
     return recommendations;
   },
 });
+
