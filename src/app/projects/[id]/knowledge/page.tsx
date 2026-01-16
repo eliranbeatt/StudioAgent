@@ -16,7 +16,7 @@ import {
   UploadCloud,
 } from 'lucide-react'
 
-type TabKey = 'files' | 'qa' | 'knowledge'
+type TabKey = 'files' | 'qa' | 'knowledge' | 'userInput'
 
 type TabConfig = {
   key: TabKey
@@ -30,6 +30,7 @@ export default function KnowledgePage({ params }: { params: Promise<{ id: string
   const files = useQuery(api.files.listProjectFiles, { projectId })
   const qaPairs = useQuery(api.memory.listQAPairs, { projectId })
   const runningMemory = useQuery(api.memory.getRunningMemory, { projectId })
+  const userInputLog = useQuery(api.memory.getUserInputLog, { projectId })
 
   const generateUploadUrl = useMutation(api.files.generateUploadUrl)
   const saveUploadedFile = useAction(api.filesActions.saveUploadedFile)
@@ -81,6 +82,7 @@ export default function KnowledgePage({ params }: { params: Promise<{ id: string
     { key: 'files', label: 'Uploaded Files', icon: FileText },
     { key: 'qa', label: 'QA', icon: Search },
     { key: 'knowledge', label: 'Current Knowledge', icon: BookOpen },
+    { key: 'userInput', label: 'User Input', icon: FileText },
   ]
 
   if (!files || !qaPairs) {
@@ -298,6 +300,20 @@ export default function KnowledgePage({ params }: { params: Promise<{ id: string
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'userInput' && (
+        <div className='bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden flex flex-col'>
+          <div className='px-6 py-4 border-b border-gray-100 bg-gray-50/50'>
+            <h3 className='font-semibold text-gray-900'>User Input Log (append-only)</h3>
+          </div>
+          <textarea
+            className='flex-1 p-6 text-sm text-gray-800 outline-none resize-none min-h-[320px] bg-white'
+            value={userInputLog?.contentMd_he ?? ''}
+            readOnly
+            placeholder='User input will appear here as it is submitted in the context gate.'
+          />
         </div>
       )}
     </div>

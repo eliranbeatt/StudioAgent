@@ -119,6 +119,40 @@ export const upsertQAPairs = mutation({
   },
 });
 
+export const appendUserInput = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    text: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "USER_INPUT_LOG"))
+      .first();
+
+    const entry = `### ${new Date().toISOString()}\n${args.text.trim()}`;
+    const nextContent = existing?.contentMd_he
+      ? `${existing.contentMd_he}\n\n---\n\n${entry}`
+      : entry;
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        contentMd_he: nextContent,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    await ctx.db.insert("memoryDocs", {
+      projectId: args.projectId,
+      kind: "USER_INPUT_LOG",
+      contentMd_he: nextContent,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const saveQADigest = internalMutation({
   args: {
     projectId: v.id("projects"),
@@ -409,5 +443,15 @@ export const listQAPairs = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .order("desc")
       .collect();
+  },
+});
+
+export const getUserInputLog = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "USER_INPUT_LOG"))
+      .first();
   },
 });

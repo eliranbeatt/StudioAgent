@@ -84,6 +84,24 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     model: "gpt-5-mini",
   },
   {
+    skillId: "CONTEXT_GENERATION",
+    labelHe: "איסוף ידע",
+    descriptionHe: "איסוף והצגת ידע פרויקט עדכני + שאלות הבהרה חדשות בלבד.",
+    category: "clarify",
+    flow: "ideation",
+    scheduling: { suggestAtStage: ["ideation", "planning", "execution", "review"] },
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.CONTEXT_GENERATION,
+    },
+    model: "gpt-5-mini",
+  },
+  {
     skillId: "CHANGESET_REVIEWER",
     labelHe: "סקירת שינויים",
     descriptionHe: "בדיקת הצעות לפני אישור",

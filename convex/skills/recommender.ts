@@ -142,6 +142,12 @@ export const recommendSkills = query({
       return 0;
     });
 
+    const contextSkillIndex = recommendations.findIndex((skill) => skill.skillId === "CONTEXT_GENERATION");
+    if (contextSkillIndex > 0) {
+      const [contextSkill] = recommendations.splice(contextSkillIndex, 1);
+      recommendations.unshift(contextSkill);
+    }
+
     return recommendations;
   },
 });

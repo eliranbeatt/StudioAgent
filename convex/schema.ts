@@ -1329,7 +1329,8 @@ export default defineSchema({
     kind: v.union(
       v.literal("SOURCE_DOC"),
       v.literal("RUNNING_MEMORY"),
-      v.literal("QA_DIGEST")
+      v.literal("QA_DIGEST"),
+      v.literal("USER_INPUT_LOG")
     ),
     title_he: v.optional(v.string()),
     source: v.optional(v.object({

@@ -36,6 +36,13 @@ export const runSkill = action({
       return await runGateLogic(ctx, { projectId, conversationId, targetSkillId: skillId, targetSkillLabel: skillData.skill.labelHe });
     }
 
+    if (skillId === "CONTEXT_GENERATION" && params?.freeText) {
+      await ctx.runMutation(internal.memory.appendUserInput, {
+        projectId,
+        text: String(params.freeText),
+      });
+    }
+
     // 2. Create Run (Mutation)
     const runId = await ctx.runMutation(internal.skills.runner.createRun, {
       projectId,
@@ -57,12 +64,48 @@ export const runSkill = action({
         ...context,
         clarifications: clarification,
       });
-      const blocks = await callLLM(ctx, systemPrompt, {
+      const allowedTools = {
         webSearch: !!(skillData.skill.config.allowedTools?.webSearch && params?.toggles?.useWebSearch),
         ragSearch: !!skillData.skill.config.allowedTools?.ragSearch,
         fileInspect: !!skillData.skill.config.allowedTools?.fileInspect,
         runSkill: !!skillData.skill.config.allowedTools?.runSkill,
-      }, skillData.skill.model, { projectId, conversationId });
+      };
+
+      if (skillId === "CONTEXT_GENERATION") {
+        const docPrompt = `${systemPrompt}\n\nOUTPUT MODE: DOC_ONLY. Return JSON with blocks array containing ONLY ChatBlock.`;
+        const docBlocks = await callLLM(ctx, docPrompt, allowedTools, skillData.skill.model, { projectId, conversationId });
+        const docBlock = docBlocks.find((b: any) => b.type === "ChatBlock" && typeof b.markdownHe === "string");
+        if (docBlock?.markdownHe?.trim()) {
+          await ctx.runMutation(api.memory.updateRunningMemory, {
+            projectId,
+            contentMd_he: docBlock.markdownHe,
+          });
+        }
+
+        const updatedContext = {
+          ...context,
+          currentKnowledge: docBlock?.markdownHe ?? context.currentKnowledge,
+          clarifications: clarification,
+        };
+        const questionsPrompt = `${buildSystemPrompt(skillData.skill, updatedContext)}\n\nOUTPUT MODE: QUESTIONS_ONLY. Return JSON with blocks array containing ONLY QuestionsBlock. Base questions on updated currentKnowledge + qaPairs + userInput.`;
+        const questionBlocks = await callLLM(ctx, questionsPrompt, allowedTools, skillData.skill.model, { projectId, conversationId });
+
+        const combinedBlocks = [
+          ...docBlocks.filter((b: any) => b.type === "ChatBlock"),
+          ...questionBlocks.filter((b: any) => b.type === "QuestionsBlock")
+        ];
+
+        const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
+          runId,
+          conversationId,
+          blocks: combinedBlocks,
+          projectId,
+        });
+
+        return savedBlocks;
+      }
+
+      const blocks = await callLLM(ctx, systemPrompt, allowedTools, skillData.skill.model, { projectId, conversationId });
 
       // 5. Save Result (Mutation)
       const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
@@ -292,11 +335,24 @@ export const buildContext = internalQuery({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .take(20);
 
-    const qaPairs = await ctx.db
+    const runningMemory = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "RUNNING_MEMORY"))
+      .first();
+
+    const qaQuery = ctx.db
       .query("qaPairs")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .order("desc")
-      .take(20);
+      .order("desc");
+    const qaPairs =
+      args.skillId === "CONTEXT_GENERATION"
+        ? await qaQuery.collect()
+        : await qaQuery.take(20);
+
+    const userInputLog = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "USER_INPUT_LOG"))
+      .first();
 
     const scopeElementIds = args.params?.scope?.elementIds;
     const scopedElements = Array.isArray(scopeElementIds)
@@ -325,6 +381,11 @@ export const buildContext = internalQuery({
         content: m.contentMd_he ?? m.rawText_he,
         summary: m.aiSummary?.summaryMd_he
       })),
+      currentKnowledge: runningMemory?.contentMd_he ?? "",
+      userInput: {
+        latestFreeText: args.params?.freeText ?? null,
+        log: userInputLog?.contentMd_he ?? ""
+      },
       qaPairs: qaPairs.map((qa: any) => ({
         questionHe: qa.question_he,
         questionKey: qa.questionKey,
@@ -465,6 +526,17 @@ export const saveRunResult = internalMutation({
           isSatisfied: false,
           createdAt: Date.now(),
           updatedAt: Date.now(),
+        });
+      }
+    }
+
+    const run = await ctx.db.get(args.runId);
+    if (run?.skillId === "CONTEXT_GENERATION") {
+      const docBlock = blocks.find((b: any) => b.type === "ChatBlock" && typeof b.markdownHe === "string");
+      if (docBlock?.markdownHe?.trim()) {
+        await ctx.runMutation(api.memory.updateRunningMemory, {
+          projectId: args.projectId,
+          contentMd_he: docBlock.markdownHe,
         });
       }
     }
