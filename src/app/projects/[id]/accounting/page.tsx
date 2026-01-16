@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 
-type TabKey = "summary" | "materials" | "labor" | "research";
+type TabKey = "summary" | "materials" | "labor";
 
 type MaterialLine = {
   id: string;
@@ -147,12 +147,6 @@ export default function AccountingPage({
         <TabButton active={tab === "labor"} onClick={() => setTab("labor")}>
           Labor
         </TabButton>
-        <TabButton
-          active={tab === "research"}
-          onClick={() => setTab("research")}
-        >
-          Deep Research
-        </TabButton>
       </div>
 
       {tab === "summary" ? (
@@ -186,13 +180,6 @@ export default function AccountingPage({
           onEnsureElementDraft={ensureElementDraft}
           onSavingLineId={setSavingLineId}
         />
-      ) : null}
-
-      {tab === "research" ? (
-        <div className="bg-white border border-gray-100 rounded-xl p-8 text-sm text-gray-500">
-          Deep Research is not wired in this build. Enable it once the research
-          pipeline is available.
-        </div>
       ) : null}
     </div>
   );
