@@ -1345,18 +1345,18 @@ export default defineSchema({
       url: v.optional(v.string()),
     })),
     rawText_he: v.optional(v.string()),
-      aiSummary: v.optional(v.object({
-        model: v.string(),
-        summaryMd_he: v.string(),
-        facts_he: v.optional(v.array(v.string())),
-        updatedAt: v.number(),
-      })),
-      contentMd_he: v.optional(v.string()),
-      autoAppendEnabled: v.optional(v.boolean()),
-      schemaVersion: v.optional(v.number()),
-      createdAt: v.number(),
+    aiSummary: v.optional(v.object({
+      model: v.string(),
+      summaryMd_he: v.string(),
+      facts_he: v.optional(v.array(v.string())),
       updatedAt: v.number(),
-    })
+    })),
+    contentMd_he: v.optional(v.string()),
+    autoAppendEnabled: v.optional(v.boolean()),
+    schemaVersion: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
     .index("by_project", ["projectId"])
     .index("by_project_kind", ["projectId", "kind"])
     .index("by_project_element_kind", ["projectId", "elementId", "kind"]),
@@ -1429,6 +1429,7 @@ export default defineSchema({
     status: v.union(v.literal("success"), v.literal("failed")),
     request: v.any(), // JSON
     response: v.any(), // JSON
+    cost: v.optional(v.number()),
     error: v.optional(v.string()),
     createdAt: v.number(),
   })

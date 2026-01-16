@@ -2,6 +2,7 @@ import { ActionCtx, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import OpenAI from "openai";
 import { internal } from "../_generated/api";
+import { calculateCost } from "./pricing";
 
 export type LLMProvider = "openai" | "gemini" | "anthropic";
 
@@ -24,6 +25,7 @@ export const logTrace = internalMutation({
         status: v.union(v.literal("success"), v.literal("failed")),
         request: v.any(),
         response: v.any(),
+        cost: v.optional(v.number()),
         error: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
@@ -56,6 +58,7 @@ export const logTrace = internalMutation({
             status: args.status,
             request: args.request,
             response: args.response,
+            cost: args.cost,
             error: args.error,
             createdAt: Date.now(),
         });
@@ -127,6 +130,12 @@ export async function completionWithTracing(
                     const inputTokens = usage?.prompt_tokens || 0;
                     const outputTokens = usage?.completion_tokens || 0;
 
+                    const cost = calculateCost({
+                        model: params.model,
+                        inputTokens,
+                        outputTokens
+                    }) ?? undefined;
+
                     await ctx.runMutation(internal.lib.llm.logTrace, {
                         projectId: tracing.projectId as any,
                         conversationId: tracing.conversationId as any,
@@ -142,7 +151,8 @@ export async function completionWithTracing(
                             streamed: true,
                             chunkCount: collectedChunks.length,
                             usage: usage
-                        }
+                        },
+                        cost
                     });
 
                 } catch (error: any) {
@@ -185,6 +195,11 @@ export async function completionWithTracing(
             })),
             usage: usage
         };
+        const cost = calculateCost({
+            model: params.model,
+            inputTokens,
+            outputTokens
+        }) ?? undefined;
 
         // Log success
         await ctx.runMutation(internal.lib.llm.logTrace, {
@@ -198,7 +213,8 @@ export async function completionWithTracing(
             latencyMs: duration,
             status: "success",
             request: requestPayload,
-            response: responsePayload
+            response: responsePayload,
+            cost
         });
 
         return simpleResponse;
@@ -224,12 +240,12 @@ export async function completionWithTracing(
 }
 
 export function isUnsupportedTemperatureError(error: any): boolean {
-  if (!error) return false;
-  const msg = (error.message || "").toLowerCase();
-  return (
-    msg.includes("temperature") && 
-    (msg.includes("not supported") || msg.includes("unsupported"))
-  );
+    if (!error) return false;
+    const msg = (error.message || "").toLowerCase();
+    return (
+        msg.includes("temperature") &&
+        (msg.includes("not supported") || msg.includes("unsupported"))
+    );
 }
 
 

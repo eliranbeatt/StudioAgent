@@ -26,6 +26,7 @@ import type * as inventory_helpers from "../inventory_helpers.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_llm from "../lib/llm.js";
 import type * as lib_normalize from "../lib/normalize.js";
+import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_webSearch from "../lib/webSearch.js";
 import type * as management from "../management.js";
 import type * as memory from "../memory.js";
@@ -79,6 +80,7 @@ declare const fullApi: ApiFromModules<{
   "lib/dates": typeof lib_dates;
   "lib/llm": typeof lib_llm;
   "lib/normalize": typeof lib_normalize;
+  "lib/pricing": typeof lib_pricing;
   "lib/webSearch": typeof lib_webSearch;
   management: typeof management;
   memory: typeof memory;

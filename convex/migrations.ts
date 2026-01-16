@@ -2,6 +2,7 @@ import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { normalizeName, newBusinessId } from "./lib/normalize";
 import { Id } from "./_generated/dataModel";
+import { calculateCost } from "./lib/pricing";
 
 export const backfillElementRevs = internalMutation({
   args: {},
@@ -151,4 +152,42 @@ export const backfillQuoteVersionsCustomerFromProject = mutation({
       quotesUpdated: updated,
     };
   },
+});
+
+export const backfillTraceCosts = mutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const traces = await ctx.db.query("llmTraces").collect();
+    let updated = 0;
+
+    for (const trace of traces) {
+      if (trace.cost !== undefined) continue;
+
+      const inputTokens = trace.inputTokens || (trace.request?.usage?.prompt_tokens as number) || 0;
+      const outputTokens = trace.outputTokens || (trace.response?.usage?.completion_tokens as number) || 0;
+
+      // Attempt to extract cached tokens if recorded in usage
+      const cached = (trace.response?.usage as any)?.prompt_tokens_details?.cached_tokens;
+
+      const cost = calculateCost({
+        model: trace.model,
+        inputTokens,
+        outputTokens,
+        cachedInputTokens: typeof cached === 'number' ? cached : undefined
+      });
+
+      if (cost !== null && !dryRun) {
+        await ctx.db.patch(trace._id, { cost });
+        updated++;
+      } else if (cost !== null && dryRun) {
+        updated++;
+      }
+    }
+
+    return {
+      dryRun,
+      totalTraces: traces.length,
+      updated,
+    };
+  }
 });

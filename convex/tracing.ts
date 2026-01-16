@@ -9,7 +9,7 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit || 50;
-    
+
     let q = ctx.db.query("llmTraces").order("desc");
 
     if (args.projectId) {
@@ -35,6 +35,7 @@ export const list = query({
       status: t.status,
       error: t.error,
       runId: t.runId,
+      cost: t.cost,
     }));
   },
 });
