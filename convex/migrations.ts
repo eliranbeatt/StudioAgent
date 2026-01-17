@@ -234,3 +234,68 @@ export const flushAllDrafts = mutation({
     };
   },
 });
+
+export const promoteAllDraftsToLive = mutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const dry = !!dryRun;
+    const now = Date.now();
+
+    const elements = await ctx.db.query("elements").collect();
+    let elementsUpdated = 0;
+    for (const element of elements) {
+      const needsStatus = element.status === "drafting";
+      const hasDraftRef = !!(element as any).currentDraftId;
+      if (!needsStatus && !hasDraftRef) continue;
+
+      if (!dry) {
+        await ctx.db.patch(element._id, {
+          status: needsStatus ? "approvedForQuote" : element.status,
+          currentDraftId: undefined,
+          hasUnapprovedChanges: false,
+          updatedAt: now,
+        });
+      }
+      elementsUpdated += 1;
+    }
+
+    const tasks = await ctx.db.query("tasks").collect();
+    let tasksUpdated = 0;
+    for (const task of tasks) {
+      const hasDraftFields =
+        (task as any).isDraft ||
+        (task as any).draftOfTaskId ||
+        (task as any).draftRevisionId;
+      if (!hasDraftFields) continue;
+      if (!dry) {
+        await ctx.db.patch(task._id, {
+          isDraft: false,
+          draftOfTaskId: undefined,
+          draftRevisionId: undefined,
+          updatedAt: now,
+        });
+      }
+      tasksUpdated += 1;
+    }
+
+    const taskRevisions = await ctx.db.query("taskRevisions").collect();
+    const elementDrafts = await ctx.db.query("elementDrafts").collect();
+
+    if (!dry) {
+      for (const revision of taskRevisions) {
+        await ctx.db.delete(revision._id);
+      }
+      for (const draft of elementDrafts) {
+        await ctx.db.delete(draft._id);
+      }
+    }
+
+    return {
+      dryRun: dry,
+      elementsUpdated,
+      tasksUpdated,
+      taskRevisionsRemoved: taskRevisions.length,
+      elementDraftsRemoved: elementDrafts.length,
+    };
+  },
+});

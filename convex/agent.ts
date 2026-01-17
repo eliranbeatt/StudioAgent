@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { searchWeb } from "./lib/webSearch";
 import { completionWithTracing, isUnsupportedTemperatureError } from "./lib/llm";
+import { captureSnapshotFromLive } from "./elements";
 import OpenAI from "openai";
 
 const AGENT_PROMPT_VERSION = "agentPromptsSchemaAlignedV7";
@@ -1391,7 +1392,7 @@ export const preProcessMessage = internalMutation({
           fileContext,
         };
       } else {
-        responseContent = "No open draft found to apply this ChangeSet.";
+        responseContent = "No element found to apply this ChangeSet.";
         responseType = "text";
         skillUsed = "change_set_builder";
       }
@@ -1405,39 +1406,16 @@ export const preProcessMessage = internalMutation({
           projectId,
           title: structuredFields.title,
           type: elementType,
-          status: "drafting",
+          status: "approvedForQuote",
           tags: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
         });
 
-        const draftId = await ctx.db.insert("elementDrafts", {
-          elementId,
-          projectId,
-          status: "open",
-          revisionNumber: 1,
-          createdFrom: { tab: "Studio", stage: "structured" },
-          workingSnapshot: {
-            title: structuredFields.title,
-            tasks: { byId: {} },
-            labor: { byId: {} },
-            materials: { byId: {} },
-            subcontract: { byId: {} },
-            notes: [],
-            meta: { version: 1 },
-          },
-          schemaVersion: 1,
-          createdBy: undefined,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        });
-
-        await ctx.db.patch(elementId, { currentDraftId: draftId });
-
         responseContent = `Created element "${structuredFields.title}" (${elementType}). You can add tasks, materials, and labor next.`;
         responseType = "text";
         skillUsed = "create_element";
-        metadata = { createdElementId: elementId, draftId };
+        metadata = { createdElementId: elementId, draftId: elementId };
       } else if (structuredFields.title && !projectId) {
         responseContent = "Missing project context. Please refresh the page and try again.";
         responseType = "text";
@@ -1706,36 +1684,13 @@ export const createElementFromStructured = mutation({
       projectId: args.projectId,
       title: args.title,
       type: elementType,
-      status: "drafting",
+      status: "approvedForQuote",
       tags: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
 
-    const draftId = await ctx.db.insert("elementDrafts", {
-      elementId,
-      projectId: args.projectId,
-      status: "open",
-      revisionNumber: 1,
-      createdFrom: { tab: "Studio", stage: "structured" },
-      workingSnapshot: {
-        title: args.title,
-        tasks: { byId: {} },
-        labor: { byId: {} },
-        materials: { byId: {} },
-        subcontract: { byId: {} },
-        notes: [],
-        meta: { version: 1 },
-      },
-      schemaVersion: 1,
-      createdBy: undefined,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
-    await ctx.db.patch(elementId, { currentDraftId: draftId });
-
-    return { elementId, draftId, type: elementType };
+    return { elementId, draftId: elementId, type: elementType };
   },
 });
 
@@ -1751,7 +1706,7 @@ export const generateTaskPatchOps = mutation({
       : await findDefaultDraft(ctx, args.projectId);
 
     if (!draft) {
-      throw new Error("No open draft found for task generation.");
+      throw new Error("No element found for task generation.");
     }
 
     const structured = await ctx.db
@@ -1804,11 +1759,10 @@ export const estimateTaskDependencies = mutation({
       : await findDefaultDraft(ctx, args.projectId);
 
     if (!draft) {
-      throw new Error("No open draft found for task estimation.");
+      throw new Error("No element found for task estimation.");
     }
 
-    const draftDoc = await ctx.db.get(draft.draftId) as any;
-    const snapshot = draftDoc?.workingSnapshot ?? {};
+    const snapshot = await captureSnapshotFromLive(ctx, draft.draftId);
     const tasksMap = snapshot?.tasks?.byId ?? {};
     const tasks = Object.values<any>(tasksMap).filter((task) => !task?.deletedAt);
 
@@ -1879,34 +1833,28 @@ export const estimateTaskDependencies = mutation({
 });
 
 async function findDefaultDraft(ctx: any, projectId: string) {
-  const draft = await ctx.db
-    .query("elementDrafts")
-    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
-    .filter((q: any) =>
-      q.or(q.eq(q.field("status"), "open"), q.eq(q.field("status"), "needsReview"))
-    )
+  const element = await ctx.db
+    .query("elements")
+    .withIndex("by_project_updated", (q: any) => q.eq("projectId", projectId))
+    .order("desc")
     .first();
 
-  if (draft) {
-    return {
-      draftType: "element" as const,
-      draftId: draft._id,
-      revisionNumber: draft.revisionNumber,
-    };
-  }
+  if (!element) return null;
 
-  return null;
+  return {
+    draftType: "element" as const,
+    draftId: element._id,
+    revisionNumber: element.rev ?? 0,
+  };
 }
 
 async function findDraftForElement(ctx: any, elementId: any) {
   const element = await ctx.db.get(elementId);
-  if (!element?.currentDraftId) return null;
-  const draft = await ctx.db.get(element.currentDraftId);
-  if (!draft || (draft.status !== "open" && draft.status !== "needsReview")) return null;
+  if (!element) return null;
   return {
     draftType: "element" as const,
-    draftId: draft._id,
-    revisionNumber: draft.revisionNumber,
+    draftId: element._id,
+    revisionNumber: element.rev ?? 0,
   };
 }
 

@@ -872,7 +872,7 @@ export const createProjectFromModal = mutation({
       }
     });
 
-    // 4. Create Elements (Drafts)
+    // 4. Create Elements (Live)
     let sortOrder = 1;
     for (const elName of args.elements) {
       if (!elName.trim()) continue;
@@ -880,7 +880,7 @@ export const createProjectFromModal = mutation({
         projectId,
         title: elName,
         type: "mixed", // Default
-        status: "drafting",
+        status: "approvedForQuote",
         // @ts-ignore
         order: sortOrder++,
         tags: [],

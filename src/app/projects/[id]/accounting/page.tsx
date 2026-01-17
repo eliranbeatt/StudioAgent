@@ -33,6 +33,7 @@ type MaterialLine = {
   actualUnitCost?: number;
   actualTotal?: number;
   taskIds: string[];
+  elementId?: string;
 };
 
 type LaborLine = {
@@ -45,6 +46,7 @@ type LaborLine = {
   actualRate?: number;
   actualTotal?: number;
   taskIds: string[];
+  elementId?: string;
 };
 
 type TaskOption = {
@@ -85,8 +87,13 @@ export default function AccountingPage({
   const accounting = useQuery(api.financials.getAccountingView, { projectId });
   const tasksData = useQuery(api.tasks.listForProject, { projectId });
   const pendingGraveyard = useQuery(api.graveyard.listPending, { projectId });
-  const applyChangeSet = useMutation(api.drafts.applyChangeSet);
-  
+  const addMaterialLine = useMutation(api.accounting.addMaterialLine);
+  const updateMaterialLine = useMutation(api.accounting.updateMaterialLine);
+  const deleteMaterialLine = useMutation(api.accounting.deleteMaterialLine);
+  const addWorkLine = useMutation(api.accounting.addWorkLine);
+  const updateWorkLine = useMutation(api.accounting.updateWorkLine);
+  const deleteWorkLine = useMutation(api.accounting.deleteWorkLine);
+
   const [tab, setTab] = useState<TabKey>("summary");
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
@@ -97,29 +104,7 @@ export default function AccountingPage({
     return <div className="p-8">Loading accounting data...</div>;
   }
 
-  const handleApplyOps = async ({
-    draftType,
-    draftId,
-    baseRevisionNumber,
-    patchOps,
-    reason,
-  }: {
-    draftType: "element" | "projectCost";
-    draftId: string;
-    baseRevisionNumber: number;
-    patchOps: any[];
-    reason: string;
-  }) => {
-    await applyChangeSet({
-      draftType,
-      draftId,
-      projectId,
-      patchOps,
-      baseRevisionNumber,
-      reason,
-      createdFrom: { tab: "Accounting", stage: "planning" },
-    });
-  };
+
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -149,7 +134,7 @@ export default function AccountingPage({
                 {pendingCount > 1 ? "s" : ""} pending
               </div>
               <div className="text-xs text-amber-700">
-                Resolve flagged changes before approving drafts.
+                Resolve flagged changes before saving changes.
               </div>
             </div>
           </div>
@@ -192,8 +177,11 @@ export default function AccountingPage({
           accounting={accounting}
           tasks={taskOptions}
           savingLineId={savingLineId}
-          onApplyOps={handleApplyOps}
           onSavingLineId={setSavingLineId}
+          onAdd={addMaterialLine}
+          onUpdate={updateMaterialLine}
+          onDelete={deleteMaterialLine}
+          elements={accounting.elements}
         />
       ) : null}
 
@@ -203,8 +191,11 @@ export default function AccountingPage({
           accounting={accounting}
           tasks={taskOptions}
           savingLineId={savingLineId}
-          onApplyOps={handleApplyOps}
           onSavingLineId={setSavingLineId}
+          onAdd={addWorkLine}
+          onUpdate={updateWorkLine}
+          onDelete={deleteWorkLine}
+          elements={accounting.elements}
         />
       ) : null}
     </div>
@@ -247,77 +238,39 @@ function MaterialsTab({
   accounting,
   tasks,
   savingLineId,
-  onApplyOps,
   onSavingLineId,
+  onAdd,
+  onUpdate,
+  onDelete,
+  elements,
 }: {
   projectId: Id<"projects">;
   accounting: any;
   tasks: TaskOption[];
   savingLineId: string | null;
-  onApplyOps: (args: {
-    draftType: "element" | "projectCost";
-    draftId: string;
-    baseRevisionNumber: number;
-    patchOps: any[];
-    reason: string;
-  }) => Promise<void>;
   onSavingLineId: (value: string | null) => void;
+  onAdd: (args: any) => Promise<any>;
+  onUpdate: (args: any) => Promise<any>;
+  onDelete: (args: any) => Promise<any>;
+  elements: any[];
 }) {
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
 
-  const resolveDraft = async ({
-    draftType,
-    elementId,
-    revisionNumber,
-  }: {
-    draftType: "element" | "projectCost";
-    elementId?: Id<"elements">;
-    revisionNumber?: number;
-  }) => {
-    if (draftType === "element" && elementId) {
-      return { draftId: elementId as string, revisionNumber: revisionNumber ?? 0 };
-    }
-    return { draftId: projectId as string, revisionNumber: 0 };
-  };
-
   const addMaterialLine = async ({
-    draftType,
     elementId,
-    revisionNumber,
     order,
   }: {
-    draftType: "element" | "projectCost";
     elementId?: Id<"elements">;
-    revisionNumber?: number;
     order?: number;
   }) => {
     try {
-      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
-      if (!resolved.draftId) return;
-
-      const id = `mat_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      const patchOps = [
-        {
-          op: "add",
-          path: `/materials/byId/${id}`,
-          value: {
-            id,
-            name: "New material",
-            qty: 1,
-            unitCost: 0,
-            order: order ?? 1,
-            links: { taskIds: [] },
-            procurement: { mode: "purchase" },
-            needPurchase: true,
-          },
-        },
-      ];
-      await onApplyOps({
-        draftType,
-        draftId: resolved.draftId,
-        baseRevisionNumber: resolved.revisionNumber,
-        patchOps,
-        reason: "Add material line",
+      await onAdd({
+        projectId,
+        elementId,
+        itemName: "New material",
+        quantity: 1,
+        unitCost: 0,
+        order: order ?? 1,
       });
     } catch (e: any) {
       console.error(e);
@@ -325,32 +278,10 @@ function MaterialsTab({
     }
   };
 
-  const handleDeleteLine = async ({
-    lineId,
-    draftType,
-    elementId,
-    revisionNumber,
-  }: {
-    lineId: string;
-    draftType: "element" | "projectCost";
-    elementId?: Id<"elements">;
-    revisionNumber?: number;
-  }) => {
+  const handleDeleteLine = async ({ lineId }: { lineId: string }) => {
     if (!confirm("Delete this material line?")) return;
-
     try {
-      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
-      if (!resolved.draftId) return;
-
-      await onApplyOps({
-        draftType,
-        draftId: resolved.draftId,
-        baseRevisionNumber: resolved.revisionNumber,
-        patchOps: [
-          { op: "tombstone", path: `/materials/byId/${lineId}`, value: { deletedAt: "now" } },
-        ],
-        reason: "Delete material line",
-      });
+      await onDelete({ lineId: lineId as Id<"materialLines"> });
     } catch (e: any) {
       console.error(e);
       alert(`Failed to delete line: ${e.message}`);
@@ -361,16 +292,10 @@ function MaterialsTab({
     lineId,
     direction,
     lines,
-    draftType,
-    elementId,
-    revisionNumber,
   }: {
     lineId: string;
     direction: -1 | 1;
     lines: MaterialLine[];
-    draftType: "element" | "projectCost";
-    elementId?: Id<"elements">;
-    revisionNumber?: number;
   }) => {
     const sorted = sortLines(lines);
     const index = sorted.findIndex((line) => line.id === lineId);
@@ -378,22 +303,20 @@ function MaterialsTab({
     if (index === -1 || !target) return;
 
     try {
-      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
-      if (!resolved.draftId) return;
+      // Swapping orders by updating createdAt (since that's what we used in backend for now)
+      // OR we just swap their "order" field if we have one. 
+      // The backend uses 'order' arg to update 'createdAt'.
+      // But wait, 'createdAt' needs to be unique-ish or just ordered.
+      // Actually, swapping timestamps is tricky if they are close or identical.
+      // Let's assume we map the "order" value from the UI (which is derived from index) to the backend.
 
-      const currentOrder = getLineOrderValue(sorted[index], index);
-      const targetOrder = getLineOrderValue(target, index + direction);
+      const currentOrder = getLineOrderValue(target, index + direction); // target's order becomes ours
+      const targetOrder = getLineOrderValue(sorted[index], index); // our order becomes targets
 
-      await onApplyOps({
-        draftType,
-        draftId: resolved.draftId,
-        baseRevisionNumber: resolved.revisionNumber,
-        patchOps: [
-          { op: "replace", path: `/materials/byId/${lineId}/order`, value: targetOrder },
-          { op: "replace", path: `/materials/byId/${target.id}/order`, value: currentOrder },
-        ],
-        reason: "Reorder material line",
-      });
+      // We need to update BOTH lines.
+      await onUpdate({ lineId: lineId as Id<"materialLines">, order: currentOrder });
+      await onUpdate({ lineId: target.id as Id<"materialLines">, order: targetOrder });
+
     } catch (e: any) {
       console.error(e);
       alert(`Failed to reorder line: ${e.message}`);
@@ -436,9 +359,7 @@ function MaterialsTab({
               <button
                 onClick={() =>
                   addMaterialLine({
-                    draftType: "element",
                     elementId: element.elementId,
-                    revisionNumber: element.revisionNumber,
                     order: getNextOrder(element.materials),
                   })
                 }
@@ -466,9 +387,6 @@ function MaterialsTab({
                           lineId: line.id,
                           direction: -1,
                           lines: sortedMaterials,
-                          draftType: "element",
-                          elementId: element.elementId,
-                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onMoveDown={() =>
@@ -476,36 +394,22 @@ function MaterialsTab({
                           lineId: line.id,
                           direction: 1,
                           lines: sortedMaterials,
-                          draftType: "element",
-                          elementId: element.elementId,
-                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onDelete={() =>
                         handleDeleteLine({
                           lineId: line.id,
-                          draftType: "element",
-                          elementId: element.elementId,
-                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onSave={async (next) => {
                         onSavingLineId(line.id);
                         try {
-                          const resolved = await resolveDraft({
-                            draftType: "element",
-                            elementId: element.elementId,
-                            revisionNumber: element.revisionNumber,
-                          });
-                          if (!resolved.draftId) return;
-
-                          const patchOps = buildMaterialPatchOps(line.id, next);
-                          await onApplyOps({
-                            draftType: "element",
-                            draftId: resolved.draftId,
-                            baseRevisionNumber: resolved.revisionNumber,
-                            patchOps,
-                            reason: "Update material line",
+                          await onUpdate({
+                            lineId: line.id as Id<"materialLines">,
+                            itemName: next.name,
+                            quantity: next.qty,
+                            unitCost: next.unitCost,
+                            elementId: next.elementId === "" ? null : (next.elementId as Id<"elements"> | undefined),
                           });
                         } catch (e: any) {
                           console.error(e);
@@ -514,6 +418,7 @@ function MaterialsTab({
                           onSavingLineId(null);
                         }
                       }}
+                      elements={elements}
                     />
                   ))
                 )}
@@ -537,8 +442,6 @@ function MaterialsTab({
             <button
               onClick={() =>
                 addMaterialLine({
-                  draftType: "projectCost",
-                  revisionNumber: accounting.projectCosts.revisionNumber,
                   order: getNextOrder(accounting.projectCosts.materials),
                 })
               }
@@ -566,8 +469,6 @@ function MaterialsTab({
                         lineId: line.id,
                         direction: -1,
                         lines,
-                        draftType: "projectCost",
-                        revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
                     onMoveDown={() =>
@@ -575,33 +476,22 @@ function MaterialsTab({
                         lineId: line.id,
                         direction: 1,
                         lines,
-                        draftType: "projectCost",
-                        revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
                     onDelete={() =>
                       handleDeleteLine({
                         lineId: line.id,
-                        draftType: "projectCost",
-                        revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
                     onSave={async (next) => {
                       onSavingLineId(line.id);
                       try {
-                        const resolved = await resolveDraft({
-                          draftType: "projectCost",
-                          revisionNumber: accounting.projectCosts.revisionNumber,
-                        });
-                        if (!resolved.draftId) return;
-
-                        const patchOps = buildMaterialPatchOps(line.id, next);
-                        await onApplyOps({
-                          draftType: "projectCost",
-                          draftId: resolved.draftId,
-                          baseRevisionNumber: resolved.revisionNumber,
-                          patchOps,
-                          reason: "Update project cost material",
+                        await onUpdate({
+                          lineId: line.id as Id<"materialLines">,
+                          itemName: next.name,
+                          quantity: next.qty,
+                          unitCost: next.unitCost,
+                          elementId: next.elementId === "" ? null : (next.elementId as Id<"elements"> | undefined),
                         });
                       } catch (e: any) {
                         console.error(e);
@@ -610,6 +500,7 @@ function MaterialsTab({
                         onSavingLineId(null);
                       }
                     }}
+                    elements={elements}
                   />
                 )
               )
@@ -626,75 +517,39 @@ function LaborTab({
   accounting,
   tasks,
   savingLineId,
-  onApplyOps,
   onSavingLineId,
+  onAdd,
+  onUpdate,
+  onDelete,
+  elements,
 }: {
   projectId: Id<"projects">;
   accounting: any;
   tasks: TaskOption[];
   savingLineId: string | null;
-  onApplyOps: (args: {
-    draftType: "element" | "projectCost";
-    draftId: string;
-    baseRevisionNumber: number;
-    patchOps: any[];
-    reason: string;
-  }) => Promise<void>;
   onSavingLineId: (value: string | null) => void;
+  onAdd: (args: any) => Promise<any>;
+  onUpdate: (args: any) => Promise<any>;
+  onDelete: (args: any) => Promise<any>;
+  elements: any[];
 }) {
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
 
-  const resolveDraft = async ({
-    draftType,
-    elementId,
-    revisionNumber,
-  }: {
-    draftType: "element" | "projectCost";
-    elementId?: Id<"elements">;
-    revisionNumber?: number;
-  }) => {
-    if (draftType === "element" && elementId) {
-      return { draftId: elementId as string, revisionNumber: revisionNumber ?? 0 };
-    }
-    return { draftId: projectId as string, revisionNumber: 0 };
-  };
-
   const addLaborLine = async ({
-    draftType,
     elementId,
-    revisionNumber,
     order,
   }: {
-    draftType: "element" | "projectCost";
     elementId?: Id<"elements">;
-    revisionNumber?: number;
     order?: number;
   }) => {
     try {
-      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
-      if (!resolved.draftId) return;
-
-      const id = `lab_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      const patchOps = [
-        {
-          op: "add",
-          path: `/labor/byId/${id}`,
-          value: {
-            id,
-            role: "New role",
-            qty: 1,
-            rate: 0,
-            order: order ?? 1,
-            links: { taskIds: [] },
-          },
-        },
-      ];
-      await onApplyOps({
-        draftType,
-        draftId: resolved.draftId,
-        baseRevisionNumber: resolved.revisionNumber,
-        patchOps,
-        reason: "Add labor line",
+      await onAdd({
+        projectId,
+        elementId,
+        role: "New role",
+        quantity: 1,
+        rate: 0,
+        order: order ?? 1,
       });
     } catch (e: any) {
       console.error(e);
@@ -702,32 +557,10 @@ function LaborTab({
     }
   };
 
-  const handleDeleteLine = async ({
-    lineId,
-    draftType,
-    elementId,
-    revisionNumber,
-  }: {
-    lineId: string;
-    draftType: "element" | "projectCost";
-    elementId?: Id<"elements">;
-    revisionNumber?: number;
-  }) => {
+  const handleDeleteLine = async ({ lineId }: { lineId: string }) => {
     if (!confirm("Delete this labor line?")) return;
-
     try {
-      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
-      if (!resolved.draftId) return;
-
-      await onApplyOps({
-        draftType,
-        draftId: resolved.draftId,
-        baseRevisionNumber: resolved.revisionNumber,
-        patchOps: [
-          { op: "tombstone", path: `/labor/byId/${lineId}`, value: { deletedAt: "now" } },
-        ],
-        reason: "Delete labor line",
-      });
+      await onDelete({ lineId: lineId as Id<"workLines"> });
     } catch (e: any) {
       console.error(e);
       alert(`Failed to delete line: ${e.message}`);
@@ -738,16 +571,10 @@ function LaborTab({
     lineId,
     direction,
     lines,
-    draftType,
-    elementId,
-    revisionNumber,
   }: {
     lineId: string;
     direction: -1 | 1;
     lines: LaborLine[];
-    draftType: "element" | "projectCost";
-    elementId?: Id<"elements">;
-    revisionNumber?: number;
   }) => {
     const sorted = sortLines(lines);
     const index = sorted.findIndex((line) => line.id === lineId);
@@ -755,22 +582,11 @@ function LaborTab({
     if (index === -1 || !target) return;
 
     try {
-      const resolved = await resolveDraft({ draftType, elementId, revisionNumber });
-      if (!resolved.draftId) return;
+      const currentOrder = getLineOrderValue(target, index + direction);
+      const targetOrder = getLineOrderValue(sorted[index], index);
 
-      const currentOrder = getLineOrderValue(sorted[index], index);
-      const targetOrder = getLineOrderValue(target, index + direction);
-
-      await onApplyOps({
-        draftType,
-        draftId: resolved.draftId,
-        baseRevisionNumber: resolved.revisionNumber,
-        patchOps: [
-          { op: "replace", path: `/labor/byId/${lineId}/order`, value: targetOrder },
-          { op: "replace", path: `/labor/byId/${target.id}/order`, value: currentOrder },
-        ],
-        reason: "Reorder labor line",
-      });
+      await onUpdate({ lineId: lineId as Id<"workLines">, order: currentOrder });
+      await onUpdate({ lineId: target.id as Id<"workLines">, order: targetOrder });
     } catch (e: any) {
       console.error(e);
       alert(`Failed to reorder line: ${e.message}`);
@@ -813,9 +629,7 @@ function LaborTab({
               <button
                 onClick={() =>
                   addLaborLine({
-                    draftType: "element",
                     elementId: element.elementId,
-                    revisionNumber: element.revisionNumber,
                     order: getNextOrder(element.labor),
                   })
                 }
@@ -843,9 +657,6 @@ function LaborTab({
                           lineId: line.id,
                           direction: -1,
                           lines: sortedLabor,
-                          draftType: "element",
-                          elementId: element.elementId,
-                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onMoveDown={() =>
@@ -853,36 +664,22 @@ function LaborTab({
                           lineId: line.id,
                           direction: 1,
                           lines: sortedLabor,
-                          draftType: "element",
-                          elementId: element.elementId,
-                          revisionNumber: element.revisionNumber,
                         })
                       }
                       onDelete={() =>
                         handleDeleteLine({
                           lineId: line.id,
-                          draftType: "element",
-                          elementId: element.elementId,
-                          revisionNumber: element.revisionNumber,
                         })
                       }
-                      onSave={async (next) => {
+                      onSave={async (next: any) => {
                         onSavingLineId(line.id);
                         try {
-                          const resolved = await resolveDraft({
-                            draftType: "element",
-                            elementId: element.elementId,
-                            revisionNumber: element.revisionNumber,
-                          });
-                          if (!resolved.draftId) return;
-
-                          const patchOps = buildLaborPatchOps(line.id, next);
-                          await onApplyOps({
-                            draftType: "element",
-                            draftId: resolved.draftId,
-                            baseRevisionNumber: resolved.revisionNumber,
-                            patchOps,
-                            reason: "Update labor line",
+                          await onUpdate({
+                            lineId: line.id as Id<"workLines">,
+                            role: next.role,
+                            quantity: next.qty,
+                            rate: next.rate,
+                            elementId: next.elementId === "" ? null : (next.elementId as Id<"elements"> | undefined),
                           });
                         } catch (e: any) {
                           console.error(e);
@@ -891,6 +688,7 @@ function LaborTab({
                           onSavingLineId(null);
                         }
                       }}
+                      elements={elements}
                     />
                   ))
                 )}
@@ -914,8 +712,6 @@ function LaborTab({
             <button
               onClick={() =>
                 addLaborLine({
-                  draftType: "projectCost",
-                  revisionNumber: accounting.projectCosts.revisionNumber,
                   order: getNextOrder(accounting.projectCosts.labor),
                 })
               }
@@ -943,8 +739,6 @@ function LaborTab({
                         lineId: line.id,
                         direction: -1,
                         lines,
-                        draftType: "projectCost",
-                        revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
                     onMoveDown={() =>
@@ -952,33 +746,22 @@ function LaborTab({
                         lineId: line.id,
                         direction: 1,
                         lines,
-                        draftType: "projectCost",
-                        revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
                     onDelete={() =>
                       handleDeleteLine({
                         lineId: line.id,
-                        draftType: "projectCost",
-                        revisionNumber: accounting.projectCosts.revisionNumber,
                       })
                     }
-                    onSave={async (next) => {
+                    onSave={async (next: any) => {
                       onSavingLineId(line.id);
                       try {
-                        const resolved = await resolveDraft({
-                          draftType: "projectCost",
-                          revisionNumber: accounting.projectCosts.revisionNumber,
-                        });
-                        if (!resolved.draftId) return;
-
-                        const patchOps = buildLaborPatchOps(line.id, next);
-                        await onApplyOps({
-                          draftType: "projectCost",
-                          draftId: resolved.draftId,
-                          baseRevisionNumber: resolved.revisionNumber,
-                          patchOps,
-                          reason: "Update project cost labor",
+                        await onUpdate({
+                          lineId: line.id as Id<"workLines">,
+                          role: next.role,
+                          quantity: next.qty,
+                          rate: next.rate,
+                          elementId: next.elementId === "" ? null : (next.elementId as Id<"elements"> | undefined),
                         });
                       } catch (e: any) {
                         console.error(e);
@@ -987,6 +770,7 @@ function LaborTab({
                         onSavingLineId(null);
                       }
                     }}
+                    elements={elements}
                   />
                 )
               )
@@ -1009,6 +793,7 @@ function MaterialLineRow({
   onMoveDown,
   onDelete,
   onSave,
+  elements,
 }: {
   line: MaterialLine;
   tasks: TaskOption[];
@@ -1020,6 +805,7 @@ function MaterialLineRow({
   onMoveDown: () => void;
   onDelete: () => void;
   onSave: (next: MaterialLine) => Promise<void>;
+  elements?: any[];
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<MaterialLine>(line);
@@ -1053,8 +839,8 @@ function MaterialLineRow({
       : gapTotal > 0
         ? "text-green-600"
         : gapTotal < 0
-        ? "text-red-600"
-        : "text-gray-500";
+          ? "text-red-600"
+          : "text-gray-500";
   const moveDisabled = saving || isEditing;
 
   return (
@@ -1069,6 +855,27 @@ function MaterialLineRow({
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm min-h-[38px]"
         />
+        {isEditing && elements && (
+          <div className="mt-2">
+            <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
+              Assigned Element
+            </div>
+            <select
+              value={draft.elementId ?? ""}
+              onChange={(e) =>
+                setDraft({ ...draft, elementId: e.target.value })
+              }
+              className="w-full border border-gray-200 rounded-md px-2 py-1 text-sm bg-gray-50"
+            >
+              <option value="">(Project Level)</option>
+              {elements.map((el) => (
+                <option key={el.elementId} value={el.elementId}>
+                  {el.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
       <div className="md:col-span-1">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
@@ -1286,6 +1093,7 @@ function LaborLineRow({
   onMoveDown,
   onDelete,
   onSave,
+  elements,
 }: {
   line: LaborLine;
   tasks: TaskOption[];
@@ -1297,6 +1105,7 @@ function LaborLineRow({
   onMoveDown: () => void;
   onDelete: () => void;
   onSave: (next: LaborLine) => Promise<void>;
+  elements?: any[];
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<LaborLine>(line);
@@ -1330,8 +1139,8 @@ function LaborLineRow({
       : gapTotal > 0
         ? "text-green-600"
         : gapTotal < 0
-        ? "text-red-600"
-        : "text-gray-500";
+          ? "text-red-600"
+          : "text-gray-500";
   const moveDisabled = saving || isEditing;
 
   return (
@@ -1346,6 +1155,27 @@ function LaborLineRow({
           onChange={(e) => setDraft({ ...draft, role: e.target.value })}
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm min-h-[38px]"
         />
+        {isEditing && elements && (
+          <div className="mt-2">
+            <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
+              Assigned Element
+            </div>
+            <select
+              value={draft.elementId ?? ""}
+              onChange={(e) =>
+                setDraft({ ...draft, elementId: e.target.value })
+              }
+              className="w-full border border-gray-200 rounded-md px-2 py-1 text-sm bg-gray-50"
+            >
+              <option value="">(Project Level)</option>
+              {elements.map((el) => (
+                <option key={el.elementId} value={el.elementId}>
+                  {el.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
       <div className="md:col-span-1">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">

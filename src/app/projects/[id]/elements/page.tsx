@@ -48,9 +48,21 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
   const [savingElement, setSavingElement] = useState(false);
 
   const listData = useQuery(api.elements.listByProject, { projectId });
-  const applyChangeSet = useMutation(api.drafts.applyChangeSet);
+
   const updateElementMeta = useMutation(api.elements.updateElementMeta);
   const deleteElement = useMutation(api.elements.deleteElement);
+
+  // Direct mutations replacing drafts
+  const createTask = useMutation(api.tasks.createTask);
+  const updateTask = useMutation(api.tasks.updateTask);
+  const deleteTask = useMutation(api.tasks.deleteTask);
+  const addMaterialLine = useMutation(api.accounting.addMaterialLine);
+  const updateMaterialLine = useMutation(api.accounting.updateMaterialLine);
+  const deleteMaterialLine = useMutation(api.accounting.deleteMaterialLine);
+  const addWorkLine = useMutation(api.accounting.addWorkLine);
+  const updateWorkLine = useMutation(api.accounting.updateWorkLine);
+  const deleteWorkLine = useMutation(api.accounting.deleteWorkLine);
+
   const elementParam = searchParams.get("element");
   const elements = listData?.elements ?? [];
 
@@ -103,34 +115,12 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
   const canEdit = !!composite && !savingDraft;
   const selectedElement = composite?.element ?? null;
 
-  const applyDraftOps = async (patchOps: any[], reason: string) => {
-    if (!draftMeta?.draftId || draftMeta?.revisionNumber === undefined) {
-      setError("No open draft found for this element.");
-      return;
-    }
-    setSavingDraft(true);
-    setError(null);
-    try {
-      await applyChangeSet({
-        draftType: "element",
-        draftId: draftMeta.draftId,
-        projectId,
-        patchOps,
-        baseRevisionNumber: draftMeta.revisionNumber,
-        reason,
-        createdFrom: { tab: "Elements", stage: "planning" },
-      });
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to update draft.");
-    } finally {
-      setSavingDraft(false);
-    }
-  };
+
 
   const handleDeleteElement = async () => {
     if (!selectedElement) return;
     const confirmed = window.confirm(
-      `Delete element "${selectedElement.title}"? This will remove its drafts, versions, tasks, accounting lines, and print parts.`
+      `Delete element "${selectedElement.title}"? This will remove its versions, tasks, accounting lines, and print parts.`
     );
     if (!confirmed) return;
     setError(null);
@@ -260,7 +250,7 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
 
               <ElementMetaEditor
                 element={composite.element}
-                description={String(composite.base?.spec?.description ?? "")}
+                description={composite.element.description ?? ""}
                 disabled={savingElement || savingDraft}
                 onSaveMeta={async (next) => {
                   setSavingElement(true);
@@ -279,10 +269,18 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
                   }
                 }}
                 onSaveDescription={async (nextDescription) => {
-                  await applyDraftOps(
-                    [{ op: "replace", path: "/description", value: nextDescription }],
-                    "Update element description"
-                  );
+                  setSavingElement(true);
+                  setError(null);
+                  try {
+                    await updateElementMeta({
+                      elementId: composite.element.id as Id<"elements">,
+                      description: nextDescription,
+                    });
+                  } catch (err: any) {
+                    setError(err?.message ?? "Failed to update description.");
+                  } finally {
+                    setSavingElement(false);
+                  }
                 }}
               />
             </SectionCard>
@@ -363,95 +361,73 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
               <SnapshotSection
                 spec={composite.base?.spec}
                 canEdit={canEdit}
-                onSaveTask={(taskId, next) => {
-                  const patchOps = [
-                    { op: "replace", path: `/tasks/byId/${taskId}/title`, value: next.title },
-                    { op: "replace", path: `/tasks/byId/${taskId}/domain`, value: next.domain ?? "" },
-                    { op: "replace", path: `/tasks/byId/${taskId}/status`, value: next.status ?? "" },
-                    { op: "replace", path: `/tasks/byId/${taskId}/description`, value: next.description ?? "" },
-                  ];
-                  return applyDraftOps(patchOps, "Update task");
-                }}
-                onDeleteTask={(taskId) =>
-                  applyDraftOps(
-                    [{ op: "tombstone", path: `/tasks/byId/${taskId}`, value: { deletedAt: "now" } }],
-                    "Delete task"
-                  )
-                }
-                onSaveMaterial={(materialId, next) => {
-                  const patchOps = [
-                    { op: "replace", path: `/materials/byId/${materialId}/name`, value: next.name },
-                    { op: "replace", path: `/materials/byId/${materialId}/qty`, value: Number(next.qty ?? 0) },
-                    {
-                      op: "replace",
-                      path: `/materials/byId/${materialId}/unitCost`,
-                      value: Number(next.unitCost ?? 0),
+                onSaveTask={async (taskId, next) => {
+                  await updateTask({
+                    taskId: taskId as Id<"tasks">,
+                    patch: {
+                      title: next.title,
+                      description: next.description,
+                      status: next.status,
+                      // domain is likely mapped to category or handled differently, 
+                      // but let's assume 'category' if 'domain' matches, or ignore if not in schema.
+                      // Checking tasks.ts, 'domain' isn't there, 'category' is. 
+                      // The helper in SnapshotSection uses 'domain'.
+                      // Let's map domain -> category for now or ignore.
+                      category: next.domain,
                     },
-                  ];
-                  return applyDraftOps(patchOps, "Update material");
+                  });
                 }}
-                onDeleteMaterial={(materialId) =>
-                  applyDraftOps(
-                    [{ op: "tombstone", path: `/materials/byId/${materialId}`, value: { deletedAt: "now" } }],
-                    "Delete material"
-                  )
-                }
-                onSaveLabor={(laborId, next) => {
-                  const patchOps = [
-                    { op: "replace", path: `/labor/byId/${laborId}/role`, value: next.role },
-                    { op: "replace", path: `/labor/byId/${laborId}/qty`, value: Number(next.qty ?? 0) },
-                    { op: "replace", path: `/labor/byId/${laborId}/rate`, value: Number(next.rate ?? 0) },
-                  ];
-                  return applyDraftOps(patchOps, "Update labor");
+                onDeleteTask={async (taskId) => {
+                  await deleteTask({ taskId: taskId as Id<"tasks"> });
                 }}
-                onDeleteLabor={(laborId) =>
-                  applyDraftOps(
-                    [{ op: "tombstone", path: `/labor/byId/${laborId}`, value: { deletedAt: "now" } }],
-                    "Delete labor"
-                  )
-                }
+                onSaveMaterial={async (materialId, next) => {
+                  await updateMaterialLine({
+                    lineId: materialId as Id<"materialLines">,
+                    itemName: next.name,
+                    quantity: next.qty,
+                    unitCost: next.unitCost,
+                  });
+                }}
+                onDeleteMaterial={async (materialId) => {
+                  await deleteMaterialLine({ lineId: materialId as Id<"materialLines"> });
+                }}
+                onSaveLabor={async (laborId, next) => {
+                  await updateWorkLine({
+                    lineId: laborId as Id<"workLines">,
+                    role: next.role,
+                    quantity: next.qty,
+                    rate: next.rate,
+                  });
+                }}
+                onDeleteLabor={async (laborId) => {
+                  await deleteWorkLine({ lineId: laborId as Id<"workLines"> });
+                }}
                 onAddTask={async () => {
-                  const tempId = crypto.randomUUID();
-                  const newTask = {
-                    id: tempId,
+                  await createTask({
+                    projectId,
+                    elementId: composite.element.id as Id<"elements">,
                     title: "New Task",
                     status: "todo",
-                    domain: "general",
-                    description: "",
-                    createdAt: Date.now(),
-                  };
-                  return applyDraftOps(
-                    [{ op: "add", path: `/tasks/byId/${tempId}`, value: newTask }],
-                    "Add new task"
-                  );
+                    category: "general", // domain fallback
+                  });
                 }}
                 onAddMaterial={async () => {
-                  const tempId = crypto.randomUUID();
-                  const newMaterial = {
-                    id: tempId,
-                    name: "New Material",
-                    qty: 1,
+                  await addMaterialLine({
+                    projectId,
+                    elementId: composite.element.id as Id<"elements">,
+                    itemName: "New Material",
+                    quantity: 1,
                     unitCost: 0,
-                    createdAt: Date.now(),
-                  };
-                  return applyDraftOps(
-                    [{ op: "add", path: `/materials/byId/${tempId}`, value: newMaterial }],
-                    "Add new material"
-                  );
+                  });
                 }}
                 onAddLabor={async () => {
-                  const tempId = crypto.randomUUID();
-                  const newLabor = {
-                    id: tempId,
+                  await addWorkLine({
+                    projectId,
+                    elementId: composite.element.id as Id<"elements">,
                     role: "New Role",
-                    qty: 1,
+                    quantity: 1,
                     rate: 0,
-                    createdAt: Date.now(),
-                  };
-                  return applyDraftOps(
-                    [{ op: "add", path: `/labor/byId/${tempId}`, value: newLabor }],
-                    "Add new labor"
-                  );
+                  });
                 }}
               />
             </SectionCard>
@@ -532,7 +508,7 @@ function ElementMetaEditor({
   onSaveMeta,
   onSaveDescription,
 }: {
-  element: { title: string; type: string; tags: string[] };
+  element: { title: string; type: string; tags: string[]; description?: string };
   description: string;
   disabled: boolean;
   onSaveMeta: (next: { title: string; type: string; tags: string[] }) => Promise<void>;

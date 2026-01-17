@@ -25,42 +25,18 @@ export const runEstimator = mutation({
     if (needsEstimate.length === 0) return { count: 0 };
 
     // 3. Logic (Shared with agent.ts ideally, but inlined here for "Task Tab" mode)
-    // We will apply changes to taskRevisions (Draft Mode)
+    // Apply changes directly to live tasks
     
     let count = 0;
     
     for (const task of needsEstimate) {
         const est = estimateHoursForTask(task);
         
-        // Check for existing draft
-        const existingDraft = await ctx.db
-            .query("taskRevisions")
-            .withIndex("by_task", (q) => q.eq("taskId", task._id))
-            .filter((q) => q.eq(q.field("status"), "draft"))
-            .first();
-
         const patch = { estimatedHours: est };
-
-        if (existingDraft) {
-             await ctx.db.patch(existingDraft._id, {
-                patch: { ...existingDraft.patch, ...patch },
-                updatedAt: Date.now(),
-                source: "agent",
-                agentRunId: "estimator-v1"
-             });
-        } else {
-             await ctx.db.insert("taskRevisions", {
-                projectId: args.projectId,
-                taskId: task._id,
-                baseVersionHash: "v1",
-                patch,
-                source: "agent",
-                agentRunId: "estimator-v1",
-                status: "draft",
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-             });
-        }
+        await ctx.db.patch(task._id, {
+            ...patch,
+            updatedAt: Date.now(),
+        });
         count++;
     }
 

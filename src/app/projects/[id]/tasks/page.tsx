@@ -50,7 +50,6 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
     const data = useQuery(api.tasks.listForProject, { projectId });
     const updateTask = useMutation(api.tasks.updateTask);
     const createTask = useMutation(api.tasks.createTask);
-    const upsertDraft = useMutation(api.taskRevisions.upsertDraft);
     const runEstimator = useMutation(api.agent_tasks.runEstimator);
     const taskOrder = useQuery(api.projects.getTaskOrder, { projectId });
     const updateTaskOrder = useMutation(api.projects.updateTaskOrder);
@@ -101,12 +100,11 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
 
     // 1. Compute Effective Tasks
     const effectiveTasks = useMemo(() => {
-        return rawTasks.map(t => {
-            if (t.draftPatch) {
-                return { ...t, ...t.draftPatch, isDraft: true };
-            }
-            return t;
-        });
+        return rawTasks.map(t => ({
+            ...t,
+            isDraft: false,
+            draftPatch: undefined
+        }));
     }, [rawTasks]);
 
     // 2. Filter Tasks
@@ -450,7 +448,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                     onClose={() => setSelectedTaskId(null)}
                     onSave={handleTaskSave}
                     onDuplicate={() => handleDuplicateTask(selectedTask)}
-                    draftMode={!!selectedTask.isDraft}
+                    draftMode={false}
                     isSaving={modalSaving}
                 />
             )}

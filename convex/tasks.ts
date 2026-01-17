@@ -218,21 +218,22 @@ export const listForProject = query({
           dependencies: task.dependencies,
           materials,
           labor,
-          // New fields
-          isDraft: task.isDraft,
-          draftOfTaskId: task.draftOfTaskId,
-          draftRevisionId: task.draftRevisionId,
+          // Draft fields are no longer used
+          isDraft: false,
+          draftOfTaskId: undefined,
+          draftRevisionId: undefined,
           draftPatch: undefined,
           elementSubtaskId: task.elementSubtaskId,
           aiThreadId: task.aiThreadId,
         };
       });
 
+      const elementStatus = element.status === "drafting" ? "approvedForQuote" : element.status;
       return {
         elementId: element._id,
         elementTitle: element.title,
         elementType: element.type,
-        elementStatus: element.status,
+        elementStatus,
         tasks: mappedTasks,
       };
     });

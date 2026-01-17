@@ -638,7 +638,7 @@ export default function ManagementReceiptsPage() {
                                   })
                                 }
                               >
-                                <option value="">Map draft material</option>
+                                <option value="">Map material</option>
                                 {draftMaterialOptions.map((line) => (
                                   <option key={line.id} value={line.id}>
                                     {line.label}
@@ -654,7 +654,7 @@ export default function ManagementReceiptsPage() {
                                   })
                                 }
                               >
-                                <option value="">Map draft labor</option>
+                                <option value="">Map labor</option>
                                 {draftWorkOptions.map((line) => (
                                   <option key={line.id} value={line.id}>
                                     {line.label}
@@ -741,12 +741,12 @@ export default function ManagementReceiptsPage() {
                     )}
                     {draftMaterialOptions.length === 0 && (
                       <div className="mt-2 text-xs text-gray-500">
-                        No draft material lines found in the Accounting view.
+                        No material lines found in the Accounting view.
                       </div>
                     )}
                     {draftWorkOptions.length === 0 && (
                       <div className="mt-2 text-xs text-gray-500">
-                        No draft labor lines found in the Accounting view.
+                        No labor lines found in the Accounting view.
                       </div>
                     )}
                     <div className="mt-3 text-xs text-gray-500">

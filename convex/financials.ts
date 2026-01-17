@@ -62,17 +62,36 @@ export const createChangeOrder = mutation({
     deltaSellPrice: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("changeOrders", {
+    const now = Date.now();
+    const changeOrderId = await ctx.db.insert("changeOrders", {
       projectId: args.projectId,
       title: args.title,
-      status: "draft",
+      status: "approved",
       financials: {
         deltaDirectCost: args.deltaDirectCost,
         deltaSellPrice: args.deltaSellPrice,
       },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      approvedAt: now,
+      createdAt: now,
+      updatedAt: now,
     });
+
+    const project = await ctx.db.get(args.projectId);
+    if (project?.activeBudgetBaselineId) {
+      await ctx.db.insert("budgetAdjustments", {
+        projectId: args.projectId,
+        baselineId: project.activeBudgetBaselineId,
+        changeOrderId,
+        delta: {
+          deltaDirectCost: args.deltaDirectCost,
+          deltaSellPrice: args.deltaSellPrice,
+        },
+        approvedAt: now,
+        createdAt: now,
+      });
+    }
+
+    return changeOrderId;
   },
 });
 
@@ -83,6 +102,7 @@ export const approveChangeOrder = mutation({
   handler: async (ctx, args) => {
     const co = await ctx.db.get(args.changeOrderId);
     if (!co) throw new Error("CO not found");
+    if (co.status === "approved") return { ok: true };
     if (co.status !== "draft") throw new Error("CO not in draft");
 
     const project = await ctx.db.get(co.projectId);

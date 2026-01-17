@@ -206,7 +206,7 @@ export function ElementRunbookTemplatePanel({ projectId, elementId, elementTitle
 
       {draftRunbookBlock && (
         <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 text-xs text-blue-900">
-          Draft generated. Click “Save Template” to persist it on this element.
+          Runbook generated. Click “Save Template” to persist it on this element.
         </div>
       )}
 

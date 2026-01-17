@@ -71,7 +71,7 @@ export const resolveStage = query({
 
     if (hasAnyElements) {
       computedStage = "QUOTE";
-      reasonHe = "Elements exist. Drafting and quoting phase.";
+      reasonHe = "Elements exist. Quoting phase.";
     }
 
     if (hasTasks || hasActiveBaseline) {

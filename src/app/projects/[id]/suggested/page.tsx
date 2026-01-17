@@ -23,7 +23,7 @@ export default function SuggestedPage({ params }: { params: Promise<{ id: string
         <div>
           <h2 className="text-3xl font-bold">Suggested Elements</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Approve to create elements and drafts, or reject to discard.
+            Approve to create elements, or reject to discard.
           </p>
         </div>
       </div>

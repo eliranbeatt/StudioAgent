@@ -13,7 +13,7 @@ export const getProjectDigest = query({
       .collect();
 
     const elementsCount = elements.length;
-    const elementsApproved = elements.filter(e => e.status !== "drafting" && e.status !== "archived").length;
+    const elementsApproved = elements.filter(e => e.status !== "archived").length;
 
     // 2. Tasks stats
     const tasks = await ctx.db

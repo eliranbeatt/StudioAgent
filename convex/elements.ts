@@ -372,14 +372,17 @@ export const listByProject = query({
     for (const part of printParts) { printCounts.set(part.elementId, (printCounts.get(part.elementId) ?? 0) + 1); }
 
     return {
-      elements: elements.map((element) => ({
-        id: element._id, title: element.title, type: element.type, status: element.status,
-        rev: element.rev ?? 0, tags: element.tags ?? [], updatedAt: element.updatedAt,
-        taskCount: tasksByElement.get(element._id) ?? 0,
-        budget: totalsByElement.get(element._id) ?? { materials: 0, labor: 0, total: 0 },
-        printPartsCount: printCounts.get(element._id) ?? 0,
-        draft: null, approved: null,
-      })),
+      elements: elements.map((element) => {
+        const status = element.status === "drafting" ? "approvedForQuote" : element.status;
+        return ({
+          id: element._id, title: element.title, type: element.type, status,
+          rev: element.rev ?? 0, tags: element.tags ?? [], updatedAt: element.updatedAt,
+          taskCount: tasksByElement.get(element._id) ?? 0,
+          budget: totalsByElement.get(element._id) ?? { materials: 0, labor: 0, total: 0 },
+          printPartsCount: printCounts.get(element._id) ?? 0,
+          draft: null, approved: null,
+        });
+      }),
     };
   },
 });
@@ -407,8 +410,9 @@ export const getComposite = query({
 
     const snapshot = await captureSnapshotFromLive(ctx, args.elementId);
 
+    const status = element.status === "drafting" ? "approvedForQuote" : element.status;
     return {
-      element: { id: element._id, title: element.title, type: element.type, status: element.status, rev: element.rev ?? 0, tags: element.tags ?? [], updatedAt: element.updatedAt },
+      element: { id: element._id, title: element.title, description: element.description, type: element.type, status, rev: element.rev ?? 0, tags: element.tags ?? [], updatedAt: element.updatedAt },
       base: {
         source: "live",
         spec: snapshot,
@@ -443,12 +447,13 @@ export const getElementDetail = query({
   handler: async (ctx, args) => {
     const element = await ctx.db.get(args.elementId);
     if (!element) return null;
-    return { element: { id: element._id, title: element.title, type: element.type, status: element.status, rev: element.rev ?? 1 }, draft: null, approved: null };
+    const status = element.status === "drafting" ? "approvedForQuote" : element.status;
+    return { element: { id: element._id, title: element.title, type: element.type, status, rev: element.rev ?? 1 }, draft: null, approved: null };
   },
 });
 
 export const updateElementMeta = mutation({
-  args: { elementId: v.id("elements"), title: v.optional(v.string()), type: v.optional(v.string()), tags: v.optional(v.array(v.string())), status: v.optional(v.string()) },
+  args: { elementId: v.id("elements"), title: v.optional(v.string()), type: v.optional(v.string()), tags: v.optional(v.array(v.string())), status: v.optional(v.string()), description: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const element = await ctx.db.get(args.elementId);
     if (!element) throw new Error("Element not found.");
@@ -459,6 +464,7 @@ export const updateElementMeta = mutation({
     if (args.type !== undefined) updates.type = args.type;
     if (args.tags !== undefined) updates.tags = args.tags;
     if (args.status !== undefined) updates.status = args.status;
+    if (args.description !== undefined) updates.description = args.description;
     await ctx.db.patch(args.elementId, updates);
     return { ok: true };
   },

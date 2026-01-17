@@ -397,14 +397,17 @@ export const buildContext = internalQuery({
         answerHe: qa.answer_he,
         createdAt: qa.createdAt
       })),
-      elements: {
-        approved: scopedElements
-          .filter((e: any) => e.status !== "drafting" && e.status !== "archived")
-          .map((e: any) => ({ id: e._id, title: e.title, status: e.status, type: e.type })),
-        draft: scopedElements
-          .filter((e: any) => e.status === "drafting")
-          .map((e: any) => ({ id: e._id, title: e.title, status: e.status, type: e.type })),
-      },
+        elements: {
+          approved: scopedElements
+            .filter((e: any) => e.status !== "archived")
+            .map((e: any) => ({
+              id: e._id,
+              title: e.title,
+              status: e.status === "drafting" ? "approvedForQuote" : e.status,
+              type: e.type
+            })),
+          draft: [],
+        },
       tasks: tasks.map((t: any) => ({
         id: t._id,
         title: t.title,
