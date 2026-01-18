@@ -20,7 +20,9 @@ import {
   Wrench,
   X,
   Plus,
+  Download,
 } from "lucide-react";
+import { exportToCsv } from "../../../../lib/exportUtils";
 import { ElementRunbookTemplatePanel } from "./ElementRunbookTemplatePanel";
 
 type SnapshotEntity = {
@@ -98,6 +100,24 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
       : "skip"
   );
 
+  const handleExport = () => {
+    const dataToExport = elements.map((e) => ({
+      "Element ID": e.id,
+      Title: e.title,
+      Type: e.type,
+      Status: e.status,
+      Revision: e.rev,
+      Tags: e.tags.join(", "),
+      "Task Count": e.taskCount,
+      "Materials Budget": e.budget.materials,
+      "Labor Budget": e.budget.labor,
+      "Total Budget": e.budget.total,
+      "Print Parts Count": e.printPartsCount,
+      "Last Updated": e.updatedAt ? new Date(e.updatedAt).toLocaleDateString() : "",
+    }));
+    exportToCsv(dataToExport, `Elements_Export_${new Date().toLocaleDateString("en-CA")}`);
+  };
+
   if (!listData) {
     return <div className="p-8 text-gray-500">Loading elements...</div>;
   }
@@ -144,8 +164,17 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
     <div className="h-full grid grid-cols-[280px_minmax(0,1fr)] overflow-hidden">
       <aside className="border-r bg-white flex flex-col overflow-hidden">
         <div className="p-4 border-b">
-          <div className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
-            Elements
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+              Elements
+            </div>
+            <button
+              onClick={handleExport}
+              className="text-gray-400 hover:text-gray-700 transition-colors"
+              title="Export elements to CSV"
+            >
+              <Download size={14} />
+            </button>
           </div>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-3 text-gray-400" />

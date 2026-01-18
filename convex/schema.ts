@@ -1480,6 +1480,7 @@ export default defineSchema({
       promptAddon: v.string(),
     }),
     model: v.optional(v.string()),
+    llmParams: v.optional(v.any()),
     isEnabled: v.boolean(),
     version: v.optional(v.number()),
   }).index("by_skillId", ["skillId"]),

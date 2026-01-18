@@ -15,7 +15,9 @@ import {
   Save,
   Trash2,
   X,
+  Download,
 } from "lucide-react";
+import { exportToExcel } from "../../../../lib/exportUtils";
 
 import { AccountingSummaryBlock } from "./AccountingSummaryBlock";
 import { ApprovedBudgetRow } from "./ApprovedBudgetRow";
@@ -59,8 +61,6 @@ type TaskOption = {
 
 const getLineOrderValue = (line: { order?: number }, fallback: number) =>
   Number.isFinite(line.order) ? (line.order as number) : fallback;
-
-
 
 const sortLines = <T extends { id: string; order?: number }>(
   lines: T[],
@@ -138,7 +138,109 @@ export default function AccountingPage({
     return <div className="p-8">Loading accounting data...</div>;
   }
 
+  const handleExport = () => {
+    if (!accounting || !summary) return;
 
+    const margins = summary.defaults;
+
+    // --- Overall Sheet ---
+    const overallData: any[] = [];
+
+    // Helper for margin calcs
+    const getDerived = (base: number, type: "risk" | "overhead" | "profit") => {
+      if (type === "risk") return base * margins.riskPct;
+      if (type === "overhead") return base * margins.overheadPct;
+      if (type === "profit") return base * margins.profitPct;
+      return 0;
+    };
+
+    const processElementForOverall = (title: string, materials: number, labor: number) => {
+      const base = materials + labor;
+      const risk = getDerived(base, "risk");
+      const overhead = getDerived(base, "overhead");
+      const profit = getDerived(base, "profit");
+      const total = base + risk + overhead + profit;
+      return {
+        Element: title,
+        Materials: materials,
+        Labor: labor,
+        Risk: risk,
+        Overhead: overhead,
+        Profit: profit,
+        "Total Customer Price": total
+      };
+    };
+
+    accounting.elements.forEach((e: any) => {
+      overallData.push(processElementForOverall(e.title, e.totals.materials, e.totals.labor));
+    });
+
+    if (accounting.projectCosts) {
+      overallData.push(processElementForOverall("Project Level Costs", accounting.projectCosts.totals.materials, accounting.projectCosts.totals.labor));
+    }
+
+    const totalMaterials = overallData.reduce((sum, item) => sum + item.Materials, 0);
+    const totalLabor = overallData.reduce((sum, item) => sum + item.Labor, 0);
+    overallData.push(processElementForOverall("GRAND TOTAL", totalMaterials, totalLabor));
+
+    // --- Materials Sheet ---
+    const materialsData: any[] = [];
+    const processMaterialLine = (elementName: string, line: any) => {
+      const planned = line.qty * line.unitCost;
+      const actual = line.actualTotal ?? (line.actualQty !== undefined && line.actualUnitCost !== undefined ? line.actualQty * line.actualUnitCost : 0);
+      const gap = actual - planned;
+      return {
+        Element: elementName,
+        Item: line.name,
+        "Planned Qty": line.qty,
+        "Planned Unit Cost": line.unitCost,
+        "Planned Total": planned,
+        "Actual Qty": line.actualQty ?? 0,
+        "Actual Unit Cost": line.actualUnitCost ?? 0,
+        "Actual Total": actual,
+        Gap: gap
+      };
+    }
+
+    accounting.elements.forEach((e: any) => {
+      e.materials.forEach((m: any) => materialsData.push(processMaterialLine(e.title, m)));
+    });
+    if (accounting.projectCosts) {
+      accounting.projectCosts.materials.forEach((m: any) => materialsData.push(processMaterialLine("Project Level Costs", m)));
+    }
+
+    // --- Labor Sheet ---
+    const laborData: any[] = [];
+    const processLaborLine = (elementName: string, line: any) => {
+      const planned = line.qty * line.rate;
+      const actual = line.actualTotal ?? (line.actualQty !== undefined && line.actualRate !== undefined ? line.actualQty * line.actualRate : 0);
+      const gap = actual - planned;
+      return {
+        Element: elementName,
+        Role: line.role,
+        "Planned Qty": line.qty,
+        "Planned Rate": line.rate,
+        "Planned Total": planned,
+        "Actual Qty": line.actualQty ?? 0,
+        "Actual Rate": line.actualRate ?? 0,
+        "Actual Total": actual,
+        Gap: gap
+      };
+    }
+
+    accounting.elements.forEach((e: any) => {
+      e.labor.forEach((l: any) => laborData.push(processLaborLine(e.title, l)));
+    });
+    if (accounting.projectCosts) {
+      accounting.projectCosts.labor.forEach((l: any) => laborData.push(processLaborLine("Project Level Costs", l)));
+    }
+
+    exportToExcel({
+      "Overall": overallData,
+      "Materials": materialsData,
+      "Labor": laborData,
+    }, `Accounting_Export_${new Date().toLocaleDateString("en-CA")}`);
+  };
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -152,6 +254,13 @@ export default function AccountingPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors"
+          >
+            <Download size={16} />
+            Export to Excel
+          </button>
           <div className="px-3 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-mono font-bold">
             Live View
           </div>
@@ -1790,7 +1899,7 @@ const sortElements = (
       valA = a.totals.materials || a.totals.labor || 0;
       valB = b.totals.materials || b.totals.labor || 0;
     } else if (sortKey === "actual") {
-      const getActual = (lines: any[]) => (lines || []).reduce((sum: number, line: any) => sum + (line.actualTotal ?? (line.actualQty && line.actualUnitCost ? line.actualQty * line.actualUnitCost : 0) ?? 0), 0);
+      const getActual = (lines: any[]) => (lines || []).reduce((sum: number, line: any) => sum + (line.actualTotal ?? (line.actualQty && line.actualUnitCost ? line.actualQty * line.actualUnitCost : 0)), 0);
 
       // Check for materials or labor lines
       if (a.materials) valA = getActual(a.materials);
@@ -1801,7 +1910,7 @@ const sortElements = (
 
     } else if (sortKey === "gap") {
       // Gap = Actual - Planned
-      const getActual = (lines: any[]) => (lines || []).reduce((sum: number, line: any) => sum + (line.actualTotal ?? (line.actualQty && line.actualUnitCost ? line.actualQty * line.actualUnitCost : 0) ?? 0), 0);
+      const getActual = (lines: any[]) => (lines || []).reduce((sum: number, line: any) => sum + (line.actualTotal ?? (line.actualQty && line.actualUnitCost ? line.actualQty * line.actualUnitCost : 0)), 0);
 
       let actualA = 0;
       let plannedA = a.totals.materials || a.totals.labor || 0;

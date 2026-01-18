@@ -296,7 +296,7 @@ export const migrateMaterialLinesUomCode = internalMutation({
         unitCode: undefined,
         unitLabelHe: undefined,
         unit: undefined,
-      });
+      } as any);
       updated += 1;
     }
     return { updated };

@@ -3,8 +3,9 @@
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import Link from "next/link";
-import { useState } from "react";
-import { Search, Filter, Calendar, Briefcase, User, CheckCircle2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, Filter, Calendar, Briefcase, User, CheckCircle2, Download } from "lucide-react";
+import { exportToCsv } from "../../lib/exportUtils";
 
 const WORK_TYPES = [
   "carpentry",
@@ -28,6 +29,8 @@ export default function GlobalTasksPage() {
   const [status, setStatus] = useState<string>("");
   const [workType, setWorkType] = useState<string>("");
 
+  const [isExporting, setIsExporting] = useState(false);
+
   const projects = useQuery(api.projects.list);
   const tasks = useQuery(api.tasksStudio.listGlobal, {
     search: search || undefined,
@@ -37,11 +40,52 @@ export default function GlobalTasksPage() {
     workType: workType || undefined,
     limit: 100,
   });
+
+  const exportData = useQuery(api.tasksStudio.listGlobal, isExporting ? {
+    search: search || undefined,
+    projectId: projectId ? (projectId as any) : undefined,
+    projectStatus: projectStatus || undefined,
+    status: status || undefined,
+    workType: workType || undefined,
+    // No limit for export
+  } : "skip");
+
+  useEffect(() => {
+    if (isExporting && exportData) {
+      const formatted = exportData.map((t: any) => ({
+        "Task ID": t._id,
+        "Title": t.title,
+        "Description": t.description || "",
+        "Status": t.status,
+        "Work Type": t.workType,
+        "Assignee": t.assignee || "",
+        "Project": t.projectName,
+        "Customer": t.customerName,
+        "Project Status": t.projectStatus,
+        "Due Date": t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "",
+        "Created At": t.creationTime ? new Date(t.creationTime).toLocaleString() : "",
+      }));
+
+      exportToCsv(formatted, `Tasks_Export_${new Date().toLocaleDateString("en-CA")}`);
+      setIsExporting(false);
+    }
+  }, [exportData, isExporting]);
+
   return (
     <div className="p-8 max-w-[1600px] mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Global Tasks</h1>
-        <p className="text-gray-500">View and manage tasks across all projects</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Global Tasks</h1>
+          <p className="text-gray-500">View and manage tasks across all projects</p>
+        </div>
+        <button
+          onClick={() => setIsExporting(true)}
+          disabled={isExporting}
+          className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors disabled:opacity-50"
+        >
+          <Download size={16} />
+          {isExporting ? "Exporting..." : "Export to CSV"}
+        </button>
       </div>
 
       {/* Filters */}
@@ -146,12 +190,11 @@ export default function GlobalTasksPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border capitalize ${
-                      task.status === "done" ? "bg-green-50 text-green-700 border-green-200" :
-                      task.status === "doing" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                      task.status === "blocked" ? "bg-red-50 text-red-700 border-red-200" :
-                      "bg-gray-100 text-gray-600 border-gray-200"
-                    }`}>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border capitalize ${task.status === "done" ? "bg-green-50 text-green-700 border-green-200" :
+                        task.status === "doing" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                          task.status === "blocked" ? "bg-red-50 text-red-700 border-red-200" :
+                            "bg-gray-100 text-gray-600 border-gray-200"
+                      }`}>
                       {task.status || "Todo"}
                     </span>
                   </td>

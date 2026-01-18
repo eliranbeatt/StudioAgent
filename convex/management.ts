@@ -248,10 +248,41 @@ export const createTemplate = mutation({
   },
 });
 
+export const updateTemplate = mutation({
+  args: {
+    id: v.id("materialTemplates"),
+    nameHe: v.optional(v.string()),
+    categoryId: v.optional(v.id("materialCategories")),
+    kind: v.optional(v.string()),
+    defaultUomCode: v.optional(v.string()),
+    searchKeywords: v.optional(v.array(v.string())),
+    attributeDefs: v.optional(v.array(v.any())),
+    notesHe: v.optional(v.string()),
+    active: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...fields } = args;
+    await ctx.db.patch(id, {
+      ...fields,
+      updatedAt: Date.now(),
+    } as any);
+  },
+});
+
+export const deleteTemplate = mutation({
+  args: { id: v.id("materialTemplates") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      active: false,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const searchTemplates = query({
   args: { query: v.string() },
   handler: async (ctx, args) => {
-    const all = await ctx.db.query("materialTemplates").collect();
+    const all = await ctx.db.query("materialTemplates").filter(q => q.eq(q.field("active"), true)).collect();
     if (!args.query) return all;
 
     const lowerQ = args.query.toLowerCase();
@@ -265,6 +296,7 @@ export const listVariants = query({
     return await ctx.db
       .query("materialVariants")
       .withIndex("by_template", (q) => q.eq("templateId", args.templateId))
+      .filter(q => q.neq(q.field("status"), "deprecated"))
       .collect();
   },
 });
@@ -330,6 +362,38 @@ export const createVariant = mutation({
       status: "active",
       notesHe: args.notesHe,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const updateVariant = mutation({
+  args: {
+    id: v.id("materialVariants"),
+    labelHe: v.optional(v.string()),
+    attributes: v.optional(v.any()),
+    uomCode: v.optional(v.string()),
+    thicknessMm: v.optional(v.number()),
+    widthMm: v.optional(v.number()),
+    heightMm: v.optional(v.number()),
+    lengthMm: v.optional(v.number()),
+    notesHe: v.optional(v.string()),
+    status: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...fields } = args;
+    await ctx.db.patch(id, {
+      ...fields,
+      updatedAt: Date.now(),
+    } as any);
+  },
+});
+
+export const deleteVariant = mutation({
+  args: { id: v.id("materialVariants") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      status: "deprecated",
       updatedAt: Date.now(),
     });
   },

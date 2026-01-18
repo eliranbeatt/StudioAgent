@@ -343,6 +343,21 @@ function normalizeUomCode(
   return undefined;
 }
 
+function normalizePricingModel(
+  model: string | undefined | null
+): "per_unit" | "per_sheet" | "per_m" | "per_m2" | "per_pack" | "tiered" | "formula" | "unknown" | undefined {
+  if (!model) return undefined;
+  const m = model.toLowerCase().trim();
+  if (m === "unit" || m === "per_unit" || m === "ea" || m === "each") return "per_unit";
+  if (m === "sheet" || m === "per_sheet" || m === "sheets") return "per_sheet";
+  if (m === "m" || m === "per_m" || m === "meter") return "per_m";
+  if (m === "m2" || m === "per_m2" || m === "sqm") return "per_m2";
+  if (m === "pack" || m === "per_pack" || m === "box") return "per_pack";
+  if (m === "tiered") return "tiered";
+  if (m === "formula") return "formula";
+  return "unknown";
+}
+
 function maxNumber(values: Array<number | undefined | null>) {
   const numeric = values.filter((value): value is number => Number.isFinite(value));
   if (numeric.length === 0) return undefined;
@@ -1502,7 +1517,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       sourceType: fields.sourceType ?? "web",
       checkedAt: fields.checkedAt ?? now,
       currency: fields.currency ?? "NIS",
-      pricingModel: fields.pricingModel ?? "unknown",
+      pricingModel: normalizePricingModel(fields.pricingModel) ?? "unknown",
       amount: fields.amount ?? undefined,
       minQty: fields.minQty ?? undefined,
       packSize: fields.packSize ?? undefined,

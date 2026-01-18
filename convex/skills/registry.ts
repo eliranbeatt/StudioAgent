@@ -29,6 +29,7 @@ export interface SkillDefinition {
     promptAddon: string;
   };
   model: string;
+  llmParams?: Record<string, any>;
   isEnabled?: boolean;
 }
 
@@ -381,6 +382,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.SHOPPING_PLANNER_WEB,
     },
     model: "gpt-5-mini",
+    llmParams: { reasoning_effort: "medium" },
   },
   {
     skillId: "BUYING_ASSISTANT_WEB",
@@ -437,6 +439,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.RESEARCH_PRICING_ESTIMATES_WEB,
     },
     model: "gpt-5-mini",
+    llmParams: { reasoning_effort: "medium" },
   },
   {
     skillId: "PRINT_QA",
@@ -550,6 +553,7 @@ const seedSkillsCore = async (ctx: any) => {
         config: skill.config,
         prompts: skill.prompts,
         model: skill.model,
+        llmParams: skill.llmParams,
         isEnabled: isEnabled,
         version: (existing.version ?? 0) + 1,
       });
@@ -564,6 +568,7 @@ const seedSkillsCore = async (ctx: any) => {
         config: skill.config,
         prompts: skill.prompts,
         model: skill.model,
+        llmParams: skill.llmParams,
         isEnabled: isEnabled,
         version: 1,
       });
@@ -599,6 +604,7 @@ export const ensureSkillsSeeded = mutation({
           scheduling: current.scheduling,
           config: current.config,
           prompts: current.prompts,
+          llmParams: current.llmParams,
         };
         const nextSnapshot = {
           labelHe: skill.labelHe,
@@ -608,6 +614,7 @@ export const ensureSkillsSeeded = mutation({
           scheduling: skill.scheduling,
           config: skill.config,
           prompts: skill.prompts,
+          llmParams: skill.llmParams,
         };
         if (JSON.stringify(currentSnapshot) !== JSON.stringify(nextSnapshot)) {
           needsUpdate = true;

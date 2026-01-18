@@ -21,36 +21,63 @@ export default function WebPriceResultsPage() {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="p-4 font-semibold text-gray-600">Title</th>
-              <th className="p-4 font-semibold text-gray-600">URL</th>
-              <th className="p-4 font-semibold text-gray-600">Checked</th>
+              <th className="p-4 font-semibold text-gray-600">Price</th>
+              <th className="p-4 font-semibold text-gray-600">Model</th>
+              <th className="p-4 font-semibold text-gray-600 w-1/3">Notes/Context</th>
+              <th className="p-4 font-semibold text-gray-600">Link</th>
+              <th className="p-4 font-semibold text-gray-600">Date</th>
             </tr>
           </thead>
           <tbody>
             {webPriceRecords.map((record: any) => (
-              <tr key={record._id} className="border-b">
-                <td className="p-4">{record.title ?? "-"}</td>
-                <td className="p-4 text-xs text-blue-600 break-all">
+              <tr key={record._id} className="border-b hover:bg-gray-50">
+                <td className="p-4 font-medium text-gray-900">{record.title ?? "-"}</td>
+                
+                <td className="p-4 font-bold text-gray-800">
+                  {record.amount !== undefined 
+                    ? `${Number(record.amount).toLocaleString()} ${record.currency ?? "NIS"}` 
+                    : <span className="text-gray-400 italic">No price</span>}
+                </td>
+
+                <td className="p-4 text-xs">
+                  <span className="px-2 py-1 bg-gray-100 rounded-md border border-gray-200">
+                    {record.pricingModel ?? "unknown"}
+                  </span>
+                </td>
+
+                <td className="p-4 text-sm text-gray-600">
+                  {record.notesHe ? (
+                    <div dir="rtl" className="whitespace-pre-wrap">{record.notesHe}</div>
+                  ) : (
+                    <div className="text-xs text-gray-400 truncate max-w-xs" title={record.rawSnippet}>
+                      {record.rawSnippet}
+                    </div>
+                  )}
+                </td>
+
+                <td className="p-4 text-xs text-blue-600">
                   {record.url ? (
                     <a
                       href={record.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="hover:underline"
+                      className="hover:underline flex items-center gap-1"
                     >
-                      {record.url}
+                      Open ↗
                     </a>
                   ) : (
                     "-"
                   )}
                 </td>
-                <td className="p-4 text-xs text-gray-500">
+                
+                <td className="p-4 text-xs text-gray-500 whitespace-nowrap">
                   {record.checkedAt ? new Date(record.checkedAt).toLocaleDateString() : "-"}
                 </td>
               </tr>
             ))}
             {webPriceRecords.length === 0 && (
               <tr>
-                <td colSpan={3} className="p-6 text-center text-gray-500">
+                <td colSpan={6} className="p-6 text-center text-gray-500">
                   No web price results yet.
                 </td>
               </tr>

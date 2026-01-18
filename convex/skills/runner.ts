@@ -74,7 +74,7 @@ export const runSkill = action({
 
       if (skillId === "CONTEXT_GENERATION") {
         const docPrompt = `${systemPrompt}\n\nOUTPUT MODE: DOC_ONLY. Return JSON with blocks array containing ONLY ChatBlock.`;
-        const docBlocks = await callLLM(ctx, docPrompt, allowedTools, skillData.skill.model, {
+        const docBlocks = await callLLM(ctx, docPrompt, allowedTools, skillData.skill.model, skillData.skill.llmParams, {
           projectId,
           conversationId,
           skillId,
@@ -94,7 +94,7 @@ export const runSkill = action({
           clarifications: clarification,
         };
         const questionsPrompt = `${buildSystemPrompt(skillData.skill, updatedContext)}\n\nOUTPUT MODE: QUESTIONS_ONLY. Return JSON with blocks array containing ONLY QuestionsBlock. Base questions on updated currentKnowledge + qaPairs + userInput.`;
-        const questionBlocks = await callLLM(ctx, questionsPrompt, allowedTools, skillData.skill.model, {
+        const questionBlocks = await callLLM(ctx, questionsPrompt, allowedTools, skillData.skill.model, skillData.skill.llmParams, {
           projectId,
           conversationId,
           skillId,
@@ -116,7 +116,7 @@ export const runSkill = action({
         return savedBlocks;
       }
 
-      const blocks = await callLLM(ctx, systemPrompt, allowedTools, skillData.skill.model, {
+      const blocks = await callLLM(ctx, systemPrompt, allowedTools, skillData.skill.model, skillData.skill.llmParams, {
         projectId,
         conversationId,
         skillId,
@@ -576,34 +576,8 @@ export const saveRunResult = internalMutation({
     const blocks = args.blocks;
 
     const run = await ctx.db.get(args.runId);
-    const isPricingSkill = run?.skillId === "RESEARCH_PRICING_ESTIMATES_WEB";
-
-    if (isPricingSkill) {
-      const useWebSearch = true;
-      const webOps = Array.isArray((run as any)?.webPriceOps) ? (run as any).webPriceOps : [];
-
-      if (useWebSearch && webOps.length === 0) {
-        throw new Error("RESEARCH_PRICING_ESTIMATES_WEB requires web_search results, but none were recorded.");
-      }
-
-      if (webOps.length > 0) {
-        const changeSetBlocks = blocks.filter((block: any) => block?.type === "ChangeSetBlock");
-        if (changeSetBlocks.length > 0) {
-          for (const block of changeSetBlocks) {
-            block.titleHe = block.titleHe ?? "????? ??? ??????";
-            block.summaryHe = block.summaryHe ?? "????? ?????? ??? ?????? ?????? ?????? ??????.";
-            block.changeSet = { ops: webOps };
-          }
-        } else {
-          blocks.push({
-            type: "ChangeSetBlock",
-            titleHe: "????? ??? ??????",
-            summaryHe: "????? ?????? ??? ?????? ?????? ?????? ??????.",
-            changeSet: { ops: webOps },
-          });
-        }
-      }
-    }
+    // Removed isPricingSkill logic that forced webPriceOps into the blocks.
+    // We now trust the LLM to output the parsed ChangeSetBlock.
 
     // Post-process ChangeSets
     for (const block of blocks) {
@@ -1057,18 +1031,18 @@ export const saveWebSearchResults = internalMutation({
         variantId: matchedVariantId,
         templateId: matchedTemplateId,
         vendorId: undefined,
-        sourceType: "web",
+        sourceType: "web" as "web",
         checkedAt: Date.now(),
         currency: "NIS",
-        pricingModel: "unknown",
+        pricingModel: "unknown" as "unknown",
         amount: undefined,
         url: item.url,
         title: item.title,
         domain,
         rawSnippet: item.content,
         extractedFields: { query: args.query, uomCode: args.uomCode },
-        confidence: "low",
-        createdBy: "agent",
+        confidence: "low" as const,
+        createdBy: "agent" as "agent" | "user",
         sourceRef: { projectId: args.projectId, query: args.query },
         createdAt: Date.now(),
       };
@@ -1121,7 +1095,7 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
   };
   const prompt = `${gateSkill.prompts.promptAddon}\n\nTARGET SKILL: ${args.targetSkillLabel} (${args.targetSkillId}).\nAsk questions relevant to this target.`;
 
-  const blocks = await callLLM(ctx, buildSystemPrompt({ ...gateSkill, prompts: { ...gateSkill.prompts, promptAddon: prompt } }, gateContext), {}, gateSkill.model, { projectId: args.projectId, conversationId: args.conversationId });
+  const blocks = await callLLM(ctx, buildSystemPrompt({ ...gateSkill, prompts: { ...gateSkill.prompts, promptAddon: prompt } }, gateContext), {}, gateSkill.model, gateSkill.llmParams, { projectId: args.projectId, conversationId: args.conversationId });
 
   // Store Session
   const questionsBlock = blocks.find((b: any) => b.type === "QuestionsBlock");
@@ -1196,6 +1170,7 @@ async function callLLM(
   systemPrompt: string,
   allowedTools: any,
   model?: string,
+  llmParams?: any,
   contextInfo?: { projectId: any, conversationId: any, skillId?: string, runId?: string }
 ) {
   if (!process.env.OPENAI_API_KEY) {
@@ -1258,7 +1233,7 @@ async function callLLM(
   const messages: any[] = [{ role: "system", content: systemPrompt }];
 
   let loopCount = 0;
-  while (loopCount < 5) {
+  while (loopCount < 8) {
     loopCount++;
     loopCount++;
     const response = await completionWithTracing(ctx, {
@@ -1266,6 +1241,7 @@ async function callLLM(
       messages: messages,
       tools: tools.length > 0 ? tools : undefined,
       response_format: tools.length > 0 ? undefined : { type: "json_object" },
+      ...llmParams,
     }, {
       projectId: contextInfo?.projectId,
       conversationId: contextInfo?.conversationId,
@@ -1278,23 +1254,15 @@ async function callLLM(
         const tc = toolCall as any;
         if (tc.function.name === "web_search") {
           const args = JSON.parse(tc.function.arguments);
-          const result = await searchWeb(args.query);
-          if (contextInfo?.projectId && contextInfo?.skillId === "RESEARCH_PRICING_ESTIMATES_WEB") {
-            const saved = await ctx.runMutation(internal.skills.runner.saveWebSearchResults, {
-              projectId: contextInfo.projectId,
-              query: args.query,
-              templateId: args.templateId,
-              variantId: args.variantId,
-              uomCode: args.uomCode,
-              result,
-            });
-            if (contextInfo.runId && saved?.ops?.length) {
-              await ctx.runMutation(internal.skills.runner.appendWebPriceOps, {
-                runId: contextInfo.runId,
-                ops: saved.ops,
-              });
-            }
+          
+          // SAFETY: Enforce commercial intent
+          const q = args.query.toLowerCase();
+          if (!q.includes("price") && !q.includes("buy") && !q.includes("מחיר") && !q.includes("₪") && !q.includes("cost") && !q.includes("store")) {
+             args.query += " price";
           }
+
+          const result = await searchWeb(args.query);
+          // Removed auto-save of web results. The LLM must process them.
           messages.push({
             role: "tool",
             tool_call_id: toolCall.id,
@@ -1365,23 +1333,15 @@ async function callLLM(
       for (const tc of embeddedToolCalls) {
         if (tc.name === "web_search") {
           const args = tc.arguments;
-          const result = await searchWeb(args.query);
-          if (contextInfo?.projectId && contextInfo?.skillId === "RESEARCH_PRICING_ESTIMATES_WEB") {
-            const saved = await ctx.runMutation(internal.skills.runner.saveWebSearchResults, {
-              projectId: contextInfo.projectId,
-              query: args.query,
-              templateId: args.templateId,
-              variantId: args.variantId,
-              uomCode: args.uomCode,
-              result,
-            });
-            if (contextInfo.runId && saved?.ops?.length) {
-              await ctx.runMutation(internal.skills.runner.appendWebPriceOps, {
-                runId: contextInfo.runId,
-                ops: saved.ops,
-              });
-            }
+          
+          // SAFETY: Enforce commercial intent
+          const q = (args.query || "").toLowerCase();
+          if (!q.includes("price") && !q.includes("buy") && !q.includes("מחיר") && !q.includes("₪") && !q.includes("cost") && !q.includes("store")) {
+             args.query = (args.query || "") + " price";
           }
+
+          const result = await searchWeb(args.query);
+          // Removed auto-save of web results.
           results.push(`Tool 'web_search' (${args.query}) result: ${JSON.stringify(result)}`);
         }
         // Add other tools if needed
@@ -1406,39 +1366,7 @@ async function callLLM(
       return [{ type: "ChatBlock", markdownHe: content }];
     }
 
-    if (
-      contextInfo?.skillId === "RESEARCH_PRICING_ESTIMATES_WEB" &&
-      allowedTools?.webSearch &&
-      typeof (parsed as any).query === "string" &&
-      !(parsed as any).blocks &&
-      !(parsed as any).changeSet
-    ) {
-      const query = String((parsed as any).query);
-      const result = await searchWeb(query);
-      let ops: any[] = [];
-      if (contextInfo?.projectId) {
-        const saved = await ctx.runMutation(internal.skills.runner.saveWebSearchResults, {
-          projectId: contextInfo.projectId,
-          query,
-          result,
-        });
-        if (contextInfo.runId && saved?.ops?.length) {
-          await ctx.runMutation(internal.skills.runner.appendWebPriceOps, {
-            runId: contextInfo.runId,
-            ops: saved.ops,
-          });
-        }
-        ops = saved?.ops ?? [];
-      }
-      return normalizeBlocks([{
-        type: "ChangeSetBlock",
-        titleHe: "מחירי ווב שנמצאו",
-        summaryHe: ops.length > 0
-          ? "נמצאו תוצאות ווב ונוצרו פעולות לשמירת מחירים."
-          : "לא נמצאו תוצאות ווב לשמירה.",
-        changeSet: { ops },
-      }]);
-    }
+    // Removed legacy fallback for RESEARCH_PRICING_ESTIMATES_WEB that bypassed reasoning.
 
 
     let blocks = parsed.blocks || parsed;

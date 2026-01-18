@@ -315,12 +315,16 @@ export default function PricesPage() {
             </tr>
           </thead>
           <tbody>
-            {pricingFormulas?.map((formula) => (
-              <tr key={formula._id} className="border-b">
-                <td className="p-4">
-                  {templateMap.get(formula.templateId)?.nameHe ?? formula.templateId}
-                </td>
-                <td className="p-4">
+            {pricingFormulas?.map((formula) => {
+              const template = templateMap.get(formula.templateId);
+              return (
+                <tr key={formula._id} className="border-b">
+                  <td className="p-4">
+                    {template && typeof template === 'object' && 'nameHe' in template 
+                      ? (template as any).nameHe 
+                      : formula.templateId}
+                  </td>
+                  <td className="p-4">
                   {vendors?.find((vendor) => vendor._id === formula.vendorId)?.name ?? '-'}
                 </td>
                 <td className="p-4 text-xs uppercase text-gray-500">{formula.formulaType}</td>
@@ -329,7 +333,8 @@ export default function PricesPage() {
                   {new Date(formula.checkedAt).toLocaleDateString()}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {pricingFormulas?.length === 0 && (
               <tr>
                 <td colSpan={5} className="p-6 text-center text-gray-500">
@@ -354,17 +359,22 @@ export default function PricesPage() {
             </tr>
           </thead>
           <tbody>
-            {priceRecords?.map((record) => (
-              <tr key={record._id} className="border-b">
-                <td className="p-4">
-                  {record.templateId
-                    ? templateMap.get(record.templateId)?.nameHe ?? record.templateId
-                    : '-'}
-                </td>
-                <td className="p-4">
-                  {record.variantId ? variantMap.get(record.variantId)?.labelHe ?? record.variantId : '-'}
-                </td>
-                <td className="p-4">
+            {priceRecords?.map((record) => {
+              const template = record.templateId ? templateMap.get(record.templateId) : null;
+              const variant = record.variantId ? variantMap.get(record.variantId) : null;
+              return (
+                <tr key={record._id} className="border-b">
+                  <td className="p-4">
+                    {template && typeof template === 'object' && 'nameHe' in template 
+                      ? (template as any).nameHe 
+                      : record.templateId ?? '-'}
+                  </td>
+                  <td className="p-4">
+                    {variant && typeof variant === 'object' && 'labelHe' in variant 
+                      ? (variant as any).labelHe 
+                      : record.variantId ?? '-'}
+                  </td>
+                  <td className="p-4">
                   {vendors?.find((vendor) => vendor._id === record.vendorId)?.name ?? '-'}
                 </td>
                 <td className="p-4 font-mono">
@@ -375,7 +385,8 @@ export default function PricesPage() {
                   {new Date(record.checkedAt).toLocaleDateString()}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {priceRecords?.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-gray-500">
