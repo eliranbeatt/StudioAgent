@@ -106,6 +106,94 @@ const inventoryResStatus = v.union(
   v.literal("fulfilled")
 );
 
+const CatalogItemKind = v.union(
+  v.literal("material"),
+  v.literal("print_service"),
+  v.literal("cut_service"),
+  v.literal("rental"),
+  v.literal("shipping"),
+  v.literal("other_service")
+);
+
+const UomCode = v.union(
+  v.literal("ea"),
+  v.literal("sheet"),
+  v.literal("m"),
+  v.literal("m2"),
+  v.literal("sqm"),
+  v.literal("m3"),
+  v.literal("kg"),
+  v.literal("l"),
+  v.literal("set"),
+  v.literal("box"),
+  v.literal("roll"),
+  v.literal("pack"),
+  v.literal("job"),
+  v.literal("hour")
+);
+
+const PriceSourceType = v.union(
+  v.literal("purchase"),
+  v.literal("manual"),
+  v.literal("web"),
+  v.literal("quote"),
+  v.literal("approvedElement")
+);
+
+const PricingModel = v.union(
+  v.literal("per_unit"),
+  v.literal("per_sheet"),
+  v.literal("per_m"),
+  v.literal("per_m2"),
+  v.literal("per_pack"),
+  v.literal("tiered"),
+  v.literal("formula"),
+  v.literal("unknown")
+);
+
+const Availability = v.union(
+  v.literal("inStock"),
+  v.literal("outOfStock"),
+  v.literal("unknown")
+);
+
+const OrderMethod = v.union(
+  v.literal("walkin"),
+  v.literal("phone"),
+  v.literal("whatsapp"),
+  v.literal("website"),
+  v.literal("email"),
+  v.literal("unknown")
+);
+
+const PriceConfidence = v.union(
+  v.literal("high"),
+  v.literal("medium"),
+  v.literal("low")
+);
+
+const CatalogAttributeDef = v.object({
+  key: v.string(),
+  labelHe: v.string(),
+  type: v.union(
+    v.literal("number"),
+    v.literal("enum"),
+    v.literal("boolean"),
+    v.literal("text")
+  ),
+  unit: v.optional(v.string()),
+  required: v.optional(v.boolean()),
+  enumOptions: v.optional(
+    v.array(
+      v.object({
+        value: v.string(),
+        labelHe: v.string(),
+      })
+    )
+  ),
+  commonValues: v.optional(v.array(v.any())),
+});
+
 export default defineSchema({
   // Users (Application users)
   users: defineTable({
@@ -486,23 +574,12 @@ export default defineSchema({
     workTypeLabelHe: v.optional(v.string()),
     itemName: v.optional(v.string()),
     spec: v.optional(v.string()),
+    templateId: v.optional(v.id("materialTemplates")),
+    variantId: v.optional(v.id("materialVariants")),
+    priceRecordId: v.optional(v.id("catalogPriceRecords")),
     quantity: v.optional(v.number()),
-    unitCode: v.optional(
-      v.union(
-        v.literal("ea"),
-        v.literal("m"),
-        v.literal("sqm"),
-        v.literal("m2"),
-        v.literal("m3"),
-        v.literal("kg"),
-        v.literal("l"),
-        v.literal("set"),
-        v.literal("box"),
-        v.literal("roll")
-      )
-    ),
-    unitLabelHe: v.optional(v.string()),
-    unit: v.optional(v.string()),
+    uomId: v.optional(v.id("uoms")),
+    uomCode: v.optional(UomCode),
     wastePct: v.optional(v.number()),
     plannedUnitCost: v.optional(v.number()),
     plannedTotalCost: v.optional(v.number()),
@@ -530,6 +607,17 @@ export default defineSchema({
     ),
     sourceLabelHe: v.optional(v.string()),
     source: v.optional(v.string()),
+    pricingSourceCode: v.optional(
+      v.union(
+        v.literal("catalog_manual"),
+        v.literal("purchase_actual"),
+        v.literal("web"),
+        v.literal("estimate"),
+        v.literal("override")
+      )
+    ),
+    priceCheckedAt: v.optional(v.number()),
+    priceUrl: v.optional(v.string()),
     confidence: v.optional(v.number()),
     actualUnitCost: v.optional(v.number()),
     actualTotalCost: v.optional(v.number()),
@@ -1080,32 +1168,152 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_name", ["name"]),
 
-  // Material Catalog
-  materialCatalog: defineTable({
-    canonicalName: v.string(),
-    unit: v.string(),
-    synonyms: v.array(v.string()),
-    typicalVendorId: v.optional(v.id("vendors")),
-    tags: v.array(v.string()),
+  // Catalog Categories
+  materialCategories: defineTable({
+    nameHe: v.string(),
+    parentId: v.optional(v.id("materialCategories")),
+    sortOrder: v.optional(v.number()),
+    icon: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_parent", ["parentId"]),
+
+  // Units of Measure
+  uoms: defineTable({
+    code: UomCode,
+    labelHe: v.string(),
+    baseDimension: v.union(
+      v.literal("count"),
+      v.literal("length"),
+      v.literal("area"),
+      v.literal("volume"),
+      v.literal("weight")
+    ),
+    toBaseFactor: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_code", ["code"]),
+
+  // Catalog Templates (types)
+  materialTemplates: defineTable({
+    categoryId: v.id("materialCategories"),
+    nameHe: v.string(),
+    kind: CatalogItemKind,
+    defaultUomCode: UomCode,
+    searchKeywords: v.array(v.string()),
+    attributeDefs: v.array(CatalogAttributeDef),
+    notesHe: v.optional(v.string()),
     active: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_name", ["canonicalName"]),
+  })
+    .index("by_category", ["categoryId"])
+    .index("by_name", ["nameHe"]),
 
-  // Price Observations
-  priceObservations: defineTable({
-    catalogId: v.id("materialCatalog"),
+  // Catalog Variants (SKUs)
+  materialVariants: defineTable({
+    templateId: v.id("materialTemplates"),
+    labelHe: v.string(),
+    attributes: v.any(),
+    normalizedKey: v.string(),
+    thicknessMm: v.optional(v.number()),
+    widthMm: v.optional(v.number()),
+    heightMm: v.optional(v.number()),
+    lengthMm: v.optional(v.number()),
+    uomCode: v.optional(UomCode),
+    status: v.union(v.literal("active"), v.literal("deprecated")),
+    notesHe: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_template", ["templateId"])
+    .index("by_normalizedKey", ["normalizedKey"]),
+
+  // Vendor Locations
+  vendorLocations: defineTable({
+    vendorId: v.id("vendors"),
+    nameHe: v.string(),
+    addressHe: v.string(),
+    geo: v.optional(v.any()),
+    pickupHoursHe: v.optional(v.string()),
+    pickupNotesHe: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_vendor", ["vendorId"]),
+
+  // Price Records (unified price memory)
+  catalogPriceRecords: defineTable({
+    variantId: v.optional(v.id("materialVariants")),
+    templateId: v.optional(v.id("materialTemplates")),
     vendorId: v.optional(v.id("vendors")),
-    unitCost: v.number(),
+    sourceType: PriceSourceType,
+    checkedAt: v.number(),
+    validUntil: v.optional(v.number()),
     currency: v.string(),
-    observedAt: v.number(),
-    source: v.union(
-      v.literal("purchase"),
-      v.literal("manual"),
-      v.literal("approvedElement")
+    pricingModel: PricingModel,
+    amount: v.optional(v.number()),
+    minQty: v.optional(v.number()),
+    packSize: v.optional(v.number()),
+    setupFee: v.optional(v.number()),
+    availability: v.optional(Availability),
+    leadTimeDays: v.optional(v.number()),
+    orderMethod: v.optional(OrderMethod),
+    orderUrl: v.optional(v.string()),
+    shippingAvailable: v.optional(v.boolean()),
+    shippingCost: v.optional(v.number()),
+    pickupAvailable: v.optional(v.boolean()),
+    pickupLocationId: v.optional(v.id("vendorLocations")),
+    url: v.optional(v.string()),
+    title: v.optional(v.string()),
+    domain: v.optional(v.string()),
+    rawSnippet: v.optional(v.string()),
+    extractedFields: v.optional(v.any()),
+    confidence: v.optional(PriceConfidence),
+    notesHe: v.optional(v.string()),
+    createdBy: v.optional(v.union(v.literal("user"), v.literal("agent"))),
+    sourceRef: v.optional(v.any()),
+    urlHash: v.optional(v.string()),
+    offerFingerprint: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_variant_checkedAt", ["variantId", "checkedAt"])
+    .index("by_template_checkedAt", ["templateId", "checkedAt"])
+    .index("by_urlHash", ["urlHash"]),
+
+  // Pricing Formulas (prints and services)
+  pricingFormulas: defineTable({
+    templateId: v.id("materialTemplates"),
+    vendorId: v.optional(v.id("vendors")),
+    formulaType: v.union(
+      v.literal("print_m2"),
+      v.literal("cnc_cut"),
+      v.literal("custom")
     ),
-    sourceRef: v.any(), // { projectId, elementId, versionId }
-  }).index("by_catalog", ["catalogId", "observedAt"]),
+    params: v.any(),
+    currency: v.string(),
+    checkedAt: v.number(),
+    sourceType: PriceSourceType,
+    evidenceUrl: v.optional(v.string()),
+    notesHe: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_template_vendor", ["templateId", "vendorId"]),
+
+  // Catalog Synonyms
+  catalogSynonyms: defineTable({
+    phrase: v.string(),
+    templateId: v.id("materialTemplates"),
+    boost: v.optional(v.number()),
+    notesHe: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_phrase", ["phrase"])
+    .index("by_template", ["templateId"]),
+
+  // Procurement Preferences
+  procurementPrefs: defineTable({
+    key: v.string(),
+    value: v.any(),
+  }).index("by_key", ["key"]),
 
   purchases: defineTable({
     projectId: v.optional(v.id("projects")),
@@ -1118,7 +1326,7 @@ export default defineSchema({
       v.literal("paid"),
       v.literal("cancelled")
     ),
-    lineItems: v.array(v.any()), // [{ catalogId?, description?, qty, unit, unitPrice, lineTotal }]
+    lineItems: v.array(v.any()), // [{ templateId?, variantId?, description?, qty, uomCode, unitPrice, lineTotal }]
     notes: v.optional(v.string()),
     createdFromChangeSetId: v.optional(v.id("changeSets")), // Audit
     createdAt: v.number(),
@@ -1168,9 +1376,11 @@ export default defineSchema({
 
   // Inventory Items
   inventoryItems: defineTable({
-    catalogId: v.optional(v.id("materialCatalog")),
+    templateId: v.optional(v.id("materialTemplates")),
+    variantId: v.optional(v.id("materialVariants")),
     name: v.string(),
-    unit: v.string(),
+    uomId: v.optional(v.id("uoms")),
+    uomCode: UomCode,
     onHandQty: v.number(),
     location: v.optional(v.string()),
     notes: v.optional(v.string()),
@@ -1282,6 +1492,7 @@ export default defineSchema({
     status: v.union(v.literal("running"), v.literal("succeeded"), v.literal("failed")),
     inputParams: v.any(),
     blocks: v.optional(v.any()),
+    webPriceOps: v.optional(v.array(v.any())),
     usage: v.optional(v.any()),
     rawModelResponse: v.optional(v.string()),
     createdAt: v.number(),

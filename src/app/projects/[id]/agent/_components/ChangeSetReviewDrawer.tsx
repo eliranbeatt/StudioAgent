@@ -109,7 +109,7 @@ export default function ChangeSetReviewDrawer({
       const unapplied = new Set<number>(allIndices.filter(i => !appliedIndices.includes(i)));
       setSelectedIndices(unapplied);
     }
-  }, [changeSet?.ops]);
+  }, [changeSet?.ops, changeSet?.appliedOpIndices, selectedIndices.size]);
 
   const handleApplySelected = async () => {
     setIsApplying(true);

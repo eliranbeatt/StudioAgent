@@ -22,6 +22,8 @@ import { ApprovedBudgetRow } from "./ApprovedBudgetRow";
 import { ElementBreakdownTable } from "./ElementBreakdownTable";
 
 type TabKey = "summary" | "materials" | "labor";
+type SortKey = "default" | "planned" | "actual" | "gap";
+type SortDirection = "asc" | "desc";
 
 type MaterialLine = {
   id: string;
@@ -58,14 +60,46 @@ type TaskOption = {
 const getLineOrderValue = (line: { order?: number }, fallback: number) =>
   Number.isFinite(line.order) ? (line.order as number) : fallback;
 
-const sortLines = <T extends { id: string; order?: number }>(lines: T[]) =>
+
+
+const sortLines = <T extends { id: string; order?: number }>(
+  lines: T[],
+  sortKey: SortKey = "default",
+  sortDirection: SortDirection = "asc",
+  getPlanned?: (item: T) => number,
+  getActual?: (item: T) => number
+) =>
   lines
-    .map((line, index) => ({
-      line,
-      order: getLineOrderValue(line, index),
-      index,
-    }))
-    .sort((a, b) => a.order - b.order || a.index - b.index)
+    .map((line, index) => {
+      const planned = getPlanned ? getPlanned(line) : 0;
+      const actual = getActual ? getActual(line) : 0;
+      // Gap is distinct from actual - planned because actual might be incomplete/missing
+      // But for sorting, we'll treat missing actual as 0 or handle it
+      // Based on row logic: if actual is missing, gap is null.
+      // Let's assume for sorting: if actual is 0/missing, gap = 0 - planned = -planned?
+      // Or we can just compute it.
+      return {
+        line,
+        order: getLineOrderValue(line, index),
+        index,
+        planned,
+        actual,
+        gap: actual - planned,
+      };
+    })
+    .sort((a, b) => {
+      let res = 0;
+      if (sortKey === "planned") {
+        res = a.planned - b.planned;
+      } else if (sortKey === "actual") {
+        res = a.actual - b.actual;
+      } else if (sortKey === "gap") {
+        res = a.gap - b.gap;
+      } else {
+        res = a.order - b.order || a.index - b.index;
+      }
+      return sortDirection === "asc" ? res : -res;
+    })
     .map((entry) => entry.line);
 
 const getNextOrder = (lines: Array<{ order?: number }>) => {
@@ -254,7 +288,24 @@ function MaterialsTab({
   onDelete: (args: any) => Promise<any>;
   elements: any[];
 }) {
+
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
+  const [sortKey, setSortKey] = useState<SortKey>("default");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  const getMaterialPlanned = (m: MaterialLine) => m.qty * m.unitCost;
+  const getMaterialActual = (m: MaterialLine) =>
+    m.actualTotal ??
+    (m.actualQty !== undefined && m.actualUnitCost !== undefined
+      ? m.actualQty * m.actualUnitCost
+      : 0);
+
+  const toggleAll = (collapse: boolean) => {
+    const next: Record<string, boolean> = {};
+    elements.forEach((e) => (next[e.elementId] = collapse));
+    if (accounting.projectCosts) next["GLOBAL"] = collapse;
+    setCollapsedByElement(next);
+  };
 
   const addMaterialLine = async ({
     elementId,
@@ -297,19 +348,18 @@ function MaterialsTab({
     direction: -1 | 1;
     lines: MaterialLine[];
   }) => {
+    // We only support reordering when in default sort
+    if (sortKey !== "default") {
+      alert("Please switch to default sort to reorder lines.");
+      return;
+    }
+
     const sorted = sortLines(lines);
     const index = sorted.findIndex((line) => line.id === lineId);
     const target = sorted[index + direction];
     if (index === -1 || !target) return;
 
     try {
-      // Swapping orders by updating createdAt (since that's what we used in backend for now)
-      // OR we just swap their "order" field if we have one. 
-      // The backend uses 'order' arg to update 'createdAt'.
-      // But wait, 'createdAt' needs to be unique-ish or just ordered.
-      // Actually, swapping timestamps is tricky if they are close or identical.
-      // Let's assume we map the "order" value from the UI (which is derived from index) to the backend.
-
       const currentOrder = getLineOrderValue(target, index + direction); // target's order becomes ours
       const targetOrder = getLineOrderValue(sorted[index], index); // our order becomes targets
 
@@ -323,17 +373,74 @@ function MaterialsTab({
     }
   };
 
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("desc");
+    }
+  };
+
+  // Sort elements first
+  const sortedElements = sortElements(accounting.elements, sortKey, sortDirection);
+
   return (
     <div className="space-y-8">
-      {accounting.elements.map((element: any) => {
-        const sortedMaterials = sortLines(element.materials as MaterialLine[]);
+      <div className="flex items-center justify-between text-sm">
+        <div className="flex gap-2">
+          <button
+            onClick={() => toggleAll(false)}
+            className="text-xs font-medium text-gray-500 hover:text-gray-900 bg-white border border-gray-200 rounded px-2 py-1"
+          >
+            Expand All
+          </button>
+          <button
+            onClick={() => toggleAll(true)}
+            className="text-xs font-medium text-gray-500 hover:text-gray-900 bg-white border border-gray-200 rounded px-2 py-1"
+          >
+            Collapse All
+          </button>
+        </div>
+      </div>
+
+      <TabHeader
+        sortKey={sortKey}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+      />
+
+      {sortedElements.map((element: any) => {
+        const sortedMaterials = sortLines(
+          element.materials as MaterialLine[],
+          sortKey,
+          sortDirection,
+          getMaterialPlanned,
+          getMaterialActual
+        );
+
+        const plannedTotal = element.totals.materials;
+        const actualTotal = (element.materials as MaterialLine[]).reduce(
+          (sum, m) => sum + getMaterialActual(m),
+          0
+        );
+        const gap = actualTotal > 0 ? actualTotal - plannedTotal : null;
+        const gapClass =
+          gap === null
+            ? "text-gray-400"
+            : gap > 0
+              ? "text-green-600"
+              : gap < 0
+                ? "text-red-600"
+                : "text-gray-500";
+
         return (
           <div
             key={element.elementId}
             className="bg-white border border-gray-100 rounded-xl shadow-sm"
           >
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="px-6 py-4 border-b border-gray-100 grid grid-cols-12 gap-4 items-center">
+              <div className="col-span-6 flex items-center gap-3">
                 <button
                   onClick={() =>
                     setCollapsedByElement((prev) => ({
@@ -349,18 +456,112 @@ function MaterialsTab({
                     <ChevronDown size={16} />
                   )}
                 </button>
-                <div>
-                  <div className="font-semibold text-gray-900">{element.title}</div>
-                  <div className="text-xs text-gray-500">
-                    Materials: {element.totals.materials.toLocaleString()} NIS
-                  </div>
+                <div className="font-bold text-lg text-gray-900">
+                  {element.title}
+                </div>
+              </div>
+
+              <div className="col-span-2 text-sm font-mono font-medium text-gray-700">
+                {plannedTotal.toLocaleString()}
+              </div>
+
+              <div className="col-span-2 text-sm font-mono font-medium text-gray-700">
+                {actualTotal > 0 ? actualTotal.toLocaleString() : "-"}
+              </div>
+
+              <div className={`col-span-2 text-sm font-mono font-bold ${gapClass}`}>
+                {actualTotal > 0 ? formatGap(gap!) : "-"}
+              </div>
+            </div>
+            <button
+              onClick={() =>
+                addMaterialLine({
+                  elementId: element.elementId,
+                  order: getNextOrder(element.materials),
+                })
+              }
+              className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1 px-6 py-2"
+            >
+              <Plus size={14} /> Add line
+            </button>
+            {
+              collapsedByElement[element.elementId] ? null : (
+                <div className="divide-y">
+                  {sortedMaterials.length === 0 ? (
+                    <div className="p-6 text-sm text-gray-500">No materials</div>
+                  ) : (
+                    sortedMaterials.map((line: MaterialLine, index: number) => (
+                      <MaterialLineRow
+                        key={line.id}
+                        line={line}
+                        tasks={tasks}
+                        projectId={projectId}
+                        saving={savingLineId === line.id}
+                        canMoveUp={index > 0}
+                        canMoveDown={index < sortedMaterials.length - 1}
+                        onMoveUp={() =>
+                          handleMoveLine({
+                            lineId: line.id,
+                            direction: -1,
+                            lines: sortedMaterials,
+                          })
+                        }
+                        onMoveDown={() =>
+                          handleMoveLine({
+                            lineId: line.id,
+                            direction: 1,
+                            lines: sortedMaterials,
+                          })
+                        }
+                        onDelete={() =>
+                          handleDeleteLine({
+                            lineId: line.id,
+                          })
+                        }
+                        onSave={async (next) => {
+                          onSavingLineId(line.id);
+                          try {
+                            await onUpdate({
+                              lineId: line.id as Id<"materialLines">,
+                              itemName: next.name,
+                              quantity: next.qty,
+                              unitCost: next.unitCost,
+                              elementId: next.elementId === "" ? null : (next.elementId as Id<"elements"> | undefined),
+                            });
+                          } catch (e: any) {
+                            console.error(e);
+                            alert(`Failed to save: ${e.message}`);
+                          } finally {
+                            onSavingLineId(null);
+                          }
+                        }}
+                        elements={elements}
+                      />
+                    ))
+                  )}
+                </div>
+              )
+            }
+          </div>
+        );
+      })}
+
+      {
+        accounting.projectCosts ? (
+          <div className="bg-white border border-gray-100 rounded-xl shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <div className="font-semibold text-gray-900">
+                  Project Level Costs
+                </div>
+                <div className="text-xs text-gray-500">
+                  Materials: {accounting.projectCosts.totals.materials.toLocaleString()} NIS
                 </div>
               </div>
               <button
                 onClick={() =>
                   addMaterialLine({
-                    elementId: element.elementId,
-                    order: getNextOrder(element.materials),
+                    order: getNextOrder(accounting.projectCosts.materials),
                   })
                 }
                 className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -368,12 +569,19 @@ function MaterialsTab({
                 <Plus size={14} /> Add line
               </button>
             </div>
-            {collapsedByElement[element.elementId] ? null : (
-              <div className="divide-y">
-                {sortedMaterials.length === 0 ? (
-                  <div className="p-6 text-sm text-gray-500">No materials</div>
-                ) : (
-                  sortedMaterials.map((line: MaterialLine, index: number) => (
+            <div className="divide-y">
+              {accounting.projectCosts.materials.length === 0 ? (
+                <div className="p-6 text-sm text-gray-500">No materials</div>
+              ) : (
+                sortLines(
+                  accounting.projectCosts.materials as MaterialLine[],
+
+                  sortKey,
+                  sortDirection,
+                  getMaterialPlanned,
+                  getMaterialActual
+                ).map(
+                  (line: MaterialLine, index: number, lines: MaterialLine[]) => (
                     <MaterialLineRow
                       key={line.id}
                       line={line}
@@ -381,19 +589,19 @@ function MaterialsTab({
                       projectId={projectId}
                       saving={savingLineId === line.id}
                       canMoveUp={index > 0}
-                      canMoveDown={index < sortedMaterials.length - 1}
+                      canMoveDown={index < lines.length - 1}
                       onMoveUp={() =>
                         handleMoveLine({
                           lineId: line.id,
                           direction: -1,
-                          lines: sortedMaterials,
+                          lines,
                         })
                       }
                       onMoveDown={() =>
                         handleMoveLine({
                           lineId: line.id,
                           direction: 1,
-                          lines: sortedMaterials,
+                          lines,
                         })
                       }
                       onDelete={() =>
@@ -420,95 +628,15 @@ function MaterialsTab({
                       }}
                       elements={elements}
                     />
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {accounting.projectCosts ? (
-        <div className="bg-white border border-gray-100 rounded-xl shadow-sm">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <div className="font-semibold text-gray-900">
-                Project Level Costs
-              </div>
-              <div className="text-xs text-gray-500">
-                Materials: {accounting.projectCosts.totals.materials.toLocaleString()} NIS
-              </div>
-            </div>
-            <button
-              onClick={() =>
-                addMaterialLine({
-                  order: getNextOrder(accounting.projectCosts.materials),
-                })
-              }
-              className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
-            >
-              <Plus size={14} /> Add line
-            </button>
-          </div>
-          <div className="divide-y">
-            {accounting.projectCosts.materials.length === 0 ? (
-              <div className="p-6 text-sm text-gray-500">No materials</div>
-            ) : (
-              sortLines(accounting.projectCosts.materials as MaterialLine[]).map(
-                (line: MaterialLine, index: number, lines: MaterialLine[]) => (
-                  <MaterialLineRow
-                    key={line.id}
-                    line={line}
-                    tasks={tasks}
-                    projectId={projectId}
-                    saving={savingLineId === line.id}
-                    canMoveUp={index > 0}
-                    canMoveDown={index < lines.length - 1}
-                    onMoveUp={() =>
-                      handleMoveLine({
-                        lineId: line.id,
-                        direction: -1,
-                        lines,
-                      })
-                    }
-                    onMoveDown={() =>
-                      handleMoveLine({
-                        lineId: line.id,
-                        direction: 1,
-                        lines,
-                      })
-                    }
-                    onDelete={() =>
-                      handleDeleteLine({
-                        lineId: line.id,
-                      })
-                    }
-                    onSave={async (next) => {
-                      onSavingLineId(line.id);
-                      try {
-                        await onUpdate({
-                          lineId: line.id as Id<"materialLines">,
-                          itemName: next.name,
-                          quantity: next.qty,
-                          unitCost: next.unitCost,
-                          elementId: next.elementId === "" ? null : (next.elementId as Id<"elements"> | undefined),
-                        });
-                      } catch (e: any) {
-                        console.error(e);
-                        alert(`Failed to save: ${e.message}`);
-                      } finally {
-                        onSavingLineId(null);
-                      }
-                    }}
-                    elements={elements}
-                  />
+                  )
                 )
               )
-            )}
+              }
+            </div>
           </div>
-        </div>
-      ) : null}
-    </div>
+        ) : null
+      }
+    </div >
   );
 }
 
@@ -533,7 +661,24 @@ function LaborTab({
   onDelete: (args: any) => Promise<any>;
   elements: any[];
 }) {
+
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
+  const [sortKey, setSortKey] = useState<SortKey>("default");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  const getLaborPlanned = (l: LaborLine) => l.qty * l.rate;
+  const getLaborActual = (l: LaborLine) =>
+    l.actualTotal ??
+    (l.actualQty !== undefined && l.actualRate !== undefined
+      ? l.actualQty * l.actualRate
+      : 0);
+
+  const toggleAll = (collapse: boolean) => {
+    const next: Record<string, boolean> = {};
+    elements.forEach((e) => (next[e.elementId] = collapse));
+    if (accounting.projectCosts) next["GLOBAL"] = collapse;
+    setCollapsedByElement(next);
+  };
 
   const addLaborLine = async ({
     elementId,
@@ -576,6 +721,10 @@ function LaborTab({
     direction: -1 | 1;
     lines: LaborLine[];
   }) => {
+    if (sortKey !== "default") {
+      alert("Please switch to default sort to reorder lines.");
+      return;
+    }
     const sorted = sortLines(lines);
     const index = sorted.findIndex((line) => line.id === lineId);
     const target = sorted[index + direction];
@@ -593,17 +742,74 @@ function LaborTab({
     }
   };
 
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("desc");
+    }
+  };
+
+  // Sort elements first
+  const sortedElements = sortElements(accounting.elements, sortKey, sortDirection);
+
   return (
     <div className="space-y-8">
-      {accounting.elements.map((element: any) => {
-        const sortedLabor = sortLines(element.labor as LaborLine[]);
+      <div className="flex items-center justify-between text-sm">
+        <div className="flex gap-2">
+          <button
+            onClick={() => toggleAll(false)}
+            className="text-xs font-medium text-gray-500 hover:text-gray-900 bg-white border border-gray-200 rounded px-2 py-1"
+          >
+            Expand All
+          </button>
+          <button
+            onClick={() => toggleAll(true)}
+            className="text-xs font-medium text-gray-500 hover:text-gray-900 bg-white border border-gray-200 rounded px-2 py-1"
+          >
+            Collapse All
+          </button>
+        </div>
+      </div>
+
+      <TabHeader
+        sortKey={sortKey}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+      />
+
+      {sortedElements.map((element: any) => {
+        const sortedLabor = sortLines(
+          element.labor as LaborLine[],
+          sortKey,
+          sortDirection,
+          getLaborPlanned,
+          getLaborActual
+        );
+
+        const plannedTotal = element.totals.labor;
+        const actualTotal = (element.labor as LaborLine[]).reduce(
+          (sum, l) => sum + getLaborActual(l),
+          0
+        );
+        const gap = actualTotal > 0 ? actualTotal - plannedTotal : null;
+        const gapClass =
+          gap === null
+            ? "text-gray-400"
+            : gap > 0
+              ? "text-green-600"
+              : gap < 0
+                ? "text-red-600"
+                : "text-gray-500";
+
         return (
           <div
             key={element.elementId}
             className="bg-white border border-gray-100 rounded-xl shadow-sm"
           >
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="px-6 py-4 border-b border-gray-100 grid grid-cols-12 gap-4 items-center">
+              <div className="col-span-6 flex items-center gap-3">
                 <button
                   onClick={() =>
                     setCollapsedByElement((prev) => ({
@@ -619,18 +825,112 @@ function LaborTab({
                     <ChevronDown size={16} />
                   )}
                 </button>
-                <div>
-                  <div className="font-semibold text-gray-900">{element.title}</div>
-                  <div className="text-xs text-gray-500">
-                    Labor: {element.totals.labor.toLocaleString()} NIS
-                  </div>
+                <div className="font-bold text-lg text-gray-900">
+                  {element.title}
+                </div>
+              </div>
+
+              <div className="col-span-2 text-sm font-mono font-medium text-gray-700">
+                {plannedTotal.toLocaleString()}
+              </div>
+
+              <div className="col-span-2 text-sm font-mono font-medium text-gray-700">
+                {actualTotal > 0 ? actualTotal.toLocaleString() : "-"}
+              </div>
+
+              <div className={`col-span-2 text-sm font-mono font-bold ${gapClass}`}>
+                {actualTotal > 0 ? formatGap(gap!) : "-"}
+              </div>
+            </div>
+            <button
+              onClick={() =>
+                addLaborLine({
+                  elementId: element.elementId,
+                  order: getNextOrder(element.labor),
+                })
+              }
+              className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1 px-6 py-2"
+            >
+              <Plus size={14} /> Add line
+            </button>
+            {
+              collapsedByElement[element.elementId] ? null : (
+                <div className="divide-y">
+                  {sortedLabor.length === 0 ? (
+                    <div className="p-6 text-sm text-gray-500">No labor</div>
+                  ) : (
+                    sortedLabor.map((line: LaborLine, index: number) => (
+                      <LaborLineRow
+                        key={line.id}
+                        line={line}
+                        tasks={tasks}
+                        projectId={projectId}
+                        saving={savingLineId === line.id}
+                        canMoveUp={index > 0}
+                        canMoveDown={index < sortedLabor.length - 1}
+                        onMoveUp={() =>
+                          handleMoveLine({
+                            lineId: line.id,
+                            direction: -1,
+                            lines: sortedLabor,
+                          })
+                        }
+                        onMoveDown={() =>
+                          handleMoveLine({
+                            lineId: line.id,
+                            direction: 1,
+                            lines: sortedLabor,
+                          })
+                        }
+                        onDelete={() =>
+                          handleDeleteLine({
+                            lineId: line.id,
+                          })
+                        }
+                        onSave={async (next: any) => {
+                          onSavingLineId(line.id);
+                          try {
+                            await onUpdate({
+                              lineId: line.id as Id<"workLines">,
+                              role: next.role,
+                              quantity: next.qty,
+                              rate: next.rate,
+                              elementId: next.elementId === "" ? null : (next.elementId as Id<"elements"> | undefined),
+                            });
+                          } catch (e: any) {
+                            console.error(e);
+                            alert(`Failed to save: ${e.message}`);
+                          } finally {
+                            onSavingLineId(null);
+                          }
+                        }}
+                        elements={elements}
+                      />
+                    ))
+                  )}
+                </div>
+              )
+            }
+          </div>
+        );
+      })}
+
+      {
+        accounting.projectCosts ? (
+          <div className="bg-white border border-gray-100 rounded-xl shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <div className="font-semibold text-gray-900">
+                  Project Level Costs
+                </div>
+                <div className="text-xs text-gray-500">
+                  Labor: {accounting.projectCosts.totals.labor.toLocaleString()} NIS
                 </div>
               </div>
               <button
                 onClick={() =>
                   addLaborLine({
-                    elementId: element.elementId,
-                    order: getNextOrder(element.labor),
+                    order: getNextOrder(accounting.projectCosts.labor),
                   })
                 }
                 className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -638,12 +938,18 @@ function LaborTab({
                 <Plus size={14} /> Add line
               </button>
             </div>
-            {collapsedByElement[element.elementId] ? null : (
-              <div className="divide-y">
-                {sortedLabor.length === 0 ? (
-                  <div className="p-6 text-sm text-gray-500">No labor</div>
-                ) : (
-                  sortedLabor.map((line: LaborLine, index: number) => (
+            <div className="divide-y">
+              {accounting.projectCosts.labor.length === 0 ? (
+                <div className="p-6 text-sm text-gray-500">No labor</div>
+              ) : (
+                sortLines(
+                  accounting.projectCosts.labor as LaborLine[],
+                  sortKey,
+                  sortDirection,
+                  getLaborPlanned,
+                  getLaborActual
+                ).map(
+                  (line: LaborLine, index: number, lines: LaborLine[]) => (
                     <LaborLineRow
                       key={line.id}
                       line={line}
@@ -651,19 +957,19 @@ function LaborTab({
                       projectId={projectId}
                       saving={savingLineId === line.id}
                       canMoveUp={index > 0}
-                      canMoveDown={index < sortedLabor.length - 1}
+                      canMoveDown={index < lines.length - 1}
                       onMoveUp={() =>
                         handleMoveLine({
                           lineId: line.id,
                           direction: -1,
-                          lines: sortedLabor,
+                          lines,
                         })
                       }
                       onMoveDown={() =>
                         handleMoveLine({
                           lineId: line.id,
                           direction: 1,
-                          lines: sortedLabor,
+                          lines,
                         })
                       }
                       onDelete={() =>
@@ -690,95 +996,14 @@ function LaborTab({
                       }}
                       elements={elements}
                     />
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {accounting.projectCosts ? (
-        <div className="bg-white border border-gray-100 rounded-xl shadow-sm">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <div className="font-semibold text-gray-900">
-                Project Level Costs
-              </div>
-              <div className="text-xs text-gray-500">
-                Labor: {accounting.projectCosts.totals.labor.toLocaleString()} NIS
-              </div>
-            </div>
-            <button
-              onClick={() =>
-                addLaborLine({
-                  order: getNextOrder(accounting.projectCosts.labor),
-                })
-              }
-              className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1"
-            >
-              <Plus size={14} /> Add line
-            </button>
-          </div>
-          <div className="divide-y">
-            {accounting.projectCosts.labor.length === 0 ? (
-              <div className="p-6 text-sm text-gray-500">No labor</div>
-            ) : (
-              sortLines(accounting.projectCosts.labor as LaborLine[]).map(
-                (line: LaborLine, index: number, lines: LaborLine[]) => (
-                  <LaborLineRow
-                    key={line.id}
-                    line={line}
-                    tasks={tasks}
-                    projectId={projectId}
-                    saving={savingLineId === line.id}
-                    canMoveUp={index > 0}
-                    canMoveDown={index < lines.length - 1}
-                    onMoveUp={() =>
-                      handleMoveLine({
-                        lineId: line.id,
-                        direction: -1,
-                        lines,
-                      })
-                    }
-                    onMoveDown={() =>
-                      handleMoveLine({
-                        lineId: line.id,
-                        direction: 1,
-                        lines,
-                      })
-                    }
-                    onDelete={() =>
-                      handleDeleteLine({
-                        lineId: line.id,
-                      })
-                    }
-                    onSave={async (next: any) => {
-                      onSavingLineId(line.id);
-                      try {
-                        await onUpdate({
-                          lineId: line.id as Id<"workLines">,
-                          role: next.role,
-                          quantity: next.qty,
-                          rate: next.rate,
-                          elementId: next.elementId === "" ? null : (next.elementId as Id<"elements"> | undefined),
-                        });
-                      } catch (e: any) {
-                        console.error(e);
-                        alert(`Failed to save: ${e.message}`);
-                      } finally {
-                        onSavingLineId(null);
-                      }
-                    }}
-                    elements={elements}
-                  />
+                  )
                 )
-              )
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      ) : null}
-    </div>
+        ) : null
+      }
+    </div >
   );
 }
 
@@ -956,7 +1181,7 @@ function MaterialLineRow({
             : "--"}
         </div>
       </div>
-      <div className="md:col-span-2">
+      <div className="md:col-span-1">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Task Links
         </div>
@@ -1253,7 +1478,7 @@ function LaborLineRow({
             : "--"}
         </div>
       </div>
-      <div className="md:col-span-2">
+      <div className="md:col-span-1">
         <div className="text-xs text-gray-400 uppercase font-semibold mb-1">
           Task Links
         </div>
@@ -1490,3 +1715,111 @@ function AutoResizeTextarea({
     />
   );
 }
+
+function TabHeader({
+  sortKey,
+  sortDirection,
+  onSort,
+}: {
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  onSort: (key: SortKey) => void;
+}) {
+  const getSortIcon = (key: SortKey) => {
+    const isActive = sortKey === key;
+    return (
+      <div className="flex flex-col ml-1">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isActive && sortDirection === "asc") return;
+            if (isActive && sortDirection === "desc") {
+              onSort(key); // Toggle to asc
+            } else {
+              onSort(key); // New key or set asc
+            }
+          }}
+          className={`p-0.5 leading-none ${isActive && sortDirection === "asc" ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`}
+        >
+          <ArrowUp size={10} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSort(key);
+          }}
+          className={`p-0.5 leading-none ${isActive && sortDirection === "desc" ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`}
+        >
+          <ArrowDown size={10} />
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+      <div className="col-span-6">Element / Item</div>
+      <div className="col-span-2 flex items-center">
+        Planned {getSortIcon("planned")}
+      </div>
+      <div className="col-span-2 flex items-center">
+        Actual {getSortIcon("actual")}
+      </div>
+      <div className="col-span-2 flex items-center">
+        Gap {getSortIcon("gap")}
+      </div>
+    </div>
+  );
+}
+
+
+
+
+const sortElements = (
+  elements: any[],
+  sortKey: SortKey,
+  sortDirection: SortDirection
+) => {
+  if (sortKey === "default") return elements;
+
+  return [...elements].sort((a, b) => {
+    let valA = 0;
+    let valB = 0;
+
+    if (sortKey === "planned") {
+      valA = a.totals.materials || a.totals.labor || 0;
+      valB = b.totals.materials || b.totals.labor || 0;
+    } else if (sortKey === "actual") {
+      const getActual = (lines: any[]) => (lines || []).reduce((sum: number, line: any) => sum + (line.actualTotal ?? (line.actualQty && line.actualUnitCost ? line.actualQty * line.actualUnitCost : 0) ?? 0), 0);
+
+      // Check for materials or labor lines
+      if (a.materials) valA = getActual(a.materials);
+      else if (a.labor) valA = getActual(a.labor);
+
+      if (b.materials) valB = getActual(b.materials);
+      else if (b.labor) valB = getActual(b.labor);
+
+    } else if (sortKey === "gap") {
+      // Gap = Actual - Planned
+      const getActual = (lines: any[]) => (lines || []).reduce((sum: number, line: any) => sum + (line.actualTotal ?? (line.actualQty && line.actualUnitCost ? line.actualQty * line.actualUnitCost : 0) ?? 0), 0);
+
+      let actualA = 0;
+      let plannedA = a.totals.materials || a.totals.labor || 0;
+      if (a.materials) actualA = getActual(a.materials);
+      else if (a.labor) actualA = getActual(a.labor);
+
+      let actualB = 0;
+      let plannedB = b.totals.materials || b.totals.labor || 0;
+      if (b.materials) actualB = getActual(b.materials);
+      else if (b.labor) actualB = getActual(b.labor);
+
+      // Only count gap if actual > 0? No, gap exists regardless.
+      // But in component logic we showed gap only if actual > 0.
+      // For sorting, let's just do Actual - Planned.
+      valA = actualA - plannedA;
+      valB = actualB - plannedB;
+    }
+
+    return sortDirection === "asc" ? valA - valB : valB - valA;
+  });
+};

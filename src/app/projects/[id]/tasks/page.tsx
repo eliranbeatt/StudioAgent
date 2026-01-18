@@ -75,7 +75,7 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
     const [isSyncing, setIsSyncing] = useState(false);
 
     // Raw Data
-    const rawTasks = (data?.tasks ?? []) as Task[];
+    const rawTasks = useMemo(() => (data?.tasks ?? []) as Task[], [data]);
     const employeeOptions = useMemo(
         () =>
             (employees ?? []).map((employee) => ({
@@ -407,6 +407,19 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                         <GanttView
                             tasks={filteredTasks}
                             onTaskClick={setSelectedTaskId}
+                            onTaskDateChange={async (taskId, newDate) => {
+                                setSavingTaskId(taskId);
+                                try {
+                                    await updateTask({
+                                        taskId: taskId as Id<"tasks">,
+                                        patch: { startDate: newDate }
+                                    });
+                                } catch (e) {
+                                    console.error("Failed to update date", e);
+                                } finally {
+                                    setSavingTaskId(null);
+                                }
+                            }}
                         />
                     </div>
                 )}
@@ -440,41 +453,47 @@ export default function TasksPage({ params }: { params: Promise<{ id: string }> 
                 )}
             </div>
 
-            {selectedTask && (
-                <TaskModal
-                    task={selectedTask}
-                    employees={employeeOptions}
-                    elements={filterOptions.elements}
-                    onClose={() => setSelectedTaskId(null)}
-                    onSave={handleTaskSave}
-                    onDuplicate={() => handleDuplicateTask(selectedTask)}
-                    draftMode={false}
-                    isSaving={modalSaving}
-                />
-            )}
+            {
+                selectedTask && (
+                    <TaskModal
+                        task={selectedTask}
+                        employees={employeeOptions}
+                        elements={filterOptions.elements}
+                        onClose={() => setSelectedTaskId(null)}
+                        onSave={handleTaskSave}
+                        onDuplicate={() => handleDuplicateTask(selectedTask)}
+                        draftMode={false}
+                        isSaving={modalSaving}
+                    />
+                )
+            }
 
-            {draftTask && (
-                <TaskModal
-                    task={draftTask as Task}
-                    employees={employeeOptions}
-                    elements={filterOptions.elements}
-                    onClose={() => setDraftTask(null)}
-                    onSave={handleCreateTask}
-                    draftMode={false}
-                    isSaving={modalSaving}
-                />
-            )}
+            {
+                draftTask && (
+                    <TaskModal
+                        task={draftTask as Task}
+                        employees={employeeOptions}
+                        elements={filterOptions.elements}
+                        onClose={() => setDraftTask(null)}
+                        onSave={handleCreateTask}
+                        draftMode={false}
+                        isSaving={modalSaving}
+                    />
+                )
+            }
 
-            {showTrelloConfig && (
-                <TrelloConfigModal
-                    initialConfig={trelloConfig as any}
-                    onSave={handleSaveTrelloConfig}
-                    onClose={() => setShowTrelloConfig(false)}
-                    fetchBoards={(creds) => fetchBoards({ creds })}
-                    fetchLists={(boardId, creds) => fetchLists({ boardId, creds })}
-                    onCreateBoard={(name, creds) => createBoard({ name, creds })}
-                />
-            )}
-        </div>
+            {
+                showTrelloConfig && (
+                    <TrelloConfigModal
+                        initialConfig={trelloConfig as any}
+                        onSave={handleSaveTrelloConfig}
+                        onClose={() => setShowTrelloConfig(false)}
+                        fetchBoards={(creds) => fetchBoards({ creds })}
+                        fetchLists={(boardId, creds) => fetchLists({ boardId, creds })}
+                        onCreateBoard={(name, creds) => createBoard({ name, creds })}
+                    />
+                )
+            }
+        </div >
     );
 }

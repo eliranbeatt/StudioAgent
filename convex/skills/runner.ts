@@ -64,8 +64,9 @@ export const runSkill = action({
         ...context,
         clarifications: clarification,
       });
+      const forceWebSearch = skillId === "RESEARCH_PRICING_ESTIMATES_WEB";
       const allowedTools = {
-        webSearch: !!(skillData.skill.config.allowedTools?.webSearch && params?.toggles?.useWebSearch),
+        webSearch: forceWebSearch || !!(skillData.skill.config.allowedTools?.webSearch && params?.toggles?.useWebSearch),
         ragSearch: !!skillData.skill.config.allowedTools?.ragSearch,
         fileInspect: !!skillData.skill.config.allowedTools?.fileInspect,
         runSkill: !!skillData.skill.config.allowedTools?.runSkill,
@@ -73,7 +74,12 @@ export const runSkill = action({
 
       if (skillId === "CONTEXT_GENERATION") {
         const docPrompt = `${systemPrompt}\n\nOUTPUT MODE: DOC_ONLY. Return JSON with blocks array containing ONLY ChatBlock.`;
-        const docBlocks = await callLLM(ctx, docPrompt, allowedTools, skillData.skill.model, { projectId, conversationId });
+        const docBlocks = await callLLM(ctx, docPrompt, allowedTools, skillData.skill.model, {
+          projectId,
+          conversationId,
+          skillId,
+          runId,
+        });
         const docBlock = docBlocks.find((b: any) => b.type === "ChatBlock" && typeof b.markdownHe === "string");
         if (docBlock?.markdownHe?.trim()) {
           await ctx.runMutation(api.memory.updateRunningMemory, {
@@ -88,7 +94,12 @@ export const runSkill = action({
           clarifications: clarification,
         };
         const questionsPrompt = `${buildSystemPrompt(skillData.skill, updatedContext)}\n\nOUTPUT MODE: QUESTIONS_ONLY. Return JSON with blocks array containing ONLY QuestionsBlock. Base questions on updated currentKnowledge + qaPairs + userInput.`;
-        const questionBlocks = await callLLM(ctx, questionsPrompt, allowedTools, skillData.skill.model, { projectId, conversationId });
+        const questionBlocks = await callLLM(ctx, questionsPrompt, allowedTools, skillData.skill.model, {
+          projectId,
+          conversationId,
+          skillId,
+          runId,
+        });
 
         const combinedBlocks = [
           ...docBlocks.filter((b: any) => b.type === "ChatBlock"),
@@ -105,7 +116,12 @@ export const runSkill = action({
         return savedBlocks;
       }
 
-      const blocks = await callLLM(ctx, systemPrompt, allowedTools, skillData.skill.model, { projectId, conversationId });
+      const blocks = await callLLM(ctx, systemPrompt, allowedTools, skillData.skill.model, {
+        projectId,
+        conversationId,
+        skillId,
+        runId,
+      });
 
       // 5. Save Result (Mutation)
       const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
@@ -310,14 +326,22 @@ export const buildContext = internalQuery({
       .query("tasks")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .take(200);
-    const materialLines = await ctx.db
+    const allMaterialLines = await ctx.db
       .query("materialLines")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .take(200);
-    const workLines = await ctx.db
+    const allWorkLines = await ctx.db
       .query("workLines")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .take(200);
+
+    const scopeElementIds = args.params?.scope?.elementIds;
+    const materialLines = Array.isArray(scopeElementIds)
+      ? allMaterialLines.filter((l: any) => l.elementId && scopeElementIds.includes(l.elementId))
+      : allMaterialLines;
+    const workLines = Array.isArray(scopeElementIds)
+      ? allWorkLines.filter((l: any) => l.elementId && scopeElementIds.includes(l.elementId))
+      : allWorkLines;
     const taskAccountingLinks = await ctx.db
       .query("taskAccountingLinks")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -359,7 +383,17 @@ export const buildContext = internalQuery({
       .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "USER_INPUT_LOG"))
       .first();
 
-    const scopeElementIds = args.params?.scope?.elementIds;
+    const catalogPriceRecords = await ctx.db
+      .query("catalogPriceRecords")
+      .order("desc")
+      .take(50);
+    const materialTemplates = await ctx.db
+      .query("materialTemplates")
+      .take(200);
+    const materialVariants = await ctx.db
+      .query("materialVariants")
+      .take(200);
+
     const scopedElements = Array.isArray(scopeElementIds)
       ? elements.filter((e: any) => scopeElementIds.includes(e._id))
       : elements;
@@ -397,17 +431,49 @@ export const buildContext = internalQuery({
         answerHe: qa.answer_he,
         createdAt: qa.createdAt
       })),
-        elements: {
-          approved: scopedElements
-            .filter((e: any) => e.status !== "archived")
-            .map((e: any) => ({
-              id: e._id,
-              title: e.title,
-              status: e.status === "drafting" ? "approvedForQuote" : e.status,
-              type: e.type
-            })),
-          draft: [],
-        },
+      catalogPriceRecords: catalogPriceRecords.map((record: any) => ({
+        id: record._id,
+        variantId: record.variantId,
+        templateId: record.templateId,
+        amount: record.amount,
+        currency: record.currency,
+        pricingModel: record.pricingModel,
+        sourceType: record.sourceType,
+        checkedAt: record.checkedAt,
+        url: record.url,
+      })),
+      catalog: {
+        templates: materialTemplates.map((template: any) => ({
+          id: template._id,
+          nameHe: template.nameHe,
+          kind: template.kind,
+          defaultUomCode: template.defaultUomCode,
+          searchKeywords: template.searchKeywords ?? [],
+        })),
+        variants: materialVariants.map((variant: any) => ({
+          id: variant._id,
+          templateId: variant.templateId,
+          labelHe: variant.labelHe,
+          attributes: variant.attributes,
+          normalizedKey: variant.normalizedKey,
+          thicknessMm: variant.thicknessMm,
+          widthMm: variant.widthMm,
+          heightMm: variant.heightMm,
+          lengthMm: variant.lengthMm,
+          uomCode: variant.uomCode,
+        })),
+      },
+      elements: {
+        approved: scopedElements
+          .filter((e: any) => e.status !== "archived")
+          .map((e: any) => ({
+            id: e._id,
+            title: e.title,
+            status: e.status === "drafting" ? "approvedForQuote" : e.status,
+            type: e.type
+          })),
+        draft: [],
+      },
       tasks: tasks.map((t: any) => ({
         id: t._id,
         title: t.title,
@@ -447,8 +513,7 @@ export const buildContext = internalQuery({
           itemName: line.itemName,
           spec: line.spec,
           quantity: line.quantity,
-          unitCode: line.unitCode,
-          unitLabelHe: line.unitLabelHe,
+          uomCode: line.uomCode,
           plannedUnitCost: line.plannedUnitCost,
           plannedTotalCost: line.plannedTotalCost,
           vendorName: line.vendorName,
@@ -510,6 +575,35 @@ export const saveRunResult = internalMutation({
   handler: async (ctx, args) => {
     const blocks = args.blocks;
 
+    const run = await ctx.db.get(args.runId);
+    const isPricingSkill = run?.skillId === "RESEARCH_PRICING_ESTIMATES_WEB";
+
+    if (isPricingSkill) {
+      const useWebSearch = true;
+      const webOps = Array.isArray((run as any)?.webPriceOps) ? (run as any).webPriceOps : [];
+
+      if (useWebSearch && webOps.length === 0) {
+        throw new Error("RESEARCH_PRICING_ESTIMATES_WEB requires web_search results, but none were recorded.");
+      }
+
+      if (webOps.length > 0) {
+        const changeSetBlocks = blocks.filter((block: any) => block?.type === "ChangeSetBlock");
+        if (changeSetBlocks.length > 0) {
+          for (const block of changeSetBlocks) {
+            block.titleHe = block.titleHe ?? "????? ??? ??????";
+            block.summaryHe = block.summaryHe ?? "????? ?????? ??? ?????? ?????? ?????? ??????.";
+            block.changeSet = { ops: webOps };
+          }
+        } else {
+          blocks.push({
+            type: "ChangeSetBlock",
+            titleHe: "????? ??? ??????",
+            summaryHe: "????? ?????? ??? ?????? ?????? ?????? ??????.",
+            changeSet: { ops: webOps },
+          });
+        }
+      }
+    }
 
     // Post-process ChangeSets
     for (const block of blocks) {
@@ -672,12 +766,12 @@ export const saveRunResult = internalMutation({
     // Auto-create Clarification Session if QuestionsBlock is present
     const questionsBlock = blocks.find((b: any) => b.type === "QuestionsBlock");
     if (questionsBlock && questionsBlock.questions && questionsBlock.questions.length > 0) {
-      const run = await ctx.db.get(args.runId);
-      if (run) {
+      const questionsRun = await ctx.db.get(args.runId);
+      if (questionsRun) {
         await ctx.db.insert("clarificationSessions", {
           projectId: args.projectId,
           conversationId: args.conversationId,
-          targetSkillId: run.skillId,
+          targetSkillId: questionsRun.skillId,
           questions: questionsBlock.questions,
           isSatisfied: false,
           createdAt: Date.now(),
@@ -686,8 +780,8 @@ export const saveRunResult = internalMutation({
       }
     }
 
-    const run = await ctx.db.get(args.runId);
-    if (run?.skillId === "CONTEXT_GENERATION") {
+    const contextRun = await ctx.db.get(args.runId);
+    if (contextRun?.skillId === "CONTEXT_GENERATION") {
       const docBlock = blocks.find((b: any) => b.type === "ChatBlock" && typeof b.markdownHe === "string");
       if (docBlock?.markdownHe?.trim()) {
         await ctx.runMutation(api.memory.updateRunningMemory, {
@@ -887,6 +981,106 @@ export const saveAgentMessage = internalMutation({
   }
 });
 
+export const appendWebPriceOps = internalMutation({
+  args: { runId: v.id("skillRuns"), ops: v.array(v.any()) },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) return { appended: 0 };
+    const existing = Array.isArray((run as any).webPriceOps) ? (run as any).webPriceOps : [];
+    const merged = [...existing, ...args.ops];
+    await ctx.db.patch(args.runId, { webPriceOps: merged });
+    return { appended: args.ops.length };
+  }
+});
+
+export const saveWebSearchResults = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    query: v.string(),
+    templateId: v.optional(v.id("materialTemplates")),
+    variantId: v.optional(v.id("materialVariants")),
+    uomCode: v.optional(v.string()),
+    result: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const results = Array.isArray(args.result?.results) ? args.result.results : [];
+    if (results.length === 0) return { inserted: 0 };
+
+    const templates = await ctx.db.query("materialTemplates").take(200);
+    const variants = await ctx.db.query("materialVariants").take(200);
+    const findCatalogMatch = (text: string) => {
+      const haystack = text.toLowerCase();
+      let bestVariant: any = null;
+      let bestVariantScore = 0;
+      for (const variant of variants) {
+        const label = String(variant.labelHe ?? "").toLowerCase();
+        if (label && haystack.includes(label) && label.length > bestVariantScore) {
+          bestVariant = variant;
+          bestVariantScore = label.length;
+        }
+      }
+      let bestTemplate: any = null;
+      let bestTemplateScore = 0;
+      for (const template of templates) {
+        const name = String(template.nameHe ?? "").toLowerCase();
+        if (name && haystack.includes(name) && name.length > bestTemplateScore) {
+          bestTemplate = template;
+          bestTemplateScore = name.length;
+        }
+        const keywords = Array.isArray(template.searchKeywords) ? template.searchKeywords : [];
+        for (const keyword of keywords) {
+          const term = String(keyword ?? "").toLowerCase();
+          if (term && haystack.includes(term) && term.length > bestTemplateScore) {
+            bestTemplate = template;
+            bestTemplateScore = term.length;
+          }
+        }
+      }
+      return { variant: bestVariant, template: bestTemplate };
+    };
+
+    let inserted = 0;
+    const ops: any[] = [];
+    for (const item of results) {
+      if (!item?.url) continue;
+      const matchText = `${args.query ?? ""} ${item.title ?? ""} ${item.content ?? ""}`;
+      const match = findCatalogMatch(matchText);
+      const matchedVariantId = args.variantId ?? match.variant?._id;
+      const matchedTemplateId = args.templateId ?? match.template?._id ?? match.variant?.templateId;
+      let domain: string | undefined;
+      try {
+        domain = new URL(item.url).hostname.replace(/^www\./, "");
+      } catch (error) {
+        domain = undefined;
+      }
+      const fields = {
+        variantId: matchedVariantId,
+        templateId: matchedTemplateId,
+        vendorId: undefined,
+        sourceType: "web",
+        checkedAt: Date.now(),
+        currency: "NIS",
+        pricingModel: "unknown",
+        amount: undefined,
+        url: item.url,
+        title: item.title,
+        domain,
+        rawSnippet: item.content,
+        extractedFields: { query: args.query, uomCode: args.uomCode },
+        confidence: "low",
+        createdBy: "agent",
+        sourceRef: { projectId: args.projectId, query: args.query },
+        createdAt: Date.now(),
+      };
+      await ctx.db.insert("catalogPriceRecords", fields);
+      ops.push({ kind: "catalogPriceRecord.create", payload: { fields } });
+      inserted += 1;
+    }
+
+    return { inserted, ops };
+  }
+});
+
 export const getGateSkill = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -997,7 +1191,13 @@ function buildSystemPrompt(skill: any, context: any) {
   return `${SHARED_HEADER}${toolInstructions}\n\n${addon}\n\nCONTEXT:\n${JSON.stringify(context, null, 2)}`;
 }
 
-async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?: string, contextInfo?: { projectId: any, conversationId: any }) {
+async function callLLM(
+  ctx: any,
+  systemPrompt: string,
+  allowedTools: any,
+  model?: string,
+  contextInfo?: { projectId: any, conversationId: any, skillId?: string, runId?: string }
+) {
   if (!process.env.OPENAI_API_KEY) {
     console.warn("No OPENAI_API_KEY, using mock response");
     // Simulate delay
@@ -1026,7 +1226,10 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
         parameters: {
           type: "object",
           properties: {
-            query: { type: "string", description: "Search query" }
+            query: { type: "string", description: "Search query" },
+            templateId: { type: "string", description: "materialTemplates id for logging" },
+            variantId: { type: "string", description: "materialVariants id for logging" },
+            uomCode: { type: "string", description: "UOM code for pricing context" }
           },
           required: ["query"]
         }
@@ -1062,7 +1265,7 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
       model: model ?? OPENAI_MODEL,
       messages: messages,
       tools: tools.length > 0 ? tools : undefined,
-      response_format: { type: "json_object" },
+      response_format: tools.length > 0 ? undefined : { type: "json_object" },
     }, {
       projectId: contextInfo?.projectId,
       conversationId: contextInfo?.conversationId,
@@ -1076,6 +1279,22 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
         if (tc.function.name === "web_search") {
           const args = JSON.parse(tc.function.arguments);
           const result = await searchWeb(args.query);
+          if (contextInfo?.projectId && contextInfo?.skillId === "RESEARCH_PRICING_ESTIMATES_WEB") {
+            const saved = await ctx.runMutation(internal.skills.runner.saveWebSearchResults, {
+              projectId: contextInfo.projectId,
+              query: args.query,
+              templateId: args.templateId,
+              variantId: args.variantId,
+              uomCode: args.uomCode,
+              result,
+            });
+            if (contextInfo.runId && saved?.ops?.length) {
+              await ctx.runMutation(internal.skills.runner.appendWebPriceOps, {
+                runId: contextInfo.runId,
+                ops: saved.ops,
+              });
+            }
+          }
           messages.push({
             role: "tool",
             tool_call_id: toolCall.id,
@@ -1147,6 +1366,22 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
         if (tc.name === "web_search") {
           const args = tc.arguments;
           const result = await searchWeb(args.query);
+          if (contextInfo?.projectId && contextInfo?.skillId === "RESEARCH_PRICING_ESTIMATES_WEB") {
+            const saved = await ctx.runMutation(internal.skills.runner.saveWebSearchResults, {
+              projectId: contextInfo.projectId,
+              query: args.query,
+              templateId: args.templateId,
+              variantId: args.variantId,
+              uomCode: args.uomCode,
+              result,
+            });
+            if (contextInfo.runId && saved?.ops?.length) {
+              await ctx.runMutation(internal.skills.runner.appendWebPriceOps, {
+                runId: contextInfo.runId,
+                ops: saved.ops,
+              });
+            }
+          }
           results.push(`Tool 'web_search' (${args.query}) result: ${JSON.stringify(result)}`);
         }
         // Add other tools if needed
@@ -1169,6 +1404,40 @@ async function callLLM(ctx: any, systemPrompt: string, allowedTools: any, model?
     if (!parsed) {
       console.warn("JSON parse failed, returning text block", content);
       return [{ type: "ChatBlock", markdownHe: content }];
+    }
+
+    if (
+      contextInfo?.skillId === "RESEARCH_PRICING_ESTIMATES_WEB" &&
+      allowedTools?.webSearch &&
+      typeof (parsed as any).query === "string" &&
+      !(parsed as any).blocks &&
+      !(parsed as any).changeSet
+    ) {
+      const query = String((parsed as any).query);
+      const result = await searchWeb(query);
+      let ops: any[] = [];
+      if (contextInfo?.projectId) {
+        const saved = await ctx.runMutation(internal.skills.runner.saveWebSearchResults, {
+          projectId: contextInfo.projectId,
+          query,
+          result,
+        });
+        if (contextInfo.runId && saved?.ops?.length) {
+          await ctx.runMutation(internal.skills.runner.appendWebPriceOps, {
+            runId: contextInfo.runId,
+            ops: saved.ops,
+          });
+        }
+        ops = saved?.ops ?? [];
+      }
+      return normalizeBlocks([{
+        type: "ChangeSetBlock",
+        titleHe: "מחירי ווב שנמצאו",
+        summaryHe: ops.length > 0
+          ? "נמצאו תוצאות ווב ונוצרו פעולות לשמירת מחירים."
+          : "לא נמצאו תוצאות ווב לשמירה.",
+        changeSet: { ops },
+      }]);
     }
 
 

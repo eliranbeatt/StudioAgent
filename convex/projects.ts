@@ -800,7 +800,6 @@ export const createProjectFromModal = mutation({
 
     if (!customerId && args.customerNameNew) {
       const normalized = args.customerNameNew.trim().toLowerCase();
-      // eslint-disable-next-line
       // @ts-ignore
       const existing = await ctx.db
         .query("customers")

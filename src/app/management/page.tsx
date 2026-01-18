@@ -6,9 +6,9 @@ import { api } from '../../../convex/_generated/api'
 
 export default function ManagementPage() {
   const vendors = useQuery(api.management.listVendors)
-  const catalog = useQuery(api.management.searchCatalog, { query: '' })
+  const templates = useQuery(api.management.searchTemplates, { query: '' })
   const proposals = useQuery(api.management.listProposed)
-  const observations = useQuery(api.management.listPriceObservations)
+  const priceRecords = useQuery(api.management.listPriceRecords)
 
   return (
     <div className="max-w-4xl">
@@ -25,9 +25,9 @@ export default function ManagementPage() {
           <p className="text-sm text-gray-500">Active suppliers</p>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <h3 className="text-lg font-semibold mb-2">Catalog Items</h3>
-          <p className="text-3xl font-bold text-green-600">{catalog?.length ?? '--'}</p>
-          <p className="text-sm text-gray-500">Standardized materials</p>
+          <h3 className="text-lg font-semibold mb-2">Templates</h3>
+          <p className="text-3xl font-bold text-green-600">{templates?.length ?? '--'}</p>
+          <p className="text-sm text-gray-500">Catalog templates</p>
         </div>
       </div>
 
@@ -35,9 +35,9 @@ export default function ManagementPage() {
 
       <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <h3 className="text-lg font-semibold mb-2">Price Observations</h3>
-          <p className="text-3xl font-bold text-purple-600">{observations?.length ?? '--'}</p>
-          <p className="text-sm text-gray-500">Learned price points</p>
+          <h3 className="text-lg font-semibold mb-2">Price Records</h3>
+          <p className="text-3xl font-bold text-purple-600">{priceRecords?.length ?? '--'}</p>
+          <p className="text-sm text-gray-500">Unified price memory</p>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-sm border">
           <h3 className="text-lg font-semibold mb-2">Proposed Updates</h3>
@@ -45,6 +45,7 @@ export default function ManagementPage() {
           <p className="text-sm text-gray-500">Pending reviews</p>
         </div>
       </div>
+
     </div>
   )
 }

@@ -430,13 +430,13 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     config: {
       requiresClarifications: false,
       allowedTools: { webSearch: true, ragSearch: false, fileInspect: false },
-      outputContract: "suggestions",
+      outputContract: "changeset",
     },
     prompts: {
       systemHeaderRef: SYSTEM_HEADER_REF,
       promptAddon: SKILL_SYSTEM_ADDONS.RESEARCH_PRICING_ESTIMATES_WEB,
     },
-    model: "gpt-5.2",
+    model: "gpt-5-mini",
   },
   {
     skillId: "PRINT_QA",

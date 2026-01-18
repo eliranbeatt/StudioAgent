@@ -1,1 +1,8 @@
-module.exports = require("eslint-config-next");
+const nextConfig = require("eslint-config-next");
+
+module.exports = [
+  ...(Array.isArray(nextConfig) ? nextConfig : [nextConfig]),
+  {
+    ignores: ["convex/_generated/**"],
+  },
+];

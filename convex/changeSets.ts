@@ -289,21 +289,56 @@ function normalizeProcurementCode(
   return undefined;
 }
 
-function normalizeUnitCode(
+function normalizeUomCode(
   code: string | undefined | null
-): "ea" | "m" | "sqm" | "kg" | "l" | "set" | "box" | "roll" | undefined {
+):
+  | "ea"
+  | "sheet"
+  | "m"
+  | "m2"
+  | "sqm"
+  | "m3"
+  | "kg"
+  | "l"
+  | "set"
+  | "box"
+  | "roll"
+  | "pack"
+  | "job"
+  | "hour"
+  | undefined {
   if (!code) return undefined;
   const c = code.toLowerCase().trim();
-  if (c === "m2" || c === "sqm") return "sqm";
+  if (c === "m2" || c === "sqm" || c === "m^2") return "m2";
+  if (c === "m3" || c === "m^3") return "m3";
   if (c === "ea" || c === "each" || c === "units") return "ea";
+  if (c === "sheet" || c === "sheets") return "sheet";
   if (c === "m" || c === "meter" || c === "meters") return "m";
   if (c === "kg" || c === "kgs") return "kg";
   if (c === "l" || c === "liter" || c === "liters") return "l";
   if (c === "set" || c === "sets") return "set";
   if (c === "box" || c === "boxes") return "box";
   if (c === "roll" || c === "rolls") return "roll";
+  if (c === "pack" || c === "packs") return "pack";
+  if (c === "job" || c === "jobs") return "job";
+  if (c === "hour" || c === "hours" || c === "hr") return "hour";
 
-  const valid = ["ea", "m", "sqm", "kg", "l", "set", "box", "roll"];
+  const valid = [
+    "ea",
+    "sheet",
+    "m",
+    "m2",
+    "sqm",
+    "m3",
+    "kg",
+    "l",
+    "set",
+    "box",
+    "roll",
+    "pack",
+    "job",
+    "hour",
+  ];
   if (valid.includes(c)) return c as any;
   return undefined;
 }
@@ -743,10 +778,11 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       workTypeLabelHe: fields.workTypeLabelHe ?? undefined,
       itemName: fields.itemName ?? undefined,
       spec: fields.spec ?? undefined,
+      templateId: fields.templateId ? ctx.db.normalizeId("materialTemplates", fields.templateId) : undefined,
+      variantId: fields.variantId ? ctx.db.normalizeId("materialVariants", fields.variantId) : undefined,
+      priceRecordId: fields.priceRecordId ? ctx.db.normalizeId("catalogPriceRecords", fields.priceRecordId) : undefined,
       quantity: fields.quantity ?? undefined,
-      unitCode: normalizeUnitCode(fields.unitCode),
-      unitLabelHe: fields.unitLabelHe ?? undefined,
-      unit: fields.unit ?? undefined,
+      uomCode: normalizeUomCode(fields.uomCode ?? fields.unitCode),
       wastePct: fields.wastePct ?? undefined,
       plannedUnitCost: fields.plannedUnitCost ?? undefined,
       plannedTotalCost: fields.plannedTotalCost ?? undefined,
@@ -760,6 +796,9 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       sourceCode: fields.sourceCode ?? undefined,
       sourceLabelHe: fields.sourceLabelHe ?? undefined,
       source: fields.source ?? undefined,
+      pricingSourceCode: fields.pricingSourceCode ?? undefined,
+      priceCheckedAt: fields.priceCheckedAt ?? undefined,
+      priceUrl: fields.priceUrl ?? undefined,
       confidence: fields.confidence ?? undefined,
       checklistItemId: fields.checklistItemId ?? undefined,
       createdFromChangeSetId: sourceChangeSetId,
@@ -962,12 +1001,20 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if ("itemName" in fields) patch.itemName = toOptional(fields.itemName);
     if ("spec" in fields) patch.spec = toOptional(fields.spec);
     if ("quantity" in fields) patch.quantity = toOptional(fields.quantity);
-    if ("unitCode" in fields) patch.unitCode = normalizeUnitCode(fields.unitCode);
+    if ("uomCode" in fields || "unitCode" in fields) {
+      patch.uomCode = normalizeUomCode(fields.uomCode ?? fields.unitCode);
+    }
     if ("plannedUnitCost" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost);
     if ("plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost);
     if ("vendorName" in fields) patch.vendorName = toOptional(fields.vendorName);
     if ("notes" in fields) patch.notes = toOptional(fields.notes);
     if ("workType" in fields) patch.workType = normalizeWorkType(fields.workType);
+    if ("templateId" in fields) patch.templateId = fields.templateId ? ctx.db.normalizeId("materialTemplates", fields.templateId) : undefined;
+    if ("variantId" in fields) patch.variantId = fields.variantId ? ctx.db.normalizeId("materialVariants", fields.variantId) : undefined;
+    if ("priceRecordId" in fields) patch.priceRecordId = fields.priceRecordId ? ctx.db.normalizeId("catalogPriceRecords", fields.priceRecordId) : undefined;
+    if ("pricingSourceCode" in fields) patch.pricingSourceCode = toOptional(fields.pricingSourceCode);
+    if ("priceCheckedAt" in fields) patch.priceCheckedAt = toOptional(fields.priceCheckedAt);
+    if ("priceUrl" in fields) patch.priceUrl = toOptional(fields.priceUrl);
 
     await ctx.db.patch(resolved, { ...patch, updatedAt: now });
     const after = await ctx.db.get(resolved);
@@ -1113,7 +1160,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         type = "labor";
       }
       // 2. Field signals
-      else if (fields.itemName || fields.vendorSku || fields.unitCode) {
+      else if (fields.itemName || fields.vendorSku || fields.uomCode || fields.unitCode) {
         type = "material";
       } else if (fields.hours || fields.crewSize || fields.ratePerHour) {
         type = "labor";
@@ -1291,8 +1338,9 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
       if ("itemName" in fields || "title" in fields) patch.itemName = toOptional(fields.itemName ?? fields.title);
       if ("spec" in fields) patch.spec = toOptional(fields.spec);
-      if ("unit" in fields) patch.unit = toOptional(fields.unit);
-      if ("unitCode" in fields) patch.unitCode = normalizeUnitCode(fields.unitCode);
+      if ("uomCode" in fields || "unitCode" in fields) {
+        patch.uomCode = normalizeUomCode(fields.uomCode ?? fields.unitCode);
+      }
       // ... match other materialLines fields
       if ("actualUnitCost" in fields) patch.actualUnitCost = toOptional(fields.actualUnitCost);
       if ("actualTotalCost" in fields) patch.actualTotalCost = toOptional(fields.actualTotalCost);
@@ -1415,6 +1463,69 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       purchaseId: purchaseId ?? undefined,
       fileId,
       createdFromChangeSetId: sourceChangeSetId,
+      createdAt: now,
+    });
+  }
+
+  for (const op of cs.ops) {
+    if (op.kind !== "catalogPriceRecord.create") continue;
+    const fields = op.payload?.fields ?? op.payload ?? {};
+    const rawVariantId = fields.variantId;
+    const rawTemplateId = fields.templateId;
+    let variantId: Id<"materialVariants"> | undefined;
+    if (rawVariantId) {
+      try {
+        variantId = ctx.db.normalizeId("materialVariants", rawVariantId);
+      } catch (error) {
+        console.warn("Skipping invalid variantId in catalogPriceRecord.create");
+      }
+    }
+    let templateId: Id<"materialTemplates"> | undefined;
+    if (rawTemplateId) {
+      try {
+        templateId = ctx.db.normalizeId("materialTemplates", rawTemplateId);
+      } catch (error) {
+        console.warn("Skipping invalid templateId in catalogPriceRecord.create");
+      }
+    }
+    if (fields.url) {
+      const existing = await ctx.db
+        .query("catalogPriceRecords")
+        .filter((q: any) => q.eq(q.field("url"), fields.url))
+        .first();
+      if (existing) continue;
+    }
+    await ctx.db.insert("catalogPriceRecords", {
+      variantId: variantId ?? undefined,
+      templateId: templateId ?? undefined,
+      vendorId: fields.vendorId ?? undefined,
+      sourceType: fields.sourceType ?? "web",
+      checkedAt: fields.checkedAt ?? now,
+      currency: fields.currency ?? "NIS",
+      pricingModel: fields.pricingModel ?? "unknown",
+      amount: fields.amount ?? undefined,
+      minQty: fields.minQty ?? undefined,
+      packSize: fields.packSize ?? undefined,
+      setupFee: fields.setupFee ?? undefined,
+      availability: fields.availability ?? undefined,
+      leadTimeDays: fields.leadTimeDays ?? undefined,
+      orderMethod: fields.orderMethod ?? undefined,
+      orderUrl: fields.orderUrl ?? undefined,
+      shippingAvailable: fields.shippingAvailable ?? undefined,
+      shippingCost: fields.shippingCost ?? undefined,
+      pickupAvailable: fields.pickupAvailable ?? undefined,
+      pickupLocationId: fields.pickupLocationId ?? undefined,
+      url: fields.url ?? undefined,
+      title: fields.title ?? undefined,
+      domain: fields.domain ?? undefined,
+      rawSnippet: fields.rawSnippet ?? undefined,
+      extractedFields: fields.extractedFields ?? undefined,
+      confidence: fields.confidence ?? undefined,
+      notesHe: fields.notesHe ?? undefined,
+      createdBy: fields.createdBy ?? "agent",
+      sourceRef: fields.sourceRef ?? undefined,
+      urlHash: fields.urlHash ?? undefined,
+      offerFingerprint: fields.offerFingerprint ?? undefined,
       createdAt: now,
     });
   }

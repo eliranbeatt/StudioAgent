@@ -2,6 +2,74 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { normalizeName } from "./lib/normalize";
 
+type CatalogAttributeDef = {
+  key: string;
+  labelHe: string;
+  type: "number" | "enum" | "boolean" | "text";
+  unit?: string;
+  required?: boolean;
+  enumOptions?: Array<{ value: string; labelHe: string }>;
+  commonValues?: Array<any>;
+};
+
+function normalizeAttributeValue(def: CatalogAttributeDef, value: any) {
+  if (def.type === "number") {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    const asString = Number.isInteger(num) ? String(num) : String(num);
+    return { normalized: asString, raw: num };
+  }
+  if (def.type === "boolean") {
+    if (typeof value === "boolean") return { normalized: value ? "true" : "false", raw: value };
+    if (value === "true" || value === "false") {
+      const parsed = value === "true";
+      return { normalized: parsed ? "true" : "false", raw: parsed };
+    }
+    return null;
+  }
+  const text = typeof value === "string" ? value.trim() : String(value ?? "").trim();
+  if (!text) return null;
+  if (def.type === "enum") {
+    const allowed = (def.enumOptions ?? []).map((opt) => opt.value);
+    if (allowed.length > 0 && !allowed.includes(text)) return null;
+  }
+  return { normalized: text.toLowerCase(), raw: text };
+}
+
+function buildNormalizedKey(templateId: string, defs: CatalogAttributeDef[], attributes: Record<string, any>) {
+  const parts = [`template:${templateId}`];
+  for (const def of defs) {
+    const value = attributes[def.key];
+    const normalized = normalizeAttributeValue(def, value);
+    if (!normalized) continue;
+    parts.push(`${def.key}=${normalized.normalized}`);
+  }
+  return parts.join("|");
+}
+
+function validateAttributes(defs: CatalogAttributeDef[], attributes: Record<string, any>) {
+  for (const def of defs) {
+    const value = attributes[def.key];
+    if (def.required && (value === undefined || value === null || value === "")) {
+      throw new Error(`Missing required attribute: ${def.key}`);
+    }
+    if (value === undefined || value === null || value === "") continue;
+    const normalized = normalizeAttributeValue(def, value);
+    if (!normalized) {
+      throw new Error(`Invalid value for ${def.key}`);
+    }
+  }
+}
+
+function pricingModelFromUom(uomCode?: string) {
+  if (!uomCode) return "per_unit" as const;
+  if (uomCode === "sheet") return "per_sheet" as const;
+  if (uomCode === "m") return "per_m" as const;
+  if (uomCode === "m2" || uomCode === "sqm") return "per_m2" as const;
+  if (uomCode === "pack") return "per_pack" as const;
+  return "per_unit" as const;
+}
+
 // ==========================
 // VENDORS
 // ==========================
@@ -33,23 +101,146 @@ export const listVendors = query({
 });
 
 // ==========================
-// CATALOG
+// CATALOG (TEMPLATES / VARIANTS / UOMS)
 // ==========================
 
-export const createCatalogItem = mutation({
+export const createCategory = mutation({
   args: {
-    canonicalName: v.string(),
-    unit: v.string(),
-    tags: v.array(v.string()),
-    typicalVendorId: v.optional(v.id("vendors")),
+    nameHe: v.string(),
+    parentId: v.optional(v.id("materialCategories")),
+    sortOrder: v.optional(v.number()),
+    icon: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("materialCatalog", {
-      canonicalName: args.canonicalName,
-      unit: args.unit,
-      tags: args.tags,
-      synonyms: [],
-      typicalVendorId: args.typicalVendorId,
+    return await ctx.db.insert("materialCategories", {
+      nameHe: args.nameHe,
+      parentId: args.parentId,
+      sortOrder: args.sortOrder,
+      icon: args.icon,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const listCategories = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("materialCategories").collect();
+  },
+});
+
+export const createUom = mutation({
+  args: {
+    code: v.union(
+      v.literal("ea"),
+      v.literal("sheet"),
+      v.literal("m"),
+      v.literal("m2"),
+      v.literal("sqm"),
+      v.literal("m3"),
+      v.literal("kg"),
+      v.literal("l"),
+      v.literal("set"),
+      v.literal("box"),
+      v.literal("roll"),
+      v.literal("pack"),
+      v.literal("job"),
+      v.literal("hour")
+    ),
+    labelHe: v.string(),
+    baseDimension: v.union(
+      v.literal("count"),
+      v.literal("length"),
+      v.literal("area"),
+      v.literal("volume"),
+      v.literal("weight")
+    ),
+    toBaseFactor: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("uoms", {
+      code: args.code,
+      labelHe: args.labelHe,
+      baseDimension: args.baseDimension,
+      toBaseFactor: args.toBaseFactor,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const listUoms = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("uoms").collect();
+  },
+});
+
+export const createTemplate = mutation({
+  args: {
+    nameHe: v.string(),
+    categoryId: v.optional(v.id("materialCategories")),
+    kind: v.optional(
+      v.union(
+        v.literal("material"),
+        v.literal("print_service"),
+        v.literal("cut_service"),
+        v.literal("rental"),
+        v.literal("shipping"),
+        v.literal("other_service")
+      )
+    ),
+    defaultUomCode: v.optional(
+      v.union(
+        v.literal("ea"),
+        v.literal("sheet"),
+        v.literal("m"),
+        v.literal("m2"),
+        v.literal("sqm"),
+        v.literal("m3"),
+        v.literal("kg"),
+        v.literal("l"),
+        v.literal("set"),
+        v.literal("box"),
+        v.literal("roll"),
+        v.literal("pack"),
+        v.literal("job"),
+        v.literal("hour")
+      )
+    ),
+    searchKeywords: v.optional(v.array(v.string())),
+    attributeDefs: v.optional(v.array(v.any())),
+    notesHe: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    let categoryId = args.categoryId;
+    if (!categoryId) {
+      const existing = await ctx.db
+        .query("materialCategories")
+        .filter((q) => q.eq(q.field("nameHe"), "Uncategorized"))
+        .first();
+      if (existing) {
+        categoryId = existing._id;
+      } else {
+        categoryId = await ctx.db.insert("materialCategories", {
+          nameHe: "Uncategorized",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    const attributeDefs = Array.isArray(args.attributeDefs)
+      ? (args.attributeDefs as CatalogAttributeDef[])
+      : [];
+
+    return await ctx.db.insert("materialTemplates", {
+      categoryId,
+      nameHe: args.nameHe,
+      kind: args.kind ?? "material",
+      defaultUomCode: args.defaultUomCode ?? "ea",
+      searchKeywords: args.searchKeywords ?? [args.nameHe],
+      attributeDefs,
+      notesHe: args.notesHe,
       active: true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -57,19 +248,135 @@ export const createCatalogItem = mutation({
   },
 });
 
-export const searchCatalog = query({
+export const searchTemplates = query({
   args: { query: v.string() },
   handler: async (ctx, args) => {
-    // Simple search for now. Convex supports full text search but needs index config.
-    // We'll just do a basic scan or exact match for prototype.
-    // In production: use .withSearchIndex("search_body", ...)
-    
-    // For now, return all and filter client side or basic check
-    const all = await ctx.db.query("materialCatalog").collect();
+    const all = await ctx.db.query("materialTemplates").collect();
     if (!args.query) return all;
-    
+
     const lowerQ = args.query.toLowerCase();
-    return all.filter(item => item.canonicalName.toLowerCase().includes(lowerQ));
+    return all.filter((item) => item.nameHe.toLowerCase().includes(lowerQ));
+  },
+});
+
+export const listVariants = query({
+  args: { templateId: v.id("materialTemplates") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("materialVariants")
+      .withIndex("by_template", (q) => q.eq("templateId", args.templateId))
+      .collect();
+  },
+});
+
+export const listVariantsAll = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("materialVariants").collect();
+  },
+});
+
+export const createVariant = mutation({
+  args: {
+    templateId: v.id("materialTemplates"),
+    labelHe: v.string(),
+    attributes: v.optional(v.any()),
+    normalizedKey: v.optional(v.string()),
+    uomCode: v.optional(
+      v.union(
+        v.literal("ea"),
+        v.literal("sheet"),
+        v.literal("m"),
+        v.literal("m2"),
+        v.literal("sqm"),
+        v.literal("m3"),
+        v.literal("kg"),
+        v.literal("l"),
+        v.literal("set"),
+        v.literal("box"),
+        v.literal("roll"),
+        v.literal("pack"),
+        v.literal("job"),
+        v.literal("hour")
+      )
+    ),
+    thicknessMm: v.optional(v.number()),
+    widthMm: v.optional(v.number()),
+    heightMm: v.optional(v.number()),
+    lengthMm: v.optional(v.number()),
+    notesHe: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const template = await ctx.db.get(args.templateId);
+    if (!template) throw new Error("Template not found");
+
+    const attributes = (args.attributes ?? {}) as Record<string, any>;
+    const defs = (template.attributeDefs ?? []) as CatalogAttributeDef[];
+    validateAttributes(defs, attributes);
+
+    const normalizedKey =
+      args.normalizedKey ??
+      buildNormalizedKey(String(args.templateId), defs, attributes);
+
+    return await ctx.db.insert("materialVariants", {
+      templateId: args.templateId,
+      labelHe: args.labelHe,
+      attributes,
+      normalizedKey,
+      thicknessMm: args.thicknessMm,
+      widthMm: args.widthMm,
+      heightMm: args.heightMm,
+      lengthMm: args.lengthMm,
+      uomCode: args.uomCode,
+      status: "active",
+      notesHe: args.notesHe,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// ==========================
+// SYNONYMS
+// ==========================
+
+export const listSynonyms = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("catalogSynonyms").collect();
+  },
+});
+
+export const createSynonym = mutation({
+  args: {
+    phrase: v.string(),
+    templateId: v.id("materialTemplates"),
+    boost: v.optional(v.number()),
+    notesHe: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const trimmed = args.phrase.trim();
+    if (!trimmed) throw new Error("Phrase is required");
+    return await ctx.db.insert("catalogSynonyms", {
+      phrase: trimmed,
+      templateId: args.templateId,
+      boost: args.boost,
+      notesHe: args.notesHe,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const resolveTemplateByPhrase = query({
+  args: { phrase: v.string() },
+  handler: async (ctx, args) => {
+    const trimmed = args.phrase.trim();
+    if (!trimmed) return null;
+    const matches = await ctx.db
+      .query("catalogSynonyms")
+      .withIndex("by_phrase", (q) => q.eq("phrase", trimmed))
+      .collect();
+    if (matches.length === 0) return null;
+    const sorted = matches.sort((a, b) => (b.boost ?? 0) - (a.boost ?? 0));
+    return sorted[0];
   },
 });
 
@@ -94,35 +401,46 @@ export const getLaborDefaults = query({
 
 export const getBestPrice = query({
   args: {
-    catalogId: v.id("materialCatalog"),
+    variantId: v.id("materialVariants"),
     vendorId: v.optional(v.id("vendors")),
-    unit: v.optional(v.string()),
+    freshnessDays: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const observations = await ctx.db
-      .query("priceObservations")
-      .withIndex("by_catalog", (q) => q.eq("catalogId", args.catalogId))
+    const now = Date.now();
+    let freshnessDays = args.freshnessDays;
+    if (!freshnessDays) {
+      const prefs = await ctx.db
+        .query("procurementPrefs")
+        .withIndex("by_key", (q) => q.eq("key", "global"))
+        .first();
+      const global = prefs?.value ?? {};
+      freshnessDays = Number(global?.priceFreshnessDaysDefault ?? 30);
+    }
+
+    const freshnessMs = Math.max(0, freshnessDays) * 24 * 60 * 60 * 1000;
+    const cutoff = now - freshnessMs;
+    const records = await ctx.db
+      .query("catalogPriceRecords")
+      .withIndex("by_variant_checkedAt", (q) => q.eq("variantId", args.variantId))
       .order("desc")
       .take(50);
 
-    const unit = args.unit?.toLowerCase();
-    const match = observations.find((obs) => {
-      if (args.vendorId && obs.vendorId !== args.vendorId) return false;
-      if (unit && obs.sourceRef?.unit && String(obs.sourceRef.unit).toLowerCase() !== unit) return false;
+    const match = records.find((record) => {
+      if (args.vendorId && record.vendorId !== args.vendorId) return false;
+      if (freshnessMs > 0 && record.checkedAt < cutoff) return false;
       return true;
     });
 
-    if (!match) {
-      return { found: false };
-    }
+    if (!match) return { found: false };
 
     return {
       found: true,
-      price: match.unitCost,
+      amount: match.amount,
       currency: match.currency,
-      observedAt: match.observedAt,
+      checkedAt: match.checkedAt,
       vendorId: match.vendorId,
-      source: match.source,
+      pricingModel: match.pricingModel,
+      sourceType: match.sourceType,
       sourceRef: match.sourceRef,
     };
   },
@@ -131,19 +449,20 @@ export const getBestPrice = query({
 export const getPreferredForProject = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    const observations = await ctx.db.query("priceObservations").order("desc").take(200);
+    const records = await ctx.db.query("catalogPriceRecords").order("desc").take(200);
     const vendorCounts = new Map<string, number>();
     const itemCounts = new Map<string, number>();
 
-    for (const obs of observations) {
-      const projectRef = obs.sourceRef?.projectId;
-      if (projectRef && projectRef !== args.projectId) {
-        continue;
+    for (const record of records) {
+      const projectRef = record.sourceRef?.projectId;
+      if (projectRef && projectRef !== args.projectId) continue;
+      if (record.vendorId) {
+        vendorCounts.set(record.vendorId, (vendorCounts.get(record.vendorId) ?? 0) + 1);
       }
-      if (obs.vendorId) {
-        vendorCounts.set(obs.vendorId, (vendorCounts.get(obs.vendorId) ?? 0) + 1);
+      const key = record.variantId ?? record.templateId;
+      if (key) {
+        itemCounts.set(key, (itemCounts.get(key) ?? 0) + 1);
       }
-      itemCounts.set(obs.catalogId, (itemCounts.get(obs.catalogId) ?? 0) + 1);
     }
 
     const topVendors = Array.from(vendorCounts.entries())
@@ -166,40 +485,206 @@ export const getPreferredForProject = query({
   },
 });
 
+export const getFreshnessDefaults = query({
+  handler: async (ctx) => {
+    const prefs = await ctx.db
+      .query("procurementPrefs")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .first();
+    return prefs?.value ?? {};
+  },
+});
+
+export const setFreshnessDefaults = mutation({
+  args: { priceFreshnessDaysDefault: v.number() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("procurementPrefs")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .first();
+    const value = { priceFreshnessDaysDefault: args.priceFreshnessDaysDefault };
+    if (existing) {
+      await ctx.db.patch(existing._id, { value });
+      return existing._id;
+    }
+    return await ctx.db.insert("procurementPrefs", { key: "global", value });
+  },
+});
+
 // ==========================
 // PRICE OBSERVATIONS
 // ==========================
 
-export const listPriceObservations = query({
+export const listPriceRecords = query({
   handler: async (ctx) => {
-    return await ctx.db.query("priceObservations").order("desc").take(200);
+    return await ctx.db.query("catalogPriceRecords").order("desc").take(200);
   },
 });
 
-export const createPriceObservation = mutation({
+export const createPriceRecord = mutation({
   args: {
-    catalogId: v.id("materialCatalog"),
+    variantId: v.optional(v.id("materialVariants")),
+    templateId: v.optional(v.id("materialTemplates")),
     vendorId: v.optional(v.id("vendors")),
-    unitCost: v.number(),
+    amount: v.number(),
     currency: v.string(),
-    unit: v.optional(v.string()),
     source: v.union(
       v.literal("purchase"),
       v.literal("manual"),
+      v.literal("web"),
+      v.literal("quote"),
       v.literal("approvedElement")
     ),
-    sourceRef: v.any(),
+    pricingModel: v.union(
+      v.literal("per_unit"),
+      v.literal("per_sheet"),
+      v.literal("per_m"),
+      v.literal("per_m2"),
+      v.literal("per_pack"),
+      v.literal("tiered"),
+      v.literal("formula"),
+      v.literal("unknown")
+    ),
+    sourceRef: v.optional(v.any()),
+    url: v.optional(v.string()),
+    title: v.optional(v.string()),
+    rawSnippet: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("priceObservations", {
-      catalogId: args.catalogId,
+    if (!args.variantId && !args.templateId) {
+      throw new Error("createPriceRecord requires variantId or templateId");
+    }
+    if (args.source === "web") {
+      const hasEvidence = !!args.url || !!args.title || !!args.rawSnippet;
+      if (!hasEvidence) {
+        throw new Error("Web price records require url, title, or rawSnippet");
+      }
+    }
+    return await ctx.db.insert("catalogPriceRecords", {
+      variantId: args.variantId,
+      templateId: args.templateId,
       vendorId: args.vendorId,
-      unitCost: args.unitCost,
+      amount: args.amount,
       currency: args.currency,
-      observedAt: Date.now(),
-      source: args.source,
-      sourceRef: { ...args.sourceRef, unit: args.unit },
+      checkedAt: Date.now(),
+      pricingModel: args.pricingModel,
+      sourceType: args.source,
+      sourceRef: args.sourceRef,
+      url: args.url,
+      title: args.title,
+      rawSnippet: args.rawSnippet,
+      createdAt: Date.now(),
     });
+  },
+});
+
+// ==========================
+// PRICING FORMULAS
+// ==========================
+
+export const listPricingFormulas = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("pricingFormulas").collect();
+  },
+});
+
+export const createPricingFormula = mutation({
+  args: {
+    templateId: v.id("materialTemplates"),
+    vendorId: v.optional(v.id("vendors")),
+    formulaType: v.union(
+      v.literal("print_m2"),
+      v.literal("cnc_cut"),
+      v.literal("custom")
+    ),
+    params: v.any(),
+    currency: v.string(),
+    sourceType: v.union(
+      v.literal("purchase"),
+      v.literal("manual"),
+      v.literal("web"),
+      v.literal("quote"),
+      v.literal("approvedElement")
+    ),
+    evidenceUrl: v.optional(v.string()),
+    notesHe: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (args.sourceType === "web" && !args.evidenceUrl) {
+      throw new Error("Web formulas require evidenceUrl");
+    }
+    return await ctx.db.insert("pricingFormulas", {
+      templateId: args.templateId,
+      vendorId: args.vendorId,
+      formulaType: args.formulaType,
+      params: args.params,
+      currency: args.currency,
+      checkedAt: Date.now(),
+      sourceType: args.sourceType,
+      evidenceUrl: args.evidenceUrl,
+      notesHe: args.notesHe,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+// ==========================
+// VENDOR LOCATIONS
+// ==========================
+
+export const listVendorLocations = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("vendorLocations").collect();
+  },
+});
+
+export const createVendorLocation = mutation({
+  args: {
+    vendorId: v.id("vendors"),
+    nameHe: v.string(),
+    addressHe: v.string(),
+    pickupHoursHe: v.optional(v.string()),
+    pickupNotesHe: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("vendorLocations", {
+      vendorId: args.vendorId,
+      nameHe: args.nameHe,
+      addressHe: args.addressHe,
+      pickupHoursHe: args.pickupHoursHe,
+      pickupNotesHe: args.pickupNotesHe,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// ==========================
+// PROCUREMENT PREFS
+// ==========================
+
+export const getProcurementPrefs = query({
+  args: { key: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("procurementPrefs")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .first();
+  },
+});
+
+export const setProcurementPrefs = mutation({
+  args: { key: v.string(), value: v.any() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("procurementPrefs")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, { value: args.value });
+      return existing._id;
+    }
+    return await ctx.db.insert("procurementPrefs", { key: args.key, value: args.value });
   },
 });
 
@@ -242,19 +727,22 @@ export const createPurchase = mutation({
     });
 
     for (const line of args.lineItems) {
-      if (!line.catalogId) continue;
-      await ctx.db.insert("priceObservations", {
-        catalogId: line.catalogId,
+      if (!line.variantId && !line.templateId) continue;
+      await ctx.db.insert("catalogPriceRecords", {
+        variantId: line.variantId,
+        templateId: line.templateId,
         vendorId: args.vendorId,
-        unitCost: Number(line.unitPrice ?? 0),
+        amount: Number(line.unitPrice ?? 0),
         currency: args.currency,
-        observedAt: Date.now(),
-        source: "purchase",
+        checkedAt: Date.now(),
+        pricingModel: pricingModelFromUom(line.uomCode),
+        sourceType: "purchase",
         sourceRef: {
           projectId: args.projectId,
           purchaseId,
-          unit: line.unit,
+          uomCode: line.uomCode,
         },
+        createdAt: Date.now(),
       });
     }
 

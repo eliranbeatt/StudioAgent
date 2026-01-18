@@ -1,0 +1,764 @@
+Here’s a catalog schema that will actually work for your studio long-term (wood + prints + hardware + paint + “weird one-offs”), while supporting:
+
+Categories + types + variants (thickness/size/etc.)
+
+Multiple units + conversions (sheet / m / m² / liter / kg / unit)
+
+Multiple price sources (your manual, actual purchases, web search results)
+
+Procurement logistics (online order / pickup / shipping / lead time / min order)
+
+LLM flow: DB-first, web only for missing/stale, and every web hit gets saved
+
+I’m describing it as Convex-style tables, but it’s generic DB design.
+
+The big idea (the model that doesn’t break)
+3 layers
+
+Template (MaterialTemplate) = “what kind of thing is this?”
+Example: “Plywood sheet”, “Print on PVC foamboard”, “Wood beam”
+
+Variant / SKU (MaterialVariant) = “the exact spec you pick”
+Example: “Plywood 17mm 1220×2440”, “PVC foamboard 5mm + matte lamination + CNC complex cut”
+
+Price Record (PriceRecord) = “someone said this price at this time”
+Sources: manual (your supplier memory), purchase (invoice), web (search result), quote (email/WhatsApp)
+
+This separation is what lets you scale to “all all all” without chaos.
+
+Table 1 — materialCategories
+
+Hierarchical categories + Hebrew labels.
+
+Fields
+
+nameHe (e.g. "עץ", "הדפסות", "ברזל", "פרזול", "צבעים", "דבקים", "חשמל", "בד", "פלסטיק")
+
+parentId?
+
+sortOrder
+
+icon?
+
+Table 2 — uoms (units of measure)
+
+You’ll need consistent unit handling.
+
+Fields
+
+code (e.g. unit, sheet, m, m2, liter, kg, pack)
+
+labelHe (e.g. "יח׳", "לוח", "מ׳", "מ״ר", "ליטר", "ק״ג", "חבילה")
+
+baseDimension enum: count|length|area|volume|weight
+
+toBaseFactor (for conversions inside same dimension)
+
+Table 3 — materialTemplates
+
+Defines the “type” and what parameters it supports.
+
+Fields
+
+categoryId
+
+nameHe (e.g. "לביד", "MDF", "קורה אורן", "הדפסה על PVC מוקצף")
+
+defaultUomId (sheet / m / m2 / unit…)
+
+searchKeywords (array: synonyms, Hebrew+English, supplier slang)
+
+attributeDefs (array of attribute definitions, typed)
+
+attributeDefs (this is the heart)
+
+Each attribute definition:
+
+key (stable machine key: thicknessMm, sheetWidthMm, sheetHeightMm, finish, cutMode)
+
+labelHe (e.g. "עובי", "רוחב", "גובה", "גימור", "סוג חיתוך")
+
+type enum:
+
+number (with unit)
+
+enum (list of options)
+
+boolean
+
+text
+
+unit? (e.g. mm, cm)
+
+required boolean
+
+allowedValues? (for enum)
+
+commonValues? (to render quick chips like 3/5/10mm)
+
+normalization rules (rounding, canonical strings, etc.)
+
+Examples
+
+Wood sheet: thickness, width, height, grade
+
+Beam: thickness, width, length, woodType
+
+Print: substrate, thickness, finish, lamination, printSides, cutMode, CNCComplexity, mounting, filePrep
+
+Table 4 — materialVariants (SKU)
+
+Each row is an actual “selectable spec”.
+
+Fields
+
+templateId
+
+nameHe (auto-generated readable label, editable)
+
+uomId (sometimes override template default)
+
+attributes (object keyed by attributeDefs.key)
+
+normalizedKey (string used for matching + dedup)
+
+example: wood:plywood|thk=17|w=1220|h=2440|grade=std
+
+status enum: active|deprecated
+
+notesHe?
+
+Important
+
+For fast querying, store a few common numeric attributes duplicated as columns too:
+
+thicknessMm?, lengthMm?, widthMm?, heightMm?
+
+(prints might store substrate and cutMode as direct fields as well)
+This is optional but makes filtering fast.
+
+Table 5 — vendors
+
+Suppliers & service providers (wood yards, print houses, hardware stores, online shops).
+
+Fields
+
+nameHe
+
+type enum: materials|printing|services|onlineRetail
+
+websiteUrl?
+
+phone?
+
+notesHe?
+
+Table 6 — vendorLocations
+
+Because pickup vs shipping matters.
+
+Fields
+
+vendorId
+
+nameHe (branch name)
+
+addressHe
+
+geo? (optional)
+
+pickupHoursHe?
+
+pickupNotesHe?
+
+Table 7 — priceRecords (unified “price memory”)
+
+This table is the single source for all price knowledge, including web search saving.
+
+Fields
+
+variantId (preferred)
+(or templateId + matchInfo if variant unknown)
+
+vendorId?
+
+sourceType enum: manual|purchase|web|quote
+
+checkedAt (timestamp)
+
+validUntil? (optional)
+
+currency (usually ILS)
+
+pricingModel enum:
+
+per_unit
+
+per_sheet
+
+per_m
+
+per_m2
+
+per_pack
+
+tiered
+
+formula
+
+price object:
+
+amount
+
+minQty?
+
+packSize? (e.g. screws sold in 100)
+
+setupFee? (prints)
+
+Logistics snapshot
+
+availability enum: inStock|outOfStock|unknown
+
+leadTimeDays?
+
+orderMethod enum: walkin|phone|whatsapp|website
+
+orderUrl? (web)
+
+shippingAvailable?
+
+shippingCost?
+
+pickupAvailable?
+
+pickupLocationId?
+
+Evidence (mandatory for web)
+
+url?
+
+title?
+
+domain?
+
+rawSnippet?
+
+extractedFields? (JSON)
+
+Quality
+
+confidence enum: high|medium|low
+
+notesHe?
+
+createdBy: user|agent
+
+Dedup keys
+
+urlHash?
+
+offerFingerprint (variantId + vendorId + amount + url)
+
+✅ This satisfies your rule: “every web search result must be saved with source=web, link, details.”
+
+Table 8 — pricingFormulas (for printing + complex services)
+
+Printing often isn’t a single fixed price; you need a formula.
+
+Fields
+
+templateId (usually printing templates)
+
+vendorId? (some vendors price differently)
+
+formulaType enum: print_m2|cnc_cut|custom
+
+params (JSON):
+
+baseRatePerM2
+
+minCharge
+
+setupFee
+
+laminationAddPerM2
+
+cutStraightAdd
+
+cncSimpleAdd
+
+cncComplexAdd
+
+mountingAddPerM2
+
+etc.
+
+checkedAt
+
+sourceType (manual|web|quote|purchase)
+
+evidenceUrl?
+
+Then priceRecords.pricingModel="formula" can reference a formulaId.
+
+Table 9 — catalogSynonyms (normalization map for matching)
+
+This is what allows “free-text” accounting lines to map to templates/variants.
+
+Fields
+
+phrase (e.g. "לביד", "ply", "דיקט", "קאפה", "לוקובונד")
+
+templateId
+
+boost number (priority)
+
+notesHe?
+
+Table 10 — Studio preferences (optional but super useful)
+studioProcurementPrefs
+
+Rules used by the planner & LLM.
+
+Fields
+
+preferredVendorsByCategory (map categoryId → vendorIds[])
+
+defaultPickupVsShipping (pickupPreferred|shippingPreferred)
+
+maxLeadTimeDaysDefault
+
+priceFreshnessDaysByCategory (wood 30, prints 60, hardware 90…)
+
+avoidVendors? list
+
+notesHe
+
+How it supports your examples
+Wood
+
+Template: “לביד”
+
+Variant attributes: thickness=17, width=1220, height=2440, grade=רגיל
+
+PriceRecords:
+
+purchase records from invoices (highest trust)
+
+manual supplier remembered price
+
+web findings saved from searches with URL and checkedAt
+
+Printing
+
+Template: “הדפסה על PVC מוקצף”
+
+Variant attributes: thickness=5, finish=מט, lamination=true, cutMode=CNC, cncComplexity=מורכב
+
+Pricing:
+
+either direct priceRecord (vendor gives full quote per job)
+
+or pricingFormula + priceRecord for formula params (per m² + add-ons)
+
+The DB-first search behavior you want (built into schema)
+
+When a “pricing/web search” skill runs for items:
+
+Try to resolve to templateId/variantId via synonyms + attributes
+
+Query priceRecords:
+
+same variantId
+
+checkedAt within freshness window for that category
+
+If found → no web search
+
+If missing/stale → web search
+
+Parse results into new priceRecords rows with sourceType="web"
+
+Return price suggestions referencing the saved record IDs
+
+What I’d standardize as “required” fields (so it stays clean)
+
+For any saved web result (sourceType="web"), require:
+
+variantId OR (templateId + matchInfo)
+
+checkedAt
+
+url
+
+price.amount OR mark as “price unknown” explicitly
+
+confidence
+
+at least one of: rawSnippet / title / extractedFields
+
+If you want this to feel amazing in the UI
+
+The schema above enables a very fast UI:
+
+Accounting line → “בחר מקטלוג” → picks variant
+
+Auto-fill price from latest best priceRecord
+
+Click “מחיר” badge → shows a Price Timeline: purchase/manual/web/quotes
+
+Web search tool results automatically appear there (no lost work)
+
+— you already have the right primitives (materialCatalog, priceObservations, purchases, vendors, materialLines), but you’re missing one critical layer:
+
+✅ Variants/SKUs (thickness/size/cut/finish/etc.)
+…and a single “price memory” table that can store manual + purchase + web with URL/logistics.
+
+Below is the best schema upgrade for your current Convex schema, designed to be:
+
+Non-breaking (you can keep old fields/data)
+
+Works for wood boards/beams, printing services, hardware, paint, etc.
+
+Supports DB-first, and “web search always saves results”
+
+The 3-layer catalog model (fits your studio)
+1) Catalog Item (Template)
+
+“לביד”, “MDF”, “הדפסה על PVC מוקצף”, “חיתוך CNC”, “ברגים”
+
+2) Variant (SKU)
+
+Exact spec: thickness/size/finish/cut mode/etc.
+
+3) Price Record (Evidence)
+
+A dated record of price + logistics from: purchase | manual | web | quote
+
+0) Add a couple enums/types (paste near your enums)
+const CatalogItemKind = v.union(
+  v.literal("material"),        // wood, paint, screws…
+  v.literal("print_service"),   // printing on substrate
+  v.literal("cut_service"),     // CNC / laser / straight cut service
+  v.literal("rental"),
+  v.literal("shipping"),
+  v.literal("other_service")
+);
+
+const UomCode = v.union(
+  v.literal("ea"),
+  v.literal("sheet"),     // IMPORTANT for wood boards
+  v.literal("m"),
+  v.literal("m2"),
+  v.literal("sqm"),
+  v.literal("m3"),
+  v.literal("kg"),
+  v.literal("l"),
+  v.literal("set"),
+  v.literal("box"),
+  v.literal("roll"),
+  v.literal("pack"),
+  v.literal("job"),       // prints often end up “per job”
+  v.literal("hour")
+);
+
+const PriceSourceType = v.union(
+  v.literal("purchase"),
+  v.literal("manual"),
+  v.literal("web"),
+  v.literal("quote"),
+  v.literal("approvedElement")
+);
+
+const PricingModel = v.union(
+  v.literal("per_unit"),
+  v.literal("per_sheet"),
+  v.literal("per_m"),
+  v.literal("per_m2"),
+  v.literal("per_pack"),
+  v.literal("tiered"),
+  v.literal("formula"),
+  v.literal("unknown")
+);
+
+const Availability = v.union(
+  v.literal("inStock"),
+  v.literal("outOfStock"),
+  v.literal("unknown")
+);
+
+const OrderMethod = v.union(
+  v.literal("walkin"),
+  v.literal("phone"),
+  v.literal("whatsapp"),
+  v.literal("website"),
+  v.literal("email"),
+  v.literal("unknown")
+);
+
+const CatalogAttributeDef = v.object({
+  key: v.string(),            // e.g. "thicknessMm"
+  labelHe: v.string(),        // e.g. "עובי"
+  type: v.union(
+    v.literal("number"),
+    v.literal("enum"),
+    v.literal("boolean"),
+    v.literal("text")
+  ),
+  unit: v.optional(v.string()), // "mm" | "cm" | etc.
+  required: v.optional(v.boolean()),
+  enumOptions: v.optional(v.array(v.object({
+    value: v.string(),
+    labelHe: v.string()
+  }))),
+  commonValues: v.optional(v.array(v.any())), // quick chips in UI
+});
+
+1) Upgrade materialCatalog into a true “Template” table (non-breaking)
+
+You keep existing fields, add these optional fields:
+
+materialCatalog: defineTable({
+  canonicalName: v.string(),
+  unit: v.string(),
+  synonyms: v.array(v.string()),
+  typicalVendorId: v.optional(v.id("vendors")),
+  tags: v.array(v.string()),
+  active: v.boolean(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+
+  // NEW (optional, backwards compatible)
+  kind: v.optional(CatalogItemKind),
+  categoryKey: v.optional(v.string()),         // "wood" | "prints" | "hardware" ...
+  defaultUomCode: v.optional(UomCode),         // replaces free-text unit where possible
+  attributeDefs: v.optional(v.array(CatalogAttributeDef)), // what parameters this item supports
+  notesHe: v.optional(v.string()),
+})
+.index("by_name", ["canonicalName"])
+.index("by_categoryKey", ["categoryKey"]);
+
+
+Why this works: your UI can filter by categoryKey, and decide which controls to show using attributeDefs.
+
+2) NEW table: materialCatalogVariants (this is the missing piece)
+
+Each row is a selectable SKU with structured attributes + a stable normalizedKey.
+
+materialCatalogVariants: defineTable({
+  catalogId: v.id("materialCatalog"),
+
+  // Human readable label for dropdowns
+  labelHe: v.string(),
+
+  // Structured params (depends on attributeDefs)
+  attributes: v.any(), // Record<string, number|string|boolean>
+
+  // For matching & dedup: deterministic normalized string
+  normalizedKey: v.string(),  // e.g. "wood|plywood|thk=17|w=1220|h=2440"
+
+  // Convenience numeric columns for fast filtering (optional but very useful)
+  thicknessMm: v.optional(v.number()),
+  widthMm: v.optional(v.number()),
+  heightMm: v.optional(v.number()),
+  lengthMm: v.optional(v.number()),
+
+  uomCode: v.optional(UomCode),
+  active: v.boolean(),
+  tags: v.optional(v.array(v.string())),
+  notesHe: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+.index("by_catalog", ["catalogId"])
+.index("by_normalizedKey", ["normalizedKey"]);
+
+3) Replace “priceObservations-only” with a unified price evidence table
+
+You can keep priceObservations for old flows, but for what you want (web results w/ URL + shipping), you need a richer table.
+
+✅ NEW: catalogPriceRecords
+
+catalogPriceRecords: defineTable({
+  // Prefer variant-level pricing
+  variantId: v.optional(v.id("materialCatalogVariants")),
+  catalogId: v.optional(v.id("materialCatalog")), // fallback when variant unknown
+
+  vendorId: v.optional(v.id("vendors")),
+
+  sourceType: PriceSourceType,
+  observedAt: v.number(),      // when we checked / found it
+  currency: v.string(),        // "NIS"
+
+  pricingModel: PricingModel,
+  unitCost: v.optional(v.number()),   // for per_* models
+  minQty: v.optional(v.number()),
+  setupFee: v.optional(v.number()),   // prints
+  notesHe: v.optional(v.string()),
+
+  // Logistics snapshot (what your planner cares about)
+  availability: v.optional(Availability),
+  leadTimeDays: v.optional(v.number()),
+  orderMethod: v.optional(OrderMethod),
+  shippingAvailable: v.optional(v.boolean()),
+  shippingCost: v.optional(v.number()),
+  pickupAvailable: v.optional(v.boolean()),
+  pickupAddressHe: v.optional(v.string()),
+
+  // Evidence (MANDATORY for web)
+  url: v.optional(v.string()),
+  domain: v.optional(v.string()),
+  title: v.optional(v.string()),
+  rawSnippet: v.optional(v.string()),
+  extractedFields: v.optional(v.any()),
+
+  // Quality
+  confidence: v.optional(v.number()), // 0..1
+  createdBy: v.optional(v.union(v.literal("user"), v.literal("agent"))),
+
+  // Link back to origin (receipt/purchase/search-run/etc.)
+  sourceRef: v.optional(v.any()),
+
+  // Dedup keys
+  urlHash: v.optional(v.string()),
+  offerFingerprint: v.optional(v.string()),
+
+  createdAt: v.number(),
+})
+.index("by_variant_observedAt", ["variantId", "observedAt"])
+.index("by_catalog_observedAt", ["catalogId", "observedAt"])
+.index("by_urlHash", ["urlHash"]);
+
+What this enables immediately
+
+Your web-search skill saves each result as sourceType="web", with url, observedAt, shipping, etc.
+
+Your pricing resolver does DB-first lookups with freshness rules.
+
+4) Add catalog linkage fields to materialLines (so Accounting can “pick from catalog”)
+
+Add these fields to your existing materialLines table:
+
+catalogId: v.optional(v.id("materialCatalog")),
+variantId: v.optional(v.id("materialCatalogVariants")),
+priceRecordId: v.optional(v.id("catalogPriceRecords")),
+
+pricingSourceCode: v.optional(v.union(
+  v.literal("catalog_manual"),
+  v.literal("purchase_actual"),
+  v.literal("web"),
+  v.literal("estimate"),
+  v.literal("override")
+)),
+priceCheckedAt: v.optional(v.number()),
+priceUrl: v.optional(v.string()),
+
+
+Also: extend unitCode union to include "sheet" and "pack" if you follow the UomCode list.
+
+5) Printing support (the part that usually breaks catalogs)
+
+For printing, you have 2 common realities:
+
+Some vendors give direct per-m² price + add-ons
+
+Others give tiered / formula (min charge + setup + cut complexity)
+
+If you want this clean, add OPTIONAL formulas:
+
+pricingFormulas: defineTable({
+  catalogId: v.id("materialCatalog"),  // usually a print_service template
+  vendorId: v.optional(v.id("vendors")),
+  formulaType: v.union(
+    v.literal("print_m2"),
+    v.literal("cnc_cut"),
+    v.literal("custom")
+  ),
+  params: v.any(), // { basePerM2, minCharge, laminationAddPerM2, cncComplexAdd, ... }
+  currency: v.string(),
+  observedAt: v.number(),
+  sourceType: PriceSourceType,
+  url: v.optional(v.string()),
+  notesHe: v.optional(v.string()),
+  createdAt: v.number(),
+})
+.index("by_catalog_vendor", ["catalogId", "vendorId"]);
+
+
+Then your print variants store attributes like:
+
+substrate, thicknessMm, finish, lamination, cutMode, cncComplexity
+…and pricing can be either a catalogPriceRecords row, or computed via pricingFormulas.
+
+6) Studio preferences (so shopping planner behaves like you)
+
+Small but powerful:
+
+procurementPrefs: defineTable({
+  key: v.string(), // "global" or per category
+  value: v.any(),  // { preferredVendorsByCategory, freshnessDaysByCategory, defaultOrderMethod, ... }
+}).index("by_key", ["key"]);
+
+7) The DB-first rule you asked for (how queries should work)
+
+Implement one resolver used by all skills + UI:
+
+pricing.getBestPrice({ variantId, vendorId?, freshnessDays })
+
+Priority:
+
+catalogPriceRecords sourceType=purchase (newest)
+
+sourceType=manual
+
+sourceType=web within freshness
+
+else “missing” → trigger web search → save results → return
+
+That gives you exactly: look in table first, only search missing/stale.
+
+8) Seed templates that match your studio (examples)
+Wood sheet template (materialCatalog)
+
+canonicalName: "לביד"
+
+categoryKey: "wood"
+
+kind: "material"
+
+defaultUomCode: "sheet"
+
+attributeDefs:
+
+thicknessMm (number, mm, required, common 4/6/10/12/17/21)
+
+widthMm (number, required, common 1220/1525)
+
+heightMm (number, required, common 2440/3050)
+
+grade (enum: "רגיל" / "איכותי")
+
+Print template (materialCatalog)
+
+canonicalName: "הדפסה על PVC מוקצף"
+
+categoryKey: "prints"
+
+kind: "print_service"
+
+defaultUomCode: "m2"
+
+attributeDefs:
+
+thicknessMm (number)
+
+finish (enum: מט/מבריק/למינציה)
+
+sides (enum: חד/דו)
+
+cutMode (enum: ישר/CNC)
+
+cncComplexity (enum: פשוט/בינוני/מורכב)
+
+proofRequired (boolean)

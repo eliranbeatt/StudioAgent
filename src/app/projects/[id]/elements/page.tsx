@@ -64,7 +64,7 @@ export default function ElementsPage({ params }: { params: Promise<{ id: string 
   const deleteWorkLine = useMutation(api.accounting.deleteWorkLine);
 
   const elementParam = searchParams.get("element");
-  const elements = listData?.elements ?? [];
+  const elements = useMemo(() => listData?.elements ?? [], [listData]);
 
   const filtered = useMemo(() => {
     if (!filter.trim()) return elements;

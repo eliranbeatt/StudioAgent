@@ -1,41 +1,52 @@
-"use client";
+"use client"
 
-import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
-import { useState } from "react";
+import { useMutation, useQuery } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
+import { useMemo, useState } from 'react'
 
 type LineItemDraft = {
-  catalogId: string;
-  description: string;
-  qty: string;
-  unit: string;
-  unitPrice: string;
-};
+  templateId: string
+  variantId: string
+  description: string
+  qty: string
+  uomCode: string
+  unitPrice: string
+}
+
+const emptyLineItem: LineItemDraft = {
+  templateId: '',
+  variantId: '',
+  description: '',
+  qty: '1',
+  uomCode: '',
+  unitPrice: '',
+}
 
 export default function PurchasesPage() {
-  const purchases = useQuery(api.management.listPurchases);
-  const vendors = useQuery(api.management.listVendors);
-  const catalog = useQuery(api.management.searchCatalog, { query: "" });
-  const createPurchase = useMutation(api.management.createPurchase);
+  const purchases = useQuery(api.management.listPurchases)
+  const vendors = useQuery(api.management.listVendors)
+  const templates = useQuery(api.management.searchTemplates, { query: '' })
+  const variants = useQuery(api.management.listVariantsAll)
+  const uoms = useQuery(api.management.listUoms)
+  const createPurchase = useMutation(api.management.createPurchase)
 
-  const [vendorId, setVendorId] = useState("");
-  const [currency, setCurrency] = useState("NIS");
-  const [status, setStatus] = useState("recorded");
-  const [notes, setNotes] = useState("");
-  const [lineItem, setLineItem] = useState<LineItemDraft>({
-    catalogId: "",
-    description: "",
-    qty: "1",
-    unit: "",
-    unitPrice: "",
-  });
+  const [vendorId, setVendorId] = useState('')
+  const [currency, setCurrency] = useState('NIS')
+  const [status, setStatus] = useState('recorded')
+  const [notes, setNotes] = useState('')
+  const [lineItem, setLineItem] = useState<LineItemDraft>(emptyLineItem)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vendorId || !lineItem.catalogId || !lineItem.unitPrice) return;
-    const qty = Number(lineItem.qty || 0);
-    const unitPrice = Number(lineItem.unitPrice || 0);
-    const lineTotal = qty * unitPrice;
+  const variantsForTemplate = useMemo(() => {
+    if (!lineItem.templateId) return []
+    return (variants ?? []).filter((variant) => variant.templateId === lineItem.templateId)
+  }, [variants, lineItem.templateId])
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!vendorId || (!lineItem.variantId && !lineItem.templateId) || !lineItem.unitPrice) return
+    const qty = Number(lineItem.qty || 0)
+    const unitPrice = Number(lineItem.unitPrice || 0)
+    const lineTotal = qty * unitPrice
 
     await createPurchase({
       vendorId: vendorId as any,
@@ -44,19 +55,20 @@ export default function PurchasesPage() {
       notes: notes || undefined,
       lineItems: [
         {
-          catalogId: lineItem.catalogId,
+          templateId: lineItem.templateId || undefined,
+          variantId: lineItem.variantId || undefined,
           description: lineItem.description,
           qty,
-          unit: lineItem.unit,
+          uomCode: lineItem.uomCode,
           unitPrice,
           lineTotal,
         },
       ],
-    });
+    })
 
-    setLineItem({ catalogId: "", description: "", qty: "1", unit: "", unitPrice: "" });
-    setNotes("");
-  };
+    setLineItem(emptyLineItem)
+    setNotes('')
+  }
 
   return (
     <div className="max-w-5xl">
@@ -73,7 +85,7 @@ export default function PurchasesPage() {
           <select
             className="border p-2 rounded bg-white"
             value={vendorId}
-            onChange={(e) => setVendorId(e.target.value)}
+            onChange={(event) => setVendorId(event.target.value)}
             required
           >
             <option value="">Select Vendor</option>
@@ -86,7 +98,7 @@ export default function PurchasesPage() {
           <select
             className="border p-2 rounded bg-white"
             value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
+            onChange={(event) => setCurrency(event.target.value)}
           >
             <option value="NIS">NIS</option>
             <option value="USD">USD</option>
@@ -95,7 +107,7 @@ export default function PurchasesPage() {
           <select
             className="border p-2 rounded bg-white"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(event) => setStatus(event.target.value)}
           >
             <option value="recorded">Recorded</option>
             <option value="paid">Paid</option>
@@ -105,18 +117,32 @@ export default function PurchasesPage() {
             className="border p-2 rounded"
             placeholder="Notes (optional)"
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(event) => setNotes(event.target.value)}
           />
           <select
             className="border p-2 rounded bg-white col-span-2"
-            value={lineItem.catalogId}
-            onChange={(e) => setLineItem((prev) => ({ ...prev, catalogId: e.target.value }))}
+            value={lineItem.templateId}
+            onChange={(event) =>
+              setLineItem((prev) => ({ ...prev, templateId: event.target.value, variantId: '' }))
+            }
             required
           >
-            <option value="">Catalog Item</option>
-            {catalog?.map((item) => (
+            <option value="">Template</option>
+            {templates?.map((item) => (
               <option key={item._id} value={item._id}>
-                {item.canonicalName}
+                {item.nameHe}
+              </option>
+            ))}
+          </select>
+          <select
+            className="border p-2 rounded bg-white col-span-2"
+            value={lineItem.variantId}
+            onChange={(event) => setLineItem((prev) => ({ ...prev, variantId: event.target.value }))}
+          >
+            <option value="">Variant (optional)</option>
+            {variantsForTemplate.map((variant) => (
+              <option key={variant._id} value={variant._id}>
+                {variant.labelHe}
               </option>
             ))}
           </select>
@@ -124,31 +150,44 @@ export default function PurchasesPage() {
             className="border p-2 rounded col-span-2"
             placeholder="Line description (optional)"
             value={lineItem.description}
-            onChange={(e) => setLineItem((prev) => ({ ...prev, description: e.target.value }))}
+            onChange={(event) => setLineItem((prev) => ({ ...prev, description: event.target.value }))}
           />
           <input
             className="border p-2 rounded"
             placeholder="Qty"
             value={lineItem.qty}
-            onChange={(e) => setLineItem((prev) => ({ ...prev, qty: e.target.value }))}
+            onChange={(event) => setLineItem((prev) => ({ ...prev, qty: event.target.value }))}
           />
-          <input
-            className="border p-2 rounded"
-            placeholder="Unit (optional)"
-            value={lineItem.unit}
-            onChange={(e) => setLineItem((prev) => ({ ...prev, unit: e.target.value }))}
-          />
+          <select
+            className="border p-2 rounded bg-white"
+            value={lineItem.uomCode}
+            onChange={(event) => setLineItem((prev) => ({ ...prev, uomCode: event.target.value }))}
+          >
+            <option value="">UOM</option>
+            {uoms?.map((uom) => (
+              <option key={uom._id} value={uom.code}>
+                {uom.labelHe} ({uom.code})
+              </option>
+            ))}
+            {!uoms?.length && (
+              <>
+                <option value="ea">ea</option>
+                <option value="sheet">sheet</option>
+                <option value="m">m</option>
+                <option value="m2">m2</option>
+                <option value="kg">kg</option>
+                <option value="l">l</option>
+              </>
+            )}
+          </select>
           <input
             className="border p-2 rounded"
             placeholder="Unit Price"
             value={lineItem.unitPrice}
-            onChange={(e) => setLineItem((prev) => ({ ...prev, unitPrice: e.target.value }))}
+            onChange={(event) => setLineItem((prev) => ({ ...prev, unitPrice: event.target.value }))}
             required
           />
-          <button
-            type="submit"
-            className="px-4 py-2 bg-black text-white rounded font-semibold"
-          >
+          <button type="submit" className="px-4 py-2 bg-black text-white rounded font-semibold">
             Save Purchase
           </button>
         </form>
@@ -167,10 +206,16 @@ export default function PurchasesPage() {
           <tbody>
             {purchases?.map((purchase) => (
               <tr key={purchase._id} className="border-b">
-                <td className="p-4">{vendors?.find((v) => v._id === purchase.vendorId)?.name ?? purchase.vendorId}</td>
-                <td className="p-4 font-mono">{purchase.totalAmount} {purchase.currency}</td>
+                <td className="p-4">
+                  {vendors?.find((vendor) => vendor._id === purchase.vendorId)?.name ?? purchase.vendorId}
+                </td>
+                <td className="p-4 font-mono">
+                  {purchase.totalAmount} {purchase.currency}
+                </td>
                 <td className="p-4 text-xs uppercase text-gray-500">{purchase.status}</td>
-                <td className="p-4 text-xs text-gray-500">{new Date(purchase.date).toLocaleDateString()}</td>
+                <td className="p-4 text-xs text-gray-500">
+                  {new Date(purchase.date).toLocaleDateString()}
+                </td>
               </tr>
             ))}
             {purchases?.length === 0 && (
@@ -184,5 +229,5 @@ export default function PurchasesPage() {
         </table>
       </div>
     </div>
-  );
+  )
 }

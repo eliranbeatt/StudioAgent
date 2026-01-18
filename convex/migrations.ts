@@ -193,6 +193,116 @@ export const backfillTraceCosts = mutation({
   }
 });
 
+export const seedCatalogDefaults = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const uoms = [
+      { code: "ea", labelHe: "ea", baseDimension: "count", toBaseFactor: 1 },
+      { code: "sheet", labelHe: "sheet", baseDimension: "count", toBaseFactor: 1 },
+      { code: "set", labelHe: "set", baseDimension: "count", toBaseFactor: 1 },
+      { code: "box", labelHe: "box", baseDimension: "count", toBaseFactor: 1 },
+      { code: "roll", labelHe: "roll", baseDimension: "count", toBaseFactor: 1 },
+      { code: "pack", labelHe: "pack", baseDimension: "count", toBaseFactor: 1 },
+      { code: "job", labelHe: "job", baseDimension: "count", toBaseFactor: 1 },
+      { code: "hour", labelHe: "hour", baseDimension: "count", toBaseFactor: 1 },
+      { code: "m", labelHe: "m", baseDimension: "length", toBaseFactor: 1 },
+      { code: "m2", labelHe: "m2", baseDimension: "area", toBaseFactor: 1 },
+      { code: "sqm", labelHe: "sqm", baseDimension: "area", toBaseFactor: 1 },
+      { code: "m3", labelHe: "m3", baseDimension: "volume", toBaseFactor: 1000 },
+      { code: "l", labelHe: "l", baseDimension: "volume", toBaseFactor: 1 },
+      { code: "kg", labelHe: "kg", baseDimension: "weight", toBaseFactor: 1 },
+    ];
+
+    let uomsCreated = 0;
+    for (const uom of uoms) {
+      const existing = await ctx.db
+        .query("uoms")
+        .withIndex("by_code", (q) => q.eq("code", uom.code as any))
+        .first();
+      if (existing) continue;
+      await ctx.db.insert("uoms", {
+        code: uom.code as any,
+        labelHe: uom.labelHe,
+        baseDimension: uom.baseDimension as any,
+        toBaseFactor: uom.toBaseFactor,
+        createdAt: now,
+        updatedAt: now,
+      });
+      uomsCreated += 1;
+    }
+
+    const categories = [
+      "Uncategorized",
+      "Wood",
+      "Prints",
+      "Hardware",
+      "Paint",
+      "Plastic",
+      "Metal",
+      "Services",
+    ];
+
+    let categoriesCreated = 0;
+    for (const name of categories) {
+      const existing = await ctx.db
+        .query("materialCategories")
+        .filter((q) => q.eq(q.field("nameHe"), name))
+        .first();
+      if (existing) continue;
+      await ctx.db.insert("materialCategories", {
+        nameHe: name,
+        createdAt: now,
+        updatedAt: now,
+      });
+      categoriesCreated += 1;
+    }
+
+    return { uomsCreated, categoriesCreated };
+  },
+});
+
+export const migrateMaterialLinesUomCode = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const lines = await ctx.db.query("materialLines").collect();
+    let updated = 0;
+    const normalizeUom = (value?: string | null) => {
+      if (!value) return undefined;
+      const v = value.toLowerCase().trim();
+      if (v === "m2" || v === "sqm" || v === "m^2") return "m2";
+      if (v === "m3" || v === "m^3") return "m3";
+      if (v === "ea" || v === "each" || v === "units") return "ea";
+      if (v === "sheet" || v === "sheets") return "sheet";
+      if (v === "m" || v === "meter" || v === "meters") return "m";
+      if (v === "kg" || v === "kgs") return "kg";
+      if (v === "l" || v === "liter" || v === "liters") return "l";
+      if (v === "set" || v === "sets") return "set";
+      if (v === "box" || v === "boxes") return "box";
+      if (v === "roll" || v === "rolls") return "roll";
+      if (v === "pack" || v === "packs") return "pack";
+      if (v === "job" || v === "jobs") return "job";
+      if (v === "hour" || v === "hours" || v === "hr") return "hour";
+      if (v === "can") return "ea";
+      return undefined;
+    };
+    for (const line of lines) {
+      const unitCode = (line as any).unitCode;
+      const unitLabelHe = (line as any).unitLabelHe;
+      const unit = (line as any).unit;
+      if (!unitCode && !unitLabelHe && !unit) continue;
+      await ctx.db.patch(line._id, {
+        uomCode: normalizeUom(unitCode ?? unit) ?? (line as any).uomCode,
+        unitCode: undefined,
+        unitLabelHe: undefined,
+        unit: undefined,
+      });
+      updated += 1;
+    }
+    return { updated };
+  },
+});
+
 export const flushAllDrafts = mutation({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }) => {

@@ -24,7 +24,8 @@ export function ShoppingPlanBlock({ block }: { block: any }) {
             <div className="mt-2 space-y-1 text-[11px] text-emerald-900">
               {(trip.items ?? []).map((item: any, idx: number) => (
                 <div key={idx}>
-                  - {item.itemHe ?? item.item_he ?? "Item"} x{item.qty ?? 1} {item.unitLabelHe ?? item.unitLabel_he ?? ""}
+                  - {item.itemHe ?? item.item_he ?? "Item"} x{item.qty ?? 1}{" "}
+                  {item.uomCode ?? item.uom_code ?? item.unitLabelHe ?? item.unitLabel_he ?? ""}
                 </div>
               ))}
             </div>

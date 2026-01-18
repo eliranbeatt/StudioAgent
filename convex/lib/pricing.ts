@@ -42,3 +42,48 @@ export const calculateCost = (params: {
 
     return cost
 }
+
+// ==========================
+// CATALOG PRICING ENGINE
+// ==========================
+
+export const calculateFormulaPrice = (
+  formula: { formulaType: string; params: any },
+  inputParams: { widthMm?: number; heightMm?: number; lamination?: boolean; machineHours?: number }
+) => {
+  if (!formula || !formula.params) return null;
+
+  if (formula.formulaType === "print_m2") {
+    const widthM = (inputParams.widthMm || 0) / 1000;
+    const heightM = (inputParams.heightMm || 0) / 1000;
+    const areaM2 = widthM * heightM;
+    
+    if (areaM2 <= 0) return null;
+
+    let cost = areaM2 * (Number(formula.params.baseRatePerM2) || 0);
+
+    if (inputParams.lamination) {
+      cost += areaM2 * (Number(formula.params.laminationAddPerM2) || 0);
+    }
+
+    if (formula.params.minCharge) {
+      cost = Math.max(cost, Number(formula.params.minCharge));
+    }
+
+    if (formula.params.setupFee) {
+      cost += Number(formula.params.setupFee);
+    }
+
+    return cost;
+  }
+
+  if (formula.formulaType === "cnc_cut") {
+    const setup = Number(formula.params.setupFee || 0);
+    const machineRate = Number(formula.params.machineRatePerHour || 0);
+    const hours = Number(inputParams.machineHours || 0);
+    return setup + (machineRate * hours);
+  }
+
+  return null;
+};
+

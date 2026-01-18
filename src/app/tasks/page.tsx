@@ -37,7 +37,6 @@ export default function GlobalTasksPage() {
     workType: workType || undefined,
     limit: 100,
   });
-
   return (
     <div className="p-8 max-w-[1600px] mx-auto">
       <div className="mb-8">
@@ -161,7 +160,7 @@ export default function GlobalTasksPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {task.dueDate ? (
-                      <div className={`flex items-center gap-1 ${task.dueDate < Date.now() && task.status !== 'done' ? 'text-red-600 font-medium' : ''}`}>
+                      <div className="flex items-center gap-1">
                         <Calendar size={14} />
                         {new Date(task.dueDate).toLocaleDateString()}
                       </div>

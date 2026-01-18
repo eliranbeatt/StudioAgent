@@ -38,7 +38,6 @@ export default function AgentPage() {
 
   useEffect(() => {
     if (conversations && conversations.length > 0 && !activeConversationId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveConversationId(conversations[0]._id);
     }
   }, [conversations, activeConversationId]);
