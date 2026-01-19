@@ -3,7 +3,7 @@ import { v } from 'convex/values'
 
 const SETTINGS_KEY = 'featureFlags'
 
-const DEFAULT_FLAGS: Record<string, boolean> = {
+export const DEFAULT_FLAGS: Record<string, boolean> = {
   // Core Flow Agent
   ff_flow_agent_tab: false,
   ff_flow_agent_backend: false,
@@ -24,7 +24,7 @@ const DEFAULT_FLAGS: Record<string, boolean> = {
   ff_wizard_brain_dump: false,
 }
 
-function normalizeFlags(raw: unknown): Record<string, boolean> {
+export function normalizeFlags(raw: unknown): Record<string, boolean> {
   if (!raw || typeof raw !== 'object') return {}
   const obj = raw as Record<string, unknown>
   const out: Record<string, boolean> = {}

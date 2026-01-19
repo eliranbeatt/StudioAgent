@@ -268,6 +268,11 @@ export default defineSchema({
         token: v.optional(v.string())
       })),
     })),
+
+    // Flow Agent (Phase 1)
+    brainDumpRaw: v.optional(v.string()),
+    brainDumpStructuredDraft: v.optional(v.any()),
+
     createdBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -1514,6 +1519,53 @@ export default defineSchema({
   })
     .index("by_project_target", ["projectId", "targetSkillId"])
     .index("by_conversation", ["conversationId"]),
+
+  // Flow Agent Runs (Phase 1)
+  flowRuns: defineTable({
+    projectId: v.id("projects"),
+    status: v.union(
+      v.literal("running"),
+      v.literal("blocked"),
+      v.literal("awaiting_approval"),
+      v.literal("paused"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    currentGateId: v.string(),
+    readinessScore: v.optional(v.number()),
+    blockingIssueKeys: v.optional(v.array(v.string())),
+    toggles: v.optional(v.object({
+      autoRun: v.optional(v.boolean()),
+      useWebSearch: v.optional(v.boolean()),
+    })),
+    conversationId: v.optional(v.id("agentConversations")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"]),
+
+  flowSteps: defineTable({
+    flowRunId: v.id("flowRuns"),
+    gateId: v.string(),
+    status: v.union(
+      v.literal("running"),
+      v.literal("passed"),
+      v.literal("failed"),
+      v.literal("blocked"),
+      v.literal("awaiting_approval"),
+      v.literal("skipped")
+    ),
+    validationReport: v.optional(v.any()),
+    draftChangeSetIds: v.optional(v.array(v.id("changeSets"))),
+    error: v.optional(v.string()),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_run", ["flowRunId"])
+    .index("by_run_gate", ["flowRunId", "gateId"]),
 
   // Agent Conversations (New)
   agentConversations: defineTable({
