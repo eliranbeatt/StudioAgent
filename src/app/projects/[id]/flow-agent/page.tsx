@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from 'convex/react'
 import { useParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { api } from '../../../../../convex/_generated/api'
 
 function formatTs(ts: number | null | undefined) {
@@ -79,19 +79,19 @@ export default function FlowAgentPage() {
 
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!backendEnabled) return
-    if (selectedRunId) return
-    const next = (activeRun?._id as string | undefined) ?? (runs?.[0]?._id as string | undefined) ?? null
-    if (next) setSelectedRunId(next)
-  }, [activeRun?._id, backendEnabled, runs, selectedRunId])
+  const defaultSelectedRunId = useMemo(() => {
+    if (!backendEnabled) return null
+    return (activeRun?._id as string | undefined) ?? (runs?.[0]?._id as string | undefined) ?? null
+  }, [activeRun?._id, backendEnabled, runs])
+
+  const effectiveSelectedRunId = selectedRunId ?? defaultSelectedRunId
 
   const selectedRun = useMemo(() => {
-    if (!selectedRunId) return activeRun ?? null
-    if (activeRun?._id === selectedRunId) return activeRun
+    if (!effectiveSelectedRunId) return activeRun ?? null
+    if (activeRun?._id === effectiveSelectedRunId) return activeRun
     if (!runs) return null
-    return runs.find((r: any) => r._id === selectedRunId) ?? null
-  }, [activeRun, runs, selectedRunId])
+    return runs.find((r: any) => r._id === effectiveSelectedRunId) ?? null
+  }, [activeRun, effectiveSelectedRunId, runs])
 
   const steps = useQuery(
     (api as any).flowSteps.listByRun,
@@ -120,26 +120,20 @@ export default function FlowAgentPage() {
 
   const computeValidation = useMutation((api as any).flowRuns.computeValidation)
 
-  const [validationGateId, setValidationGateId] = useState<'G0' | 'G1' | 'G2'>('G0')
-
-  useEffect(() => {
+  const [validationGateOverride, setValidationGateOverride] = useState<'G0' | 'G1' | 'G2' | 'G3' | null>(null)
+  const validationGateId: 'G0' | 'G1' | 'G2' | 'G3' = useMemo(() => {
+    if (validationGateOverride) return validationGateOverride
     const gate = selectedRun?.currentGateId
-    if (gate === 'G0' || gate === 'G1' || gate === 'G2') {
-      setValidationGateId(gate)
-    }
-  }, [selectedRun?.currentGateId])
+    return gate === 'G0' || gate === 'G1' || gate === 'G2' || gate === 'G3' ? gate : 'G0'
+  }, [selectedRun?.currentGateId, validationGateOverride])
 
   const appendBrainDump = useMutation((api as any).brainDump.appendProjectBrainDump)
   const setBrainDump = useMutation((api as any).brainDump.setProjectBrainDumpRaw)
 
-  const [brainDumpDraft, setBrainDumpDraft] = useState('')
   const [addendumText, setAddendumText] = useState('')
   const brainDumpLastUpdatedAt = useMemo(() => brainDump?.updatedAt ?? null, [brainDump?.updatedAt])
 
-  useEffect(() => {
-    if (!brainDump) return
-    setBrainDumpDraft(brainDump.brainDumpRaw ?? '')
-  }, [brainDump?.brainDumpRaw])
+  const brainDumpReplaceRef = useRef<HTMLTextAreaElement | null>(null)
 
   if (!resolved) {
     return <div className='p-8 text-gray-500'>טוען פרויקט...</div>
@@ -308,12 +302,13 @@ export default function FlowAgentPage() {
           <select
             className='border rounded-lg px-3 py-2 text-sm bg-white'
             value={validationGateId}
-            onChange={(e) => setValidationGateId(e.target.value as any)}
+            onChange={(e) => setValidationGateOverride(e.target.value as any)}
             disabled={!selectedRun}
           >
             <option value='G0'>G0 — Brief</option>
             <option value='G1'>G1 — Elements</option>
             <option value='G2'>G2 — Tasks</option>
+            <option value='G3'>G3 — Accounting</option>
           </select>
 
           <button
@@ -413,7 +408,8 @@ export default function FlowAgentPage() {
               className='px-3 py-2 rounded-lg bg-black text-white text-sm'
               onClick={async () => {
                 if (!projectId) return
-                await setBrainDump({ projectId, text: brainDumpDraft })
+                const nextText = brainDumpReplaceRef.current?.value ?? ''
+                await setBrainDump({ projectId, text: nextText })
 
                 if (selectedRun && validatorsEnabled) {
                   await computeValidation({
@@ -441,8 +437,9 @@ export default function FlowAgentPage() {
         <textarea
           className='mt-3 w-full min-h-[220px] rounded-lg border p-3 text-sm'
           placeholder='טקסט מלא (replace)'
-          value={brainDumpDraft}
-          onChange={(e) => setBrainDumpDraft(e.target.value)}
+          key={String(brainDumpLastUpdatedAt ?? 'brainDump')}
+          defaultValue={brainDump?.brainDumpRaw ?? ''}
+          ref={brainDumpReplaceRef}
         />
       </div>
 

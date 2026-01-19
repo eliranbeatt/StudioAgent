@@ -5,6 +5,7 @@ import { buildProjectSnapshot } from './flow/snapshotBuilder'
 import { validateG0Brief } from './flow/validation/validateG0Brief'
 import { validateG1Elements } from './flow/validation/validateG1Elements'
 import { validateG2Tasks } from './flow/validation/validateG2Tasks'
+import { validateG3Accounting } from './flow/validation/validateG3Accounting'
 import { computeReadiness } from './flow/validation/readiness'
 
 const SETTINGS_KEY = 'featureFlags'
@@ -166,6 +167,8 @@ export const computeValidation = mutation({
       report = validateG1Elements(snapshot)
     } else if (gateId === 'G2') {
       report = validateG2Tasks(snapshot)
+    } else if (gateId === 'G3') {
+      report = validateG3Accounting(snapshot)
     } else {
       report = {
         status: 'fail',

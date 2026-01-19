@@ -1,9 +1,9 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useConvex, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Search, Filter, Calendar, Briefcase, User, CheckCircle2, Download } from "lucide-react";
 import { exportToCsv } from "../../lib/exportUtils";
 
@@ -23,6 +23,7 @@ const STATUSES = ["todo", "doing", "done", "blocked"]; // Common defaults
 const PROJECT_STATUSES = ["active", "archived", "lead", "production", "done", "rejected"];
 
 export default function GlobalTasksPage() {
+  const convex = useConvex();
   const [search, setSearch] = useState("");
   const [projectId, setProjectId] = useState<string>("");
   const [projectStatus, setProjectStatus] = useState<string>("");
@@ -41,36 +42,6 @@ export default function GlobalTasksPage() {
     limit: 100,
   });
 
-  const exportData = useQuery(api.tasksStudio.listGlobal, isExporting ? {
-    search: search || undefined,
-    projectId: projectId ? (projectId as any) : undefined,
-    projectStatus: projectStatus || undefined,
-    status: status || undefined,
-    workType: workType || undefined,
-    // No limit for export
-  } : "skip");
-
-  useEffect(() => {
-    if (isExporting && exportData) {
-      const formatted = exportData.map((t: any) => ({
-        "Task ID": t._id,
-        "Title": t.title,
-        "Description": t.description || "",
-        "Status": t.status,
-        "Work Type": t.workType,
-        "Assignee": t.assignee || "",
-        "Project": t.projectName,
-        "Customer": t.customerName,
-        "Project Status": t.projectStatus,
-        "Due Date": t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "",
-        "Created At": t.creationTime ? new Date(t.creationTime).toLocaleString() : "",
-      }));
-
-      exportToCsv(formatted, `Tasks_Export_${new Date().toLocaleDateString("en-CA")}`);
-      setIsExporting(false);
-    }
-  }, [exportData, isExporting]);
-
   return (
     <div className="p-8 max-w-[1600px] mx-auto">
       <div className="mb-8 flex items-center justify-between">
@@ -79,7 +50,39 @@ export default function GlobalTasksPage() {
           <p className="text-gray-500">View and manage tasks across all projects</p>
         </div>
         <button
-          onClick={() => setIsExporting(true)}
+          onClick={async () => {
+            if (isExporting) return;
+            setIsExporting(true);
+
+            try {
+              const exportData = await convex.query(api.tasksStudio.listGlobal, {
+                search: search || undefined,
+                projectId: projectId ? (projectId as any) : undefined,
+                projectStatus: projectStatus || undefined,
+                status: status || undefined,
+                workType: workType || undefined,
+                // No limit for export
+              } as any);
+
+              const formatted = exportData.map((t: any) => ({
+                "Task ID": t._id,
+                "Title": t.title,
+                "Description": t.description || "",
+                "Status": t.status,
+                "Work Type": t.workType,
+                "Assignee": t.assignee || "",
+                "Project": t.projectName,
+                "Customer": t.customerName,
+                "Project Status": t.projectStatus,
+                "Due Date": t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "",
+                "Created At": t.creationTime ? new Date(t.creationTime).toLocaleString() : "",
+              }));
+
+              exportToCsv(formatted, `Tasks_Export_${new Date().toLocaleDateString("en-CA")}`);
+            } finally {
+              setIsExporting(false);
+            }
+          }}
           disabled={isExporting}
           className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors disabled:opacity-50"
         >
