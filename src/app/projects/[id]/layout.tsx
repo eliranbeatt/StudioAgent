@@ -26,6 +26,8 @@ export default function ProjectLayout({
   const resolved = useQuery(api.projects.resolveProjectId, { id: rawId });
   const projectId = resolved?.projectId ?? null;
 
+  const featureFlags = useQuery((api as any).featureFlags.getAll);
+
   useEffect(() => {
     if (!resolved || !projectId) return;
     if (projectId === rawId) return;
@@ -36,6 +38,9 @@ export default function ProjectLayout({
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
     { name: "Agent", href: `/projects/${projectId}/agent`, icon: Bot },
+    ...(featureFlags?.ff_flow_agent_tab
+      ? [{ name: "Flow Agent", href: `/projects/${projectId}/flow-agent`, icon: Bot }]
+      : []),
     { name: "Elements", href: `/projects/${projectId}/elements`, icon: Layers },
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },
