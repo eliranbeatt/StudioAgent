@@ -2,6 +2,13 @@
 
 Date: 2026-01-19
 
+## Status (repo scan: 2026-01-19)
+- ✅ Flow Agent tab + route exists and is flag-gated.
+- ✅ Feature flags module exists (`convex/featureFlags.ts`) and is used by UI + backend.
+- ✅ Phase 1 persistence exists (`flowRuns`, `flowSteps` tables + APIs) and survives refresh.
+- ✅ Brain Dump backend + UI exists (append + replace) and can trigger re-validation.
+- ✅ Phase 2 snapshot + validators exist for G0–G2 only (G3+ not implemented yet).
+
 ## Goals
 - Add a **new** Flow Agent that can run **end-to-end project planning flows** via deterministic gates, with **stop points** for user interaction.
 - Keep the existing Agent tab intact (`/projects/[id]/agent`).
@@ -86,14 +93,14 @@ Wizard
 
 ### Repo verification checklist (to avoid "baseline hallucinations")
 Before starting Phase 1 work, verify these items in the repo and treat anything missing as part of Phase 1 scope:
-- UI route exists: `src/app/projects/[id]/agent/page.tsx`
-- Skills dock can run skills with scope: `params.scope.elementIds`
-- ChangeSet review drawer exists and can apply/discard: `src/app/projects/[id]/agent/_components/ChangeSetReviewDrawer.tsx`
-- Convex tables exist:
+- [x] UI route exists: `src/app/projects/[id]/agent/page.tsx`
+- [x] Skills dock can run skills with scope: `params.scope.elementIds`
+- [x] ChangeSet review drawer exists and can apply/discard: `src/app/projects/[id]/agent/_components/ChangeSetReviewDrawer.tsx`
+- [x] Convex tables exist:
   - `agentConversations`, `agentMessages`, `skillRuns`
   - `clarificationSessions`, `qaPairs`, `memoryDocs`
   - canonical: `projects`, `elements`, `tasks`, `materialLines`, `workLines`
-- Tracing UI reads `cached_tokens`: `src/app/management/tracing/page.tsx`
+- [x] Tracing UI reads `cached_tokens`: `src/app/management/tracing/page.tsx`
 
 If any of the above are missing, add them before proceeding to Phase 2.
 
@@ -114,16 +121,16 @@ If any of the above are missing, add them before proceeding to Phase 2.
 A minimal, concrete spec inside the repo so implementation stays deterministic and testable.
 
 ### Work items
-- Define enums:
+- [ ] Define enums:
   - `GateId` (G0..G9)
   - `IssueSeverity` (CRITICAL/HIGH/MEDIUM/LOW)
   - `IssueKey` namespaces per gate (brief.*, elements.*, tasks.*, accounting.*, quote.*, audit.*)
   - `OpportunityKey` bounded list
-- Define `ValidationReport` v1 JSON schema (single schema for all validators):
+- [x] Define `ValidationReport` v1 types (currently implemented as TS types in Convex)
   - `status: "pass"|"fail"`
   - `blockingIssues[]`, `fixableIssues[]`, `opportunities[]`, `warnings[]`
   - `metrics` and `readinessScore`
-- Define readiness scoring formula exactly:
+- [x] Define readiness scoring formula exactly
   - CRITICAL -0.25
   - HIGH -0.12
   - MEDIUM -0.06
@@ -132,14 +139,15 @@ A minimal, concrete spec inside the repo so implementation stays deterministic a
   - unknownAccepted on CRITICAL -0.10
 
 ### Repo changes
-- Add doc: (this doc) `Specs/agent/TrueAgent_ImplementationPlan_v1.md`
-- Add type module (shared between Convex + UI if you prefer):
-  - `src/lib/flow/types.ts` (export enums + report types)
-  - (optional) mirror in Convex as `convex/flow/types.ts` if you avoid importing from src
+- [x] Add doc: (this doc) `Specs/agent/TrueAgent_ImplementationPlan_v1.md`
+- [x] Add Convex validation types: `convex/flow/validation/types.ts`
+- [ ] Add shared type module (shared between Convex + UI if desired): `src/lib/flow/types.ts`
+  - Note: current implementation keeps Flow types in `convex/flow/validation/*`.
 
 ### Feature flags
-- Add `convex/featureFlags.ts` (Phase 0 foundation).
-- Add initial flags with defaults (all `false`) in `appSettings.key="featureFlags"`.
+- [x] Add `convex/featureFlags.ts` (Phase 0 foundation).
+- [x] Add initial flags with defaults (all `false`).
+  - Note: defaults are returned even if `appSettings.key="featureFlags"` record does not exist yet.
 
 ### Acceptance test
 - Types compile; `IssueKey` list is stable and reviewed.
@@ -155,22 +163,22 @@ Phase 1 must include the **Brain Dump first** UX (even if extraction is minimal 
 
 ### Feature flags
 - Introduce and wire:
-  - `ff_flow_agent_tab` (UI)
-  - `ff_flow_agent_backend` (Convex API)
+  - [x] `ff_flow_agent_tab` (UI)
+  - [x] `ff_flow_agent_backend` (Convex API)
 - Rollout recommendation:
   - Dev: enable both.
   - Prod: enable `ff_flow_agent_tab` only after backend is deployed; then enable `ff_flow_agent_backend`.
 
 ### Backend (Convex)
 #### Schema additions (update)
-- Update `convex/schema.ts`:
-  - Add table `flowRuns`
-  - Add table `flowSteps`
+- [x] Update `convex/schema.ts`:
+  - [x] Add table `flowRuns`
+  - [x] Add table `flowSteps`
 
 Additionally (Brain Dump v1):
-- Update `projects` table to include:
-  - `brainDumpRaw?: string` (append-only text)
-  - `brainDumpStructuredDraft?: any` (v1: untyped draft blob; type later)
+- [x] Update `projects` table to include:
+  - [x] `brainDumpRaw?: string` (append-only text)
+  - [x] `brainDumpStructuredDraft?: any` (v1: untyped draft blob; type later)
 
 Recommended `flowRuns` fields:
 - `projectId: Id<"projects">`
@@ -194,49 +202,49 @@ Recommended `flowSteps` fields:
 - `startedAt`, `finishedAt?`
 
 #### New Convex module files (add)
-- `convex/flowRuns.ts`
-  - mutations/queries: `start`, `pause`, `resume`, `cancel`, `getActiveByProject`, `listByProject`
-- `convex/flowSteps.ts`
-  - queries: `listByRun`
+- [x] `convex/flowRuns.ts`
+  - [x] mutations/queries: `start`, `pause`, `resume`, `cancel`, `getActiveByProject`, `listByProject`
+  - [x] validation helper: `computeValidation` (currently implemented as a mutation)
+- [x] `convex/flowSteps.ts`
+  - [x] queries: `listByRun`
 
 Brain dump support (add):
-- `convex/brainDump.ts`
-  - mutation: `appendProjectBrainDump({ projectId, text })`
-  - mutation: `setProjectBrainDumpRaw({ projectId, text })` (admin-only later; useful for edits)
-  - query: `getProjectBrainDump({ projectId })`
+- [x] `convex/brainDump.ts`
+  - [x] mutation: `appendProjectBrainDump({ projectId, text })`
+  - [x] mutation: `setProjectBrainDumpRaw({ projectId, text })` (admin-only later; useful for edits)
+  - [x] query: `getProjectBrainDump({ projectId })`
 
 #### Flag checks to implement
-- In `convex/flowRuns.ts` handlers, require `ff_flow_agent_backend`.
+- [x] In `convex/flowRuns.ts` handlers, require `ff_flow_agent_backend`.
 
 ### Frontend (Next.js)
 #### New route + components (add)
-- Add route: `src/app/projects/[id]/flow-agent/page.tsx`
-- Add components:
+- [x] Add route: `src/app/projects/[id]/flow-agent/page.tsx`
+- [ ] Add components (optional refactor)
   - `src/app/projects/[id]/flow-agent/_components/FlowRunHeader.tsx` (start/pause/resume)
   - `src/app/projects/[id]/flow-agent/_components/FlowTimeline.tsx` (steps list)
   - `src/app/projects/[id]/flow-agent/_components/FlowDebugPanel.tsx` (raw JSON reports; v1)
+  - Note: current implementation renders these sections inline in the page.
 
 Brain dump UI (add):
-- `src/app/projects/[id]/flow-agent/_components/BrainDumpPanel.tsx`
-  - large textarea (Hebrew content)
-  - "Add" / "Update" actions that write to `projects.brainDumpRaw` (append by default)
-  - show last-updated time
+- [x] Brain dump UI exists (Hebrew) with append + replace and last-updated time.
+  - Note: currently implemented inline in `src/app/projects/[id]/flow-agent/page.tsx`.
 
 Free text addendum (required):
 - The Flow Agent tab must include a free-text input that can be used at any time during the flow.
 - v1 behavior:
-  - appends to `projects.brainDumpRaw`
-  - also appends to `memoryDocs.kind="USER_INPUT_LOG"` (optional but recommended)
-  - triggers re-validation (and optionally re-extraction later)
+  - [x] appends to `projects.brainDumpRaw`
+  - [ ] also appends to `memoryDocs.kind="USER_INPUT_LOG"` (optional but recommended)
+  - [x] triggers re-validation (currently triggers `computeValidation` when validators are enabled)
 
 #### Update existing nav (update)
-- Update `src/app/projects/[id]/layout.tsx`
-  - Add new nav item "Flow Agent" pointing to `/projects/${projectId}/flow-agent`
-  - Keep existing "Agent" item unchanged.
+- [x] Update `src/app/projects/[id]/layout.tsx`
+  - [x] Add new nav item "Flow Agent" pointing to `/projects/${projectId}/flow-agent`
+  - [x] Keep existing "Agent" item unchanged.
 
 #### Flag checks to implement
-- In `src/app/projects/[id]/layout.tsx`, only show the tab when `ff_flow_agent_tab` is enabled.
-- In `src/app/projects/[id]/flow-agent/page.tsx`, show disabled state if `ff_flow_agent_tab` is off.
+- [x] In `src/app/projects/[id]/layout.tsx`, only show the tab when `ff_flow_agent_tab` is enabled.
+- [x] In `src/app/projects/[id]/flow-agent/page.tsx`, show disabled state if `ff_flow_agent_tab` is off.
 
 ### Acceptance tests
 - Start Flow Run → shows status and created step 0.
@@ -266,44 +274,47 @@ This extractor can initially output a coarse structured draft into `projects.bra
 
 ### Backend (Convex)
 #### New modules (add)
-- `convex/flow/snapshotBuilder.ts`
-  - `buildProjectSnapshot(projectId, opts?)` with stable ordering
+- [x] `convex/flow/snapshotBuilder.ts`
+  - [x] `buildProjectSnapshot(projectId, opts?)` with stable ordering
 
 Brain dump extraction (add):
-- `convex/flow/brainDumpExtractor.ts`
+- [ ] `convex/flow/brainDumpExtractor.ts`
   - action: `extractBrainDumpDraft({ projectId })`
   - reads `projects.brainDumpRaw` + (optional) element-level dumps later
   - writes `projects.brainDumpStructuredDraft`
-- `convex/flow/validation/types.ts`
-  - `ValidationReportV1`, `IssueV1`, severity enums
-- `convex/flow/validation/readiness.ts`
-  - `computeReadiness(report)`
+- [x] `convex/flow/validation/types.ts`
+  - [x] `ValidationReportV1`, `IssueV1`, severity enums
+- [x] `convex/flow/validation/readiness.ts`
+  - [x] `computeReadiness(report)`
 - Validators (one file per gate):
  - Validators (one file per gate):
-  - `convex/flow/validation/validateG0Brief.ts`
-  - `convex/flow/validation/validateG1Elements.ts`
-  - `convex/flow/validation/validateG2Tasks.ts`
-  - `convex/flow/validation/validateG3Accounting.ts`
-  - `convex/flow/validation/validateG4Pricing.ts`
-  - `convex/flow/validation/validateG5TasksEnrichment.ts`
-  - `convex/flow/validation/validateG6OpsCompleteness.ts`
-  - `convex/flow/validation/validateG7PricingRecheck.ts`
-  - `convex/flow/validation/validateG8Quote.ts`
-  - `convex/flow/validation/validateG9Audit.ts`
+  - [x] `convex/flow/validation/validateG0Brief.ts`
+  - [x] `convex/flow/validation/validateG1Elements.ts`
+  - [x] `convex/flow/validation/validateG2Tasks.ts`
+  - [ ] `convex/flow/validation/validateG3Accounting.ts`
+  - [ ] `convex/flow/validation/validateG4Pricing.ts`
+  - [ ] `convex/flow/validation/validateG5TasksEnrichment.ts`
+  - [ ] `convex/flow/validation/validateG6OpsCompleteness.ts`
+  - [ ] `convex/flow/validation/validateG7PricingRecheck.ts`
+  - [ ] `convex/flow/validation/validateG8Quote.ts`
+  - [ ] `convex/flow/validation/validateG9Audit.ts`
 
 #### Integrations (update)
 - Update `convex/flowRuns.ts` to expose a query/action:
   - `computeValidation(projectId, gateId, batch?)` (no LLM)
   - Store the report in `flowSteps.validationReport`
 
+Status:
+- [x] `computeValidation` exists (implemented as a mutation) and stores into `flowSteps.validationReport`.
+
 #### Flag checks to implement
-- `computeValidation` should require `ff_flow_validators_v1`.
+- [x] `computeValidation` requires `ff_flow_validators_v1`.
 
 ### Frontend
 - Update `Flow Agent` tab to render:
-  - readiness score
-  - grouped issues (blocking + warnings)
-  - coverage metrics (counts)
+  - [x] readiness score
+  - [x] grouped issues (blocking + warnings)
+  - [ ] coverage metrics (counts)
 
 ### Acceptance tests
 - Run validation on empty project → stable IssueKeys.
@@ -618,34 +629,35 @@ New projects start with fewer clarification rounds.
 
 # Checklist index (for tracking)
 ## UI files to add
-- `src/app/projects/[id]/flow-agent/page.tsx`
-- `src/app/projects/[id]/flow-agent/_components/FlowRunHeader.tsx`
-- `src/app/projects/[id]/flow-agent/_components/FlowTimeline.tsx`
-- `src/app/projects/[id]/flow-agent/_components/FlowDebugPanel.tsx`
+- [x] `src/app/projects/[id]/flow-agent/page.tsx`
+- [ ] `src/app/projects/[id]/flow-agent/_components/FlowRunHeader.tsx`
+- [ ] `src/app/projects/[id]/flow-agent/_components/FlowTimeline.tsx`
+- [ ] `src/app/projects/[id]/flow-agent/_components/FlowDebugPanel.tsx`
 
 ## UI files to update
-- `src/app/projects/[id]/layout.tsx` (add Flow Agent tab)
+- [x] `src/app/projects/[id]/layout.tsx` (add Flow Agent tab)
 
 ## Convex files to add
-- `convex/featureFlags.ts`
-- `convex/flowRuns.ts`
-- `convex/flowSteps.ts`
-- `convex/flow/snapshotBuilder.ts`
-- `convex/flow/flowRunner.ts`
-- `convex/flow/batching.ts`
-- `convex/flow/clarificationPackBuilder.ts`
-- `convex/flow/validation/types.ts`
-- `convex/flow/validation/readiness.ts`
-- `convex/flow/validation/validateG0Brief.ts`
-- `convex/flow/validation/validateG1Elements.ts`
-- `convex/flow/validation/validateG2Tasks.ts`
-- `convex/flow/validation/validateG3Accounting.ts`
-- `convex/flow/validation/validateG8Quote.ts`
-- `convex/flow/validation/validateG9Audit.ts`
+- [x] `convex/featureFlags.ts`
+- [x] `convex/flowRuns.ts`
+- [x] `convex/flowSteps.ts`
+- [x] `convex/brainDump.ts`
+- [x] `convex/flow/snapshotBuilder.ts`
+- [ ] `convex/flow/flowRunner.ts`
+- [ ] `convex/flow/batching.ts`
+- [ ] `convex/flow/clarificationPackBuilder.ts`
+- [x] `convex/flow/validation/types.ts`
+- [x] `convex/flow/validation/readiness.ts`
+- [x] `convex/flow/validation/validateG0Brief.ts`
+- [x] `convex/flow/validation/validateG1Elements.ts`
+- [x] `convex/flow/validation/validateG2Tasks.ts`
+- [ ] `convex/flow/validation/validateG3Accounting.ts`
+- [ ] `convex/flow/validation/validateG8Quote.ts`
+- [ ] `convex/flow/validation/validateG9Audit.ts`
 
 ## Convex files to update
-- `convex/schema.ts` (add flow tables + project fields)
-- `convex/skills/runner.ts` (Phase 6 context manager integration)
+- [x] `convex/schema.ts` (add flow tables + project fields)
+- [ ] `convex/skills/runner.ts` (Phase 6 context manager integration)
 
 ---
 
