@@ -1,6 +1,7 @@
 import { mutation, query } from './_generated/server'
 import { v } from 'convex/values'
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from './featureFlags'
+import { extractBrainDumpStructuredDraft } from './flow/brainDumpExtractor'
 
 const SETTINGS_KEY = 'featureFlags'
 
@@ -51,6 +52,7 @@ export const appendProjectBrainDump = mutation({
 
     await ctx.db.patch(args.projectId, {
       brainDumpRaw: next,
+      brainDumpStructuredDraft: extractBrainDumpStructuredDraft(next),
       updatedAt: Date.now(),
     })
   },
@@ -69,6 +71,7 @@ export const setProjectBrainDumpRaw = mutation({
 
     await ctx.db.patch(args.projectId, {
       brainDumpRaw: args.text,
+      brainDumpStructuredDraft: extractBrainDumpStructuredDraft(args.text),
       updatedAt: Date.now(),
     })
   },

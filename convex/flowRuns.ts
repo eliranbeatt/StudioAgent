@@ -6,7 +6,14 @@ import { validateG0Brief } from './flow/validation/validateG0Brief'
 import { validateG1Elements } from './flow/validation/validateG1Elements'
 import { validateG2Tasks } from './flow/validation/validateG2Tasks'
 import { validateG3Accounting } from './flow/validation/validateG3Accounting'
+import { validateG4Pricing } from './flow/validation/validateG4Pricing'
+import { validateG5TasksEnrichment } from './flow/validation/validateG5TasksEnrichment'
+import { validateG6OpsCompleteness } from './flow/validation/validateG6OpsCompleteness'
+import { validateG7PricingRecheck } from './flow/validation/validateG7PricingRecheck'
+import { validateG8Quote } from './flow/validation/validateG8Quote'
+import { validateG9Audit } from './flow/validation/validateG9Audit'
 import { computeReadiness } from './flow/validation/readiness'
+import { buildQuestionsBlock } from './flow/clarificationPackBuilder'
 
 const SETTINGS_KEY = 'featureFlags'
 
@@ -151,8 +158,13 @@ export const computeValidation = mutation({
     gateId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await assertBackendEnabled(ctx)
-    await assertValidatorsEnabled(ctx)
+    const flags = await loadFlags(ctx)
+    if (!isEnabled(flags, 'ff_flow_agent_backend', false)) {
+      throw new Error('Flow Agent is disabled (ff_flow_agent_backend)')
+    }
+    if (!isEnabled(flags, 'ff_flow_validators_v1', false)) {
+      throw new Error('Flow validators are disabled (ff_flow_validators_v1)')
+    }
 
     const run = await ctx.db.get(args.flowRunId)
     if (!run) throw new Error('Flow run not found')
@@ -169,6 +181,78 @@ export const computeValidation = mutation({
       report = validateG2Tasks(snapshot)
     } else if (gateId === 'G3') {
       report = validateG3Accounting(snapshot)
+    } else if (gateId === 'G4') {
+      if (!isEnabled(flags, 'ff_flow_pricing_gates', false)) {
+        report = {
+          status: 'fail',
+          blockingIssues: [
+            {
+              key: 'pricing.gates_disabled',
+              severity: 'HIGH',
+              titleHe: 'וולידציית תמחור מושבתת',
+              detailHe: 'כדי להפעיל G4 יש להדליק את הדגל ff_flow_pricing_gates.',
+            },
+          ],
+          fixableIssues: [],
+          opportunities: [],
+          warnings: [],
+          metrics: { gateId },
+        }
+
+        report.readinessScore = computeReadiness(report)
+      } else {
+        report = validateG4Pricing(snapshot)
+      }
+    } else if (gateId === 'G5') {
+      report = validateG5TasksEnrichment(snapshot)
+    } else if (gateId === 'G6') {
+      if (!isEnabled(flags, 'ff_flow_pricing_gates', false)) {
+        report = {
+          status: 'fail',
+          blockingIssues: [
+            {
+              key: 'ops.gates_disabled',
+              severity: 'HIGH',
+              titleHe: 'וולידציית תפעול/שלמות מושבתת',
+              detailHe: 'כדי להפעיל G6 יש להדליק את הדגל ff_flow_pricing_gates.',
+            },
+          ],
+          fixableIssues: [],
+          opportunities: [],
+          warnings: [],
+          metrics: { gateId },
+        }
+
+        report.readinessScore = computeReadiness(report)
+      } else {
+        report = validateG6OpsCompleteness(snapshot)
+      }
+    } else if (gateId === 'G7') {
+      if (!isEnabled(flags, 'ff_flow_pricing_gates', false)) {
+        report = {
+          status: 'fail',
+          blockingIssues: [
+            {
+              key: 'pricing.recheck_gates_disabled',
+              severity: 'HIGH',
+              titleHe: 'וולידציית ריענון תמחור מושבתת',
+              detailHe: 'כדי להפעיל G7 יש להדליק את הדגל ff_flow_pricing_gates.',
+            },
+          ],
+          fixableIssues: [],
+          opportunities: [],
+          warnings: [],
+          metrics: { gateId },
+        }
+
+        report.readinessScore = computeReadiness(report)
+      } else {
+        report = validateG7PricingRecheck(snapshot)
+      }
+    } else if (gateId === 'G8') {
+      report = validateG8Quote(snapshot)
+    } else if (gateId === 'G9') {
+      report = validateG9Audit(snapshot)
     } else {
       report = {
         status: 'fail',
@@ -190,6 +274,28 @@ export const computeValidation = mutation({
     }
 
     const now = Date.now()
+
+    if (report.status !== 'pass' && isEnabled(flags, 'ff_flow_clarification_pack_v1', false)) {
+      const project = await ctx.db.get(run.projectId)
+      const qaPairs = await ctx.db
+        .query('qaPairs')
+        .withIndex('by_project', (q: any) => q.eq('projectId', run.projectId))
+        .order('desc')
+        .take(200)
+
+      const questionsBlock = buildQuestionsBlock({
+        gateId,
+        report,
+        qaPairs,
+        unknownAcceptedKeys: project?.unknownAcceptedKeys,
+        assumptionsAccepted: project?.assumptionsAccepted,
+        dismissedOppKeys: project?.dismissedOppKeys,
+      })
+
+      if (questionsBlock) {
+        ;(report as any).questionsBlock = questionsBlock
+      }
+    }
 
     const existingStep = await ctx.db
       .query('flowSteps')

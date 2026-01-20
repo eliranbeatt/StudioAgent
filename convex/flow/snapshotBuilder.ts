@@ -23,7 +23,13 @@ export type ProjectSnapshotV1 = {
     id: Id<'tasks'>
     title: string
     elementId?: Id<'elements'>
+    description?: string
     status?: string
+    stage?: string
+    workType?: string
+    estimatedHours?: number
+    estimatedMinutes?: number
+    accountingLinks?: Array<{ lineType: string; lineId: string }>
     updatedAt?: number
     createdAt: number
   }>
@@ -37,6 +43,11 @@ export type ProjectSnapshotV1 = {
     uomCode?: string
     plannedUnitCost?: number
     plannedTotalCost?: number
+    pricingSourceCode?: string
+    priceCheckedAt?: number
+    confidence?: number
+    actualUnitCost?: number
+    actualTotalCost?: number
     workType?: string
     createdAt: number
     updatedAt?: number
@@ -53,14 +64,26 @@ export type ProjectSnapshotV1 = {
     crewSize?: number
     workType?: string
     isManagement?: boolean
+    confidence?: number
     createdAt: number
     updatedAt?: number
+  }>
+  quoteVersions: Array<{
+    id: Id<'quoteVersions'>
+    status: string
+    version?: number
+    currency?: string
+    totals?: any
+    quoteText_he?: string
+    quoteBlocks?: any
+    createdAt: number
   }>
   counts: {
     elements: number
     tasks: number
     materialLines: number
     workLines: number
+    quoteVersions: number
   }
 }
 
@@ -78,6 +101,11 @@ export async function buildProjectSnapshot(
 
   const tasks = await ctx.db
     .query('tasks')
+    .withIndex('by_project', (q: any) => q.eq('projectId', projectId))
+    .collect()
+
+  const quoteVersions = await ctx.db
+    .query('quoteVersions')
     .withIndex('by_project', (q: any) => q.eq('projectId', projectId))
     .collect()
 
@@ -106,6 +134,15 @@ export async function buildProjectSnapshot(
       const ae = a.elementId ? String(a.elementId) : ''
       const be = b.elementId ? String(b.elementId) : ''
       if (ae !== be) return ae.localeCompare(be)
+      return String(a._id).localeCompare(String(b._id))
+    })
+
+  const quoteVersionsSorted = quoteVersions
+    .slice()
+    .sort((a: any, b: any) => {
+      const at = typeof a.createdAt === 'number' ? a.createdAt : 0
+      const bt = typeof b.createdAt === 'number' ? b.createdAt : 0
+      if (at !== bt) return bt - at
       return String(a._id).localeCompare(String(b._id))
     })
 
@@ -160,7 +197,18 @@ export async function buildProjectSnapshot(
       id: t._id,
       title: t.title,
       elementId: t.elementId,
+      description: t.description,
       status: t.status,
+      stage: t.stage,
+      workType: t.workType,
+      estimatedHours: t.estimatedHours,
+      estimatedMinutes: t.estimatedMinutes,
+      accountingLinks: Array.isArray(t.accountingLinks)
+        ? t.accountingLinks.map((l: any) => ({
+            lineType: l?.lineType,
+            lineId: l?.lineId,
+          }))
+        : undefined,
       updatedAt: t.updatedAt,
       createdAt: t.createdAt,
     })),
@@ -174,6 +222,11 @@ export async function buildProjectSnapshot(
       uomCode: l.uomCode,
       plannedUnitCost: l.plannedUnitCost,
       plannedTotalCost: l.plannedTotalCost,
+      pricingSourceCode: l.pricingSourceCode,
+      priceCheckedAt: l.priceCheckedAt,
+      confidence: l.confidence,
+      actualUnitCost: l.actualUnitCost,
+      actualTotalCost: l.actualTotalCost,
       workType: l.workType,
       createdAt: l.createdAt,
       updatedAt: l.updatedAt,
@@ -190,14 +243,26 @@ export async function buildProjectSnapshot(
       crewSize: l.crewSize,
       workType: l.workType,
       isManagement: l.isManagement,
+      confidence: l.confidence,
       createdAt: l.createdAt,
       updatedAt: l.updatedAt,
+    })),
+    quoteVersions: quoteVersionsSorted.map((q: any) => ({
+      id: q._id,
+      status: q.status,
+      version: q.version,
+      currency: q.currency,
+      totals: q.totals,
+      quoteText_he: q.quoteText_he,
+      quoteBlocks: q.quoteBlocks,
+      createdAt: q.createdAt,
     })),
     counts: {
       elements: elements.length,
       tasks: tasks.length,
       materialLines: materialLines.length,
       workLines: workLines.length,
+      quoteVersions: quoteVersions.length,
     },
   }
 }

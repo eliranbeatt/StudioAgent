@@ -273,6 +273,15 @@ export default defineSchema({
     brainDumpRaw: v.optional(v.string()),
     brainDumpStructuredDraft: v.optional(v.any()),
 
+    // Flow Agent (Phase 3)
+    unknownAcceptedKeys: v.optional(v.array(v.string())),
+    assumptionsAccepted: v.optional(v.array(v.object({
+      key: v.string(),
+      valueHe: v.string(),
+      acceptedAt: v.number(),
+    }))),
+    dismissedOppKeys: v.optional(v.array(v.string())),
+
     createdBy: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),

@@ -66,6 +66,7 @@ export default function FlowAgentPage() {
   const tabEnabled = !!featureFlags?.ff_flow_agent_tab
   const backendEnabled = !!featureFlags?.ff_flow_agent_backend
   const validatorsEnabled = !!featureFlags?.ff_flow_validators_v1
+  const clarificationPackEnabled = !!featureFlags?.ff_flow_clarification_pack_v1
 
   const activeRun = useQuery(
     (api as any).flowRuns.getActiveByProject,
@@ -107,6 +108,9 @@ export default function FlowAgentPage() {
   }, [steps])
 
   const latestReport = latestStepWithReport?.validationReport ?? null
+  const questionsBlock = latestReport?.questionsBlock ?? null
+
+  const [answersByKey, setAnswersByKey] = useState<Record<string, string>>({})
 
   const brainDump = useQuery(
     (api as any).brainDump.getProjectBrainDump,
@@ -120,11 +124,28 @@ export default function FlowAgentPage() {
 
   const computeValidation = useMutation((api as any).flowRuns.computeValidation)
 
-  const [validationGateOverride, setValidationGateOverride] = useState<'G0' | 'G1' | 'G2' | 'G3' | null>(null)
-  const validationGateId: 'G0' | 'G1' | 'G2' | 'G3' = useMemo(() => {
+  const submitFlowAnswers = useMutation((api as any).flowAnswers.submitAnswers)
+  const acceptUnknown = useMutation((api as any).flowAnswers.acceptUnknown)
+  const dismissOpportunity = useMutation((api as any).flowAnswers.dismissOpportunity)
+
+  const [validationGateOverride, setValidationGateOverride] = useState<
+    'G0' | 'G1' | 'G2' | 'G3' | 'G4' | 'G5' | 'G6' | 'G7' | 'G8' | 'G9' | null
+  >(null)
+  const validationGateId: 'G0' | 'G1' | 'G2' | 'G3' | 'G4' | 'G5' | 'G6' | 'G7' | 'G8' | 'G9' = useMemo(() => {
     if (validationGateOverride) return validationGateOverride
     const gate = selectedRun?.currentGateId
-    return gate === 'G0' || gate === 'G1' || gate === 'G2' || gate === 'G3' ? gate : 'G0'
+    return gate === 'G0' ||
+      gate === 'G1' ||
+      gate === 'G2' ||
+      gate === 'G3' ||
+      gate === 'G4' ||
+      gate === 'G5' ||
+      gate === 'G6' ||
+      gate === 'G7' ||
+      gate === 'G8' ||
+      gate === 'G9'
+      ? gate
+      : 'G0'
   }, [selectedRun?.currentGateId, validationGateOverride])
 
   const appendBrainDump = useMutation((api as any).brainDump.appendProjectBrainDump)
@@ -309,6 +330,12 @@ export default function FlowAgentPage() {
             <option value='G1'>G1 — Elements</option>
             <option value='G2'>G2 — Tasks</option>
             <option value='G3'>G3 — Accounting</option>
+            <option value='G4'>G4 — Pricing</option>
+            <option value='G5'>G5 — Tasks Enrichment</option>
+            <option value='G6'>G6 — Ops Completeness</option>
+            <option value='G7'>G7 — Pricing Recheck</option>
+            <option value='G8'>G8 — Quote</option>
+            <option value='G9'>G9 — Audit</option>
           </select>
 
           <button
@@ -372,6 +399,106 @@ export default function FlowAgentPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {clarificationPackEnabled && questionsBlock?.type === 'QuestionsBlock' ? (
+        <div className='bg-white border rounded-xl p-4 space-y-4'>
+          <div className='flex items-start justify-between gap-4'>
+            <div>
+              <div className='text-sm font-medium text-gray-900'>
+                {questionsBlock.titleHe ?? 'שאלות להשלמה'}
+              </div>
+              <div className='mt-1 text-xs text-gray-500'>
+                תשובות נשמרות ב-QA ולא יישאלו שוב.
+              </div>
+            </div>
+
+            <button
+              className='px-3 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-50'
+              disabled={!selectedRun?._id || !(questionsBlock.questions?.length > 0)}
+              onClick={async () => {
+                if (!selectedRun?._id) return
+                await submitFlowAnswers({
+                  flowRunId: selectedRun._id,
+                  answersByKey,
+                })
+                await computeValidation({
+                  flowRunId: selectedRun._id,
+                  gateId: validationGateId,
+                })
+              }}
+            >
+              {questionsBlock.submitLabelHe ?? 'שמור תשובות'}
+            </button>
+          </div>
+
+          <div className='space-y-3'>
+            {(questionsBlock.questions ?? []).map((q: any) => (
+              <div key={q.id} className='rounded-lg border p-3'>
+                <div className='text-sm font-medium text-gray-900'>{q.textHe ?? q.id}</div>
+                {q.detailHe ? <div className='mt-1 text-xs text-gray-600'>{q.detailHe}</div> : null}
+
+                <div className='mt-3 flex items-start gap-3'>
+                  <textarea
+                    className='flex-1 border rounded-lg px-3 py-2 text-sm min-h-[72px]'
+                    placeholder='הקלידו תשובה...'
+                    value={answersByKey[q.id] ?? ''}
+                    onChange={(e) =>
+                      setAnswersByKey((prev) => ({
+                        ...prev,
+                        [q.id]: e.target.value,
+                      }))
+                    }
+                  />
+
+                  <button
+                    className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
+                    disabled={!selectedRun?._id}
+                    onClick={async () => {
+                      if (!selectedRun?._id) return
+                      await acceptUnknown({ flowRunId: selectedRun._id, issueKey: q.id })
+                      await computeValidation({
+                        flowRunId: selectedRun._id,
+                        gateId: validationGateId,
+                      })
+                    }}
+                  >
+                    לא יודע
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {Array.isArray(questionsBlock.suggestions) && questionsBlock.suggestions.length > 0 ? (
+            <div className='pt-3 border-t space-y-2'>
+              <div className='text-sm font-medium text-gray-900'>הצעות (לא חוסם)</div>
+              {(questionsBlock.suggestions ?? []).map((s: any) => (
+                <div key={s.key} className='rounded-lg border p-3 flex items-start justify-between gap-4'>
+                  <div>
+                    <div className='text-sm font-medium text-gray-900'>{s.titleHe ?? s.key}</div>
+                    {s.detailHe ? <div className='mt-1 text-xs text-gray-600'>{s.detailHe}</div> : null}
+                    <div className='mt-1 text-[11px] text-gray-500'>{s.key}</div>
+                  </div>
+                  <button
+                    className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
+                    disabled={!selectedRun?._id}
+                    onClick={async () => {
+                      if (!selectedRun?._id) return
+                      await dismissOpportunity({ flowRunId: selectedRun._id, opportunityKey: s.key })
+                      await computeValidation({
+                        flowRunId: selectedRun._id,
+                        gateId: validationGateId,
+                      })
+                    }}
+                  >
+                    לא להציע שוב
+                  </button>
+                </div>
+              ))}
             </div>
           ) : null}
         </div>

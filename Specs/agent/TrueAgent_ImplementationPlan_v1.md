@@ -2,12 +2,13 @@
 
 Date: 2026-01-19
 
-## Status (repo scan: 2026-01-19)
+## Status (repo scan: 2026-01-20)
 - ✅ Flow Agent tab + route exists and is flag-gated.
 - ✅ Feature flags module exists (`convex/featureFlags.ts`) and is used by UI + backend.
 - ✅ Phase 1 persistence exists (`flowRuns`, `flowSteps` tables + APIs) and survives refresh.
 - ✅ Brain Dump backend + UI exists (append + replace) and can trigger re-validation.
-- ✅ Phase 2 snapshot + validators exist for G0–G2 only (G3+ not implemented yet).
+- ✅ Phase 2 snapshot + deterministic validators exist for G0–G9 (G4/G6/G7 gated by `ff_flow_pricing_gates`).
+- ✅ `npm run build` succeeds in restricted TLS environments (no `next/font/google` fetch; Convex codegen is no longer a hard prebuild requirement).
 
 ## Goals
 - Add a **new** Flow Agent that can run **end-to-end project planning flows** via deterministic gates, with **stop points** for user interaction.
@@ -278,10 +279,9 @@ This extractor can initially output a coarse structured draft into `projects.bra
   - [x] `buildProjectSnapshot(projectId, opts?)` with stable ordering
 
 Brain dump extraction (add):
-- [ ] `convex/flow/brainDumpExtractor.ts`
-  - action: `extractBrainDumpDraft({ projectId })`
-  - reads `projects.brainDumpRaw` + (optional) element-level dumps later
-  - writes `projects.brainDumpStructuredDraft`
+- [x] `convex/flow/brainDumpExtractor.ts`
+  - deterministic extractor helper (no LLM)
+  - runs on brain dump edits (append/replace) and writes `projects.brainDumpStructuredDraft`
 - [x] `convex/flow/validation/types.ts`
   - [x] `ValidationReportV1`, `IssueV1`, severity enums
 - [x] `convex/flow/validation/readiness.ts`
@@ -291,13 +291,13 @@ Brain dump extraction (add):
   - [x] `convex/flow/validation/validateG0Brief.ts`
   - [x] `convex/flow/validation/validateG1Elements.ts`
   - [x] `convex/flow/validation/validateG2Tasks.ts`
-  - [ ] `convex/flow/validation/validateG3Accounting.ts`
-  - [ ] `convex/flow/validation/validateG4Pricing.ts`
-  - [ ] `convex/flow/validation/validateG5TasksEnrichment.ts`
-  - [ ] `convex/flow/validation/validateG6OpsCompleteness.ts`
-  - [ ] `convex/flow/validation/validateG7PricingRecheck.ts`
-  - [ ] `convex/flow/validation/validateG8Quote.ts`
-  - [ ] `convex/flow/validation/validateG9Audit.ts`
+  - [x] `convex/flow/validation/validateG3Accounting.ts`
+  - [x] `convex/flow/validation/validateG4Pricing.ts`
+  - [x] `convex/flow/validation/validateG5TasksEnrichment.ts`
+  - [x] `convex/flow/validation/validateG6OpsCompleteness.ts`
+  - [x] `convex/flow/validation/validateG7PricingRecheck.ts`
+  - [x] `convex/flow/validation/validateG8Quote.ts`
+  - [x] `convex/flow/validation/validateG9Audit.ts`
 
 #### Integrations (update)
 - Update `convex/flowRuns.ts` to expose a query/action:
@@ -348,14 +348,14 @@ While `readinessScore < 0.95` (and user has not explicitly chosen to proceed wit
 ### Backend (Convex)
 #### Schema updates (update)
 - Update `convex/schema.ts` `projects` table to include:
-  - `unknownAcceptedKeys?: string[]`
-  - `assumptionsAccepted?: { key: string; valueHe: string; acceptedAt: number }[]`
-  - `dismissedOppKeys?: string[]`
+  - [x] `unknownAcceptedKeys?: string[]`
+  - [x] `assumptionsAccepted?: { key: string; valueHe: string; acceptedAt: number }[]`
+  - [x] `dismissedOppKeys?: string[]`
 
 #### New module (add)
-- `convex/flow/clarificationPackBuilder.ts`
-  - `buildQuestionsBlock({ report, qaPairs, unknownAcceptedKeys, assumptionsAccepted, dismissedOppKeys })`
-  - deterministic selection rules (sort by severity + readiness gain + stable key order)
+- [x] `convex/flow/clarificationPackBuilder.ts`
+  - [x] `buildQuestionsBlock({ report, qaPairs, unknownAcceptedKeys, assumptionsAccepted, dismissedOppKeys })`
+  - deterministic selection rules (sort by severity + stable key order; max 6)
 
 ### Improvement suggestions (fully specified)
 Suggestions are a second lane that never blocks progression.
@@ -380,15 +380,16 @@ User choices for suggestions:
 #### Answer persistence (reuse existing)
 - Use existing `qaPairs` table with `questionKey = IssueKey`.
 - Add mutations:
-  - `convex/flowAnswers.ts` (or inside `flowRuns.ts`)
-    - `submitAnswers(flowRunId, answersByKey)`
-    - `acceptUnknown(flowRunId, issueKey)`
-    - `acceptAssumption(flowRunId, { key, valueHe })`
+  - [x] `convex/flowAnswers.ts`
+    - [x] `submitAnswers(flowRunId, answersByKey)`
+    - [x] `acceptUnknown(flowRunId, issueKey)`
+    - [x] `acceptAssumption(flowRunId, { key, valueHe })`
+    - [x] `dismissOpportunity(flowRunId, opportunityKey)`
 
 ### Frontend
 - In Flow Agent tab:
-  - Render a QuestionsBlock UI when run is blocked.
-  - Submitting answers triggers `resume` and revalidation.
+  - [x] Render a QuestionsBlock UI when blocked (from `validationReport.questionsBlock`).
+  - [x] Submitting answers persists QA and triggers revalidation.
 
 ### Acceptance tests
 - Flow blocks → shows one QuestionsBlock.
@@ -651,9 +652,13 @@ New projects start with fewer clarification rounds.
 - [x] `convex/flow/validation/validateG0Brief.ts`
 - [x] `convex/flow/validation/validateG1Elements.ts`
 - [x] `convex/flow/validation/validateG2Tasks.ts`
-- [ ] `convex/flow/validation/validateG3Accounting.ts`
-- [ ] `convex/flow/validation/validateG8Quote.ts`
-- [ ] `convex/flow/validation/validateG9Audit.ts`
+- [x] `convex/flow/validation/validateG3Accounting.ts`
+- [x] `convex/flow/validation/validateG4Pricing.ts`
+- [x] `convex/flow/validation/validateG5TasksEnrichment.ts`
+- [x] `convex/flow/validation/validateG6OpsCompleteness.ts`
+- [x] `convex/flow/validation/validateG7PricingRecheck.ts`
+- [x] `convex/flow/validation/validateG8Quote.ts`
+- [x] `convex/flow/validation/validateG9Audit.ts`
 
 ## Convex files to update
 - [x] `convex/schema.ts` (add flow tables + project fields)
