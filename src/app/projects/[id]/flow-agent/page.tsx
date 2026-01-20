@@ -62,18 +62,18 @@ export default function FlowAgentPage() {
   const resolved = useQuery(api.projects.resolveProjectId, { id: rawId })
   const projectId = resolved?.projectId ?? null
 
-  const featureFlags = useQuery((api as any).featureFlags.getAll)
+  const featureFlags = useQuery(api.featureFlags.getAll)
   const tabEnabled = !!featureFlags?.ff_flow_agent_tab
   const backendEnabled = !!featureFlags?.ff_flow_agent_backend
   const validatorsEnabled = !!featureFlags?.ff_flow_validators_v1
 
   const activeRun = useQuery(
-    (api as any).flowRuns.getActiveByProject,
+    api.flowRuns.getActiveByProject,
     projectId && backendEnabled ? { projectId } : 'skip'
   )
 
   const runs = useQuery(
-    (api as any).flowRuns.listByProject,
+    api.flowRuns.listByProject,
     projectId && backendEnabled ? { projectId } : 'skip'
   )
 
@@ -94,7 +94,7 @@ export default function FlowAgentPage() {
   }, [activeRun, effectiveSelectedRunId, runs])
 
   const steps = useQuery(
-    (api as any).flowSteps.listByRun,
+    api.flowSteps.listByRun,
     selectedRun?._id && backendEnabled ? { flowRunId: selectedRun._id } : 'skip'
   )
 
@@ -109,16 +109,16 @@ export default function FlowAgentPage() {
   const latestReport = latestStepWithReport?.validationReport ?? null
 
   const brainDump = useQuery(
-    (api as any).brainDump.getProjectBrainDump,
+    api.brainDump.getProjectBrainDump,
     projectId && backendEnabled ? { projectId } : 'skip'
   )
 
-  const startRun = useMutation((api as any).flowRuns.start)
-  const pauseRun = useMutation((api as any).flowRuns.pause)
-  const resumeRun = useMutation((api as any).flowRuns.resume)
-  const cancelRun = useMutation((api as any).flowRuns.cancel)
+  const startRun = useMutation(api.flowRuns.start)
+  const pauseRun = useMutation(api.flowRuns.pause)
+  const resumeRun = useMutation(api.flowRuns.resume)
+  const cancelRun = useMutation(api.flowRuns.cancel)
 
-  const computeValidation = useMutation((api as any).flowRuns.computeValidation)
+  const computeValidation = useMutation(api.flowRuns.computeValidation)
 
   const [validationGateOverride, setValidationGateOverride] = useState<'G0' | 'G1' | 'G2' | 'G3' | null>(null)
   const validationGateId: 'G0' | 'G1' | 'G2' | 'G3' = useMemo(() => {
@@ -127,8 +127,8 @@ export default function FlowAgentPage() {
     return gate === 'G0' || gate === 'G1' || gate === 'G2' || gate === 'G3' ? gate : 'G0'
   }, [selectedRun?.currentGateId, validationGateOverride])
 
-  const appendBrainDump = useMutation((api as any).brainDump.appendProjectBrainDump)
-  const setBrainDump = useMutation((api as any).brainDump.setProjectBrainDumpRaw)
+  const appendBrainDump = useMutation(api.brainDump.appendProjectBrainDump)
+  const setBrainDump = useMutation(api.brainDump.setProjectBrainDumpRaw)
 
   const [addendumText, setAddendumText] = useState('')
   const brainDumpLastUpdatedAt = useMemo(() => brainDump?.updatedAt ?? null, [brainDump?.updatedAt])
