@@ -181,7 +181,7 @@ export default function FlowAgentPage() {
   const submitFlowAnswers = useMutation((api as any).flowAnswers.submitAnswers)
   const acceptUnknown = useMutation((api as any).flowAnswers.acceptUnknown)
   const acceptAssumption = useMutation((api as any).flowAnswers.acceptAssumption)
-  const adoptOpportunity = useMutation((api as any).flowAnswers.adoptOpportunity)
+  const adoptOpportunity = useAction((api as any).flowAnswers.adoptOpportunity)
   const dismissOpportunity = useMutation((api as any).flowAnswers.dismissOpportunity)
 
   const [validationGateOverride, setValidationGateOverride] = useState<

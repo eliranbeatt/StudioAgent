@@ -550,7 +550,6 @@ export const setDraftChangeSets = internalMutation({
     if (step) {
       await ctx.db.patch(step._id, {
         draftChangeSetIds: args.draftChangeSetIds,
-        updatedAt: now,
       })
     }
 

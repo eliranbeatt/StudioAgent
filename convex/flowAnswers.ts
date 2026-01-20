@@ -1,4 +1,4 @@
-import { mutation } from './_generated/server'
+import { mutation, action } from './_generated/server'
 import { v } from 'convex/values'
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from './featureFlags'
 import { api, internal } from './_generated/api'
@@ -178,15 +178,18 @@ function resolveOpportunitySkill(opportunityKey: string): string | null {
   return null
 }
 
-export const adoptOpportunity = mutation({
+export const adoptOpportunity = action({
   args: {
     flowRunId: v.id('flowRuns'),
     opportunityKey: v.string(),
   },
   handler: async (ctx, args) => {
-    await assertBackendEnabled(ctx)
+    const flags = await ctx.runQuery(api.featureFlags.getAll, {})
+    if (!isEnabled(flags, 'ff_flow_agent_backend', false)) {
+      throw new Error('Flow Agent is disabled (ff_flow_agent_backend)')
+    }
 
-    const run = await ctx.db.get(args.flowRunId)
+    const run = await ctx.runQuery(internal.flowRuns.getRunInternal, { flowRunId: args.flowRunId })
     if (!run) throw new Error('Flow run not found')
 
     const skillId = resolveOpportunitySkill(args.opportunityKey.trim())
