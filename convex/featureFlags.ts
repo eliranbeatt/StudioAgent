@@ -5,11 +5,11 @@ const SETTINGS_KEY = 'featureFlags'
 
 export const DEFAULT_FLAGS: Record<string, boolean> = {
   // Core Flow Agent (loaded)
-  ff_flow_agent_tab: false,
-  ff_flow_agent_backend: false,
-  ff_flow_validators_v1: false,
-  ff_flow_clarification_pack_v1: false,
-  ff_flow_runner_v1: false,
+  ff_flow_agent_tab: true,
+  ff_flow_agent_backend: true,
+  ff_flow_validators_v1: true,
+  ff_flow_clarification_pack_v1: true,
+  ff_flow_runner_v1: true,
 
   // Pricing + ops
   ff_flow_pricing_gates: false,
