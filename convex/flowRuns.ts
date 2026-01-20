@@ -1,6 +1,7 @@
-import { mutation, query, internalMutation, internalQuery } from './_generated/server'
+import { mutation, query, internalMutation, internalQuery, action } from './_generated/server'
 import { v } from 'convex/values'
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from './featureFlags'
+import { api, internal } from './_generated/api'
 import { buildProjectSnapshot } from './flow/snapshotBuilder'
 import { validateG0Brief } from './flow/validation/validateG0Brief'
 import { validateG1Elements } from './flow/validation/validateG1Elements'
@@ -31,6 +32,13 @@ async function assertBackendEnabled(ctx: any) {
   const flags = await loadFlags(ctx)
   if (!isEnabled(flags, 'ff_flow_agent_backend', false)) {
     throw new Error('Flow Agent is disabled (ff_flow_agent_backend)')
+  }
+}
+
+async function assertRunnerEnabled(ctx: any) {
+  const flags = await loadFlags(ctx)
+  if (!isEnabled(flags, 'ff_flow_runner_v1', false)) {
+    throw new Error('Flow runner is disabled (ff_flow_runner_v1)')
   }
 }
 
@@ -96,10 +104,21 @@ export const start = mutation({
     await assertBackendEnabled(ctx)
 
     const now = Date.now()
+
+    const conversationId = await ctx.db.insert('agentConversations', {
+      projectId: args.projectId,
+      title: 'Flow Agent',
+      mode: 'builder',
+      createdAt: now,
+      updatedAt: now,
+    })
+
     const runId = await ctx.db.insert('flowRuns', {
       projectId: args.projectId,
       status: 'running' as FlowRunStatus,
       currentGateId: 'G0',
+      conversationId,
+      toggles: { autoRun: false, useWebSearch: false },
       createdAt: now,
       updatedAt: now,
     })
@@ -112,6 +131,46 @@ export const start = mutation({
     })
 
     return runId
+  },
+})
+
+export const runNext = action({
+  args: {
+    flowRunId: v.id('flowRuns'),
+  },
+  handler: async (ctx, args) => {
+    await assertBackendEnabled(ctx)
+    await assertRunnerEnabled(ctx)
+    await ctx.runAction(internal.flow.flowRunner.tick, { flowRunId: args.flowRunId })
+  },
+})
+
+export const setToggles = mutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    toggles: v.object({
+      autoRun: v.boolean(),
+      useWebSearch: v.boolean(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    await assertBackendEnabled(ctx)
+
+    const run = await ctx.db.get(args.flowRunId)
+    if (!run) throw new Error('Flow run not found')
+
+    const flags = await loadFlags(ctx)
+    const now = Date.now()
+
+    const useWebSearch = isEnabled(flags, 'ff_flow_web_pricing', false) ? args.toggles.useWebSearch : false
+
+    await ctx.db.patch(args.flowRunId, {
+      toggles: {
+        autoRun: args.toggles.autoRun,
+        useWebSearch,
+      },
+      updatedAt: now,
+    })
   },
 })
 
@@ -387,6 +446,69 @@ export const advanceToGate = internalMutation({
       await ctx.db.patch(existing._id, { status: 'running', startedAt: now })
     }
   }
+})
+
+export const ensureConversation = internalMutation({
+  args: { flowRunId: v.id('flowRuns') },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.flowRunId)
+    if (!run) throw new Error('Flow run not found')
+    if (run.conversationId) return run.conversationId
+
+    const now = Date.now()
+    const conversationId = await ctx.db.insert('agentConversations', {
+      projectId: run.projectId,
+      title: 'Flow Agent',
+      mode: 'builder',
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await ctx.db.patch(args.flowRunId, { conversationId, updatedAt: now })
+    return conversationId
+  },
+})
+
+export const setAwaitingApproval = internalMutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    gateId: v.string(),
+    draftChangeSetIds: v.array(v.id('changeSets')),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+
+    const step = await ctx.db
+      .query('flowSteps')
+      .withIndex('by_run_gate', (q) => q.eq('flowRunId', args.flowRunId).eq('gateId', args.gateId))
+      .first()
+
+    if (step) {
+      await ctx.db.patch(step._id, {
+        status: 'awaiting_approval',
+        draftChangeSetIds: args.draftChangeSetIds,
+        finishedAt: now,
+      })
+    }
+
+    await ctx.db.patch(args.flowRunId, { status: 'awaiting_approval', updatedAt: now })
+  },
+})
+
+export const clearAwaitingApproval = internalMutation({
+  args: { flowRunId: v.id('flowRuns') },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.flowRunId, { status: 'running', updatedAt: Date.now() })
+  },
+})
+
+export const getStepInternal = internalQuery({
+  args: { flowRunId: v.id('flowRuns'), gateId: v.string() },
+  handler: async (ctx, args) =>
+    await ctx.db
+      .query('flowSteps')
+      .withIndex('by_run_gate', (q) => q.eq('flowRunId', args.flowRunId).eq('gateId', args.gateId))
+      .first(),
 })
 
 export const tickValidation = internalMutation({

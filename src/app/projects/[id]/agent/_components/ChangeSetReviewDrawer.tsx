@@ -10,11 +10,17 @@ import { useEffect, useMemo, useState } from "react";
 export default function ChangeSetReviewDrawer({
   open,
   onClose,
+  onResolved,
+  closeOnResolve = true,
+  showApplyAndContinue = false,
   changeSetId,
   projectId
 }: {
   open: boolean;
   onClose: () => void;
+  onResolved?: (result: { status: "applied" | "discarded" }) => void | Promise<void>;
+  closeOnResolve?: boolean;
+  showApplyAndContinue?: boolean;
   changeSetId: Id<"changeSets">;
   projectId: Id<"projects">;
 }) {
@@ -111,14 +117,21 @@ export default function ChangeSetReviewDrawer({
     }
   }, [changeSet?.ops, changeSet?.appliedOpIndices, selectedIndices.size]);
 
-  const handleApplySelected = async () => {
+  const handleApplySelected = async (opts?: { closeAfter?: boolean }) => {
     setIsApplying(true);
     try {
       await applyChangeSetOps({
         changeSetId,
         opIndices: Array.from(selectedIndices)
       });
-      onClose();
+
+      await onResolved?.({ status: "applied" });
+
+      // Reset selection so applied ops aren't re-applied and the effect can re-select remaining.
+      setSelectedIndices(new Set());
+
+      const shouldClose = opts?.closeAfter ?? closeOnResolve;
+      if (shouldClose) onClose();
     } finally {
       setIsApplying(false);
     }
@@ -128,7 +141,9 @@ export default function ChangeSetReviewDrawer({
     setIsApplying(true);
     try {
       await discardChangeSet({ changeSetId });
-      onClose();
+
+      await onResolved?.({ status: "discarded" });
+      if (closeOnResolve) onClose();
     } finally {
       setIsApplying(false);
     }
@@ -321,13 +336,25 @@ export default function ChangeSetReviewDrawer({
               <Trash2 size={16} /> Discard
             </button>
             <button
-              onClick={handleApplySelected}
+              onClick={() => handleApplySelected()}
               disabled={isApplying || selectedIndices.size === 0}
               className="px-5 py-2.5 bg-green-600 rounded-lg text-sm font-bold text-white hover:bg-green-700 disabled:opacity-50 disabled:bg-slate-200 disabled:text-slate-400 transition-all flex items-center gap-2 shadow-sm"
             >
               {isApplying ? <RotateCcw className="animate-spin" size={16} /> : <Check size={16} />}
               {isApplying ? "Applying..." : `Apply Selected`}
             </button>
+
+            {showApplyAndContinue ? (
+              <button
+                onClick={() => handleApplySelected({ closeAfter: false })}
+                disabled={isApplying || selectedIndices.size === 0}
+                className="px-5 py-2.5 bg-black rounded-lg text-sm font-bold text-white hover:bg-slate-900 disabled:opacity-50 disabled:bg-slate-200 disabled:text-slate-400 transition-all flex items-center gap-2 shadow-sm"
+                title="Apply selected ops and continue the Flow"
+              >
+                {isApplying ? <RotateCcw className="animate-spin" size={16} /> : <ChevronRight size={16} />}
+                {isApplying ? "Applying..." : "Apply + Continue"}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

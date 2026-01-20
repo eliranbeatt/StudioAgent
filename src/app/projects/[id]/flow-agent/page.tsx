@@ -1,12 +1,13 @@
 'use client'
 
-import { useMutation, useQuery } from 'convex/react'
+import { useAction, useMutation, useQuery } from 'convex/react'
 import { useParams } from 'next/navigation'
 import { useMemo, useRef, useState } from 'react'
 import { api } from '../../../../../convex/_generated/api'
 import { FlowRunHeader } from './_components/FlowRunHeader'
 import { FlowTimeline } from './_components/FlowTimeline'
 import { FlowDebugPanel } from './_components/FlowDebugPanel'
+import ChangeSetReviewDrawer from '../agent/_components/ChangeSetReviewDrawer'
 
 function formatTs(ts: number | null | undefined) {
   if (!ts) return '—'
@@ -70,6 +71,8 @@ export default function FlowAgentPage() {
   const backendEnabled = !!featureFlags?.ff_flow_agent_backend
   const validatorsEnabled = !!featureFlags?.ff_flow_validators_v1
   const clarificationPackEnabled = !!featureFlags?.ff_flow_clarification_pack_v1
+  const runnerEnabled = !!featureFlags?.ff_flow_runner_v1
+  const webPricingEnabled = !!featureFlags?.ff_flow_web_pricing
 
   const activeRun = useQuery(
     api.flowRuns.getActiveByProject,
@@ -153,6 +156,8 @@ export default function FlowAgentPage() {
   const cancelRun = useMutation(api.flowRuns.cancel)
 
   const computeValidation = useMutation(api.flowRuns.computeValidation)
+  const runNext = useAction(api.flowRuns.runNext)
+  const setToggles = useMutation(api.flowRuns.setToggles)
 
   const submitFlowAnswers = useMutation((api as any).flowAnswers.submitAnswers)
   const acceptUnknown = useMutation((api as any).flowAnswers.acceptUnknown)
@@ -185,6 +190,9 @@ export default function FlowAgentPage() {
   const brainDumpLastUpdatedAt = useMemo(() => brainDump?.updatedAt ?? null, [brainDump?.updatedAt])
 
   const brainDumpReplaceRef = useRef<HTMLTextAreaElement | null>(null)
+
+  const [openChangeSetId, setOpenChangeSetId] = useState<string | null>(null)
+  const [openChangeSetFlowRunId, setOpenChangeSetFlowRunId] = useState<string | null>(null)
 
   if (!resolved) {
     return <div className='p-8 text-gray-500'>טוען פרויקט...</div>
@@ -265,6 +273,54 @@ export default function FlowAgentPage() {
                 </div>
               </div>
             ) : null}
+
+            {selectedRun ? (
+              <div className='mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-600'>
+                <label className='inline-flex items-center gap-2'>
+                  <input
+                    type='checkbox'
+                    className='h-4 w-4'
+                    disabled={!runnerEnabled}
+                    checked={!!selectedRun.toggles?.autoRun}
+                    onChange={async (e) => {
+                      await setToggles({
+                        flowRunId: selectedRun._id,
+                        toggles: {
+                          autoRun: e.target.checked,
+                          useWebSearch: !!selectedRun.toggles?.useWebSearch,
+                        },
+                      })
+                    }}
+                  />
+                  <span>Auto-run</span>
+                </label>
+
+                <label className='inline-flex items-center gap-2'>
+                  <input
+                    type='checkbox'
+                    className='h-4 w-4'
+                    disabled={!runnerEnabled || !webPricingEnabled}
+                    checked={!!selectedRun.toggles?.useWebSearch && webPricingEnabled}
+                    onChange={async (e) => {
+                      await setToggles({
+                        flowRunId: selectedRun._id,
+                        toggles: {
+                          autoRun: !!selectedRun.toggles?.autoRun,
+                          useWebSearch: e.target.checked,
+                        },
+                      })
+                    }}
+                  />
+                  <span title={webPricingEnabled ? 'מפעיל שימוש ב-Web Pricing (אם יש Skill רלוונטי)' : 'יש להדליק ff_flow_web_pricing'}>
+                    Web search
+                  </span>
+                </label>
+
+                {!webPricingEnabled ? (
+                  <span className='text-gray-400'>Web pricing מושבת (ff_flow_web_pricing)</span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           {selectedRun ? (
@@ -307,8 +363,24 @@ export default function FlowAgentPage() {
             רענן ולידציה
           </button>
 
+          <button
+            className='px-3 py-2 rounded-lg bg-black text-white text-sm disabled:opacity-50'
+            disabled={!selectedRun?._id || !runnerEnabled}
+            onClick={async () => {
+              if (!selectedRun?._id) return
+              await runNext({ flowRunId: selectedRun._id })
+            }}
+            title={runnerEnabled ? 'התקדם לשער הבא' : 'יש להדליק ff_flow_runner_v1'}
+          >
+            המשך (Run next)
+          </button>
+
           {!validatorsEnabled ? (
             <div className='text-xs text-gray-500'>וולידטורים מושבתים (ff_flow_validators_v1)</div>
+          ) : null}
+
+          {!runnerEnabled ? (
+            <div className='text-xs text-gray-500'>Runner מושבת (ff_flow_runner_v1)</div>
           ) : null}
         </div>
       </div>
@@ -536,11 +608,34 @@ export default function FlowAgentPage() {
         />
       </div>
 
+      {openChangeSetId && projectId ? (
+        <ChangeSetReviewDrawer
+          open={true}
+          onClose={() => {
+            setOpenChangeSetId(null)
+            setOpenChangeSetFlowRunId(null)
+          }}
+          onResolved={async () => {
+            if (!openChangeSetFlowRunId) return
+            if (!runnerEnabled) return
+            await runNext({ flowRunId: openChangeSetFlowRunId as any })
+          }}
+          closeOnResolve={false}
+          showApplyAndContinue={true}
+          changeSetId={openChangeSetId as any}
+          projectId={projectId as any}
+        />
+      ) : null}
+
       <FlowTimeline
         selectedRun={selectedRun}
         steps={steps as any}
         formatTs={formatTs}
         statusLabelHe={statusLabelHe}
+        onOpenChangeSet={(id) => {
+          setOpenChangeSetId(id)
+          setOpenChangeSetFlowRunId((selectedRun?._id as any) ?? null)
+        }}
       />
 
       <FlowDebugPanel selectedRun={selectedRun} latestStepWithReport={latestStepWithReport} />

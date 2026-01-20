@@ -1,6 +1,19 @@
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
+import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from "../featureFlags";
+
+const SETTINGS_KEY = "featureFlags";
+
+async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
+  const existing = await ctx.db
+    .query("appSettings")
+    .withIndex("by_key", (q: any) => q.eq("key", SETTINGS_KEY))
+    .first();
+
+  const stored = normalizeFlags(existing?.value);
+  return { ...DEFAULT_FLAGS, ...stored };
+}
 
 export const createConversation = mutation({
   args: { 
@@ -40,6 +53,9 @@ export const sendMessage = mutation({
 
     // Trigger Flow Runner if user message
     if (role === "user") {
+      const flags = await loadFlags(ctx);
+      if (!isEnabled(flags, "ff_flow_runner_v1", false)) return;
+
       const conversation = await ctx.db.get(args.conversationId);
       if (conversation) {
         // Find active flow run for this project
@@ -51,9 +67,10 @@ export const sendMessage = mutation({
           .first();
 
         if (flowRun) {
+           if (!flowRun.toggles?.autoRun) return;
            // Schedule a tick to process the new context
            await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { 
-             runId: flowRun._id 
+             flowRunId: flowRun._id 
            });
         }
       }
@@ -78,6 +95,11 @@ export const startProjectFlow = mutation({
     initialGate: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    const flags = await loadFlags(ctx);
+    if (!isEnabled(flags, "ff_flow_runner_v1", false)) {
+      throw new Error("Flow runner is disabled (ff_flow_runner_v1)");
+    }
+
     // Check if already running
     const existing = await ctx.db
       .query("flowRuns")
@@ -92,17 +114,26 @@ export const startProjectFlow = mutation({
 
     // Call internal logic to create run
     // Using flowRuns.create logic but exposing it here
+    const conversationId = await ctx.db.insert("agentConversations", {
+      projectId: args.projectId,
+      title: "Flow Agent",
+      mode: "builder",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
     const runId = await ctx.db.insert("flowRuns", {
       projectId: args.projectId,
       status: "running",
       currentGateId: args.initialGate ?? "G0",
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      toggles: { autoRun: true, useWebSearch: false }
+      toggles: { autoRun: true, useWebSearch: false },
+      conversationId
     });
 
     // Start the runner
-    await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { runId });
+    await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId: runId });
 
     return { flowRunId: runId, status: "started" };
   },
