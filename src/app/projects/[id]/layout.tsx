@@ -26,7 +26,7 @@ export default function ProjectLayout({
   const resolved = useQuery(api.projects.resolveProjectId, { id: rawId });
   const projectId = resolved?.projectId ?? null;
 
-  const featureFlags = useQuery((api as any).featureFlags.getAll);
+  const featureFlags = useQuery(api.featureFlags.getAll);
 
   useEffect(() => {
     if (!resolved || !projectId) return;
