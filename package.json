@@ -5,6 +5,8 @@
   "scripts": {
     "codegen": "node scripts/convex_codegen.js",
     "codegen:insecure": "node scripts/convex_codegen.js --insecure",
+    "convex:login": "node scripts/convex_login.js",
+    "convex:login:insecure": "node scripts/convex_login.js --insecure",
     "convex:dev": "node scripts/convex_dev.js",
     "convex:dev:insecure": "node scripts/convex_dev.js --insecure",
     "dev": "next dev --webpack",

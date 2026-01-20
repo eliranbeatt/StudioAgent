@@ -532,6 +532,108 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     },
     model: "gpt-5-mini",
   },
+  {
+    skillId: "PRICING_LOOKUP_CATALOG_BATCH",
+    labelHe: "בדיקת מחירון",
+    descriptionHe: "בדיקת מחירים בקטלוג",
+    category: "shopping",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.PRICING_LOOKUP_CATALOG_BATCH,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "PRICING_ESTIMATE_FALLBACK_BATCH",
+    labelHe: "הערכת מחיר חליפית",
+    descriptionHe: "הערכת מחיר כשאין מחירון",
+    category: "shopping",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.PRICING_ESTIMATE_FALLBACK_BATCH,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "TASKS_ENRICH_FROM_ACCOUNTING_BATCH",
+    labelHe: "העשרת משימות",
+    descriptionHe: "הוספת נתונים למשימות מתקציב",
+    category: "tasks",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.TASKS_ENRICH_FROM_ACCOUNTING_BATCH,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "OVERHEAD_AND_LOGISTICS_COMPLETER",
+    labelHe: "השלמות לוגיסטיקה",
+    descriptionHe: "חישוב עלויות תקורה",
+    category: "planning",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.OVERHEAD_AND_LOGISTICS_COMPLETER,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "QUOTE_BUILD_OR_FIX",
+    labelHe: "בניית הצעת מחיר",
+    descriptionHe: "יצירה או תיקון הצעה",
+    category: "planning",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.QUOTE_BUILD_OR_FIX,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "FINAL_AUDIT_FIXER",
+    labelHe: "תיקונים סופיים",
+    descriptionHe: "תיקון שגיאות אחרונות",
+    category: "review",
+    flow: "review",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.FINAL_AUDIT_FIXER,
+    },
+    model: "gpt-5-mini",
+  },
 ];
 
 const seedSkillsCore = async (ctx: any) => {
@@ -648,3 +750,5 @@ export const listSkillTagDefinitions = query({
     }
   },
 });
+
+

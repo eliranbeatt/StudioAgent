@@ -1,4 +1,4 @@
-import { mutation, query } from './_generated/server'
+import { mutation, query, internalMutation, internalQuery } from './_generated/server'
 import { v } from 'convex/values'
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from './featureFlags'
 import { buildProjectSnapshot } from './flow/snapshotBuilder'
@@ -341,3 +341,76 @@ export const computeValidation = mutation({
     return report
   },
 })
+
+export const getRunInternal = internalQuery({
+  args: { flowRunId: v.id('flowRuns') },
+  handler: async (ctx, args) => await ctx.db.get(args.flowRunId)
+})
+
+export const setRunStatus = internalMutation({
+  args: { 
+    flowRunId: v.id('flowRuns'), 
+    status: v.union(
+      v.literal('running'),
+      v.literal('blocked'),
+      v.literal('awaiting_approval'),
+      v.literal('paused'),
+      v.literal('completed'),
+      v.literal('failed'),
+      v.literal('cancelled')
+    )
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.flowRunId, { status: args.status, updatedAt: Date.now() })
+  }
+})
+
+export const advanceToGate = internalMutation({
+  args: { flowRunId: v.id('flowRuns'), gateId: v.string() },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    await ctx.db.patch(args.flowRunId, { currentGateId: args.gateId, updatedAt: now })
+    
+    const existing = await ctx.db
+      .query('flowSteps')
+      .withIndex('by_run_gate', (q) => q.eq('flowRunId', args.flowRunId).eq('gateId', args.gateId))
+      .first()
+      
+    if (!existing) {
+      await ctx.db.insert('flowSteps', {
+        flowRunId: args.flowRunId,
+        gateId: args.gateId,
+        status: 'running',
+        startedAt: now
+      })
+    } else {
+      await ctx.db.patch(existing._id, { status: 'running', startedAt: now })
+    }
+  }
+})
+
+export const tickValidation = internalMutation({
+  args: { flowRunId: v.id('flowRuns') },
+  handler: async (ctx, args) => {
+    // We reuse computeValidation logic by calling the exported mutation function IF it was exported as a function,
+    // but here it is a registered mutation. We can call it via ctx.runMutation(api...) if internal?
+    // Actually computeValidation is public. We can call it?
+    // No, mutation logic calling another mutation in same Convex app?
+    // Convex allows calling other mutations via ctx.runMutation.
+    
+    // Instead of calling the public mutation which might have checks again,
+    // we can re-implement or call it.
+    // Let's trying calling it. 'validationReport' is returned.
+    
+    // But we need the 'flowRun' state too.
+    
+    // So let's just use getRunInternal in the action and call computeValidation separately.
+    // tickValidation is not strictly needed if we do 2 round trips in the action.
+    // 1. computeValidation (public)
+    // 2. getRunInternal (internal)
+    
+    // So I will remove tickValidation from here and handle it in the action.
+    return null
+  }
+})
+
