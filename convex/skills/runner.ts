@@ -4,9 +4,52 @@ import { completionWithTracing } from "../lib/llm";
 import { mutation, internalMutation, query, internalQuery, action } from "../_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
+import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from "../featureFlags";
+import { buildContextPackPrompt } from "../contextManager/promptBuilder";
 
 const OPENAI_MODEL = "gpt-4o";
 const SMALL_MODEL = "gpt-5-nano";
+const SETTINGS_KEY = "featureFlags";
+
+async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
+  const existing = await ctx.db
+    .query("appSettings")
+    .withIndex("by_key", (q: any) => q.eq("key", SETTINGS_KEY))
+    .first();
+
+  const stored = normalizeFlags(existing?.value);
+  return { ...DEFAULT_FLAGS, ...stored };
+}
+
+function buildPromptCacheOptions(args: {
+  flags: Record<string, boolean>
+  model?: string
+  skillId: string
+  allowedTools?: { webSearch?: boolean; ragSearch?: boolean; fileInspect?: boolean; runSkill?: boolean }
+  viewId?: string
+}) {
+  if (!isEnabled(args.flags, "ff_prompt_cache", false)) return {};
+
+  const toolBundleId = [
+    args.allowedTools?.webSearch ? "web" : null,
+    args.allowedTools?.ragSearch ? "rag" : null,
+    args.allowedTools?.fileInspect ? "files" : null,
+    args.allowedTools?.runSkill ? "skill" : null,
+  ]
+    .filter(Boolean)
+    .join("+") || "none";
+
+  const viewId = args.viewId ?? "legacy";
+  const cacheKey = `studioops::${args.skillId}::${viewId}::${toolBundleId}`;
+
+  const model = String(args.model ?? "");
+  const use24h = isEnabled(args.flags, "ff_prompt_cache_24h", false) && model.includes("gpt-5.2");
+
+  return {
+    promptCacheKey: cacheKey,
+    promptCacheRetention: use24h ? "24h" : undefined,
+  };
+}
 
 // --- Public API (Action) ---
 
@@ -26,6 +69,9 @@ export const runSkill = action({
     });
 
     if (!skillData.skill) throw new Error(`Skill ${skillId} not found`);
+
+    const flags = await loadFlags(ctx);
+    const useCtxPacks = isEnabled(flags, "ff_ctx_packs_v1", false);
 
     if (params?.forceClarifications) {
       return await runGateLogic(ctx, { projectId, conversationId, targetSkillId: skillId, targetSkillLabel: skillData.skill.labelHe });
@@ -51,8 +97,27 @@ export const runSkill = action({
       params,
     });
 
+    const forceWebSearch = skillId === "RESEARCH_PRICING_ESTIMATES_WEB";
+    const allowedTools = {
+      webSearch: forceWebSearch || !!(skillData.skill.config.allowedTools?.webSearch && params?.toggles?.useWebSearch),
+      ragSearch: !!skillData.skill.config.allowedTools?.ragSearch,
+      fileInspect: !!skillData.skill.config.allowedTools?.fileInspect,
+      runSkill: !!skillData.skill.config.allowedTools?.runSkill,
+    };
+
     // 3. Build Context (Query)
-    const context = await ctx.runQuery(internal.skills.runner.buildContext, { projectId, params, skillId });
+    const context = !useCtxPacks
+      ? await ctx.runQuery(internal.skills.runner.buildContext, { projectId, params, skillId })
+      : null;
+
+    const ctxEnvelope = useCtxPacks
+      ? await ctx.runQuery(internal.contextManager.pull.ctxPull, {
+          projectId,
+          skillId,
+          params,
+          allowedTools,
+        })
+      : null;
     const clarification = await ctx.runQuery(internal.skills.runner.getLatestClarifications, {
       projectId,
       targetSkillId: skillId,
@@ -60,26 +125,50 @@ export const runSkill = action({
 
     // 4. LLM Call
     try {
-      const systemPrompt = buildSystemPrompt(skillData.skill, {
-        ...context,
-        clarifications: clarification,
+      const promptContext = useCtxPacks
+        ? { ctxPacks: ctxEnvelope, clarifications: clarification }
+        : { ...context, clarifications: clarification };
+
+      const systemPrompt = buildSystemPrompt(skillData.skill, promptContext);
+
+      const promptCache = buildPromptCacheOptions({
+        flags,
+        model: skillData.skill.model,
+        skillId,
+        allowedTools,
+        viewId: ctxEnvelope?.view,
       });
-      const forceWebSearch = skillId === "RESEARCH_PRICING_ESTIMATES_WEB";
-      const allowedTools = {
-        webSearch: forceWebSearch || !!(skillData.skill.config.allowedTools?.webSearch && params?.toggles?.useWebSearch),
-        ragSearch: !!skillData.skill.config.allowedTools?.ragSearch,
-        fileInspect: !!skillData.skill.config.allowedTools?.fileInspect,
-        runSkill: !!skillData.skill.config.allowedTools?.runSkill,
-      };
+
+      const traceMeta = ctxEnvelope
+        ? {
+            ctxPacks: {
+              view: ctxEnvelope.view,
+              packCount: ctxEnvelope.stats.packCount,
+              totalBytes: ctxEnvelope.stats.totalBytes,
+              packIds: ctxEnvelope.manifest.packs.map((p) => p.id),
+            },
+          }
+        : undefined;
 
       if (skillId === "CONTEXT_GENERATION") {
         const docPrompt = `${systemPrompt}\n\nOUTPUT MODE: DOC_ONLY. Return JSON with blocks array containing ONLY ChatBlock.`;
-        const docBlocks = await callLLM(ctx, docPrompt, allowedTools, skillData.skill.model, skillData.skill.llmParams, {
-          projectId,
-          conversationId,
-          skillId,
-          runId,
-        });
+        const docBlocks = await callLLM(
+          ctx,
+          docPrompt,
+          allowedTools,
+          skillData.skill.model,
+          skillData.skill.llmParams,
+          {
+            projectId,
+            conversationId,
+            skillId,
+            runId,
+          },
+          {
+            ...promptCache,
+            traceMeta,
+          }
+        );
         const docBlock = docBlocks.find((b: any) => b.type === "ChatBlock" && typeof b.markdownHe === "string");
         if (docBlock?.markdownHe?.trim()) {
           await ctx.runMutation(api.memory.updateRunningMemory, {
@@ -88,18 +177,37 @@ export const runSkill = action({
           });
         }
 
-        const updatedContext = {
-          ...context,
-          currentKnowledge: docBlock?.markdownHe ?? context.currentKnowledge,
-          clarifications: clarification,
-        };
+        const updatedContext = useCtxPacks
+          ? {
+              ctxPacks: ctxEnvelope,
+              clarifications: clarification,
+              extraContext: {
+                currentKnowledge: docBlock?.markdownHe ?? "",
+              },
+            }
+          : {
+              ...context,
+              currentKnowledge: docBlock?.markdownHe ?? context.currentKnowledge,
+              clarifications: clarification,
+            };
         const questionsPrompt = `${buildSystemPrompt(skillData.skill, updatedContext)}\n\nOUTPUT MODE: QUESTIONS_ONLY. Return JSON with blocks array containing ONLY QuestionsBlock. Base questions on updated currentKnowledge + qaPairs + userInput.`;
-        const questionBlocks = await callLLM(ctx, questionsPrompt, allowedTools, skillData.skill.model, skillData.skill.llmParams, {
-          projectId,
-          conversationId,
-          skillId,
-          runId,
-        });
+        const questionBlocks = await callLLM(
+          ctx,
+          questionsPrompt,
+          allowedTools,
+          skillData.skill.model,
+          skillData.skill.llmParams,
+          {
+            projectId,
+            conversationId,
+            skillId,
+            runId,
+          },
+          {
+            ...promptCache,
+            traceMeta,
+          }
+        );
 
         const combinedBlocks = [
           ...docBlocks.filter((b: any) => b.type === "ChatBlock"),
@@ -116,12 +224,23 @@ export const runSkill = action({
         return savedBlocks;
       }
 
-      const blocks = await callLLM(ctx, systemPrompt, allowedTools, skillData.skill.model, skillData.skill.llmParams, {
-        projectId,
-        conversationId,
-        skillId,
-        runId,
-      });
+      const blocks = await callLLM(
+        ctx,
+        systemPrompt,
+        allowedTools,
+        skillData.skill.model,
+        skillData.skill.llmParams,
+        {
+          projectId,
+          conversationId,
+          skillId,
+          runId,
+        },
+        {
+          ...promptCache,
+          traceMeta,
+        }
+      );
 
       // 5. Save Result (Mutation)
       const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
@@ -1072,6 +1191,16 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
   if (!gateSkill) throw new Error("Clarifications Gate skill not found");
 
   const context = await ctx.runQuery(internal.skills.runner.buildContext, { projectId: args.projectId, params: {} });
+  const flags = await loadFlags(ctx);
+  const useCtxPacks = isEnabled(flags, "ff_ctx_packs_v1", false);
+  const ctxEnvelope = useCtxPacks
+    ? await ctx.runQuery(internal.contextManager.pull.ctxPull, {
+        projectId: args.projectId,
+        skillId: "CLARIFICATIONS_GATE",
+        params: {},
+        allowedTools: {},
+      })
+    : null;
   const clarification = await ctx.runQuery(internal.skills.runner.getLatestClarifications, {
     projectId: args.projectId,
     targetSkillId: args.targetSkillId,
@@ -1095,7 +1224,48 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
   };
   const prompt = `${gateSkill.prompts.promptAddon}\n\nTARGET SKILL: ${args.targetSkillLabel} (${args.targetSkillId}).\nAsk questions relevant to this target.`;
 
-  const blocks = await callLLM(ctx, buildSystemPrompt({ ...gateSkill, prompts: { ...gateSkill.prompts, promptAddon: prompt } }, gateContext), {}, gateSkill.model, gateSkill.llmParams, { projectId: args.projectId, conversationId: args.conversationId });
+  const gatePromptContext = useCtxPacks
+    ? {
+        ctxPacks: ctxEnvelope,
+        clarifications: clarification,
+        extraContext: {
+          targetSkillId: args.targetSkillId,
+          targetSkillLabel: args.targetSkillLabel,
+        },
+      }
+    : gateContext;
+
+  const promptCache = buildPromptCacheOptions({
+    flags,
+    model: gateSkill.model,
+    skillId: "CLARIFICATIONS_GATE",
+    allowedTools: {},
+    viewId: ctxEnvelope?.view,
+  });
+
+  const traceMeta = ctxEnvelope
+    ? {
+        ctxPacks: {
+          view: ctxEnvelope.view,
+          packCount: ctxEnvelope.stats.packCount,
+          totalBytes: ctxEnvelope.stats.totalBytes,
+          packIds: ctxEnvelope.manifest.packs.map((p) => p.id),
+        },
+      }
+    : undefined;
+
+  const blocks = await callLLM(
+    ctx,
+    buildSystemPrompt({ ...gateSkill, prompts: { ...gateSkill.prompts, promptAddon: prompt } }, gatePromptContext),
+    {},
+    gateSkill.model,
+    gateSkill.llmParams,
+    { projectId: args.projectId, conversationId: args.conversationId },
+    {
+      ...promptCache,
+      traceMeta,
+    }
+  );
 
   // Store Session
   const questionsBlock = blocks.find((b: any) => b.type === "QuestionsBlock");
@@ -1162,6 +1332,17 @@ function buildSystemPrompt(skill: any, context: any) {
 
   const addon = skill.prompts?.promptAddon ?? "";
 
+  if (context?.ctxPacks) {
+    return buildContextPackPrompt({
+      header: SHARED_HEADER,
+      toolInstructions,
+      addon,
+      envelope: context.ctxPacks,
+      clarifications: context.clarifications,
+      extraContext: context.extraContext,
+    });
+  }
+
   return `${SHARED_HEADER}${toolInstructions}\n\n${addon}\n\nCONTEXT:\n${JSON.stringify(context, null, 2)}`;
 }
 
@@ -1171,7 +1352,8 @@ async function callLLM(
   allowedTools: any,
   model?: string,
   llmParams?: any,
-  contextInfo?: { projectId: any, conversationId: any, skillId?: string, runId?: string }
+  contextInfo?: { projectId: any, conversationId: any, skillId?: string, runId?: string },
+  options?: { promptCacheKey?: string; promptCacheRetention?: string; traceMeta?: any }
 ) {
   if (!process.env.OPENAI_API_KEY) {
     console.warn("No OPENAI_API_KEY, using mock response");
@@ -1241,6 +1423,9 @@ async function callLLM(
       messages: messages,
       tools: tools.length > 0 ? tools : undefined,
       response_format: tools.length > 0 ? undefined : { type: "json_object" },
+      prompt_cache_key: options?.promptCacheKey,
+      prompt_cache_retention: options?.promptCacheRetention,
+      traceMeta: options?.traceMeta,
       ...llmParams,
     }, {
       projectId: contextInfo?.projectId,

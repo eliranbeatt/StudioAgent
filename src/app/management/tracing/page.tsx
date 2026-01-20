@@ -71,6 +71,10 @@ export default function TracingPage() {
     setSelectedTraceId(traces[0]._id);
   }
 
+  const ctxPacks = selectedTrace?.request?.traceMeta?.ctxPacks
+  const promptCacheKey = selectedTrace?.request?.prompt_cache_key
+  const promptCacheRetention = selectedTrace?.request?.prompt_cache_retention
+
   return (
     <div className="flex h-[calc(100vh-4rem)] border rounded-lg bg-white overflow-hidden shadow-sm">
       {/* Sidebar List */}
@@ -194,6 +198,40 @@ export default function TracingPage() {
                 </div>
               </div>
             </div>
+
+            {ctxPacks ? (
+              <div className="grid grid-cols-4 gap-4 p-4 bg-white rounded-lg border">
+                <div>
+                  <div className="text-xs text-gray-500 uppercase font-semibold">Context View</div>
+                  <div className="text-sm font-medium text-gray-900">{ctxPacks.view ?? "-"}</div>
+                  {Array.isArray(ctxPacks.packIds) && ctxPacks.packIds.length > 0 ? (
+                    <div className="text-[11px] text-gray-400 mt-1">{ctxPacks.packIds.join(", ")}</div>
+                  ) : null}
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 uppercase font-semibold">Packs / Bytes</div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {ctxPacks.packCount ?? "-"} packs / {ctxPacks.totalBytes ?? "-"} bytes
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 uppercase font-semibold">Cached Tokens</div>
+                  <div className="text-sm font-medium text-gray-900">{cachedInputTokens || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 uppercase font-semibold">Prompt Cache</div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {promptCacheKey ? "enabled" : "-"}
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-1 truncate" title={promptCacheKey}>
+                    {promptCacheKey || ""}
+                  </div>
+                  <div className="text-[11px] text-gray-400">
+                    {promptCacheRetention ? `retention: ${promptCacheRetention}` : ""}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
 
 

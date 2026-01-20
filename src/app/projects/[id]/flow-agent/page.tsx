@@ -60,6 +60,16 @@ function severityLabelHe(sev: string) {
   }
 }
 
+function formatMetricValue(value: unknown) {
+  if (value === null || value === undefined) return '—'
+  if (Array.isArray(value)) return `${value.length} פריטים`
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'string') return value
+  if (typeof value === 'boolean') return value ? 'כן' : 'לא'
+  if (typeof value === 'object') return `${Object.keys(value as Record<string, unknown>).length} שדות`
+  return String(value)
+}
+
 export default function FlowAgentPage() {
   const params = useParams()
   const rawId = params.id as string
@@ -143,7 +153,16 @@ export default function FlowAgentPage() {
     }
   }, [latestReport, questionsBlock])
 
+  const reportMetrics = useMemo(() => {
+    if (!latestReport || !latestReport.metrics || typeof latestReport.metrics !== 'object') return []
+    return Object.entries(latestReport.metrics).map(([key, value]) => ({
+      key,
+      value: formatMetricValue(value),
+    }))
+  }, [latestReport])
+
   const [answersByKey, setAnswersByKey] = useState<Record<string, string>>({})
+  const [assumptionsByKey, setAssumptionsByKey] = useState<Record<string, string>>({})
 
   const brainDump = useQuery(
     api.brainDump.getProjectBrainDump,
@@ -161,6 +180,7 @@ export default function FlowAgentPage() {
 
   const submitFlowAnswers = useMutation((api as any).flowAnswers.submitAnswers)
   const acceptUnknown = useMutation((api as any).flowAnswers.acceptUnknown)
+  const acceptAssumption = useMutation((api as any).flowAnswers.acceptAssumption)
   const dismissOpportunity = useMutation((api as any).flowAnswers.dismissOpportunity)
 
   const [validationGateOverride, setValidationGateOverride] = useState<
@@ -404,6 +424,20 @@ export default function FlowAgentPage() {
             </div>
           ) : null}
 
+          {reportMetrics.length > 0 ? (
+            <div className='mt-4'>
+              <div className='text-sm font-medium text-gray-900'>מדדים</div>
+              <div className='mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs'>
+                {reportMetrics.map((metric) => (
+                  <div key={metric.key} className='px-2 py-2 rounded-md border bg-gray-50'>
+                    <div className='text-gray-600'>{metric.key}</div>
+                    <div className='mt-1 text-gray-900 font-medium'>{metric.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {Array.isArray(latestReport.blockingIssues) && latestReport.blockingIssues.length > 0 ? (
             <div className='mt-3'>
               <div className='text-sm font-medium text-gray-900'>חסימות</div>
@@ -505,6 +539,37 @@ export default function FlowAgentPage() {
                     }}
                   >
                     לא יודע
+                  </button>
+                </div>
+
+                <div className='mt-2 flex items-start gap-3'>
+                  <input
+                    className='flex-1 border rounded-lg px-3 py-2 text-sm'
+                    placeholder='הנחה/השערה קצרה אם רוצים להמשיך'
+                    value={assumptionsByKey[q.id] ?? ''}
+                    onChange={(e) =>
+                      setAssumptionsByKey((prev) => ({
+                        ...prev,
+                        [q.id]: e.target.value,
+                      }))
+                    }
+                  />
+                  <button
+                    className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900 disabled:opacity-50'
+                    disabled={!selectedRun?._id || !(assumptionsByKey[q.id] ?? '').trim()}
+                    onClick={async () => {
+                      if (!selectedRun?._id) return
+                      const valueHe = (assumptionsByKey[q.id] ?? '').trim()
+                      if (!valueHe) return
+                      await acceptAssumption({ flowRunId: selectedRun._id, key: q.id, valueHe })
+                      setAssumptionsByKey((prev) => ({ ...prev, [q.id]: '' }))
+                      await computeValidation({
+                        flowRunId: selectedRun._id,
+                        gateId: validationGateId,
+                      })
+                    }}
+                  >
+                    סמן כהנחה
                   </button>
                 </div>
               </div>

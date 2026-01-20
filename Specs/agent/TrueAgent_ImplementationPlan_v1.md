@@ -8,6 +8,9 @@ Date: 2026-01-19
 - ✅ Phase 1 persistence exists (`flowRuns`, `flowSteps` tables + APIs) and survives refresh.
 - ✅ Brain Dump backend + UI exists (append + replace) and can trigger re-validation.
 - ✅ Phase 2 snapshot + deterministic validators exist for G0–G9 (G4/G6/G7 gated by `ff_flow_pricing_gates`).
+- ✅ Phase 4 runner is implemented and gated (`ff_flow_runner_v1`), including G1–G9 skill orchestration, approval stop points, and auto-advance.
+- ✅ Per-run toggles (auto-run + web search) are implemented in backend + UI, with web pricing gated by `ff_flow_web_pricing`.
+- ✅ ChangeSet “apply/discard + continue” wrappers exist to tick the runner after approval.
 - ✅ `npm run build` succeeds in restricted TLS environments (no `next/font/google` fetch; Convex codegen is no longer a hard prebuild requirement).
 
 ## Goals
@@ -449,7 +452,7 @@ Draft ChangeSet lifecycle (v1.1):
 If answers affect a draft dependency, discard or regenerate only the impacted drafts.
 
 #### Batch selection (add)
-- `convex/flow/batching.ts`
+- ✅ `convex/flow/batching.ts`
   - deterministic batch selection (3–5 elements) based on stable grouping key
 
 #### Skill reuse (existing)
@@ -473,17 +476,18 @@ Add missing core skills (new, required):
   - `FINAL_AUDIT_FIXER` (new)
 
 #### Integrations (update)
-- Update `convex/flowRuns.ts`:
+- ✅ Update `convex/flowRuns.ts`:
   - `runNext(flowRunId)` calls `flowRunner.tick`.
-  - `applyApprovedChangeSet(flowRunId, changeSetId)` wrapper (optional convenience) that calls existing `changeSets.applyChangeSet` then `tick`.
+  - `applyChangeSetOpsAndContinue(flowRunId, changeSetId, opIndices)` wrapper that applies selected ops then ticks.
+  - `discardChangeSetAndContinue(flowRunId, changeSetId)` wrapper that discards then ticks.
 
 #### Flag checks to implement
 - `runNext` / `tick` require `ff_flow_runner_v1`.
 
 ### Frontend
-- Flow Agent tab shows:
-  - current gate + batch
-  - status badges
+- ✅ Flow Agent tab shows:
+  - current gate + status
+  - readiness summary + blocking reasons
   - when draft ChangeSet exists: open existing ChangeSet drawer UI (reuse from `/agent` components)
   - buttons: “Run next”, “Auto-run”, “Use web search”
 
@@ -644,8 +648,8 @@ New projects start with fewer clarification rounds.
 - [x] `convex/flowSteps.ts`
 - [x] `convex/brainDump.ts`
 - [x] `convex/flow/snapshotBuilder.ts`
-- [ ] `convex/flow/flowRunner.ts`
-- [ ] `convex/flow/batching.ts`
+- [x] `convex/flow/flowRunner.ts`
+- [x] `convex/flow/batching.ts`
 - [ ] `convex/flow/clarificationPackBuilder.ts`
 - [x] `convex/flow/validation/types.ts`
 - [x] `convex/flow/validation/readiness.ts`

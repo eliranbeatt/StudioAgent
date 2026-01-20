@@ -78,6 +78,7 @@ export async function completionWithTracing(
         stream?: boolean;
         tool_choice?: any;
         reasoning_effort?: any;
+        traceMeta?: any;
         [key: string]: any; // Allow other params
     },
     tracing: TracingParams
@@ -101,12 +102,15 @@ export async function completionWithTracing(
         temperature: params.temperature,
         stream: params.stream,
         tool_choice: params.tool_choice,
-        reasoning_effort: params.reasoning_effort
+        reasoning_effort: params.reasoning_effort,
+        prompt_cache_key: params.prompt_cache_key,
+        prompt_cache_retention: params.prompt_cache_retention,
+        traceMeta: params.traceMeta
     };
 
     try {
         // Construct basic options, filtering out provider
-        const { provider: _, ...openAIOptions } = params;
+        const { provider: _, traceMeta, ...openAIOptions } = params;
 
         const response = await client.chat.completions.create(openAIOptions as any);
 

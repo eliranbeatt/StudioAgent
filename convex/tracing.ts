@@ -47,6 +47,19 @@ export const get = query({
   },
 });
 
+export const latestByConversation = query({
+  args: {
+    conversationId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("llmTraces")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .order("desc")
+      .first();
+  },
+});
+
 export const analytics = query({
   args: {
     since: v.number(),
