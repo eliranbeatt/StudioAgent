@@ -615,13 +615,9 @@ export default function FlowAgentPage() {
             setOpenChangeSetId(null)
             setOpenChangeSetFlowRunId(null)
           }}
-          onResolved={async () => {
-            if (!openChangeSetFlowRunId) return
-            if (!runnerEnabled) return
-            await runNext({ flowRunId: openChangeSetFlowRunId as any })
-          }}
           closeOnResolve={false}
           showApplyAndContinue={true}
+          flowRunIdForContinue={openChangeSetFlowRunId as any}
           changeSetId={openChangeSetId as any}
           projectId={projectId as any}
         />

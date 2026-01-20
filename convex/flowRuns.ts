@@ -174,6 +174,44 @@ export const setToggles = mutation({
   },
 })
 
+export const applyChangeSetOpsAndContinue = action({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    changeSetId: v.id('changeSets'),
+    opIndices: v.array(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await assertBackendEnabled(ctx)
+    await assertRunnerEnabled(ctx)
+
+    await ctx.runMutation(api.changeSets.applyChangeSetOps, {
+      changeSetId: args.changeSetId,
+      opIndices: args.opIndices,
+    })
+
+    await ctx.runAction(internal.flow.flowRunner.tick, { flowRunId: args.flowRunId })
+    return { ok: true }
+  },
+})
+
+export const discardChangeSetAndContinue = action({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    changeSetId: v.id('changeSets'),
+  },
+  handler: async (ctx, args) => {
+    await assertBackendEnabled(ctx)
+    await assertRunnerEnabled(ctx)
+
+    await ctx.runMutation(api.changeSets.discardChangeSet, {
+      changeSetId: args.changeSetId,
+    })
+
+    await ctx.runAction(internal.flow.flowRunner.tick, { flowRunId: args.flowRunId })
+    return { ok: true }
+  },
+})
+
 export const pause = mutation({
   args: {
     flowRunId: v.id('flowRuns'),

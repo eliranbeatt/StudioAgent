@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { Id } from "../../../../../../convex/_generated/dataModel";
 import { Check, X, Edit2, Save, RotateCcw, ChevronRight, ChevronDown, CheckSquare, Square, Trash2 } from "lucide-react";
@@ -13,6 +13,7 @@ export default function ChangeSetReviewDrawer({
   onResolved,
   closeOnResolve = true,
   showApplyAndContinue = false,
+  flowRunIdForContinue,
   changeSetId,
   projectId
 }: {
@@ -21,6 +22,7 @@ export default function ChangeSetReviewDrawer({
   onResolved?: (result: { status: "applied" | "discarded" }) => void | Promise<void>;
   closeOnResolve?: boolean;
   showApplyAndContinue?: boolean;
+  flowRunIdForContinue?: Id<"flowRuns">;
   changeSetId: Id<"changeSets">;
   projectId: Id<"projects">;
 }) {
@@ -29,6 +31,8 @@ export default function ChangeSetReviewDrawer({
   const tasksData = useQuery(api.tasks.listForProject, { projectId });
   const applyChangeSetOps = useMutation(api.changeSets.applyChangeSetOps);
   const discardChangeSet = useMutation(api.changeSets.discardChangeSet);
+  const applyChangeSetOpsAndContinue = useAction((api as any).flowRuns.applyChangeSetOpsAndContinue);
+  const discardChangeSetAndContinue = useAction((api as any).flowRuns.discardChangeSetAndContinue);
   const updateOp = useMutation(api.changeSets.updateChangeSetOp);
 
   const [isApplying, setIsApplying] = useState(false);
@@ -120,10 +124,18 @@ export default function ChangeSetReviewDrawer({
   const handleApplySelected = async (opts?: { closeAfter?: boolean }) => {
     setIsApplying(true);
     try {
-      await applyChangeSetOps({
-        changeSetId,
-        opIndices: Array.from(selectedIndices)
-      });
+      if (flowRunIdForContinue) {
+        await applyChangeSetOpsAndContinue({
+          flowRunId: flowRunIdForContinue,
+          changeSetId,
+          opIndices: Array.from(selectedIndices),
+        });
+      } else {
+        await applyChangeSetOps({
+          changeSetId,
+          opIndices: Array.from(selectedIndices)
+        });
+      }
 
       await onResolved?.({ status: "applied" });
 
@@ -140,7 +152,14 @@ export default function ChangeSetReviewDrawer({
   const handleDiscard = async () => {
     setIsApplying(true);
     try {
-      await discardChangeSet({ changeSetId });
+      if (flowRunIdForContinue) {
+        await discardChangeSetAndContinue({
+          flowRunId: flowRunIdForContinue,
+          changeSetId,
+        });
+      } else {
+        await discardChangeSet({ changeSetId });
+      }
 
       await onResolved?.({ status: "discarded" });
       if (closeOnResolve) onClose();
