@@ -4,6 +4,9 @@ import { useMutation, useQuery } from 'convex/react'
 import { useParams } from 'next/navigation'
 import { useMemo, useRef, useState } from 'react'
 import { api } from '../../../../../convex/_generated/api'
+import { FlowRunHeader } from './_components/FlowRunHeader'
+import { FlowTimeline } from './_components/FlowTimeline'
+import { FlowDebugPanel } from './_components/FlowDebugPanel'
 
 function formatTs(ts: number | null | undefined) {
   if (!ts) return '—'
@@ -110,6 +113,33 @@ export default function FlowAgentPage() {
   const latestReport = latestStepWithReport?.validationReport ?? null
   const questionsBlock = latestReport?.questionsBlock ?? null
 
+  const reportStats = useMemo(() => {
+    if (!latestReport) return null
+    const blocking = Array.isArray(latestReport.blockingIssues) ? latestReport.blockingIssues.length : 0
+    const fixable = Array.isArray(latestReport.fixableIssues) ? latestReport.fixableIssues.length : 0
+    const warnings = Array.isArray(latestReport.warnings) ? latestReport.warnings.length : 0
+    const opportunities = Array.isArray(latestReport.opportunities) ? latestReport.opportunities.length : 0
+
+    const questions =
+      questionsBlock?.type === 'QuestionsBlock' && Array.isArray(questionsBlock.questions)
+        ? questionsBlock.questions.length
+        : 0
+
+    const suggestions =
+      questionsBlock?.type === 'QuestionsBlock' && Array.isArray(questionsBlock.suggestions)
+        ? questionsBlock.suggestions.length
+        : 0
+
+    return {
+      blocking,
+      fixable,
+      warnings,
+      opportunities,
+      questions,
+      suggestions,
+    }
+  }, [latestReport, questionsBlock])
+
   const [answersByKey, setAnswersByKey] = useState<Record<string, string>>({})
 
   const brainDump = useQuery(
@@ -185,94 +215,19 @@ export default function FlowAgentPage() {
 
   return (
     <div className='p-8 space-y-6'>
-      <div className='flex items-start justify-between gap-4'>
-        <div>
-          <h1 className='text-lg font-semibold text-gray-900'>Flow Agent</h1>
-          <p className='mt-1 text-sm text-gray-600'>הרצות נשמרות וממשיכות אחרי רענון.</p>
-        </div>
-
-        <div className='flex items-center gap-2'>
-          {!activeRun ? (
-            <button
-              className='px-3 py-2 rounded-lg bg-black text-white text-sm'
-              onClick={async () => {
-                if (!projectId) return
-                await startRun({ projectId })
-              }}
-            >
-              התחל הרצה
-            </button>
-          ) : (
-            <>
-              {activeRun.status === 'running' ? (
-                <button
-                  className='px-3 py-2 rounded-lg bg-gray-900 text-white text-sm'
-                  onClick={async () => {
-                    await pauseRun({ flowRunId: activeRun._id })
-                  }}
-                >
-                  השהה
-                </button>
-              ) : (
-                <button
-                  className='px-3 py-2 rounded-lg bg-gray-900 text-white text-sm'
-                  onClick={async () => {
-                    await resumeRun({ flowRunId: activeRun._id })
-                  }}
-                >
-                  המשך
-                </button>
-              )}
-
-              <button
-                className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
-                onClick={async () => {
-                  await cancelRun({ flowRunId: activeRun._id })
-                }}
-              >
-                בטל
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className='bg-white border rounded-xl p-4'>
-        <div className='flex items-center justify-between gap-4'>
-          <div>
-            <div className='text-sm font-medium text-gray-900'>הרצות</div>
-            <div className='mt-1 text-xs text-gray-500'>בחרו הרצה כדי לצפות בצעדים ובדיבאג</div>
-          </div>
-
-          <div className='flex items-center gap-2'>
-            <select
-              className='border rounded-lg px-3 py-2 text-sm bg-white'
-              value={selectedRunId ?? ''}
-              onChange={(e) => setSelectedRunId(e.target.value || null)}
-              disabled={!runs || runs.length === 0}
-            >
-              {!runs || runs.length === 0 ? (
-                <option value=''>אין הרצות</option>
-              ) : (
-                runs.map((r: any) => (
-                  <option key={r._id} value={r._id}>
-                    {r.currentGateId} • {statusLabelHe(r.status)} • {formatTs(r.createdAt)}
-                  </option>
-                ))
-              )}
-            </select>
-
-            {activeRun && selectedRunId && activeRun._id !== selectedRunId ? (
-              <button
-                className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
-                onClick={() => setSelectedRunId(activeRun._id as any)}
-              >
-                עבור להרצה הפעילה
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
+      <FlowRunHeader
+        projectId={projectId}
+        activeRun={activeRun}
+        runs={runs as any}
+        selectedRunId={selectedRunId}
+        setSelectedRunId={setSelectedRunId}
+        onStart={startRun as any}
+        onPause={pauseRun as any}
+        onResume={resumeRun as any}
+        onCancel={cancelRun as any}
+        formatTs={formatTs}
+        statusLabelHe={statusLabelHe}
+      />
 
       <div className='bg-white border rounded-xl p-4'>
         <div className='flex items-center justify-between gap-4'>
@@ -365,6 +320,17 @@ export default function FlowAgentPage() {
             Gate: {latestStepWithReport?.gateId ?? '—'} • סטטוס: {latestReport.status ?? '—'} • מוכנות:{' '}
             {formatScore(latestReport.readinessScore)}
           </div>
+
+          {reportStats ? (
+            <div className='mt-3 flex flex-wrap gap-2 text-xs'>
+              <span className='px-2 py-1 rounded-md bg-gray-100 border'>חסימות: {reportStats.blocking}</span>
+              <span className='px-2 py-1 rounded-md bg-gray-100 border'>ניתן לתיקון: {reportStats.fixable}</span>
+              <span className='px-2 py-1 rounded-md bg-gray-100 border'>אזהרות: {reportStats.warnings}</span>
+              <span className='px-2 py-1 rounded-md bg-gray-100 border'>הזדמנויות: {reportStats.opportunities}</span>
+              <span className='px-2 py-1 rounded-md bg-gray-100 border'>שאלות: {reportStats.questions}</span>
+              <span className='px-2 py-1 rounded-md bg-gray-100 border'>הצעות: {reportStats.suggestions}</span>
+            </div>
+          ) : null}
 
           {Array.isArray(latestReport.blockingIssues) && latestReport.blockingIssues.length > 0 ? (
             <div className='mt-3'>
@@ -570,52 +536,14 @@ export default function FlowAgentPage() {
         />
       </div>
 
-      <div className='bg-white border rounded-xl p-4'>
-        <div className='text-sm font-medium text-gray-900'>ציר זמן</div>
-        <div className='mt-2 text-sm text-gray-600'>
-          {!selectedRun ? (
-            'אין צעדים להצגה. התחילו הרצה.'
-          ) : !steps ? (
-            'טוען צעדים...'
-          ) : steps.length === 0 ? (
-            'אין צעדים עדיין.'
-          ) : (
-            <div className='divide-y'>
-              {steps.map((s: any) => (
-                <div key={s._id} className='py-3 flex items-start justify-between gap-4'>
-                  <div>
-                    <div className='text-sm text-gray-900'>
-                      {s.gateId} • {statusLabelHe(s.status)}
-                    </div>
-                    <div className='mt-1 text-xs text-gray-500'>
-                      התחיל: {formatTs(s.startedAt)}
-                      {s.finishedAt ? ` • הסתיים: ${formatTs(s.finishedAt)}` : ''}
-                    </div>
-                    {s.error ? (
-                      <div className='mt-1 text-xs text-red-600'>{s.error}</div>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <FlowTimeline
+        selectedRun={selectedRun}
+        steps={steps as any}
+        formatTs={formatTs}
+        statusLabelHe={statusLabelHe}
+      />
 
-      <div className='bg-white border rounded-xl p-4'>
-        <div className='text-sm font-medium text-gray-900'>Debug</div>
-        <div className='mt-2 text-xs text-gray-600'>
-          <div className='font-medium text-gray-900'>FlowRun</div>
-          <pre className='mt-1 p-3 rounded-lg bg-gray-50 border overflow-auto text-[11px] leading-relaxed'>
-            {JSON.stringify(selectedRun ?? null, null, 2)}
-          </pre>
-
-          <div className='mt-4 font-medium text-gray-900'>Latest Step</div>
-          <pre className='mt-1 p-3 rounded-lg bg-gray-50 border overflow-auto text-[11px] leading-relaxed'>
-            {JSON.stringify(latestStepWithReport ?? null, null, 2)}
-          </pre>
-        </div>
-      </div>
+      <FlowDebugPanel selectedRun={selectedRun} latestStepWithReport={latestStepWithReport} />
     </div>
   )
 }
