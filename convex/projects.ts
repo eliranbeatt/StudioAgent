@@ -1,6 +1,7 @@
 import { action, mutation, query, internalAction, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
+import { extractBrainDumpStructuredDraft } from "./flow/brainDumpExtractor";
 import { Id } from "./_generated/dataModel";
 
 
@@ -790,6 +791,7 @@ export const createProjectFromModal = mutation({
     types: v.array(v.string()),
     eventDate: v.optional(v.string()), // ISO string
     notes: v.optional(v.string()),
+    brainDumpRaw: v.optional(v.string()),
     status: v.union(v.literal("lead"), v.literal("production"), v.literal("done"), v.literal("rejected")),
     elements: v.array(v.string()), // Element names
   },
@@ -837,6 +839,8 @@ export const createProjectFromModal = mutation({
     }
 
     // 3. Create Project
+    const brainDumpText = typeof args.brainDumpRaw === "string" ? args.brainDumpRaw.trim() : "";
+
     const projectId = await ctx.db.insert("projects", {
       name: finalName,
       customerId: customerId,
@@ -868,7 +872,9 @@ export const createProjectFromModal = mutation({
       details: {
         eventDate: args.eventDate ? new Date(args.eventDate).getTime() : undefined,
         notes: args.notes
-      }
+      },
+      brainDumpRaw: brainDumpText || undefined,
+      brainDumpStructuredDraft: brainDumpText ? extractBrainDumpStructuredDraft(brainDumpText) : undefined,
     });
 
     // 4. Create Elements (Live)
@@ -890,6 +896,14 @@ export const createProjectFromModal = mutation({
 
     // 5. Schedule Summary Generation
     await ctx.scheduler.runAfter(0, internal.projects.generateInitialSummary, { projectId });
+
+    if (brainDumpText) {
+      const snippet = brainDumpText.length > 4000 ? `${brainDumpText.slice(0, 4000)}\n\n[...truncated...]` : brainDumpText;
+      await ctx.scheduler.runAfter(0, internal.memory.appendUserInput, {
+        projectId,
+        text: `Brain dump (wizard)\n\n${snippet}`,
+      });
+    }
 
     return projectId;
   },

@@ -113,6 +113,15 @@ export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): Validati
     })
   }
 
+  if (!coverage.hasTools) {
+    blockingIssues.push({
+      key: 'ops.tools_missing',
+      severity: 'HIGH',
+      titleHe: 'חסר ציוד/כלים',
+      detailHe: 'לא נמצאו שורות tools/ציוד/בטיחות. נדרש להוסיף רשימת כלים וציוד באתר.',
+    })
+  }
+
   if (!coverage.hasBufferOrRisk) {
     blockingIssues.push({
       key: 'ops.buffer_missing',

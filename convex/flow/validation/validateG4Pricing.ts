@@ -17,7 +17,24 @@ function approxEqual(a: number, b: number, relTol = 0.02, absTol = 0.5) {
   return diff / denom <= relTol
 }
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function ttlForSource(source: unknown): number {
+  switch (source) {
+    case 'catalog_manual':
+      return 90 * DAY_MS
+    case 'web':
+      return 14 * DAY_MS
+    case 'estimate':
+      return 365 * DAY_MS
+    case 'purchase_actual':
+      return 180 * DAY_MS
+    case 'override':
+      return 60 * DAY_MS
+    default:
+      return 30 * DAY_MS
+  }
+}
 
 export function validateG4Pricing(snapshot: ProjectSnapshotV1): ValidationReportV1 {
   const blockingIssues: IssueV1[] = []
@@ -30,6 +47,7 @@ export function validateG4Pricing(snapshot: ProjectSnapshotV1): ValidationReport
   const materialLineIdsMissingConfidence: string[] = []
   const materialLineIdsStaleCheckedAt: string[] = []
   const materialLineIdsTotalMismatch: string[] = []
+  const materialLineIdsMissingEvidence: string[] = []
 
   const workLineIdsMissingUnitCost: string[] = []
   const workLineIdsMissingTotalCost: string[] = []
@@ -50,8 +68,15 @@ export function validateG4Pricing(snapshot: ProjectSnapshotV1): ValidationReport
 
     if (!isPositiveNumber(l.priceCheckedAt)) {
       materialLineIdsMissingCheckedAt.push(String(l.id))
-    } else if (now - (l.priceCheckedAt as number) > THIRTY_DAYS_MS) {
-      materialLineIdsStaleCheckedAt.push(String(l.id))
+    } else {
+      const ttl = ttlForSource(l.pricingSourceCode)
+      if (now - (l.priceCheckedAt as number) > ttl) {
+        materialLineIdsStaleCheckedAt.push(String(l.id))
+      }
+    }
+
+    if (l.pricingSourceCode === 'web' && !l.priceUrl) {
+      materialLineIdsMissingEvidence.push(String(l.id))
     }
 
     if (!isValidConfidence(l.confidence)) {
@@ -171,7 +196,16 @@ export function validateG4Pricing(snapshot: ProjectSnapshotV1): ValidationReport
       key: 'pricing.material.checked_at_stale',
       severity: 'LOW',
       titleHe: 'חלק ממחירי החומרים ישנים',
-      detailHe: 'יש שורות עם priceCheckedAt ישן (ברירת מחדל: 30 יום). ראו מזהים במטריקות.',
+      detailHe: 'יש שורות עם priceCheckedAt ישן לפי TTL לפי מקור (web קצר יותר). ראו מזהים במטריקות.',
+    })
+  }
+
+  if (materialLineIdsMissingEvidence.length > 0) {
+    warnings.push({
+      key: 'pricing.material.evidence_missing',
+      severity: 'LOW',
+      titleHe: 'חסרה ראיה למחיר מהאינטרנט',
+      detailHe: 'יש שורות web ללא priceUrl. מומלץ לשמור מקור מחיר. ראו מזהים במטריקות.',
     })
   }
 
@@ -202,6 +236,7 @@ export function validateG4Pricing(snapshot: ProjectSnapshotV1): ValidationReport
       materialLineIdsMissingConfidence,
       materialLineIdsStaleCheckedAt,
       materialLineIdsTotalMismatch,
+      materialLineIdsMissingEvidence,
       workLineIdsMissingUnitCost,
       workLineIdsMissingTotalCost,
       workLineIdsMissingConfidence,

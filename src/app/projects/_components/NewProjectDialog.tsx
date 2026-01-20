@@ -31,6 +31,8 @@ export default function NewProjectDialog({ isOpen, onClose }: NewProjectDialogPr
     const router = useRouter();
     const createProject = useMutation(api.projects.createProjectFromModal);
     const customers = useQuery(api.customers.listActive) || [];
+    const featureFlags = useQuery(api.featureFlags.getAll);
+    const wizardBrainDumpEnabled = !!featureFlags?.ff_wizard_brain_dump;
 
     // Form State
     const [name, setName] = useState("");
@@ -41,6 +43,7 @@ export default function NewProjectDialog({ isOpen, onClose }: NewProjectDialogPr
     const [elements, setElements] = useState<string[]>([""]);
     const [eventDate, setEventDate] = useState("");
     const [notes, setNotes] = useState("");
+    const [brainDumpRaw, setBrainDumpRaw] = useState("");
     const [status, setStatus] = useState("lead");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -54,6 +57,7 @@ export default function NewProjectDialog({ isOpen, onClose }: NewProjectDialogPr
             setElements([""]);
             setEventDate("");
             setNotes("");
+            setBrainDumpRaw("");
             setStatus("lead");
             setIsSubmitting(false);
         }
@@ -102,6 +106,7 @@ export default function NewProjectDialog({ isOpen, onClose }: NewProjectDialogPr
                 types: selectedTypes,
                 eventDate: eventDate || undefined,
                 notes: notes || undefined,
+                brainDumpRaw: wizardBrainDumpEnabled ? (brainDumpRaw || undefined) : undefined,
                 status: status as any,
                 elements: cleanElements,
             });
@@ -293,6 +298,19 @@ export default function NewProjectDialog({ isOpen, onClose }: NewProjectDialogPr
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[100px]"
                         />
                     </div>
+
+                    {wizardBrainDumpEnabled ? (
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-700">Brain Dump (optional)</label>
+                            <textarea
+                                value={brainDumpRaw}
+                                onChange={(e) => setBrainDumpRaw(e.target.value)}
+                                placeholder="Paste raw ideas, constraints, and details. We'll parse this later."
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[140px]"
+                            />
+                            <p className="text-xs text-gray-500">Shown only when ff_wizard_brain_dump is enabled.</p>
+                        </div>
+                    ) : null}
 
                 </div>
 
