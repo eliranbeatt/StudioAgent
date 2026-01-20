@@ -181,6 +181,7 @@ export default function FlowAgentPage() {
   const submitFlowAnswers = useMutation((api as any).flowAnswers.submitAnswers)
   const acceptUnknown = useMutation((api as any).flowAnswers.acceptUnknown)
   const acceptAssumption = useMutation((api as any).flowAnswers.acceptAssumption)
+  const adoptOpportunity = useMutation((api as any).flowAnswers.adoptOpportunity)
   const dismissOpportunity = useMutation((api as any).flowAnswers.dismissOpportunity)
 
   const [validationGateOverride, setValidationGateOverride] = useState<
@@ -586,20 +587,41 @@ export default function FlowAgentPage() {
                     {s.detailHe ? <div className='mt-1 text-xs text-gray-600'>{s.detailHe}</div> : null}
                     <div className='mt-1 text-[11px] text-gray-500'>{s.key}</div>
                   </div>
-                  <button
-                    className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
-                    disabled={!selectedRun?._id}
-                    onClick={async () => {
-                      if (!selectedRun?._id) return
-                      await dismissOpportunity({ flowRunId: selectedRun._id, opportunityKey: s.key })
-                      await computeValidation({
-                        flowRunId: selectedRun._id,
-                        gateId: validationGateId,
-                      })
-                    }}
-                  >
-                    לא להציע שוב
-                  </button>
+                  <div className='flex flex-col items-end gap-2'>
+                    <button
+                      className='px-3 py-2 rounded-lg bg-black text-white text-sm disabled:opacity-50'
+                      disabled={!selectedRun?._id}
+                      onClick={async () => {
+                        if (!selectedRun?._id) return
+                        const res = await adoptOpportunity({
+                          flowRunId: selectedRun._id,
+                          opportunityKey: s.key,
+                        })
+                        const changeSetId = (res as any)?.changeSetId
+                        if (changeSetId) {
+                          setOpenChangeSetId(changeSetId)
+                          setOpenChangeSetFlowRunId(selectedRun._id as any)
+                        }
+                      }}
+                    >
+                      לאמץ
+                    </button>
+
+                    <button
+                      className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
+                      disabled={!selectedRun?._id}
+                      onClick={async () => {
+                        if (!selectedRun?._id) return
+                        await dismissOpportunity({ flowRunId: selectedRun._id, opportunityKey: s.key })
+                        await computeValidation({
+                          flowRunId: selectedRun._id,
+                          gateId: validationGateId,
+                        })
+                      }}
+                    >
+                      לא להציע שוב
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

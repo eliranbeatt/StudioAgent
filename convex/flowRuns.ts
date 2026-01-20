@@ -533,6 +533,31 @@ export const setAwaitingApproval = internalMutation({
   },
 })
 
+export const setDraftChangeSets = internalMutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    gateId: v.string(),
+    draftChangeSetIds: v.array(v.id('changeSets')),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+
+    const step = await ctx.db
+      .query('flowSteps')
+      .withIndex('by_run_gate', (q) => q.eq('flowRunId', args.flowRunId).eq('gateId', args.gateId))
+      .first()
+
+    if (step) {
+      await ctx.db.patch(step._id, {
+        draftChangeSetIds: args.draftChangeSetIds,
+        updatedAt: now,
+      })
+    }
+
+    await ctx.db.patch(args.flowRunId, { updatedAt: now })
+  },
+})
+
 export const clearAwaitingApproval = internalMutation({
   args: { flowRunId: v.id('flowRuns') },
   handler: async (ctx, args) => {

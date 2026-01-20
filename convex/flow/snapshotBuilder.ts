@@ -44,6 +44,7 @@ export type ProjectSnapshotV1 = {
     plannedUnitCost?: number
     plannedTotalCost?: number
     pricingSourceCode?: string
+    priceUrl?: string
     priceCheckedAt?: number
     confidence?: number
     actualUnitCost?: number
@@ -223,6 +224,7 @@ export async function buildProjectSnapshot(
       plannedUnitCost: l.plannedUnitCost,
       plannedTotalCost: l.plannedTotalCost,
       pricingSourceCode: l.pricingSourceCode,
+      priceUrl: l.priceUrl,
       priceCheckedAt: l.priceCheckedAt,
       confidence: l.confidence,
       actualUnitCost: l.actualUnitCost,

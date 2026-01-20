@@ -941,6 +941,11 @@ export default defineSchema({
     auditLogIds: v.optional(v.array(v.string())),
     userEdits: v.optional(v.any()),
 
+    // Flow Agent draft metadata
+    lifecycleStatus: v.optional(v.union(v.literal("draft"), v.literal("proposed"))),
+    dependsOnIssueKeys: v.optional(v.array(v.string())),
+    assumptionsUsed: v.optional(v.array(v.string())),
+
     // Legacy / Flat Ops (kept for backward compatibility or simple runs)
     reason_he: v.optional(v.string()),
     base: v.optional(v.any()),

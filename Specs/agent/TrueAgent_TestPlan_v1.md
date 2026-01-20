@@ -18,7 +18,7 @@ This test plan validates the **Flow Agent** end-to-end experience (new tab + res
 - Brain Dump panel:
   - Append and update behavior on `projects.brainDumpRaw`.
   - Free-text addendum always available; appends to `brainDumpRaw`.
-  - (Optional) also logs to `memoryDocs.kind="USER_INPUT_LOG"`.
+  - Logs to `memoryDocs.kind="USER_INPUT_LOG"` (append + replace; replace may truncate log text).
   - Triggers re-validation (or schedules it).
 
 ### Phase 2 — Snapshot builder + deterministic validators v1 + extractor
@@ -32,7 +32,7 @@ This test plan validates the **Flow Agent** end-to-end experience (new tab + res
 - Multi-round clarification loop until readiness >= 0.95 or user forces proceed.
 - Answer persistence via `qaPairs` (questionKey = IssueKey).
 - Unknown/assumption acceptance persistence in project.
-- Suggestions lane: adopt/dismiss/never-suggest-again.
+- Suggestions lane: “never suggest again” (dismiss) only (adopt not implemented in UI).
 
 ### Phase 4 — FlowRunner v1 (gates + skills + ChangeSet stop points + batching)
 - Deterministic gate order G0..G9.
@@ -60,6 +60,15 @@ This test plan validates the **Flow Agent** end-to-end experience (new tab + res
 - Performance tuning beyond validating telemetry correctness.
 - Admin-only RBAC hardening (noted as “future” in spec) unless already implemented.
 - Automated test suite creation if repo has none; this plan can be executed manually and/or via ad-hoc scripts.
+
+## 3.1) Implementation-aligned notes (as of 2026-01-20)
+- `flowRuns.start` does not de-dupe active runs; multiple concurrent runs can be created.
+- Default toggles for new runs: `autoRun=false`, `useWebSearch=false`.
+- `useWebSearch` is forced to `false` when `ff_flow_web_pricing` is off.
+- Clarification QuestionsBlock only filters by blocking issues; suggestions come from `report.opportunities` and support “never suggest again” only.
+- Readiness penalties for “unknown accepted” only apply if validators emit `metrics.unknownAcceptedCriticalCount` (currently not set).
+- “Force proceed below readiness” is not exposed in the UI yet.
+- Flow Agent UI includes English labels for “Auto-run” and “Web search” (localization gap).
 
 ## 4) Non-Negotiable Invariants to Validate
 1) Fixed gate order and deterministic progression.
@@ -143,7 +152,7 @@ Create a small set of canonical projects to cover edge cases.
 
 **UI-02** Hebrew UI
 - Steps: Inspect all user-facing labels/statuses/errors on Flow Agent page.
-- Expected: Hebrew strings; no English UI leaks.
+- Expected: Hebrew strings for statuses and actions; note current English labels for “Auto-run” and “Web search” as localization gaps.
 
 **UI-03** Disabled route state
 - Steps: Navigate to `/projects/:id/flow-agent` with tab flag off.
@@ -155,6 +164,7 @@ Create a small set of canonical projects to cover edge cases.
 - Expected:
   - `flowRuns` created with status `running` (or initial state per implementation).
   - `flowSteps` contains a first step for the current gate.
+  - `toggles.autoRun=false`, `toggles.useWebSearch=false`.
 
 **RUN-02** Refresh resumes
 - Steps: Start; refresh browser.
@@ -170,7 +180,7 @@ Create a small set of canonical projects to cover edge cases.
 
 **RUN-05** Concurrency safety
 - Steps: Open same project in 2 tabs; attempt Start in both.
-- Expected: one active run; second action is idempotent or blocked with friendly message.
+- Expected: both runs can be created; active run selection resolves to the most recent active run (no hard de-dupe).
 
 **RUN-06** Error surfacing
 - Steps: Force backend error (e.g., invalid projectId).
@@ -195,7 +205,7 @@ Create a small set of canonical projects to cover edge cases.
 
 **BD-05** Optional user input log
 - Steps: Submit addendum.
-- Expected (if implemented): `memoryDocs` entry created with kind `USER_INPUT_LOG`.
+- Expected: `memoryDocs` entry created with kind `USER_INPUT_LOG`.
 
 ### E) Snapshot Builder Determinism (Phase 2)
 **SNAP-01** Stable ordering
@@ -219,8 +229,8 @@ Create a small set of canonical projects to cover edge cases.
 - Steps: Construct a report with known severities and contradictions.
 - Expected: readinessScore matches formula:
   - CRITICAL -0.25, HIGH -0.12, MEDIUM -0.06, LOW -0.02
-  - contradictions -0.20
-  - unknownAccepted on CRITICAL -0.10
+  - contradictions -0.20 (when `metrics.contradictionCount > 0`)
+  - unknownAccepted on CRITICAL -0.10 only when `metrics.unknownAcceptedCriticalCount` is present (currently not emitted by validators)
 
 **VAL-04** Gate-specific invariants
 - G1 Elements: elements coverage rules enforced.
@@ -261,7 +271,7 @@ Create a small set of canonical projects to cover edge cases.
 
 **CL-05** Accept unknown on CRITICAL
 - Steps: Choose “לא יודע” for a CRITICAL issue.
-- Expected: stored in `projects.unknownAcceptedKeys`; readiness penalty -0.10 applied.
+- Expected: stored in `projects.unknownAcceptedKeys`; readiness penalty only applies if validators set `metrics.unknownAcceptedCriticalCount` (currently not wired).
 
 **CL-06** Accept assumption
 - Steps: Accept assumption value (Hebrew).
@@ -269,14 +279,10 @@ Create a small set of canonical projects to cover edge cases.
 
 **CL-07** Force proceed below readiness
 - Steps: User chooses to proceed despite readiness < 0.95.
-- Expected: run advances with explicit audit trail (implementation-defined), and later audit gate flags the accepted unknowns.
+- Expected: not available in UI yet; verify absence or treat as future behavior.
 
-**CL-08** Suggestions adopt
-- Steps: Click “לאמץ”.
-- Expected: creates a minimal ChangeSet; requires explicit approval.
-
-**CL-09** Suggestions dismiss / never suggest again
-- Steps: Click “דלג” then “לא להציע שוב”.
+**CL-08** Suggestions dismiss / never suggest again
+- Steps: Click “לא להציע שוב”.
 - Expected: `dismissedOppKeys` updated; suggestion not shown again.
 
 ### I) FlowRunner v1 + Skills + ChangeSets (Phase 4)
@@ -302,7 +308,7 @@ Create a small set of canonical projects to cover edge cases.
 
 **FR-06** Draft lifecycle metadata
 - Steps: Generate drafts.
-- Expected: drafts store `dependsOnIssueKeys` and `assumptionsUsed` (if implemented).
+- Expected: metadata is optional; if present, drafts store `dependsOnIssueKeys` and `assumptionsUsed` (not required in current implementation).
 
 **FR-07** Deterministic batching
 - Project: P2 Multi-element.

@@ -33,7 +33,7 @@ export function FlowTimeline({ selectedRun, steps, formatTs, statusLabelHe, onOp
                   </div>
                   {s.error ? <div className='mt-1 text-xs text-red-600'>{s.error}</div> : null}
 
-                  {Array.isArray(s.draftChangeSetIds) && s.draftChangeSetIds.length > 0 ? (
+                  {s.status === 'awaiting_approval' && Array.isArray(s.draftChangeSetIds) && s.draftChangeSetIds.length > 0 ? (
                     <div className='mt-2 flex flex-wrap gap-2'>
                       {s.draftChangeSetIds.map((id: string) => (
                         <button

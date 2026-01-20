@@ -1,6 +1,7 @@
 import { mutation } from './_generated/server'
 import { v } from 'convex/values'
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from './featureFlags'
+import { api, internal } from './_generated/api'
 
 const SETTINGS_KEY = 'featureFlags'
 
@@ -165,5 +166,51 @@ export const dismissOpportunity = mutation({
       dismissedOppKeys: next,
       updatedAt: Date.now(),
     })
+  },
+})
+
+function resolveOpportunitySkill(opportunityKey: string): string | null {
+  const key = opportunityKey.toLowerCase()
+  if (key.startsWith('ops.')) return 'OVERHEAD_AND_LOGISTICS_COMPLETER'
+  if (key.startsWith('pricing.')) return 'PRICING_ESTIMATE_FALLBACK_BATCH'
+  if (key.startsWith('tasks.')) return 'TASKS_ENRICH_FROM_ACCOUNTING_BATCH'
+  if (key.startsWith('quote.')) return 'QUOTE_BUILD_OR_FIX'
+  return null
+}
+
+export const adoptOpportunity = mutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    opportunityKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await assertBackendEnabled(ctx)
+
+    const run = await ctx.db.get(args.flowRunId)
+    if (!run) throw new Error('Flow run not found')
+
+    const skillId = resolveOpportunitySkill(args.opportunityKey.trim())
+    if (!skillId) return { changeSetId: null }
+
+    const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, {
+      flowRunId: args.flowRunId,
+    })
+
+    const blocks = await ctx.runAction(api.skills.runner.runSkill, {
+      projectId: run.projectId,
+      conversationId,
+      skillId,
+      params: {
+        source: 'flow_opportunity',
+        opportunityKey: args.opportunityKey,
+        toggles: { useWebSearch: false },
+      },
+    })
+
+    const changeSetId = Array.isArray(blocks)
+      ? (blocks.find((b: any) => b?.changeSetId)?.changeSetId ?? null)
+      : null
+
+    return { changeSetId }
   },
 })

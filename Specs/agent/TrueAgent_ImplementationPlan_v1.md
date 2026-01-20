@@ -238,7 +238,7 @@ Free text addendum (required):
 - The Flow Agent tab must include a free-text input that can be used at any time during the flow.
 - v1 behavior:
   - [x] appends to `projects.brainDumpRaw`
-  - [ ] also appends to `memoryDocs.kind="USER_INPUT_LOG"` (optional but recommended)
+  - [x] also appends to `memoryDocs.kind="USER_INPUT_LOG"` (optional but recommended)
   - [x] triggers re-validation (currently triggers `computeValidation` when validators are enabled)
 
 #### Update existing nav (update)
@@ -317,7 +317,7 @@ Status:
 - Update `Flow Agent` tab to render:
   - [x] readiness score
   - [x] grouped issues (blocking + warnings)
-  - [ ] coverage metrics (counts)
+  - [x] coverage metrics (counts)
 
 ### Acceptance tests
 - Run validation on empty project → stable IssueKeys.
@@ -401,7 +401,7 @@ User choices for suggestions:
 
 Suggestions tests:
 - 0–2 suggestions appear alongside required questions.
-- Adopt creates a separate ChangeSet and requires explicit approval.
+- [ ] Adopt creates a separate ChangeSet and requires explicit approval.
 - Dismiss stores `dismissedOppKeys` and the suggestion is not shown again.
 
 ---
@@ -451,6 +451,9 @@ Draft ChangeSet lifecycle (v1.1):
 
 If answers affect a draft dependency, discard or regenerate only the impacted drafts.
 
+Status:
+- [ ] Draft ChangeSet lifecycle + metadata (`dependsOnIssueKeys`, `assumptionsUsed`) not implemented yet.
+
 #### Batch selection (add)
 - ✅ `convex/flow/batching.ts`
   - deterministic batch selection (3–5 elements) based on stable grouping key
@@ -464,7 +467,7 @@ If answers affect a draft dependency, discard or regenerate only the impacted dr
 Add missing core skills (new, required):
 - G4 Pricing pipeline (catalog → web → fallback)
   - `PRICING_LOOKUP_CATALOG_BATCH` (new)
-  - `PRICING_RESEARCH_WEB_BATCH` (new, only if web enabled)
+  - [ ] `PRICING_RESEARCH_WEB_BATCH` (new, only if web enabled) — currently using `RESEARCH_PRICING_ESTIMATES_WEB`
   - `PRICING_ESTIMATE_FALLBACK_BATCH` (new)
 - G5 Tasks enrichment from accounting
   - `TASKS_ENRICH_FROM_ACCOUNTING_BATCH` (new)
@@ -557,6 +560,10 @@ These can be implemented initially as service/material lines routed to dedicated
   - catalog lookup skill (existing catalog tables already exist)
   - `RESEARCH_PRICING_ESTIMATES_WEB` (already exists) gated by `useWebSearch`
   - overhead completer skill (new)
+
+Status:
+- [x] Validator TTL by source + web evidence warning added.
+- [x] Ops completeness checks tools/consumables/transport/buffer/teardown.
 
 ### Acceptance tests
 - Flow blocks when pricing is missing/stale unless assumptions accepted.

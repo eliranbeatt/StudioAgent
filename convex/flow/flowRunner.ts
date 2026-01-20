@@ -74,6 +74,40 @@ export const tick = internalAction({
       if (!refreshed) return
 
       if (report?.status !== 'pass') {
+        // Optionally compute draft ChangeSets for the current gate while blocked
+        const step = await ctx.runQuery(internal.flowRuns.getStepInternal, {
+          flowRunId,
+          gateId: refreshed.currentGateId,
+        })
+
+        if (!step?.draftChangeSetIds || step.draftChangeSetIds.length === 0) {
+          const project = await ctx.runQuery(api.projects.getProjectInternal, { id: refreshed.projectId })
+          const dependsOnIssueKeys = Array.isArray(report?.blockingIssues)
+            ? report.blockingIssues.map((i: any) => i.key).filter(Boolean)
+            : []
+          const assumptionsUsed = Array.isArray(project?.assumptionsAccepted)
+            ? project.assumptionsAccepted.map((a: any) => a?.key).filter(Boolean)
+            : []
+
+          const draftIds = await runSkillForGate(ctx, {
+            projectId: refreshed.projectId,
+            conversationId: await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId }),
+            gateId: refreshed.currentGateId,
+            useWebSearch: !!refreshed.toggles?.useWebSearch,
+            flags,
+            draftOnly: true,
+            dependsOnIssueKeys,
+            assumptionsUsed,
+          })
+
+          if (draftIds.length > 0) {
+            await ctx.runMutation(internal.flowRuns.setDraftChangeSets, {
+              flowRunId,
+              gateId: refreshed.currentGateId,
+              draftChangeSetIds: draftIds,
+            })
+          }
+        }
         return
       }
 
@@ -122,6 +156,9 @@ async function runSkillForGate(
     gateId: string
     useWebSearch: boolean
     flags: Record<string, boolean>
+    draftOnly?: boolean
+    dependsOnIssueKeys?: string[]
+    assumptionsUsed?: string[]
   }
 ): Promise<Array<Id<'changeSets'>>> {
   const pricingGatesEnabled = isEnabled(args.flags, 'ff_flow_pricing_gates', false)
@@ -137,7 +174,7 @@ async function runSkillForGate(
     if (!pricingGatesEnabled) return []
     skills.push('PRICING_LOOKUP_CATALOG_BATCH')
     if (webPricingEnabled && args.useWebSearch) {
-      skills.push('RESEARCH_PRICING_ESTIMATES_WEB')
+      skills.push('PRICING_RESEARCH_WEB_BATCH')
     }
     skills.push('PRICING_ESTIMATE_FALLBACK_BATCH')
   }
@@ -176,6 +213,9 @@ async function runSkillForGate(
       params: {
         source: 'flow_runner',
         toggles: { useWebSearch: args.useWebSearch },
+        draftOnly: !!args.draftOnly,
+        dependsOnIssueKeys: args.dependsOnIssueKeys,
+        assumptionsUsed: args.assumptionsUsed,
       },
     })
 

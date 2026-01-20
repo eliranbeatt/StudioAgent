@@ -550,6 +550,23 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     model: "gpt-5-mini",
   },
   {
+    skillId: "PRICING_RESEARCH_WEB_BATCH",
+    labelHe: "מחקר מחיר באינטרנט",
+    descriptionHe: "מחקר מחירים באינטרנט לשורות חומר",
+    category: "shopping",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: true, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.PRICING_RESEARCH_WEB_BATCH,
+    },
+    model: "gpt-5-mini",
+  },
+  {
     skillId: "PRICING_ESTIMATE_FALLBACK_BATCH",
     labelHe: "הערכת מחיר חליפית",
     descriptionHe: "הערכת מחיר כשאין מחירון",

@@ -842,10 +842,21 @@ export const saveRunResult = internalMutation({
           return { kind, payload };
         });
 
+        const lifecycleStatus = run?.inputParams?.draftOnly ? "draft" : "proposed";
+        const dependsOnIssueKeys = Array.isArray(run?.inputParams?.dependsOnIssueKeys)
+          ? run?.inputParams?.dependsOnIssueKeys
+          : undefined;
+        const assumptionsUsed = Array.isArray(run?.inputParams?.assumptionsUsed)
+          ? run?.inputParams?.assumptionsUsed
+          : undefined;
+
         const changeSetId = await ctx.db.insert("changeSets", {
           projectId: args.projectId,
           stage: "IDEATION",
           status: "PROPOSED",
+          lifecycleStatus,
+          dependsOnIssueKeys,
+          assumptionsUsed,
           ops: normalizedOps,
           reason_he: titleHe,
           preview_he: summaryHe ? { summary: summaryHe } : undefined,
