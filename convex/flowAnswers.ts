@@ -6,13 +6,17 @@ import { api, internal } from './_generated/api'
 const SETTINGS_KEY = 'featureFlags'
 
 async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
-  const existing = await ctx.db
-    .query('appSettings')
-    .withIndex('by_key', (q: any) => q.eq('key', SETTINGS_KEY))
-    .first()
+  if (ctx.db) {
+    const existing = await ctx.db
+      .query('appSettings')
+      .withIndex('by_key', (q: any) => q.eq('key', SETTINGS_KEY))
+      .first()
 
-  const stored = normalizeFlags(existing?.value)
-  return { ...DEFAULT_FLAGS, ...stored }
+    const stored = normalizeFlags(existing?.value)
+    return { ...DEFAULT_FLAGS, ...stored }
+  } else {
+    return await ctx.runQuery(api.featureFlags.getAll)
+  }
 }
 
 async function assertBackendEnabled(ctx: any) {

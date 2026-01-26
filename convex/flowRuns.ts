@@ -19,13 +19,17 @@ import { buildQuestionsBlock } from './flow/clarificationPackBuilder'
 const SETTINGS_KEY = 'featureFlags'
 
 async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
-  const existing = await ctx.db
-    .query('appSettings')
-    .withIndex('by_key', (q: any) => q.eq('key', SETTINGS_KEY))
-    .first()
+  if (ctx.db) {
+    const existing = await ctx.db
+      .query('appSettings')
+      .withIndex('by_key', (q: any) => q.eq('key', SETTINGS_KEY))
+      .first()
 
-  const stored = normalizeFlags(existing?.value)
-  return { ...DEFAULT_FLAGS, ...stored }
+    const stored = normalizeFlags(existing?.value)
+    return { ...DEFAULT_FLAGS, ...stored }
+  } else {
+    return await ctx.runQuery(api.featureFlags.getAll)
+  }
 }
 
 async function assertBackendEnabled(ctx: any) {
@@ -118,7 +122,10 @@ export const start = mutation({
       status: 'running' as FlowRunStatus,
       currentGateId: 'G0',
       conversationId,
-      toggles: { autoRun: false, useWebSearch: false },
+      approvalMode: 'auto',
+      approvalModeDefault: 'auto',
+      approvalModeOverride: false,
+      toggles: { autoRun: false, autoApprove: false, useWebSearch: false },
       createdAt: now,
       updatedAt: now,
     })
@@ -150,6 +157,7 @@ export const setToggles = mutation({
     flowRunId: v.id('flowRuns'),
     toggles: v.object({
       autoRun: v.boolean(),
+      autoApprove: v.boolean(),
       useWebSearch: v.boolean(),
     }),
   },
@@ -163,13 +171,80 @@ export const setToggles = mutation({
     const now = Date.now()
 
     const useWebSearch = isEnabled(flags, 'ff_flow_web_pricing', false) ? args.toggles.useWebSearch : false
+    const prevAutoApprove = !!run.toggles?.autoApprove
+    const nextAutoApprove = args.toggles.autoApprove
+    const approvalModePatch =
+      prevAutoApprove !== nextAutoApprove
+        ? {
+            approvalMode: nextAutoApprove ? 'auto' : 'manual',
+            approvalModeOverride: true,
+            approvalModeDefault: run.approvalModeDefault ?? (nextAutoApprove ? 'auto' : 'manual'),
+          }
+        : {}
 
     await ctx.db.patch(args.flowRunId, {
       toggles: {
         autoRun: args.toggles.autoRun,
+        autoApprove: args.toggles.autoApprove,
         useWebSearch,
       },
+      ...approvalModePatch,
       updatedAt: now,
+    })
+  },
+})
+
+export const setApprovalMode = mutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    approvalMode: v.union(v.literal('auto'), v.literal('manual')),
+  },
+  handler: async (ctx, args) => {
+    await assertBackendEnabled(ctx)
+
+    const run = await ctx.db.get(args.flowRunId)
+    if (!run) throw new Error('Flow run not found')
+
+    const now = Date.now()
+    const autoApprove = args.approvalMode === 'auto'
+
+    await ctx.db.patch(args.flowRunId, {
+      approvalMode: args.approvalMode,
+      approvalModeOverride: true,
+      approvalModeDefault: run.approvalModeDefault ?? args.approvalMode,
+      toggles: {
+        autoRun: !!run.toggles?.autoRun,
+        autoApprove,
+        useWebSearch: !!run.toggles?.useWebSearch,
+      },
+      updatedAt: now,
+    })
+  },
+})
+
+export const setApprovalModeInternal = internalMutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    approvalMode: v.union(v.literal('auto'), v.literal('manual')),
+    approvalModeDefault: v.optional(v.union(v.literal('auto'), v.literal('manual'))),
+    approvalModeOverride: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.flowRunId)
+    if (!run) return
+
+    const autoApprove = args.approvalMode === 'auto'
+
+    await ctx.db.patch(args.flowRunId, {
+      approvalMode: args.approvalMode,
+      approvalModeDefault: args.approvalModeDefault ?? run.approvalModeDefault,
+      approvalModeOverride: args.approvalModeOverride ?? run.approvalModeOverride,
+      toggles: {
+        autoRun: !!run.toggles?.autoRun,
+        autoApprove,
+        useWebSearch: !!run.toggles?.useWebSearch,
+      },
+      updatedAt: Date.now(),
     })
   },
 })
@@ -390,7 +465,7 @@ export const computeValidation = mutation({
       })
 
       if (questionsBlock) {
-        ;(report as any).questionsBlock = questionsBlock
+        ; (report as any).questionsBlock = questionsBlock
       }
     }
 
@@ -445,8 +520,8 @@ export const getRunInternal = internalQuery({
 })
 
 export const setRunStatus = internalMutation({
-  args: { 
-    flowRunId: v.id('flowRuns'), 
+  args: {
+    flowRunId: v.id('flowRuns'),
     status: v.union(
       v.literal('running'),
       v.literal('blocked'),
@@ -467,12 +542,12 @@ export const advanceToGate = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now()
     await ctx.db.patch(args.flowRunId, { currentGateId: args.gateId, updatedAt: now })
-    
+
     const existing = await ctx.db
       .query('flowSteps')
       .withIndex('by_run_gate', (q) => q.eq('flowRunId', args.flowRunId).eq('gateId', args.gateId))
       .first()
-      
+
     if (!existing) {
       await ctx.db.insert('flowSteps', {
         flowRunId: args.flowRunId,
@@ -557,6 +632,26 @@ export const setDraftChangeSets = internalMutation({
   },
 })
 
+export const setStepLastEmittedHash = internalMutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    gateId: v.string(),
+    lastEmittedHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const step = await ctx.db
+      .query('flowSteps')
+      .withIndex('by_run_gate', (q) => q.eq('flowRunId', args.flowRunId).eq('gateId', args.gateId))
+      .first()
+
+    if (!step) return
+
+    await ctx.db.patch(step._id, {
+      lastEmittedHash: args.lastEmittedHash,
+    })
+  },
+})
+
 export const clearAwaitingApproval = internalMutation({
   args: { flowRunId: v.id('flowRuns') },
   handler: async (ctx, args) => {
@@ -581,18 +676,18 @@ export const tickValidation = internalMutation({
     // Actually computeValidation is public. We can call it?
     // No, mutation logic calling another mutation in same Convex app?
     // Convex allows calling other mutations via ctx.runMutation.
-    
+
     // Instead of calling the public mutation which might have checks again,
     // we can re-implement or call it.
     // Let's trying calling it. 'validationReport' is returned.
-    
+
     // But we need the 'flowRun' state too.
-    
+
     // So let's just use getRunInternal in the action and call computeValidation separately.
     // tickValidation is not strictly needed if we do 2 round trips in the action.
     // 1. computeValidation (public)
     // 2. getRunInternal (internal)
-    
+
     // So I will remove tickValidation from here and handle it in the action.
     return null
   }

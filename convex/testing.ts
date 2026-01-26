@@ -1,5 +1,5 @@
 
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const seedP0 = mutation({
@@ -126,5 +126,48 @@ export const resetFlowRuns = mutation({
             const steps = await ctx.db.query("flowSteps").withIndex("by_run", q => q.eq("flowRunId", run._id)).collect();
             for (const s of steps) await ctx.db.delete(s._id);
         }
+    }
+});
+
+export const getFlowState = query({
+    args: { flowRunId: v.id("flowRuns") },
+    handler: async (ctx, args) => {
+        const run = await ctx.db.get(args.flowRunId);
+        if (!run) return null;
+
+        const step = await ctx.db
+            .query("flowSteps")
+            .withIndex("by_run_gate", q => q.eq("flowRunId", args.flowRunId).eq("gateId", run.currentGateId))
+            .first();
+
+        return {
+            run,
+            step
+        };
+    }
+});
+
+export const getLatestSkillRun = query({
+    args: { projectId: v.id("projects") },
+    handler: async (ctx, args) => {
+        const run = await ctx.db.query("skillRuns")
+            .withIndex("by_project", q => q.eq("projectId", args.projectId))
+            .order("desc")
+            .first();
+        return run;
+    }
+});
+
+export const seedContext = mutation({
+    args: { projectId: v.id("projects"), text: v.string() },
+    handler: async (ctx, args) => {
+        await ctx.db.insert("memoryDocs", {
+            projectId: args.projectId,
+            kind: "RUNNING_MEMORY",
+            contentMd_he: args.text,
+            autoAppendEnabled: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        });
     }
 });

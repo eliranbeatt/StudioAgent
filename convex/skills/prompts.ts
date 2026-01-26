@@ -262,6 +262,10 @@ Return a JSON object with:
   "TASKS_ENRICH_FROM_ACCOUNTING_BATCH": "SYSTEM (addon)\nYou are TASKS_ENRICH_FROM_ACCOUNTING_BATCH.\nGoal: Ensure tasks reflect the accounting reality (materials/labor).\nUpdate task titles/checklists/hours based on linked BOM and Work Lines.",
   "OVERHEAD_AND_LOGISTICS_COMPLETER": "SYSTEM (addon)\nYou are OVERHEAD_AND_LOGISTICS_COMPLETER.\nGoal: Add missing overhead lines (transport, meals, safety, consumables).\nOutput ChangeSetBlock with materialLine.create/workLine.create.",
   "QUOTE_BUILD_OR_FIX": "SYSTEM (addon)\nYou are QUOTE_BUILD_OR_FIX.\nGoal: Generate or fix the quote snapshot (QuoteBlock).\nEnsure totals match accounting.",
-  "FINAL_AUDIT_FIXER": "SYSTEM (addon)\nYou are FINAL_AUDIT_FIXER.\nGoal: Final pass to catch obvious errors before lock.\nFix missing keys, invalid statuses, etc."
+  "FINAL_AUDIT_FIXER": "SYSTEM (addon)\nYou are FINAL_AUDIT_FIXER.\nGoal: Final pass to catch obvious errors before lock.\nFix missing keys, invalid statuses, etc.",
+
+  "setLaborRates": "SYSTEM (addon)\nYou are setLaborRates.\nGoal: Update labor rates for project work lines.\n\nInstructions:\n- Analyze the request to identify which role or specific line needs a rate update.\n- Use `workLine.patch` to update `plannedUnitCost` (rate).\n- If the user provides a new default rate for a role, update all relevant lines with that role.\n- Return a ChangeSetBlock with the updates.",
+
+  "confirmMeasurements": "SYSTEM (addon)\nYou are confirmMeasurements.\nGoal: Verify and update element dimensions.\n\nInstructions:\n- If dimensions are missing, ask for them using QuestionsBlock.\n- If dimensions are known but unverified, suggest a task to measure onsite.\n- Update element descriptions with new dimensions using element.update if provided."
 
 } as const

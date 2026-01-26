@@ -1,0 +1,196 @@
+FlowUI CG plan (critique-driven update)
+
+0) Self-critique (brief)
+- The prior plan overloaded computeValidation with UI side effects. That risks chat spam and breaks purity.
+- UI refactor came too late, which would slow iteration on blocks and flow UX.
+- Element deep dive was too large for MVP and should be split out.
+- Dedupe strategy was too coarse (timestamp-based) and can miss meaningful deltas.
+- Lacked migration strategy and automated test coverage.
+
+1) Updated goals (MVP-first)
+- Deliver a chat-first Flow Agent experience that uses the existing flow engine (G0-G9) without changing core validator logic.
+- Keep validation pure; emit gate cards only from the flow runner orchestration layer.
+- Ship project-level flow first; move element deep dive to post-release v2.
+- Add guardrails: pause/stop, dedupe, and lightweight automated verification.
+
+2) Updated implementation order
+
+Phase 0: Data model + migration (1-2 days)
+- Add optional fields to `flowRuns` in `convex/schema.ts`:
+  - approvalMode (auto|manual), approvalModeDefault (auto|manual), approvalModeOverride (boolean)
+  - scope (project|element) if needed later, but do NOT add phase if it mirrors gate
+- Migration/backfill:
+  - Use optional fields; default in code for older runs.
+  - Add a one-time script or a mutation to backfill approvalMode fields for active runs.
+
+Phase 1: UI skeleton + message pipeline (2-3 days)
+- Create a Flow Chat page early:
+  - New `src/app/projects/[id]/flow-agent/FlowChatPage.tsx` or replace `page.tsx` with a chat shell.
+  - Keep the old dashboard as `src/app/projects/[id]/flow-agent/_components/FlowDebugPanel` or `old_page.tsx` for debugging.
+- Message pipeline:
+  - Add `convex/flow/chat.ts` for message construction and insertion into `agentMessages`.
+  - Add helper to emit assistant blocks + user summary messages.
+
+Phase 2: Gate card block + intent handling (2-4 days)
+- Add `FlowGateBlock` in `src/app/projects/[id]/agent/_components/Blocks/FlowGateBlock.tsx`.
+- Add intent handling in `convex/flow/gateActions.ts`:
+  - submitGateAnswers(flowRunId, answers, intent)
+  - intent = ask_more | advance | skip
+- Keep computeValidation pure:
+  - computeValidation only computes report + updates flowSteps and run state.
+  - flowRunner.tick decides when to emit a gate card based on validation result.
+
+Phase 3: Brain dump card in chat (1-2 days)
+- Add `FlowBrainDumpBlock` for textarea + submit/skip.
+- Use `convex/brainDump.ts` for storage; emit a summary ChatBlock after update.
+- Use existing `extractBrainDumpStructuredDraft` for now (no LLM rewriter yet).
+
+Phase 4: Approval mode + auto-approve behavior (2-3 days)
+- Map approvalMode to flowRuns.toggles.autoApprove, but keep a distinct UI label.
+- Quote milestone handling:
+  - If quoteVersions count transitions from 0 -> 1, set approvalModeDefault = manual.
+  - If user has not overridden, flip approvalMode to manual.
+- Auto-approve summary:
+  - When auto-approving in flowRunner.tick, emit a summary block to chat (avoid ChangeSet review UI).
+
+Phase 5: Release hardening + tests (2-3 days)
+- Automated smoke test:
+  - Add a script under `scripts/flow_chat_smoke.ts` that:
+    1) starts a flow
+    2) forces a blocked validation (e.g., no brief)
+    3) checks that a gate message was added
+    4) submits skip
+    5) verifies run gate advances
+- Manual QA checklist:
+  - start run -> greeting + gate card
+  - ask_more, advance, skip paths
+  - brain dump submission
+  - auto-approve summary
+  - pause/stop halts runner
+
+Phase 6 (post-release v2): Element deep dive (5-8 days)
+- Separate effort after MVP.
+- Reuse existing scope support in `skills.runner.buildContext` (elementIds).
+- Add element-specific gate sequence as a new runner module, not a replacement.
+
+3) Critical design decisions (clarified)
+- Validation purity:
+  - computeValidation MUST NOT emit chat messages.
+  - Gate cards are emitted only by flowRunner.tick or a dedicated `emitGateStatus` action.
+- Phase vs gate:
+  - Do NOT store phase separately unless it diverges from gate.
+  - Derive phase in UI from currentGateId mapping (G0->Brief, G1->Elements, etc.).
+- Dedupe strategy:
+  - Use a deterministic hash, e.g., `gateId + reportHash + questionsBlockHash`.
+  - Store hash in flowSteps (e.g., `lastEmittedHash`) to avoid repeated cards.
+
+4) Navigation and control
+- Keep "Pause/Stop" in the FlowChat header; call `flowRuns.pause` and `flowRuns.cancel`.
+- Add a right-side panel toggle to show project tables or a condensed data view (elements/tasks/accounting) so users can inspect changes without leaving the page.
+
+5) File-level changes (targeted)
+- New: `convex/flow/chat.ts` (message construction + insert)
+- New: `convex/flow/gateActions.ts` (submitGateAnswers, skip logic)
+- Update: `convex/flow/flowRunner.ts` (emit gate cards + auto-approve summaries)
+- Update: `src/app/projects/[id]/flow-agent/page.tsx` -> chat-first
+- New blocks: `FlowGateBlock`, `FlowBrainDumpBlock`, `FlowChangeSetSummaryBlock`
+- Keep old dashboard as debug-only component
+
+6) Risks + mitigations
+- Risk: repeated gate cards on every validation tick.
+  - Mitigation: hash-based dedupe stored on flowSteps.
+- Risk: auto-approve writes can be slow if many ChangeSets.
+  - Mitigation: keep sequential for safety; consider batching later.
+- Risk: approvalMode defaults mismatch old runs.
+  - Mitigation: code defaults + optional migration mutation.
+
+7) Status updates
+
+Phase 0 (Data model + migration)
+Status: completed
+Tasks done:
+- Added approvalMode/approvalModeDefault/approvalModeOverride/scope to flowRuns and lastEmittedHash to flowSteps.
+- Added migration mutation to backfill approval mode defaults based on existing toggles.
+Left:
+- Wire new approval mode fields into flowRuns start/toggles (Phase 4).
+Comments:
+- Migration uses toggles.autoApprove to infer current mode when possible.
+Questions:
+- None.
+Tests:
+- Not run (n/a).
+
+Phase 1 (UI skeleton + message pipeline)
+Status: completed
+Tasks done:
+- Added `convex/flow/chat.ts` for message queries, user send, assistant emit, and brain dump submission.
+- Replaced Flow Agent page with chat-first layout, panel toggle, and debug toggle.
+- Added Flow chat renderer with support for Flow blocks + existing agent blocks.
+Left:
+- Fix flow gate actions + runner emission (Phase 2).
+- Wire brain dump emission + approval logic (Phases 3-4).
+Comments:
+- Side panel shows condensed elements list (first 12).
+Questions:
+- Should the right panel include tasks/accounting summaries too, or keep elements-only for MVP?
+Tests:
+- Not run (n/a).
+
+Phase 2 (Gate card block + intent handling)
+Status: completed
+Tasks done:
+- Added `convex/flow/gateActions.ts` with intent handling and user summary emission.
+- Emitted FlowGateBlock from flowRunner with hash-based dedupe stored on flowSteps.
+- Added FlowGateBlock UI for questions, issues, and suggestions.
+Left:
+- Brain dump card emission and approval mode updates (Phases 3-4).
+Comments:
+- Gate card hash uses gateId + report + questionsBlock for dedupe.
+Questions:
+- None.
+Tests:
+- Not run (n/a).
+
+Phase 3 (Brain dump card in chat)
+Status: completed
+Tasks done:
+- Emitted FlowBrainDumpBlock when blocked at G0 and no brain dump exists.
+- Hooked FlowBrainDumpBlock to `flow.chat.submitBrainDump`, which stores text and emits a summary ChatBlock.
+Left:
+- Approval mode + auto-approve summary (Phase 4).
+Comments:
+- Brain dump block is emitted once per conversation (deduped via recent block check).
+Questions:
+- None.
+Tests:
+- Not run (n/a).
+
+Phase 4 (Approval mode + auto-approve)
+Status: completed
+Tasks done:
+- Added approval mode mutations + internal sync (flowRuns).
+- Updated flowRunner to flip approval defaults to manual once quotes exist and no override.
+- Emitted FlowChangeSetSummaryBlock when auto-approving ChangeSets.
+- Added approval mode selector to Flow Agent UI (auto/manual).
+Left:
+- Smoke test + QA checklist (Phase 5).
+Comments:
+- Approval mode updates also sync toggles.autoApprove for runner behavior.
+Questions:
+- None.
+Tests:
+- Not run (n/a).
+
+Phase 5 (Release hardening + tests)
+Status: completed
+Tasks done:
+- Added `scripts/flow_chat_smoke.ts` for the chat-first runner smoke test.
+- Manual QA checklist already captured in Phase 5 notes above (unchanged).
+Left:
+- Run the smoke test and manual QA in your environment.
+Comments:
+- Script expects `test-ids.json` with `p1Id` (same pattern as other scripts).
+Questions:
+- None.
+Tests:
+- Not run (n/a).

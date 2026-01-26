@@ -1,0 +1,142 @@
+FlowUI v52 plan (aligned to current codebase)
+
+1) Current code reality (what we actually have)
+- Flow Agent tab is a dashboard screen, not chat: `src/app/projects/[id]/flow-agent/page.tsx` plus `FlowRunHeader`, `FlowTimeline`, `FlowDebugPanel`.
+- Flow state lives in Convex tables:
+  - `flowRuns` + `flowSteps` in `convex/schema.ts`.
+  - `flowRuns.start`, `computeValidation`, `runNext`, `setToggles` in `convex/flowRuns.ts`.
+  - Auto-advance + ChangeSet gating in `convex/flow/flowRunner.ts`.
+- Validation gates are G0-G9 with validators in `convex/flow/validation/*` and a snapshot in `convex/flow/snapshotBuilder.ts`.
+- Clarification packs are generated in `convex/flow/clarificationPackBuilder.ts` and surfaced on the Flow Agent page via `questionsBlock`.
+- Answers for flow clarifications are stored via `convex/flowAnswers.ts` (qaPairs + unknown/assumption/opportunity handling).
+- Brain dump exists as a form + extractor:
+  - UI in `src/app/projects/[id]/flow-agent/page.tsx`.
+  - Storage in `convex/brainDump.ts`.
+  - Simple parser in `convex/flow/brainDumpExtractor.ts` (no LLM plan output).
+- Chat UI exists and is block-driven:
+  - `AgentChat` in `src/app/projects/[id]/agent/_components/AgentChat.tsx`.
+  - Block components in `src/app/projects/[id]/agent/_components/Blocks/*`.
+  - Messages stored in `agentMessages` (`convex/schema.ts`) and written by skills runner (`convex/skills/runner.ts`).
+- ChangeSet review is a drawer in `src/app/projects/[id]/agent/_components/ChangeSetReviewDrawer.tsx`.
+
+2) Gaps vs flowui spec
+- Flow Agent UI is not chat-based and does not reuse the AgentChat layout.
+- Gate cards are not embedded in chat; they are rendered in the Flow Agent dashboard.
+- Flow questions use flowAnswers but do not support two submit intents (ask more vs advance) or skip gate.
+- No brain dump card inside chat; no structured plan preview step.
+- Auto-approve defaults are manual; no auto flip to manual on first quote.
+- No per-element deep dive flow or element-scoped gate loop.
+- No chat message summaries for auto-applied ChangeSets.
+
+3) Target behavior (spec-aligned, grounded in current code)
+- Flow Agent tab becomes a chat screen that looks like AgentChat but uses the Flow run conversationId.
+- Gate clarifications render as chat cards with:
+  - send answers and ask more
+  - send answers and advance
+  - skip with current knowledge
+- Brain dump appears as a chat card and produces a structured summary preview.
+- Auto-approve is default until first quote; flips to manual by default after quote; user can override.
+- Flow runner and validators remain the engine, but UI is chat-first.
+
+4) Detailed implementation plan (based on existing files)
+
+Phase 0: Data model alignment (1-2 days)
+- Extend `flowRuns` in `convex/schema.ts` to carry chat-driven state:
+  - phase (project_overview, elements, element_deep_dive, accounting, tasks, quote, audit)
+  - scope (project or elementId)
+  - approvalMode (auto | manual)
+  - approvalModeDefault (auto | manual)
+  - approvalModeOverride (boolean)
+  - quoteMilestoneReached (boolean)
+  - lastGateMessageAt or lastGateMessageId (dedupe)
+- Optional: add flowRunEvents table if we need an audit trail beyond agentMessages.
+
+Phase 1: Flow chat message pipeline (2-3 days)
+- Add flow message helpers (new file `convex/flow/chat.ts` or extend `convex/flowRuns.ts`):
+  - write assistant blocks to agentMessages (reuse internal.skills.runner.saveAgentMessage)
+  - write user summary messages for gate answers
+- Update `flowRuns.start` to:
+  - create flow run (already done)
+  - seed the chat with greeting and/or the first gate card
+- Add a small Flow API wrapper (new file `convex/flow/chatApi.ts` or extend `convex/flow/api.ts`):
+  - startSession(projectId) -> flowRunId + conversationId
+  - listMessages(conversationId) -> reuse `skills.runner.listAgentMessages`
+  - sendUserText (optional) -> store message + trigger flow tick if auto-run
+- Update `flowRuns.computeValidation` to optionally emit a gate card message when blocked, using a dedupe key to avoid repeating the same card.
+
+Phase 2: Gate card UX and intent handling (2-4 days)
+- Add a new block component: `src/app/projects/[id]/agent/_components/Blocks/FlowGateBlock.tsx`.
+  - Render question list from flow questionsBlock.
+  - Buttons: ask more, advance, skip.
+  - Inline suggestions (opportunities) with adopt/dismiss actions.
+- Update `AgentChat` BlockRenderer to include FlowGateBlock.
+- Add `flowAnswers.submitGateAnswers` action:
+  - save answers to qaPairs (reuse logic from flowAnswers.submitAnswers).
+  - insert a user message summarizing answers (agentMessages).
+  - intent handling:
+    - ask_more: computeValidation, re-emit gate card if still blocked.
+    - advance: mark remaining blocking issues as assumptions and advance gate.
+    - skip: mark remaining blocking issues as unknownAcceptedKeys and recompute.
+- Update `flowRuns.computeValidation` to drop blocking issues whose keys are in assumptionsAccepted or unknownAcceptedKeys so skip/advance is deterministic.
+
+Phase 3: Brain dump in chat (1-2 days)
+- Add `FlowBrainDumpBlock` component in Blocks folder (textarea + submit/skip).
+- Add `flowAnswers.submitBrainDump` (or reuse brainDump mutations) to:
+  - append or replace project.brainDumpRaw
+  - generate structured draft (existing extractBrainDumpStructuredDraft)
+  - emit a chat summary block (ChatBlock + optional structured preview block)
+- Wire G0 gate to show brain dump card when brief is missing.
+
+Phase 4: Approval mode + ChangeSet summary (2-3 days)
+- Map flowRuns.toggles.autoApprove to approvalMode, or add a dedicated approvalMode field.
+- Add auto-default behavior:
+  - On flow run start -> approvalModeDefault = auto.
+  - On first quote detected (quoteVersions count > 0) -> set approvalModeDefault = manual, and flip approvalMode unless user override is set.
+- Auto-approve path:
+  - When auto-approving ChangeSets in `flowRunner.tick`, emit a summary block (FlowChangeSetSummaryBlock) to chat.
+- Manual path:
+  - Emit ChangeSetBlock with "Review" button that opens ChangeSetReviewDrawer.
+  - Keep `awaiting_approval` status until resolved.
+
+Phase 5: Element deep dive (larger, 5-8 days)
+- Add element-level flow state:
+  - Track element status (needs_deep_dive, in_progress, locked) either on element docs or flowRuns.
+  - Store current element scope in flowRuns.scope.
+- Add `FlowElementPickerBlock` to choose next element.
+- Add per-element gate sequence:
+  - clarify -> ideate -> solution -> research -> estimate -> finalize
+- Add or extend skills to accept `params.scope.elementIds` (buildContext already supports this):
+  - New skill IDs for element deep dive or scoped variants of existing builders.
+- Generate element-level outputs:
+  - material/work lines scoped to element
+  - tasks linked to element
+- Add a validator or readiness check for element completeness to decide when to lock.
+
+Phase 6: Flow Agent tab refactor (2-3 days)
+- Replace `src/app/projects/[id]/flow-agent/page.tsx` with a chat-first layout:
+  - header controls: approval toggle, run status, scope indicator
+  - chat transcript: reuse AgentChat layout with flow conversationId
+  - optional debug panel (FlowTimeline, FlowDebugPanel) behind a collapsible toggle
+- Keep feature flag gating (ff_flow_agent_tab, ff_flow_agent_backend, ff_flow_runner_v1, ff_flow_validators_v1, ff_flow_clarification_pack_v1).
+
+Phase 7: QA and guardrails (1-2 days)
+- Deduplicate gate cards to avoid spam when re-validating.
+- Ensure acceptUnknown/acceptAssumption operations log in project metadata.
+- Manual QA checklist:
+  - start flow, see greeting + gate card
+  - submit ask_more, advance, skip
+  - brain dump flow -> summary shown
+  - auto-approve summary message
+  - quote milestone flips to manual
+
+5) Effort estimate and critical path
+- Chat refactor + gate cards + approval mode: ~8-12 dev days.
+- Brain dump chat integration: +1-2 days.
+- Element deep dive and new skills: +5-8 days.
+- Risks: filtering blocking issues by assumptions can hide true gaps; mitigate with summaries and audit logs.
+
+6) Dependencies and assumptions
+- Reuse existing gates G0-G9 and skills:
+  - ELEMENTS_BUILDER_FULL, TASKS_BUILDER_FULL, ACCOUNTING_BUILDER_FULL, PRICING_*.
+- Reuse agentMessages for chat transcript; avoid new message tables unless needed.
+- Continue using ChangeSetReviewDrawer for manual approvals.

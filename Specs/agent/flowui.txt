@@ -1,0 +1,431 @@
+Got it. You don’t want a “wizard / flow screen”. You want **everything to feel like your existing Agent tab chat UI**, but with a **deterministic flow engine** behind it that:
+
+* drives the end-to-end process (Project → Elements → Accounting → Tasks → Quote → …)
+* asks **clarification gates** as chat cards
+* supports **brain-dump as a chat skill**
+* runs a **deep per-element flow** (clarify → ideate → solution → web research → estimate materials/work/tools → finalize)
+* has **Skip gate with current knowledge**
+* has **two submit buttons**:
+
+  1. “send answers & ask more”
+  2. “send answers & move to next step”
+* supports **ChangeSet auto-approve by default** until first quote, then defaults to manual approval (with a user toggle)
+
+Below is a concrete implementation plan that matches that “cool chat agent” vibe, without changing your overall app concept—just changing how the flow is *presented and controlled*.
+
+---
+
+## 1) What you’re building (product definition)
+
+### A. “Flow Chat Mode” inside the existing Agent Chat UI
+
+A new chat mode that *looks identical* to your current agent chat page:
+
+* same transcript
+* same inline buttons
+* same “selected answer appears in chat”
+* same free text entry
+
+But the assistant messages can include **structured “Gate Cards”** (questions UI inside the chat message), and the backend runs a **state machine** that decides what gate comes next.
+
+### B. Brain Dump is not a separate screen
+
+Brain dump becomes **a skill** the flow engine can invoke:
+
+* assistant: “שפוך פה את כל מה שיש לך בראש…”
+* user writes free text
+* assistant immediately converts it to a **clean structured plan** (project overview + candidate elements + assumptions + open questions)
+* user continues dumping OR says “advance”
+
+### C. Element-by-element deep flow
+
+You can run a flow *per element*, and the agent guides the conversation to reach accurate estimates:
+
+* Clarification → Ideation → Solutioning → Research online → Estimate (materials / labor / tools / vendors / risks) → “Element locked”
+* the agent can jump between elements while preserving state
+
+### D. ChangeSet approvals feel invisible (until quote)
+
+During initial planning:
+
+* ChangeSets are **auto-approved and applied silently**
+* the user just sees “✅ עודכן: …” summaries (not diffs)
+
+Once the first quote is generated:
+
+* default flips to **manual approval**
+* UI shows approve/reject controls when a ChangeSet is produced
+* user can toggle auto/manual anytime
+
+---
+
+## 2) Core architecture
+
+### A. Keep your chat UI; add “message types”
+
+Your current chat likely assumes “assistant text + quick replies”. Extend it to support **assistant messages that render UI blocks**:
+
+**Message.kind** (examples):
+
+* `text`
+* `gate_card` (clarification questions + inputs + buttons)
+* `brain_dump_prompt` (big textarea + submit)
+* `element_picker` (buttons to choose which element to work on)
+* `changeset_applied_summary` (auto mode)
+* `changeset_review` (manual mode: diff + approve)
+* `milestone` (e.g., “הצעת מחיר נוצרה”)
+
+This is the key: you are NOT creating new pages—just letting chat messages render richer “cards”.
+
+### B. Flow engine = deterministic state machine
+
+Create a **FlowSession** that owns:
+
+* current phase (project / elements / accounting / tasks / quote / …)
+* current scope (project-level vs element-level)
+* gate history and answers
+* computed plan state (structured summary)
+* approval mode state (auto/manual)
+* quote milestone state (did we generate quote yet)
+
+The UI always renders the chat transcript; the backend advances the session.
+
+### C. Tools remain the same; only the approval wrapper changes
+
+Your agent already produces ChangeSets. Add one wrapper layer:
+
+```
+if approvalMode == "auto":
+   applyChangeSet()
+   emit chat summary (no diff)
+else:
+   storeChangeSetPending()
+   emit changeset_review message (approve buttons)
+```
+
+And add an automatic flip:
+
+* when session reaches `quoteDrafted` (or quote object created): `approvalModeDefault = "manual"`
+
+---
+
+## 3) Data model changes (Convex or your backend DB)
+
+Add (or extend) these tables/collections:
+
+### A. FlowSessions
+
+Fields:
+
+* `sessionId`
+* `projectId`
+* `mode`: `"flow_chat"`
+* `phase`: `"project_overview" | "elements" | "element_deep_dive" | "accounting" | "tasks" | "quote" | ...`
+* `scope`: `{ type: "project" } | { type: "element", elementId }`
+* `approvalMode`: `"auto" | "manual"`
+* `approvalModeDefault`: `"auto" | "manual"`
+* `quoteMilestoneReached`: boolean
+* `planState`: JSON (structured, compact)
+* `gateCursor`: what gate is active now
+* timestamps
+
+### B. ChatMessages (if you have it already, extend it)
+
+Add:
+
+* `kind`
+* `payload` (JSON for gate questions, etc.)
+* `sessionId`
+* `projectId`
+
+### C. FlowGates (optional, can be embedded in session)
+
+* `gateId`
+* `phase`
+* `questions[]`
+* `canSkip: true`
+* `nextPolicy`: `"ask_more" | "advance"`
+
+### D. PendingChangeSets
+
+* `changesetId`
+* `sessionId`
+* `projectId`
+* `status`: `"pending" | "applied" | "rejected"`
+* `ops[]`
+* `summaryHe`
+* `createdAt`, `appliedAt`
+
+Even in auto mode, store the ChangeSet for audit/history, just don’t bother the user with it.
+
+---
+
+## 4) UI design inside the chat (the vibe you want)
+
+### A. Gate Card (clarifications) inside a single assistant message
+
+An assistant message renders:
+
+* Title: “שאלות הבהרה — כדי לסגור את האלמנט”
+* A list of questions:
+
+  * radio buttons / chips / numeric inputs / short text
+* Footer buttons (exactly what you asked):
+
+  1. **“שלח תשובות וקבל עוד שאלות”**
+  2. **“שלח תשובות והמשך לשלב הבא”**
+  3. **“דלג עם הידע הנוכחי”** (always available if canSkip)
+
+When the user submits:
+
+* their answers appear in the chat as a user message (“עניתי: …”)
+* then the agent responds with either more questions or next step content
+
+### B. Brain Dump Card
+
+Assistant message renders:
+
+* a big textarea
+* small helper text: “כתוב חופשי. אני אהפוך את זה לתכנית מסודרת.”
+* buttons:
+
+  * “שלח”
+  * “דלג”
+
+Agent response:
+
+* structured plan preview (bulleted, super readable)
+* “רוצה להוסיף עוד?” + “המשך לשלב הבא”
+
+### C. Flow header controls (tiny, not a new screen)
+
+In the chat header:
+
+* **Approval Mode toggle**: Auto / Manual
+* Indicator pill: “Auto until quote” or “Manual approvals”
+* Optional: “Current scope: Project / Element X” with a dropdown
+
+When quote milestone happens:
+
+* show a milestone message: “📌 עברנו למצב אישור ידני לשינויים (אפשר לשנות למעלה).”
+
+---
+
+## 5) Flow logic (what the agent actually does)
+
+### A. Phases (project-level)
+
+1. `project_overview`
+
+   * optional brain dump
+   * outputs: goals, constraints, deadline, location, client, success criteria
+
+2. `elements`
+
+   * generates/collects element list
+   * for each element: basic definition + status = “needs deep dive”
+
+3. `element_deep_dive` (loop)
+
+   * pick element → run gates → lock element
+
+4. `accounting`
+
+   * material lines / labor lines / tools / overhead assumptions
+
+5. `tasks`
+
+   * tasks generated from plan + per-element build steps
+
+6. `quote`
+
+   * first quote draft generated → **flip default approval to manual**
+
+Then optional extensions:
+
+* `procurement` (shopping tab integration)
+* `install_runbook`
+* `teardown`
+
+### B. Element deep-dive subflow (the one you described)
+
+For a selected element:
+
+1. Clarification gate(s)
+2. Ideation (2–4 options)
+3. Solutioning (choose 1 direction)
+4. Web research (vendors, materials, references)
+5. Estimation
+
+   * bill of materials
+   * work estimate (hours by role)
+   * tools, risks, lead times
+6. Finalize element snapshot + generate tasks/material lines
+
+Every stage ends with:
+
+* “דלג עם הידע הנוכחי”
+* and the two submit modes
+
+### C. Deterministic “what gate comes next”
+
+Implement a small rules engine:
+
+* compute “missing fields” for current phase/scope
+* if missing critical info → emit a gate card with questions targeting only those missing fields
+* if completeness threshold reached → move forward
+
+This prevents the agent from “rambling” and keeps it flow-like while still chat-like.
+
+---
+
+## 6) ChangeSets: auto vs manual behavior (exactly as you want)
+
+### A. Auto mode (default early)
+
+* Agent creates ChangeSet ops
+* Backend applies immediately
+* Chat shows **one short assistant summary**:
+
+  * “✅ עודכן: נוצרו 6 אלמנטים + נוספו אומדני עבודה ראשוניים”
+* No diff UI shown
+
+### B. Manual mode (default after first quote)
+
+* Agent creates ChangeSet ops
+* Backend stores as pending
+* Chat shows a `changeset_review` card:
+
+  * summary
+  * expandable diff sections
+  * buttons: Approve / Reject / “Edit request” (optional)
+
+### C. The flip point
+
+When the system creates the first Quote entity (or first quote draft):
+
+* `quoteMilestoneReached = true`
+* `approvalModeDefault = "manual"`
+* if user didn’t explicitly override, switch them to manual
+
+Also allow the user to toggle any time.
+
+---
+
+## 7) API / backend endpoints (minimal, clean)
+
+You need only a few actions:
+
+1. `flow.startSession(projectId)`
+
+* creates FlowSession, posts greeting + first gate (or brain dump prompt)
+
+2. `flow.submitGateAnswers(sessionId, gateId, answers, intent)`
+
+* intent = `"ask_more" | "advance" | "skip"`
+* persists answers
+* runs the flow engine to produce next assistant message(s)
+* may produce ChangeSet(s)
+
+3. `flow.selectElement(sessionId, elementId)`
+
+* sets scope to element
+* emits next gate for that element
+
+4. `changeset.approve(changesetId)` / `changeset.reject(changesetId)`
+
+* applies or discards pending ops
+
+5. `flow.setApprovalMode(sessionId, mode)`
+
+* toggles auto/manual
+
+---
+
+## 8) Prompts (what to change in the agent prompting)
+
+### A. The agent must output “UI intents”, not just text
+
+Instead of returning only prose, your orchestrator should ask the model for a structured response like:
+
+* `assistantTextHe`
+* `uiMessage`: `{ kind, payload }`
+* `toolCalls`: optional ChangeSet creation ops
+* `nextGateSuggestion`: optional
+
+This makes the UI deterministic and prevents “random formatting”.
+
+### B. Brain dump skill prompt (behavior)
+
+Key requirements:
+
+* fast conversion to structure
+* identify missing info & propose next gate questions
+* keep Hebrew user-facing text
+* do not over-ask; ask only what blocks progress
+
+### C. Gate generator prompt
+
+Given:
+
+* current phase + scope
+* missing fields list
+* existing planState summary
+  Return:
+* 3–8 questions max
+* each question has type + options
+* always include skip ability
+
+---
+
+## 9) Implementation steps (build order)
+
+### Milestone 1 — “Flow Chat skeleton”
+
+* Add FlowSession model
+* Add message kinds + rendering for `gate_card`
+* Add `flow.startSession` and `flow.submitGateAnswers`
+* Implement 2 phases only: project_overview + elements
+* Auto-approve always (for now)
+
+### Milestone 2 — Brain Dump skill
+
+* Add `brain_dump_prompt` card
+* Add brain dump parsing skill → updates planState + elements
+* Add “continue / add more” loop
+
+### Milestone 3 — Element deep dive loop
+
+* Add element picker card
+* Implement element scope switching
+* Implement deep-dive phases + estimation outputs
+
+### Milestone 4 — Approval modes + quote flip
+
+* Add PendingChangeSets
+* Add auto vs manual wrapper
+* Add header toggle
+* Add quote milestone detection and default flip to manual
+
+### Milestone 5 — Polish (the “cool” vibe)
+
+* Smooth chat transitions (“Thinking…”)
+* Compact “✅ Updated” summaries
+* Collapsible cards
+* “Jump to element” quick actions
+* Session resume (open project → continue last flow session)
+
+---
+
+## 10) Guardrails (so it doesn’t go off the rails)
+
+* **Completeness auditor** runs after each user submit:
+
+  * if user picked “advance” but critical info missing, allow advance but mark assumptions explicitly in planState (“הנחות”)
+* In auto mode:
+
+  * still store every ChangeSet + summary for audit
+* Add a “Reset this phase” button (optional) if the plan gets messy
+
+---
+

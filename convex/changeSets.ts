@@ -988,6 +988,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if ("plannedQuantity" in fields) patch.plannedQuantity = toOptional(fields.plannedQuantity);
     if ("plannedUnitCost" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost);
     if ("plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost);
+    if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
     if ("workType" in fields) patch.workType = normalizeWorkType(fields.workType);
     if ("workTypeLabelHe" in fields) patch.workTypeLabelHe = toOptional(fields.workTypeLabelHe);
 
@@ -1030,6 +1031,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if ("pricingSourceCode" in fields) patch.pricingSourceCode = toOptional(fields.pricingSourceCode);
     if ("priceCheckedAt" in fields) patch.priceCheckedAt = toOptional(fields.priceCheckedAt);
     if ("priceUrl" in fields) patch.priceUrl = toOptional(fields.priceUrl);
+    if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
 
     await ctx.db.patch(resolved, { ...patch, updatedAt: now });
     const after = await ctx.db.get(resolved);

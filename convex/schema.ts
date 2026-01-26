@@ -1547,10 +1547,15 @@ export default defineSchema({
       v.literal("cancelled")
     ),
     currentGateId: v.string(),
+    approvalMode: v.optional(v.union(v.literal("auto"), v.literal("manual"))),
+    approvalModeDefault: v.optional(v.union(v.literal("auto"), v.literal("manual"))),
+    approvalModeOverride: v.optional(v.boolean()),
+    scope: v.optional(v.union(v.literal("project"), v.literal("element"))),
     readinessScore: v.optional(v.number()),
     blockingIssueKeys: v.optional(v.array(v.string())),
     toggles: v.optional(v.object({
       autoRun: v.optional(v.boolean()),
+      autoApprove: v.optional(v.boolean()),
       useWebSearch: v.optional(v.boolean()),
     })),
     conversationId: v.optional(v.id("agentConversations")),
@@ -1574,6 +1579,7 @@ export default defineSchema({
     ),
     validationReport: v.optional(v.any()),
     draftChangeSetIds: v.optional(v.array(v.id("changeSets"))),
+    lastEmittedHash: v.optional(v.string()),
     error: v.optional(v.string()),
     startedAt: v.number(),
     finishedAt: v.optional(v.number()),

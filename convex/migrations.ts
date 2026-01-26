@@ -193,6 +193,44 @@ export const backfillTraceCosts = mutation({
   }
 });
 
+export const backfillFlowRunApprovalModes = mutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const dry = !!dryRun;
+    const runs = await ctx.db.query("flowRuns").take(50000);
+    let updated = 0;
+
+    for (const run of runs) {
+      const hasApprovalMode = (run as any).approvalMode !== undefined;
+      const hasDefault = (run as any).approvalModeDefault !== undefined;
+      const hasOverride = (run as any).approvalModeOverride !== undefined;
+
+      if (hasApprovalMode && hasDefault && hasOverride) continue;
+
+      const autoApprove = (run as any).toggles?.autoApprove;
+      const derivedMode =
+        autoApprove === true ? "auto" : autoApprove === false ? "manual" : "auto";
+
+      if (!dry) {
+        await ctx.db.patch(run._id, {
+          approvalMode: hasApprovalMode ? (run as any).approvalMode : derivedMode,
+          approvalModeDefault: hasDefault ? (run as any).approvalModeDefault : derivedMode,
+          approvalModeOverride: hasOverride ? (run as any).approvalModeOverride : false,
+          updatedAt: Date.now(),
+        });
+      }
+
+      updated += 1;
+    }
+
+    return {
+      dryRun: dry,
+      runsProcessed: runs.length,
+      runsUpdated: updated,
+    };
+  },
+});
+
 export const seedCatalogDefaults = internalMutation({
   args: {},
   handler: async (ctx) => {

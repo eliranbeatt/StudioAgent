@@ -12,13 +12,17 @@ const SMALL_MODEL = "gpt-5-nano";
 const SETTINGS_KEY = "featureFlags";
 
 async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
-  const existing = await ctx.db
-    .query("appSettings")
-    .withIndex("by_key", (q: any) => q.eq("key", SETTINGS_KEY))
-    .first();
+  if (ctx.db) {
+    const existing = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q: any) => q.eq("key", SETTINGS_KEY))
+      .first();
 
-  const stored = normalizeFlags(existing?.value);
-  return { ...DEFAULT_FLAGS, ...stored };
+    const stored = normalizeFlags(existing?.value);
+    return { ...DEFAULT_FLAGS, ...stored };
+  } else {
+    return await ctx.runQuery(api.featureFlags.getAll);
+  }
 }
 
 function buildPromptCacheOptions(args: {
@@ -63,6 +67,14 @@ export const runSkill = action({
   handler: async (ctx, args) => {
     const { projectId, conversationId, skillId, params } = args;
 
+    console.log('[skills.runSkill] start', {
+      projectId,
+      conversationId,
+      skillId,
+      source: params?.source,
+      draftOnly: !!params?.draftOnly,
+    });
+
     // 1. Load Skill & Gate Check
     const skillData = await ctx.runQuery(internal.skills.runner.getSkillAndGateStatus, {
       projectId, conversationId, skillId
@@ -77,7 +89,8 @@ export const runSkill = action({
       return await runGateLogic(ctx, { projectId, conversationId, targetSkillId: skillId, targetSkillLabel: skillData.skill.labelHe });
     }
 
-    if (skillData.isGateBlocked) {
+    if (skillData.isGateBlocked && !params?.skipClarifications) {
+      console.log('[skills.runSkill] gate blocked', { projectId, skillId });
       // Run Gate Logic
       return await runGateLogic(ctx, { projectId, conversationId, targetSkillId: skillId, targetSkillLabel: skillData.skill.labelHe });
     }
@@ -96,6 +109,7 @@ export const runSkill = action({
       skillId,
       params,
     });
+    console.log('[skills.runSkill] created run', { runId, projectId, skillId });
 
     const forceWebSearch = skillId === "RESEARCH_PRICING_ESTIMATES_WEB";
     const allowedTools = {
@@ -112,11 +126,11 @@ export const runSkill = action({
 
     const ctxEnvelope = useCtxPacks
       ? await ctx.runQuery(internal.contextManager.pull.ctxPull, {
-          projectId,
-          skillId,
-          params,
-          allowedTools,
-        })
+        projectId,
+        skillId,
+        params,
+        allowedTools,
+      })
       : null;
     const clarification = await ctx.runQuery(internal.skills.runner.getLatestClarifications, {
       projectId,
@@ -141,13 +155,13 @@ export const runSkill = action({
 
       const traceMeta = ctxEnvelope
         ? {
-            ctxPacks: {
-              view: ctxEnvelope.view,
-              packCount: ctxEnvelope.stats.packCount,
-              totalBytes: ctxEnvelope.stats.totalBytes,
-              packIds: ctxEnvelope.manifest.packs.map((p) => p.id),
-            },
-          }
+          ctxPacks: {
+            view: ctxEnvelope.view,
+            packCount: ctxEnvelope.stats.packCount,
+            totalBytes: ctxEnvelope.stats.totalBytes,
+            packIds: ctxEnvelope.manifest.packs.map((p) => p.id),
+          },
+        }
         : undefined;
 
       if (skillId === "CONTEXT_GENERATION") {
@@ -179,17 +193,17 @@ export const runSkill = action({
 
         const updatedContext = useCtxPacks
           ? {
-              ctxPacks: ctxEnvelope,
-              clarifications: clarification,
-              extraContext: {
-                currentKnowledge: docBlock?.markdownHe ?? "",
-              },
-            }
+            ctxPacks: ctxEnvelope,
+            clarifications: clarification,
+            extraContext: {
+              currentKnowledge: docBlock?.markdownHe ?? "",
+            },
+          }
           : {
-              ...context,
-              currentKnowledge: docBlock?.markdownHe ?? context.currentKnowledge,
-              clarifications: clarification,
-            };
+            ...context,
+            currentKnowledge: docBlock?.markdownHe ?? context.currentKnowledge,
+            clarifications: clarification,
+          };
         const questionsPrompt = `${buildSystemPrompt(skillData.skill, updatedContext)}\n\nOUTPUT MODE: QUESTIONS_ONLY. Return JSON with blocks array containing ONLY QuestionsBlock. Base questions on updated currentKnowledge + qaPairs + userInput.`;
         const questionBlocks = await callLLM(
           ctx,
@@ -221,6 +235,13 @@ export const runSkill = action({
           projectId,
         });
 
+        console.log('[skills.runSkill] context generation saved', {
+          runId,
+          projectId,
+          skillId,
+          blocks: combinedBlocks.length,
+        });
+
         return savedBlocks;
       }
 
@@ -250,6 +271,7 @@ export const runSkill = action({
         projectId, // needed for ChangeSet creation inside
       });
 
+      console.log('[skills.runSkill] saved', { runId, projectId, skillId, blocks: blocks.length });
       return savedBlocks;
 
     } catch (error: any) {
@@ -279,10 +301,18 @@ export const sendMessageAndRun = action({
     });
 
     // 2. Trigger Chat or Specific Skill
+    let targetSkillId = args.skillId ?? "CONSULTANT_CHAT";
+
+    // HALLUCINATION FIX: Remap common invented skill IDs to real ones
+    if (targetSkillId.startsWith("prepareChangeSet_") || targetSkillId === "updateElement" || targetSkillId === "updateElementDescription") {
+      console.log(`[skills.runner] Remapping hallucinated skill "${targetSkillId}" to "ELEMENTS_BUILDER_FULL"`);
+      targetSkillId = "ELEMENTS_BUILDER_FULL";
+    }
+
     await ctx.runAction(api.skills.runner.runSkill, {
       projectId: args.projectId,
       conversationId: args.conversationId,
-      skillId: args.skillId ?? "CONSULTANT_CHAT",
+      skillId: targetSkillId,
       params: args.params ? { ...args.params, source: "user_chat" } : { source: "user_chat" },
     });
 
@@ -1206,11 +1236,11 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
   const useCtxPacks = isEnabled(flags, "ff_ctx_packs_v1", false);
   const ctxEnvelope = useCtxPacks
     ? await ctx.runQuery(internal.contextManager.pull.ctxPull, {
-        projectId: args.projectId,
-        skillId: "CLARIFICATIONS_GATE",
-        params: {},
-        allowedTools: {},
-      })
+      projectId: args.projectId,
+      skillId: "CLARIFICATIONS_GATE",
+      params: {},
+      allowedTools: {},
+    })
     : null;
   const clarification = await ctx.runQuery(internal.skills.runner.getLatestClarifications, {
     projectId: args.projectId,
@@ -1237,13 +1267,13 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
 
   const gatePromptContext = useCtxPacks
     ? {
-        ctxPacks: ctxEnvelope,
-        clarifications: clarification,
-        extraContext: {
-          targetSkillId: args.targetSkillId,
-          targetSkillLabel: args.targetSkillLabel,
-        },
-      }
+      ctxPacks: ctxEnvelope,
+      clarifications: clarification,
+      extraContext: {
+        targetSkillId: args.targetSkillId,
+        targetSkillLabel: args.targetSkillLabel,
+      },
+    }
     : gateContext;
 
   const promptCache = buildPromptCacheOptions({
@@ -1256,13 +1286,13 @@ async function runGateLogic(ctx: any, args: { projectId: any; conversationId: an
 
   const traceMeta = ctxEnvelope
     ? {
-        ctxPacks: {
-          view: ctxEnvelope.view,
-          packCount: ctxEnvelope.stats.packCount,
-          totalBytes: ctxEnvelope.stats.totalBytes,
-          packIds: ctxEnvelope.manifest.packs.map((p) => p.id),
-        },
-      }
+      ctxPacks: {
+        view: ctxEnvelope.view,
+        packCount: ctxEnvelope.stats.packCount,
+        totalBytes: ctxEnvelope.stats.totalBytes,
+        packIds: ctxEnvelope.manifest.packs.map((p) => p.id),
+      },
+    }
     : undefined;
 
   const blocks = await callLLM(
@@ -1367,20 +1397,7 @@ async function callLLM(
   options?: { promptCacheKey?: string; promptCacheRetention?: string; traceMeta?: any }
 ) {
   if (!process.env.OPENAI_API_KEY) {
-    console.warn("No OPENAI_API_KEY, using mock response");
-    // Simulate delay
-    await new Promise(r => setTimeout(r, 1000));
-    return [
-      {
-        type: "ChatBlock",
-        markdownHe: "אין מפתח OpenAI, אני במצב בדיקה. (Server Action)",
-      },
-      {
-        type: "SuggestionsBlock",
-        titleHe: "פעולות בדיקה",
-        suggestions: [{ id: "test", labelHe: "בדיקה", whyHe: "כי אין מפתח" }]
-      }
-    ];
+    throw new Error("Missing OPENAI_API_KEY");
   }
 
   const tools: any[] = [];
@@ -1450,11 +1467,11 @@ async function callLLM(
         const tc = toolCall as any;
         if (tc.function.name === "web_search") {
           const args = JSON.parse(tc.function.arguments);
-          
+
           // SAFETY: Enforce commercial intent
           const q = args.query.toLowerCase();
           if (!q.includes("price") && !q.includes("buy") && !q.includes("מחיר") && !q.includes("₪") && !q.includes("cost") && !q.includes("store")) {
-             args.query += " price";
+            args.query += " price";
           }
 
           const result = await searchWeb(args.query);
@@ -1529,11 +1546,11 @@ async function callLLM(
       for (const tc of embeddedToolCalls) {
         if (tc.name === "web_search") {
           const args = tc.arguments;
-          
+
           // SAFETY: Enforce commercial intent
           const q = (args.query || "").toLowerCase();
           if (!q.includes("price") && !q.includes("buy") && !q.includes("מחיר") && !q.includes("₪") && !q.includes("cost") && !q.includes("store")) {
-             args.query = (args.query || "") + " price";
+            args.query = (args.query || "") + " price";
           }
 
           const result = await searchWeb(args.query);
@@ -1591,6 +1608,7 @@ async function callLLM(
 
   throw new Error("Max turns reached");
 }
+
 
 function normalizeBlocks(rawBlocks: any[]): any[] {
   return rawBlocks.flatMap(block => {

@@ -175,6 +175,11 @@ export async function buildProjectSnapshot(
       return String(a._id).localeCompare(String(b._id))
     })
 
+  const runningMemory = await ctx.db
+    .query('memoryDocs')
+    .withIndex('by_project_kind', (q: any) => q.eq('projectId', projectId).eq('kind', 'RUNNING_MEMORY'))
+    .first()
+
   return {
     projectId,
     project: {
@@ -182,7 +187,7 @@ export async function buildProjectSnapshot(
       description: project.description,
       notes: project.notes,
       overviewSummary: project.overviewSummary,
-      brainDumpRaw: project.brainDumpRaw,
+      brainDumpRaw: project.brainDumpRaw || runningMemory?.contentMd_he,
       updatedAt: project.updatedAt,
       createdAt: project.createdAt,
     },
@@ -206,9 +211,9 @@ export async function buildProjectSnapshot(
       estimatedMinutes: t.estimatedMinutes,
       accountingLinks: Array.isArray(t.accountingLinks)
         ? t.accountingLinks.map((l: any) => ({
-            lineType: l?.lineType,
-            lineId: l?.lineId,
-          }))
+          lineType: l?.lineType,
+          lineId: l?.lineId,
+        }))
         : undefined,
       updatedAt: t.updatedAt,
       createdAt: t.createdAt,

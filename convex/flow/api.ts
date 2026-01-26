@@ -6,19 +6,23 @@ import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from "../featureFlags";
 const SETTINGS_KEY = "featureFlags";
 
 async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
-  const existing = await ctx.db
-    .query("appSettings")
-    .withIndex("by_key", (q: any) => q.eq("key", SETTINGS_KEY))
-    .first();
+  if (ctx.db) {
+    const existing = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q: any) => q.eq("key", SETTINGS_KEY))
+      .first();
 
-  const stored = normalizeFlags(existing?.value);
-  return { ...DEFAULT_FLAGS, ...stored };
+    const stored = normalizeFlags(existing?.value);
+    return { ...DEFAULT_FLAGS, ...stored };
+  } else {
+    return await ctx.runQuery(api.featureFlags.getAll);
+  }
 }
 
 export const createConversation = mutation({
-  args: { 
-    projectId: v.id("projects"), 
-    title: v.optional(v.string()) 
+  args: {
+    projectId: v.id("projects"),
+    title: v.optional(v.string())
   },
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("agentConversations", {
@@ -40,7 +44,7 @@ export const sendMessage = mutation({
   },
   handler: async (ctx, args) => {
     const role = args.asRole ?? "user";
-    
+
     await ctx.db.insert("agentMessages", {
       conversationId: args.conversationId,
       role: role,
@@ -61,17 +65,17 @@ export const sendMessage = mutation({
         // Find active flow run for this project
         const flowRun = await ctx.db
           .query("flowRuns")
-          .withIndex("by_project_status", (q) => 
+          .withIndex("by_project_status", (q) =>
             q.eq("projectId", conversation.projectId).eq("status", "running")
           )
           .first();
 
         if (flowRun) {
-           if (!flowRun.toggles?.autoRun) return;
-           // Schedule a tick to process the new context
-           await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { 
-             flowRunId: flowRun._id 
-           });
+          if (!flowRun.toggles?.autoRun) return;
+          // Schedule a tick to process the new context
+          await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, {
+            flowRunId: flowRun._id
+          });
         }
       }
     }
@@ -90,7 +94,7 @@ export const listMessages = query({
 });
 
 export const startProjectFlow = mutation({
-  args: { 
+  args: {
     projectId: v.id("projects"),
     initialGate: v.optional(v.string())
   },
@@ -103,7 +107,7 @@ export const startProjectFlow = mutation({
     // Check if already running
     const existing = await ctx.db
       .query("flowRuns")
-      .withIndex("by_project_status", (q) => 
+      .withIndex("by_project_status", (q) =>
         q.eq("projectId", args.projectId).eq("status", "running")
       )
       .first();
@@ -128,7 +132,10 @@ export const startProjectFlow = mutation({
       currentGateId: args.initialGate ?? "G0",
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      toggles: { autoRun: true, useWebSearch: false },
+      approvalMode: "auto",
+      approvalModeDefault: "auto",
+      approvalModeOverride: false,
+      toggles: { autoRun: true, autoApprove: false, useWebSearch: false },
       conversationId
     });
 

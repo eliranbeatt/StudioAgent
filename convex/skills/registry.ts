@@ -651,6 +651,40 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     },
     model: "gpt-5-mini",
   },
+  {
+    skillId: "setLaborRates",
+    labelHe: "עדכון תעריפים",
+    descriptionHe: "עדכון תעריפי עבודה",
+    category: "planning",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.setLaborRates,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "confirmMeasurements",
+    labelHe: "אישור מידות",
+    descriptionHe: "בדיקה ועדכון מידות",
+    category: "planning",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.confirmMeasurements,
+    },
+    model: "gpt-5-mini",
+  },
 ];
 
 const seedSkillsCore = async (ctx: any) => {
