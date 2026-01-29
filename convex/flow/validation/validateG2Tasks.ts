@@ -6,6 +6,30 @@ function hasAnyText(s: unknown) {
   return typeof s === 'string' && s.trim().length > 0
 }
 
+function norm(s: unknown) {
+  return typeof s === 'string' ? s.trim().toLowerCase() : ''
+}
+
+function isProjectLevelTask(task: { title?: string; workType?: string; stage?: string }) {
+  const title = norm(task.title)
+  const workType = norm(task.workType)
+  const stage = norm(task.stage)
+  const combined = `${title} ${workType} ${stage}`
+  return (
+    workType.includes('management') ||
+    workType.includes('admin') ||
+    workType.includes('overhead') ||
+    combined.includes('management') ||
+    combined.includes('manager') ||
+    combined.includes('pm') ||
+    combined.includes('project manager') ||
+    combined.includes('admin') ||
+    combined.includes('ניהול') ||
+    combined.includes('מנהל') ||
+    combined.includes('פיקוח')
+  )
+}
+
 export function validateG2Tasks(snapshot: ProjectSnapshotV1): ValidationReportV1 {
   const blockingIssues: IssueV1[] = []
   const missingTitleTaskIds: string[] = []
@@ -27,7 +51,7 @@ export function validateG2Tasks(snapshot: ProjectSnapshotV1): ValidationReportV1
 
     // Spec invariant: every task must link to elementId OR be explicitly project-global.
     // We don't have an explicit project-global marker in schema yet, so for Phase 2 we block when missing.
-    if (!t.elementId) {
+    if (!t.elementId && !isProjectLevelTask(t)) {
       missingElementLinkTaskIds.push(String(t.id))
     }
   }

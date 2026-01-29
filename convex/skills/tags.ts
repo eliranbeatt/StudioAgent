@@ -23,6 +23,9 @@ export type SkillTagSource = {
       webSearch?: boolean
       ragSearch?: boolean
       fileInspect?: boolean
+      runSkill?: boolean
+      generateQuote?: boolean
+      estimateTasks?: boolean
     }
     outputContract?: string
   }

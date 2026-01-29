@@ -6,6 +6,7 @@ import { Id } from "../../../../../convex/_generated/dataModel";
 import { CheckCircle, Clock, Copy, FileText, Loader2, Plus } from "lucide-react";
 import { useMemo, useState, use } from "react";
 import QuotePrintView from "./QuotePrintView";
+import { renderQuoteHtml } from "../../../../../shared/quotePrintTemplate";
 
 export default function QuotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -62,6 +63,7 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
   const [isExporting, setIsExporting] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [logoFileId, setLogoFileId] = useState<Id<"projectFiles"> | "">("");
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -97,14 +99,42 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
     }
   };
 
+  const downloadHtmlQuote = () => {
+    if (!quote || !overview?.project) return;
+    const html = renderQuoteHtml({
+      projectName: overview.project.name,
+      customerName: overview.project.customerName ?? overview.project.clientName ?? "",
+      quote,
+      logoUrl: logoUrl?.url ?? "",
+    });
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `quote-${quote.version ?? quote._id}.html`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleExportPdf = async () => {
     if (!quote?._id) return;
     setIsExporting(true);
+    setExportNotice(null);
     try {
       await generateQuotePdf({ projectId, quoteId: quote._id });
+    } catch (err) {
+      downloadHtmlQuote();
+      setExportNotice("PDF export is currently unavailable. Downloaded HTML instead.");
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const handleDownloadHtml = () => {
+    setExportNotice(null);
+    downloadHtmlQuote();
   };
 
   const handleCopyText = async () => {
@@ -152,6 +182,13 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
             </a>
           )}
           <button
+            onClick={handleDownloadHtml}
+            className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
+            disabled={!quote?._id}
+          >
+            <FileText size={16} /> Download HTML
+          </button>
+          <button
             onClick={handleExportPdf}
             className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
             disabled={!quote?._id || isExporting}
@@ -184,6 +221,11 @@ export default function QuotePage({ params }: { params: Promise<{ id: string }> 
           </button>
         </div>
       </div>
+      {exportNotice ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+          {exportNotice}
+        </div>
+      ) : null}
 
       {showDiff && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-6">

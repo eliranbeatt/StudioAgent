@@ -64,9 +64,9 @@ async function maybeUpdateApprovalMode(ctx: any, run: any): Promise<any> {
   const approvalModeOverride = !!run.approvalModeOverride
   const approvalModeDefault = run.approvalModeDefault ?? 'auto'
   if (approvalModeOverride || approvalModeDefault === 'manual') return run
+  if (run.toggles?.autoApprove) return run
 
-  const quotes = await ctx.runQuery(api.quotes.listQuotes, { projectId: run.projectId })
-  if (!Array.isArray(quotes) || quotes.length === 0) return run
+  if (run.status !== 'completed') return run
 
   await ctx.runMutation(internal.flowRuns.setApprovalModeInternal, {
     flowRunId: run._id,
@@ -157,7 +157,7 @@ export const tick = internalAction({
       await ctx.runMutation(internal.flowRuns.clearAwaitingApproval, { flowRunId })
     }
 
-    const GATE_ORDER = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9'] as const
+    const GATE_ORDER = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'] as const
 
     // Auto-advance can walk multiple gates in one tick, but is bounded.
     // We stop as soon as we generate draft ChangeSets (awaiting approval) or hit a blocked gate.
@@ -266,6 +266,49 @@ export const tick = internalAction({
             })
           }
         }
+
+        if (refreshed.toggles?.autoApprove) {
+          const stepAfter = await ctx.runQuery(internal.flowRuns.getStepInternal, {
+            flowRunId,
+            gateId: refreshed.currentGateId,
+          })
+
+          const ids = (stepAfter?.draftChangeSetIds ?? []) as Array<Id<'changeSets'>>
+          if (ids.length > 0) {
+            const changeSets = await Promise.all(ids.map((id) => ctx.runQuery(api.changeSets.get, { id })))
+            const summaries: Array<{ changeSetId: Id<'changeSets'>; title?: string; detail?: string }> = []
+            for (const cs of changeSets) {
+              if (!cs || isResolvedChangeSetStatus(cs.status)) continue
+              const opCount = cs.ops?.length ?? 0
+              if (opCount === 0) continue
+              const opIndices = Array.from({ length: opCount }, (_, i) => i)
+              await ctx.runMutation(api.changeSets.applyChangeSetOps, {
+                changeSetId: cs._id,
+                opIndices,
+              })
+              summaries.push({
+                changeSetId: cs._id,
+                title: cs.reason_he ?? cs.report_he?.summaryHe ?? 'Change set applied',
+                detail: opCount ? `${opCount} ops` : undefined,
+              })
+            }
+
+            if (summaries.length > 0) {
+              const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
+              await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
+                conversationId,
+                blocks: [
+                  {
+                    type: 'FlowChangeSetSummaryBlock',
+                    items: summaries,
+                  },
+                ],
+              })
+            }
+          }
+
+          await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
+        }
         return
       }
 
@@ -276,6 +319,26 @@ export const tick = internalAction({
       const nextGateId = currentIndex >= 0 ? (GATE_ORDER[currentIndex + 1] as string | undefined) : undefined
       if (!nextGateId) {
         console.log('[flowRunner.tick] completed', { flowRunId })
+        await ctx.runAction(api.memory.generateProjectContextDoc, { projectId })
+        const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
+        const contextDoc = await ctx.runQuery(api.memory.getProjectContextDoc, { projectId })
+        await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
+          conversationId,
+          blocks: [
+            {
+              type: 'ChatBlock',
+              markdownHe: 'Project Context document created and saved in Knowledge → Project Context.',
+            },
+            ...(contextDoc?.contentMd_he
+              ? [
+                  {
+                    type: 'ChatBlock',
+                    markdownHe: contextDoc.contentMd_he,
+                  },
+                ]
+              : []),
+          ],
+        })
         await ctx.runMutation(internal.flowRuns.setRunStatus, { flowRunId, status: 'completed' })
         return
       }
@@ -308,6 +371,9 @@ export const tick = internalAction({
           gateId: nextGateId,
           draftChangeSetIds: maybeDraftChangeSetIds,
         })
+        if (refreshed.toggles?.autoApprove) {
+          await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
+        }
         return
       }
     }
@@ -365,6 +431,10 @@ async function runSkillForGate(
   if (args.gateId === 'G9') {
     if (!pricingGatesEnabled) return []
     skills.push('FINAL_AUDIT_FIXER')
+  }
+
+  if (args.gateId === 'G10') {
+    skills.push('CONTEXT_GENERATION')
   }
 
   if (skills.length === 0) return []

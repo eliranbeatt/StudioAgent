@@ -1491,6 +1491,8 @@ export default defineSchema({
         ragSearch: v.boolean(),
         fileInspect: v.boolean(),
         runSkill: v.optional(v.boolean()),
+        generateQuote: v.optional(v.boolean()),
+        estimateTasks: v.optional(v.boolean()),
       }),
       outputContract: v.string(), // "blocks", "changeset"
     }),
@@ -1553,6 +1555,7 @@ export default defineSchema({
     scope: v.optional(v.union(v.literal("project"), v.literal("element"))),
     readinessScore: v.optional(v.number()),
     blockingIssueKeys: v.optional(v.array(v.string())),
+    forceQuestionGateId: v.optional(v.string()),
     toggles: v.optional(v.object({
       autoRun: v.optional(v.boolean()),
       autoApprove: v.optional(v.boolean()),
@@ -1641,7 +1644,8 @@ export default defineSchema({
       v.literal("SOURCE_DOC"),
       v.literal("RUNNING_MEMORY"),
       v.literal("QA_DIGEST"),
-      v.literal("USER_INPUT_LOG")
+      v.literal("USER_INPUT_LOG"),
+      v.literal("PROJECT_CONTEXT")
     ),
     title_he: v.optional(v.string()),
     source: v.optional(v.object({

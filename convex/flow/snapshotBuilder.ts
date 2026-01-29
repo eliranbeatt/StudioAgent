@@ -8,6 +8,7 @@ export type ProjectSnapshotV1 = {
     notes?: string
     overviewSummary?: string
     brainDumpRaw?: string
+    currency?: string
     updatedAt: number
     createdAt: number
   }
@@ -188,6 +189,7 @@ export async function buildProjectSnapshot(
       notes: project.notes,
       overviewSummary: project.overviewSummary,
       brainDumpRaw: project.brainDumpRaw || runningMemory?.contentMd_he,
+      currency: project.currency,
       updatedAt: project.updatedAt,
       createdAt: project.createdAt,
     },

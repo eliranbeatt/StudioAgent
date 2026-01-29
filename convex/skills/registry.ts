@@ -21,6 +21,8 @@ export interface SkillDefinition {
       ragSearch: boolean;
       fileInspect: boolean;
       runSkill?: boolean;
+      generateQuote?: boolean;
+      estimateTasks?: boolean;
     };
     outputContract: "blocks" | "changeset" | "suggestions";
   };
@@ -171,7 +173,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     config: {
       requiresClarifications: true,
       clarificationsTargetSkillId: "TASKS_BUILDER_FULL",
-      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, estimateTasks: true },
       outputContract: "changeset",
     },
     prompts: {
@@ -205,12 +207,12 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     descriptionHe: "יצירת הצעת מחיר",
     category: "planning",
     flow: "planning",
-    isEnabled: false,
+    isEnabled: true,
     scheduling: { suggestAfter: ["ACCOUNTING_BUILDER_FULL"], suggestAtStage: ["planning", "review"] },
     config: {
       requiresClarifications: true,
       clarificationsTargetSkillId: "QUOTE_WRITER_FULL",
-      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, generateQuote: true },
       outputContract: "changeset",
     },
     prompts: {
@@ -228,7 +230,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     scheduling: { suggestAfter: ["ELEMENTS_BUILDER_FULL"], suggestAtStage: ["execution"] },
     config: {
       requiresClarifications: false,
-      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, generateQuote: true },
       outputContract: "changeset",
     },
     prompts: {
@@ -717,7 +719,7 @@ const seedSkillsCore = async (ctx: any) => {
         descriptionHe: skill.descriptionHe,
         category: skill.category,
         flow: skill.flow,
-        scheduling: skill.scheduling,
+          allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, estimateTasks: true },
         config: skill.config,
         prompts: skill.prompts,
         model: skill.model,

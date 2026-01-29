@@ -138,6 +138,8 @@ export default function FlowAgentPage() {
           onCancel={cancelRun as any}
           formatTs={formatTs}
           statusLabelHe={statusLabelHe}
+          webPricingEnabled={webPricingEnabled}
+          defaultUseWebSearch={webPricingEnabled}
         />
 
         <div className='bg-white border rounded-xl p-4'>
@@ -243,7 +245,7 @@ export default function FlowAgentPage() {
                     })
                   }}
                 />
-                <span>Web search</span>
+                <span>Web pricing</span>
               </label>
             </div>
           ) : null}

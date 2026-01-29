@@ -87,6 +87,19 @@ function toQuestion(issue: IssueV1): { id: string; textHe: string; detailHe?: st
   }
 }
 
+function issueDomain(issue: IssueV1): string {
+  const key = String(issue.key || '').trim()
+  if (!key) return 'general'
+  const [domain] = key.split('.')
+  return domain || 'general'
+}
+
+function issueSort(a: IssueV1, b: IssueV1): number {
+  const dw = severityWeight(b.severity) - severityWeight(a.severity)
+  if (dw !== 0) return dw
+  return String(a.key).localeCompare(String(b.key))
+}
+
 export function buildQuestionsBlock(args: {
   gateId?: string
   report: ValidationReportV1
@@ -110,13 +123,41 @@ export function buildQuestionsBlock(args: {
     .filter((i) => !unknownAccepted.has(i.key))
     .filter((i) => !assumptionsAccepted.has(i.key))
     .slice()
+    .sort(issueSort)
+
+  const domainBuckets = new Map<string, IssueV1[]>()
+  for (const issue of remaining) {
+    const domain = issueDomain(issue)
+    const list = domainBuckets.get(domain) ?? []
+    list.push(issue)
+    domainBuckets.set(domain, list)
+  }
+
+  for (const list of domainBuckets.values()) {
+    list.sort(issueSort)
+  }
+
+  const domainOrder = Array.from(domainBuckets.entries())
+    .map(([domain, list]) => ({ domain, maxSeverity: list[0]?.severity ?? 'LOW' }))
     .sort((a, b) => {
-      const dw = severityWeight(b.severity) - severityWeight(a.severity)
+      const dw = severityWeight(b.maxSeverity) - severityWeight(a.maxSeverity)
       if (dw !== 0) return dw
-      return String(a.key).localeCompare(String(b.key))
+      return a.domain.localeCompare(b.domain)
     })
 
-  const questions = remaining.slice(0, 6).map(toQuestion)
+  const prioritized: IssueV1[] = []
+  const leftovers: IssueV1[] = []
+
+  for (const { domain } of domainOrder) {
+    const list = domainBuckets.get(domain) ?? []
+    if (list.length === 0) continue
+    const [first, ...rest] = list
+    prioritized.push(first)
+    leftovers.push(...rest)
+  }
+
+  leftovers.sort(issueSort)
+  const questions = [...prioritized, ...leftovers].slice(0, 6).map(toQuestion)
 
   const dismissedOpp = normalizeDismissedOppKeys(args.dismissedOppKeys)
   const suggestions = (Array.isArray(report.opportunities) ? report.opportunities : [])

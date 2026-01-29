@@ -24,6 +24,7 @@ export const submitGateAnswers = action({
     answersByKey: v.record(v.string(), v.string()),
     intent: v.union(v.literal('ask_more'), v.literal('advance'), v.literal('skip')),
     questionKeys: v.optional(v.array(v.string())),
+    freeText: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const flags = await loadFlags(ctx)
@@ -48,6 +49,13 @@ export const submitGateAnswers = action({
       })
     }
 
+    if (args.freeText && args.freeText.trim()) {
+      await ctx.runMutation(internal.memory.appendUserInput, {
+        projectId: run.projectId,
+        text: `Gate ${run.currentGateId}: ${args.freeText.trim()}`,
+      })
+    }
+
     if (args.intent === 'skip' && Array.isArray(args.questionKeys)) {
       for (const key of args.questionKeys) {
         const cleaned = String(key ?? '').trim()
@@ -57,6 +65,18 @@ export const submitGateAnswers = action({
           issueKey: cleaned,
         })
       }
+    }
+
+    if (args.intent === 'ask_more') {
+      await ctx.db.patch(args.flowRunId, {
+        forceQuestionGateId: run.currentGateId,
+        updatedAt: Date.now(),
+      })
+    } else {
+      await ctx.db.patch(args.flowRunId, {
+        forceQuestionGateId: undefined,
+        updatedAt: Date.now(),
+      })
     }
 
     const summary =
@@ -70,6 +90,14 @@ export const submitGateAnswers = action({
       conversationId,
       text: summary,
     })
+
+    if (args.intent === 'ask_more') {
+      await ctx.runMutation(internal.flowRuns.setStepLastEmittedHash, {
+        flowRunId: args.flowRunId,
+        gateId: run.currentGateId,
+        lastEmittedHash: '',
+      })
+    }
 
     await ctx.runAction(internal.flow.flowRunner.tick, { flowRunId: args.flowRunId })
   },

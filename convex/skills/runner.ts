@@ -29,7 +29,7 @@ function buildPromptCacheOptions(args: {
   flags: Record<string, boolean>
   model?: string
   skillId: string
-  allowedTools?: { webSearch?: boolean; ragSearch?: boolean; fileInspect?: boolean; runSkill?: boolean }
+  allowedTools?: { webSearch?: boolean; ragSearch?: boolean; fileInspect?: boolean; runSkill?: boolean; generateQuote?: boolean; estimateTasks?: boolean }
   viewId?: string
 }) {
   if (!isEnabled(args.flags, "ff_prompt_cache", false)) return {};
@@ -39,6 +39,8 @@ function buildPromptCacheOptions(args: {
     args.allowedTools?.ragSearch ? "rag" : null,
     args.allowedTools?.fileInspect ? "files" : null,
     args.allowedTools?.runSkill ? "skill" : null,
+    args.allowedTools?.generateQuote ? "quote" : null,
+    args.allowedTools?.estimateTasks ? "estimate" : null,
   ]
     .filter(Boolean)
     .join("+") || "none";
@@ -117,6 +119,8 @@ export const runSkill = action({
       ragSearch: !!skillData.skill.config.allowedTools?.ragSearch,
       fileInspect: !!skillData.skill.config.allowedTools?.fileInspect,
       runSkill: !!skillData.skill.config.allowedTools?.runSkill,
+      generateQuote: !!skillData.skill.config.allowedTools?.generateQuote,
+      estimateTasks: !!skillData.skill.config.allowedTools?.estimateTasks,
     };
 
     // 3. Build Context (Query)
@@ -922,6 +926,10 @@ export const saveRunResult = internalMutation({
           projectId: args.projectId,
           contentMd_he: docBlock.markdownHe,
         });
+        await ctx.runMutation(api.memory.saveProjectContextDoc, {
+          projectId: args.projectId,
+          contentMd_he: docBlock.markdownHe,
+        });
       }
     }
 
@@ -1370,6 +1378,12 @@ function buildSystemPrompt(skill: any, context: any) {
   if (skill.config.allowedTools?.runSkill) {
     toolInstructions += `\nYou have access to a 'run_skill' tool. Use it to invoke other skills (builders, research, etc) when you are confident they are needed. Do not ask for permission if the user intent is clear.`;
   }
+  if (skill.config.allowedTools?.generateQuote) {
+    toolInstructions += `\nYou have access to a 'generate_quote' tool. Use it to generate a draft quote and compute totals when needed.`;
+  }
+  if (skill.config.allowedTools?.estimateTasks) {
+    toolInstructions += `\nYou have access to an 'estimate_tasks' tool. Use it to auto-estimate task durations when needed.`;
+  }
 
   const addon = skill.prompts?.promptAddon ?? "";
 
@@ -1435,6 +1449,56 @@ async function callLLM(
             reason: { type: "string", description: "Why you are running this skill." }
           },
           required: ["skillId"]
+        }
+      }
+    });
+  }
+
+  if (allowedTools?.generateQuote) {
+    tools.push({
+      type: "function",
+      function: {
+        name: "generate_quote",
+        description: "Create a draft quote and generate quote totals.",
+        parameters: {
+          type: "object",
+          properties: {
+            inputs: {
+              type: "object",
+              properties: {
+                projectDescription: { type: "string" },
+                specs: { type: "string" },
+                manualPriceNis: { type: "number" },
+                includeFlags: {
+                  type: "object",
+                  properties: {
+                    includeElements: { type: "boolean" },
+                    elementsMode: { type: "string", enum: ["bySection", "byElement"] },
+                    includeTerms: { type: "boolean" },
+                    includeDates: { type: "boolean" },
+                    includeAgreements: { type: "boolean" },
+                    includeOptions: { type: "boolean" },
+                  }
+                },
+                validUntil: { type: "string" },
+                logoFileId: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  if (allowedTools?.estimateTasks) {
+    tools.push({
+      type: "function",
+      function: {
+        name: "estimate_tasks",
+        description: "Estimate missing task durations for the project.",
+        parameters: {
+          type: "object",
+          properties: {}
         }
       }
     });
@@ -1512,6 +1576,65 @@ async function callLLM(
             });
           }
         }
+        if (tc.function.name === "generate_quote") {
+          const args = JSON.parse(tc.function.arguments);
+          if (contextInfo) {
+            try {
+              const inputs = args?.inputs ?? {};
+              const quoteId = await ctx.runMutation(api.quotes.createDraftFromUi, {
+                projectId: contextInfo.projectId,
+                inputs,
+              });
+              await ctx.runAction(api.quotes.generateQuoteV2, {
+                projectId: contextInfo.projectId,
+                quoteId,
+              });
+              messages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({ status: "success", quoteId })
+              });
+            } catch (e: any) {
+              messages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({ status: "error", error: e.message })
+              });
+            }
+          } else {
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ status: "error", error: "Context missing" })
+            });
+          }
+        }
+        if (tc.function.name === "estimate_tasks") {
+          if (contextInfo) {
+            try {
+              const result = await ctx.runMutation(api.agent_tasks.runEstimator, {
+                projectId: contextInfo.projectId,
+              });
+              messages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({ status: "success", result })
+              });
+            } catch (e: any) {
+              messages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({ status: "error", error: e.message })
+              });
+            }
+          } else {
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ status: "error", error: "Context missing" })
+            });
+          }
+        }
       }
       continue; // Loop again to let LLM process tool results
     }
@@ -1557,7 +1680,27 @@ async function callLLM(
           // Removed auto-save of web results.
           results.push(`Tool 'web_search' (${args.query}) result: ${JSON.stringify(result)}`);
         }
-        // Add other tools if needed
+        if (tc.name === "generate_quote") {
+          if (!contextInfo) continue;
+          const args = typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : (tc.arguments ?? {});
+          const inputs = args?.inputs ?? {};
+          const quoteId = await ctx.runMutation(api.quotes.createDraftFromUi, {
+            projectId: contextInfo.projectId,
+            inputs,
+          });
+          await ctx.runAction(api.quotes.generateQuoteV2, {
+            projectId: contextInfo.projectId,
+            quoteId,
+          });
+          results.push(`Tool 'generate_quote' result: ${JSON.stringify({ quoteId })}`);
+        }
+        if (tc.name === "estimate_tasks") {
+          if (!contextInfo) continue;
+          const result = await ctx.runMutation(api.agent_tasks.runEstimator, {
+            projectId: contextInfo.projectId,
+          });
+          results.push(`Tool 'estimate_tasks' result: ${JSON.stringify(result)}`);
+        }
       }
 
       if (results.length > 0) {

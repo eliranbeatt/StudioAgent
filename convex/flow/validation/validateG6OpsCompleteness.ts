@@ -21,6 +21,7 @@ type OpsCoverage = {
   hasPackaging: boolean
   hasTeardownOrReturns: boolean
   hasBufferOrRisk: boolean
+  hasManagement: boolean
 }
 
 export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): ValidationReportV1 {
@@ -35,6 +36,7 @@ export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): Validati
     hasPackaging: false,
     hasTeardownOrReturns: false,
     hasBufferOrRisk: false,
+    hasManagement: false,
   }
 
   const transportLineIds: string[] = []
@@ -44,6 +46,7 @@ export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): Validati
   const packagingLineIds: string[] = []
   const teardownLineIds: string[] = []
   const bufferLineIds: string[] = []
+  const managementLineIds: string[] = []
 
   const scanLine = (id: unknown, sectionKey: unknown, workType: unknown, itemOrRole: unknown) => {
     const sk = norm(sectionKey)
@@ -84,6 +87,11 @@ export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): Validati
     if (!coverage.hasBufferOrRisk && includesAny(all, ['buffer', 'risk', 'contingency', 'בופר', 'רזרבה', 'סיכון'])) {
       coverage.hasBufferOrRisk = true
       bufferLineIds.push(String(id))
+    }
+
+    if (!coverage.hasManagement && (wt === 'management' || includesAny(all, ['management', 'manager', 'supervisor', 'pm', 'project manager', 'מנהל', 'ניהול']))) {
+      coverage.hasManagement = true
+      managementLineIds.push(String(id))
     }
   }
 
@@ -140,6 +148,15 @@ export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): Validati
     })
   }
 
+  if (!coverage.hasManagement) {
+    blockingIssues.push({
+      key: 'ops.management_missing',
+      severity: 'HIGH',
+      titleHe: 'חסר ניהול/פיקוח',
+      detailHe: 'לא נמצאו שורות ניהול/PM/פיקוח. נדרש להוסיף שעות ניהול בפרויקט.',
+    })
+  }
+
   const hasInstallStageTask = snapshot.tasks.some((t) => norm(t.stage) === 'install')
   if (hasInstallStageTask && !coverage.hasMeals) {
     warnings.push({
@@ -166,6 +183,7 @@ export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): Validati
       packagingLineIds,
       teardownLineIds,
       bufferLineIds,
+      managementLineIds,
     },
   }
 

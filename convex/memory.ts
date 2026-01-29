@@ -2,6 +2,7 @@ import { action, internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import OpenAI from "openai";
+import { buildProjectSnapshot } from "./flow/snapshotBuilder";
 
 // ---------------------------------------------------------
 // Mutations (Internal & Public)
@@ -52,6 +53,35 @@ export const saveRunningMemory = internalMutation({
         kind: "RUNNING_MEMORY",
         contentMd_he: args.contentMd_he,
         autoAppendEnabled: args.autoAppendEnabled ?? true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const saveProjectContextDoc = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    contentMd_he: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "PROJECT_CONTEXT"))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        contentMd_he: args.contentMd_he,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("memoryDocs", {
+        projectId: args.projectId,
+        kind: "PROJECT_CONTEXT",
+        title_he: "Project Context",
+        contentMd_he: args.contentMd_he,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -287,6 +317,131 @@ export const updateQADigest = action({
   },
 });
 
+function sumNumbers(values: Array<number | undefined | null>) {
+  return values.reduce((acc, value) => acc + (typeof value === "number" ? value : 0), 0);
+}
+
+function formatCurrency(value: number, currency?: string) {
+  if (!Number.isFinite(value)) return "0";
+  const rounded = Math.round(value * 100) / 100;
+  return currency ? `${rounded} ${currency}` : String(rounded);
+}
+
+function buildFallbackProjectContext(snapshot: any) {
+  const latestQuote = Array.isArray(snapshot.quoteVersions) ? snapshot.quoteVersions[0] : null;
+  const currency = latestQuote?.currency || snapshot.project?.currency;
+  const materialsTotal = sumNumbers(snapshot.materialLines?.map((l: any) => l.plannedTotalCost));
+  const workTotal = sumNumbers(snapshot.workLines?.map((l: any) => l.plannedTotalCost));
+  const totalEstimate = materialsTotal + workTotal;
+
+  const elements = (snapshot.elements ?? []).slice(0, 20);
+  const tasks = (snapshot.tasks ?? []).slice(0, 40);
+  const materials = (snapshot.materialLines ?? []).slice(0, 30);
+  const workLines = (snapshot.workLines ?? []).slice(0, 30);
+
+  return [
+    `# תקציר פרויקט`,
+    ``,
+    `## פרטים`,
+    `- שם: ${snapshot.project?.name ?? ""}`,
+    snapshot.project?.description ? `- תיאור: ${snapshot.project.description}` : "",
+    snapshot.project?.notes ? `- הערות: ${snapshot.project.notes}` : "",
+    `- אלמנטים: ${snapshot.counts?.elements ?? elements.length}`,
+    `- משימות: ${snapshot.counts?.tasks ?? tasks.length}`,
+    `- שורות חומרים: ${snapshot.counts?.materialLines ?? materials.length}`,
+    `- שורות עבודה: ${snapshot.counts?.workLines ?? workLines.length}`,
+    ``,
+    `## עלויות משוערות`,
+    `- חומרים: ${formatCurrency(materialsTotal, currency)}`,
+    `- עבודה/תפעול: ${formatCurrency(workTotal, currency)}`,
+    `- סה"כ משוער: ${formatCurrency(totalEstimate, currency)}`,
+    latestQuote?.totals ? `- תקציב/הצעה: ${JSON.stringify(latestQuote.totals)}` : "",
+    ``,
+    `## אלמנטים`,
+    ...elements.map((e: any) => `- ${e.title} (${e.type})`),
+    ``,
+    `## משימות (דגימה)`,
+    ...tasks.map((t: any) => `- ${t.title}`),
+    ``,
+    `## חומרים (דגימה)`,
+    ...materials.map((m: any) => `- ${m.itemName ?? ""} (${formatCurrency(m.plannedTotalCost ?? 0, currency)})`),
+    ``,
+    `## עבודה/לוגיסטיקה (דגימה)`,
+    ...workLines.map((w: any) => `- ${w.roleHe ?? ""} (${formatCurrency(w.plannedTotalCost ?? 0, currency)})`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export const generateProjectContextDoc = action({
+  args: {
+    projectId: v.id("projects"),
+    feedback: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const snapshot = await buildProjectSnapshot(ctx, args.projectId);
+
+    let contentMd_he = buildFallbackProjectContext(snapshot);
+
+    const feedback = typeof args.feedback === "string" ? args.feedback.trim() : "";
+    if (feedback) {
+      await ctx.runMutation(internal.memory.appendUserInput, {
+        projectId: args.projectId,
+        text: `Project context feedback:\n${feedback}`,
+      });
+    }
+
+    if (process.env.OPENAI_API_KEY) {
+      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const model = "gpt-4o-mini";
+
+      const summaryPayload = {
+        project: snapshot.project,
+        counts: snapshot.counts,
+        elements: snapshot.elements?.slice(0, 50),
+        tasks: snapshot.tasks?.slice(0, 80),
+        materialLines: snapshot.materialLines?.slice(0, 80),
+        workLines: snapshot.workLines?.slice(0, 80),
+        quoteVersions: snapshot.quoteVersions?.slice(0, 2),
+      };
+
+      const messages = [
+        {
+          role: "system",
+          content:
+            "You are generating a project context document in Hebrew. Output concise markdown with sections: Overview, Scope/Elements, Tasks/Work plan, Materials & Costs, Labor/Overhead, Quote Summary, Risks/Gaps, Assumptions. Keep it practical and ready for execution.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify(summaryPayload),
+        },
+      ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+      if (feedback) {
+        messages.push({
+          role: "user",
+          content: `Feedback to incorporate:\n${feedback}`,
+        });
+      }
+
+      const completion = await client.chat.completions.create({
+        model,
+        messages,
+      });
+
+      const text = completion.choices[0]?.message?.content ?? "";
+      if (text.trim()) contentMd_he = text;
+    }
+
+    await ctx.runMutation(internal.memory.saveProjectContextDoc, {
+      projectId: args.projectId,
+      contentMd_he,
+    });
+
+    return { ok: true };
+  },
+});
+
 export const regenerateRunningMemory = action({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -365,6 +520,16 @@ export const getRunningMemory = query({
     }
 });
 
+export const getProjectContextDoc = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "PROJECT_CONTEXT"))
+      .first();
+  },
+});
+
 export const updateRunningMemory = mutation({
   args: {
     projectId: v.id("projects"),
@@ -387,6 +552,35 @@ export const updateRunningMemory = mutation({
         kind: "RUNNING_MEMORY",
         contentMd_he: args.contentMd_he,
         autoAppendEnabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const updateProjectContextDoc = mutation({
+  args: {
+    projectId: v.id("projects"),
+    contentMd_he: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", "PROJECT_CONTEXT"))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        contentMd_he: args.contentMd_he,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("memoryDocs", {
+        projectId: args.projectId,
+        kind: "PROJECT_CONTEXT",
+        title_he: "Project Context",
+        contentMd_he: args.contentMd_he,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });

@@ -1,13 +1,13 @@
 "use client";
 
 import { useQuery, useMutation, useAction } from "convex/react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { SkillsDock } from "./_components/SkillsDock";
 import { AgentChat } from "./_components/AgentChat";
-import { Plus, Edit2, Check, X, Sparkles } from "lucide-react";
+import { Plus, Edit2, Check, X, Sparkles, Bot } from "lucide-react";
 
 import { ElementsRail } from "./_components/ElementsRail";
 
@@ -16,6 +16,7 @@ export default function AgentPage() {
   const rawId = params.id as string;
   const resolved = useQuery(api.projects.resolveProjectId, { id: rawId });
   const projectId = resolved?.projectId;
+  const router = useRouter();
   
   const conversations = useQuery(api.skills.runner.listAgentConversations as any, 
     projectId ? { projectId } : "skip"
@@ -25,11 +26,13 @@ export default function AgentPage() {
   const createConversation = useMutation(api.skills.runner.createAgentConversation);
   const renameConversation = useMutation(api.skills.runner.renameConversation);
   const generateTitle = useAction(api.skills.runner.generateConversationTitle);
+  const startFlowRun = useMutation(api.flowRuns.start);
 
   const [activeConversationId, setActiveConversationId] = useState<Id<"agentConversations"> | null>(null);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [hasInitializedSelection, setHasInitializedSelection] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [isStartingFlow, setIsStartingFlow] = useState(false);
 
   // Renaming state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -94,6 +97,17 @@ export default function AgentPage() {
       } finally {
         setIsGeneratingTitleFor(null);
       }
+  };
+
+  const handleStartFlow = async () => {
+    if (!projectId || isStartingFlow) return;
+    setIsStartingFlow(true);
+    try {
+      await startFlowRun({ projectId });
+      router.push(`/projects/${projectId}/flow-agent`);
+    } finally {
+      setIsStartingFlow(false);
+    }
   };
 
   if (!projectId) return <div className="p-8 text-slate-400">Loading project...</div>;
@@ -173,11 +187,21 @@ export default function AgentPage() {
 
       {/* Center: Chat */}
       <div className="flex-1 flex flex-col min-w-0">
-         <AgentChat 
-            activeConversationId={activeConversationId} 
-            projectId={projectId} 
-            isThinking={isThinking}
-            onSetThinking={setIsThinking}
+        <div className="border-b border-slate-200 bg-white px-6 py-3 flex items-center justify-between">
+          <div className="text-sm font-semibold text-slate-700">Agent Workspace</div>
+          <button
+            onClick={handleStartFlow}
+            disabled={isStartingFlow}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+          >
+            <Bot size={14} /> {isStartingFlow ? "Starting Flow..." : "Open Flow Mode"}
+          </button>
+        </div>
+        <AgentChat 
+          activeConversationId={activeConversationId} 
+          projectId={projectId} 
+          isThinking={isThinking}
+          onSetThinking={setIsThinking}
         />
       </div>
 

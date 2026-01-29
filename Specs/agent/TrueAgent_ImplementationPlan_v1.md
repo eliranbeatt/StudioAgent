@@ -145,7 +145,7 @@ A minimal, concrete spec inside the repo so implementation stays deterministic a
 ### Repo changes
 - [x] Add doc: (this doc) `Specs/agent/TrueAgent_ImplementationPlan_v1.md`
 - [x] Add Convex validation types: `convex/flow/validation/types.ts`
-- [ ] Add shared type module (shared between Convex + UI if desired): `src/lib/flow/types.ts`
+- [x] Add shared type module (shared between Convex + UI if desired): `src/lib/flow/types.ts`
   - Note: current implementation keeps Flow types in `convex/flow/validation/*`.
 
 ### Feature flags
@@ -401,7 +401,7 @@ User choices for suggestions:
 
 Suggestions tests:
 - 0–2 suggestions appear alongside required questions.
-- [ ] Adopt creates a separate ChangeSet and requires explicit approval.
+- [x] Adopt creates a separate ChangeSet and requires explicit approval.
 - Dismiss stores `dismissedOppKeys` and the suggestion is not shown again.
 
 ---
@@ -452,7 +452,7 @@ Draft ChangeSet lifecycle (v1.1):
 If answers affect a draft dependency, discard or regenerate only the impacted drafts.
 
 Status:
-- [ ] Draft ChangeSet lifecycle + metadata (`dependsOnIssueKeys`, `assumptionsUsed`) not implemented yet.
+- [x] Draft ChangeSet lifecycle + metadata (`dependsOnIssueKeys`, `assumptionsUsed`) implemented.
 
 #### Batch selection (add)
 - ✅ `convex/flow/batching.ts`
@@ -467,7 +467,7 @@ Status:
 Add missing core skills (new, required):
 - G4 Pricing pipeline (catalog → web → fallback)
   - `PRICING_LOOKUP_CATALOG_BATCH` (new)
-  - [ ] `PRICING_RESEARCH_WEB_BATCH` (new, only if web enabled) — currently using `RESEARCH_PRICING_ESTIMATES_WEB`
+  - [x] `PRICING_RESEARCH_WEB_BATCH` (new, only if web enabled)
   - `PRICING_ESTIMATE_FALLBACK_BATCH` (new)
 - G5 Tasks enrichment from accounting
   - `TASKS_ENRICH_FROM_ACCOUNTING_BATCH` (new)
@@ -642,9 +642,9 @@ New projects start with fewer clarification rounds.
 # Checklist index (for tracking)
 ## UI files to add
 - [x] `src/app/projects/[id]/flow-agent/page.tsx`
-- [ ] `src/app/projects/[id]/flow-agent/_components/FlowRunHeader.tsx`
-- [ ] `src/app/projects/[id]/flow-agent/_components/FlowTimeline.tsx`
-- [ ] `src/app/projects/[id]/flow-agent/_components/FlowDebugPanel.tsx`
+- [x] `src/app/projects/[id]/flow-agent/_components/FlowRunHeader.tsx`
+- [x] `src/app/projects/[id]/flow-agent/_components/FlowTimeline.tsx`
+- [x] `src/app/projects/[id]/flow-agent/_components/FlowDebugPanel.tsx`
 
 ## UI files to update
 - [x] `src/app/projects/[id]/layout.tsx` (add Flow Agent tab)
@@ -657,7 +657,7 @@ New projects start with fewer clarification rounds.
 - [x] `convex/flow/snapshotBuilder.ts`
 - [x] `convex/flow/flowRunner.ts`
 - [x] `convex/flow/batching.ts`
-- [ ] `convex/flow/clarificationPackBuilder.ts`
+- [x] `convex/flow/clarificationPackBuilder.ts`
 - [x] `convex/flow/validation/types.ts`
 - [x] `convex/flow/validation/readiness.ts`
 - [x] `convex/flow/validation/validateG0Brief.ts`
@@ -673,7 +673,7 @@ New projects start with fewer clarification rounds.
 
 ## Convex files to update
 - [x] `convex/schema.ts` (add flow tables + project fields)
-- [ ] `convex/skills/runner.ts` (Phase 6 context manager integration)
+- [x] `convex/skills/runner.ts` (Phase 6 context manager integration)
 
 ---
 

@@ -9,6 +9,7 @@ export type GateId =
   | 'G7'
   | 'G8'
   | 'G9'
+  | 'G10'
 
 export type IssueSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 

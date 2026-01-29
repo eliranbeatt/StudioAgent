@@ -32,6 +32,8 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
   const dismissOpportunity = useMutation((api as any).flowAnswers.dismissOpportunity)
 
   const [answersByKey, setAnswersByKey] = useState<Record<string, string>>({})
+  const [selectionsByKey, setSelectionsByKey] = useState<Record<string, string[]>>({})
+  const [freeText, setFreeText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const questionsBlock = block?.questionsBlock ?? null
@@ -44,13 +46,29 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
+      const answersPayload: Record<string, string> = {}
+      for (const key of Object.keys(answersByKey)) {
+        const value = String(answersByKey[key] ?? '').trim()
+        if (value) answersPayload[key] = value
+      }
+      for (const key of Object.keys(selectionsByKey)) {
+        const selection = selectionsByKey[key]
+        if (selection && selection.length > 0) {
+          const existing = answersPayload[key]
+          const joined = selection.join(', ')
+          answersPayload[key] = existing ? `${existing}; ${joined}` : joined
+        }
+      }
       await submitGateAnswers({
         flowRunId,
-        answersByKey,
+        answersByKey: answersPayload,
         intent,
         questionKeys: questions.map((q) => q.id).filter(Boolean),
+        freeText: freeText.trim() || undefined,
       })
       setAnswersByKey({})
+      setSelectionsByKey({})
+      setFreeText('')
     } finally {
       setIsSubmitting(false)
     }
@@ -108,10 +126,40 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
           </div>
           {questions.map((q: any, index: number) => {
             const qid = q.id ?? `q${index}`
+            const options = Array.isArray(q.optionsHe) ? q.optionsHe : []
             return (
               <div key={qid} className='rounded-lg border border-gray-200 bg-white p-3'>
                 <div className='text-xs font-medium text-gray-900'>{q.textHe ?? qid}</div>
                 {q.detailHe ? <div className='mt-1 text-[11px] text-gray-500'>{q.detailHe}</div> : null}
+                {options.length > 0 ? (
+                  <div className='mt-2 flex flex-wrap gap-2'>
+                    {options.map((opt: string) => {
+                      const selected = (selectionsByKey[qid] ?? []).includes(opt)
+                      return (
+                        <button
+                          key={opt}
+                          type='button'
+                          className={`rounded-full border px-3 py-1 text-[11px] ${selected
+                            ? 'bg-amber-600 text-white border-amber-600'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-amber-300'
+                            }`}
+                          onClick={() => {
+                            setSelectionsByKey((prev) => {
+                              const current = prev[qid] ?? []
+                              if (current.includes(opt)) {
+                                return { ...prev, [qid]: current.filter((v) => v !== opt) }
+                              }
+                              return { ...prev, [qid]: [...current, opt] }
+                            })
+                          }}
+                          disabled={isSubmitting}
+                        >
+                          {opt}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
                 <textarea
                   className='mt-2 w-full min-h-[72px] rounded-md border border-gray-200 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-100'
                   value={answersByKey[qid] ?? ''}
@@ -128,6 +176,16 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
           })}
         </div>
       ) : null}
+
+      <div className='mt-4 border-t border-gray-100 pt-4'>
+        <div className='text-[11px] font-semibold text-gray-700 uppercase tracking-wide'>Free text</div>
+        <textarea
+          className='mt-2 w-full min-h-[80px] rounded-md border border-gray-200 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-100'
+          value={freeText}
+          onChange={(e) => setFreeText(e.target.value)}
+          placeholder='Add any extra context or notes...'
+        />
+      </div>
 
       {suggestions.length > 0 ? (
         <div className='mt-4 space-y-2'>
@@ -174,14 +232,14 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
           disabled={isSubmitting}
           onClick={() => submit('ask_more')}
         >
-          Ask more
+          Submit and ask more
         </button>
         <button
           className='rounded-md bg-amber-600 text-white px-3 py-2 text-xs disabled:opacity-50'
           disabled={isSubmitting}
           onClick={() => submit('advance')}
         >
-          Save + advance
+          Submit and continue
         </button>
         <button
           className='rounded-md border border-amber-200 text-amber-700 px-3 py-2 text-xs disabled:opacity-50'

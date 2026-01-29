@@ -10,6 +10,28 @@ function isPositiveNumber(n: unknown) {
   return typeof n === 'number' && Number.isFinite(n) && n > 0
 }
 
+function norm(s: unknown) {
+  return typeof s === 'string' ? s.trim().toLowerCase() : ''
+}
+
+function isManagementWorkLine(line: { workType?: unknown; roleHe?: unknown; isManagement?: unknown }) {
+  if (line.isManagement === true) return true
+  const workType = norm(line.workType)
+  const role = norm(line.roleHe)
+  const combined = `${workType} ${role}`
+  return (
+    workType.includes('management') ||
+    workType.includes('overhead') ||
+    combined.includes('management') ||
+    combined.includes('manager') ||
+    combined.includes('pm') ||
+    combined.includes('project manager') ||
+    combined.includes('ניהול') ||
+    combined.includes('מנהל') ||
+    combined.includes('פיקוח')
+    )
+}
+
 export function validateG3Accounting(snapshot: ProjectSnapshotV1): ValidationReportV1 {
   const blockingIssues: IssueV1[] = []
   const warnings: IssueV1[] = []
@@ -74,7 +96,7 @@ export function validateG3Accounting(snapshot: ProjectSnapshotV1): ValidationRep
       (l.elementId ? String(l.elementId) : undefined) ||
       (l.taskId ? taskElementById.get(String(l.taskId)) : undefined)
 
-    if (!derivedElementId) {
+    if (!derivedElementId && !isManagementWorkLine(l)) {
       workLineIdsMissingElementLink.push(String(l.id))
     }
 

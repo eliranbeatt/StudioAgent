@@ -16,7 +16,7 @@ import {
   UploadCloud,
 } from 'lucide-react'
 
-type TabKey = 'files' | 'qa' | 'knowledge' | 'userInput'
+type TabKey = 'files' | 'qa' | 'knowledge' | 'projectContext' | 'userInput'
 
 type TabConfig = {
   key: TabKey
@@ -32,20 +32,27 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
   const files = useQuery(api.files.listProjectFiles, { projectId })
   const qaPairs = useQuery(api.memory.listQAPairs, { projectId })
   const runningMemory = useQuery(api.memory.getRunningMemory, { projectId })
+  const projectContext = useQuery(api.memory.getProjectContextDoc, { projectId })
   const userInputLog = useQuery(api.memory.getUserInputLog, { projectId })
 
   const generateUploadUrl = useMutation(api.files.generateUploadUrl)
   const saveUploadedFile = useAction(api.filesActions.saveUploadedFile)
   const updateRunningMemory = useMutation(api.memory.updateRunningMemory)
+  const updateProjectContextDoc = useMutation(api.memory.updateProjectContextDoc)
   const setRunningMemoryAutoAppend = useMutation(api.memory.setRunningMemoryAutoAppend)
   const regenerateRunningMemory = useAction(api.memory.regenerateRunningMemory)
+  const generateProjectContextDoc = useAction(api.memory.generateProjectContextDoc)
 
   const [activeTab, setActiveTab] = useState<TabKey>('files')
   const [editorValue, setEditorValue] = useState('')
+  const [contextEditorValue, setContextEditorValue] = useState('')
+  const [contextFeedback, setContextFeedback] = useState('')
   const [qaSearch, setQaSearch] = useState('')
   const [openFileId, setOpenFileId] = useState<Id<'projectFiles'> | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSavingContext, setIsSavingContext] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
+  const [isGeneratingContext, setIsGeneratingContext] = useState(false)
 
   const fileUrl = useQuery(
     api.files.getFileUrl,
@@ -55,6 +62,10 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
   useEffect(() => {
     setEditorValue(runningMemory?.contentMd_he ?? '')
   }, [runningMemory?.contentMd_he])
+
+  useEffect(() => {
+    setContextEditorValue(projectContext?.contentMd_he ?? '')
+  }, [projectContext?.contentMd_he])
 
   useEffect(() => {
     if (!fileUrl?.url) return
@@ -79,11 +90,13 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
 
   const autoAppendEnabled = runningMemory?.autoAppendEnabled ?? true
   const hasChanges = editorValue !== (runningMemory?.contentMd_he ?? '')
+  const hasContextChanges = contextEditorValue !== (projectContext?.contentMd_he ?? '')
 
   const tabs: TabConfig[] = [
     { key: 'files', label: 'Uploaded Files', icon: FileText },
     { key: 'qa', label: 'QA', icon: Search },
     { key: 'knowledge', label: 'Current Knowledge', icon: BookOpen },
+    { key: 'projectContext', label: 'Project Context', icon: BookOpen },
     { key: 'userInput', label: 'User Input', icon: FileText },
   ]
 
@@ -300,6 +313,96 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
               ) : (
                 <div className='text-gray-400 italic'>Nothing to preview yet.</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'projectContext' && (
+        <div className='space-y-6'>
+          <div className='bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden'>
+            <div className='px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between'>
+              <h3 className='font-semibold text-gray-900'>Project Context (Markdown)</h3>
+              <div className='flex items-center gap-2'>
+                <button
+                  className='px-3 py-2 rounded-lg bg-white border border-gray-200 text-xs font-semibold uppercase tracking-wider disabled:opacity-60'
+                  onClick={async () => {
+                    setIsSavingContext(true)
+                    try {
+                      await updateProjectContextDoc({ projectId, contentMd_he: contextEditorValue })
+                    } finally {
+                      setIsSavingContext(false)
+                    }
+                  }}
+                  disabled={isSavingContext || !hasContextChanges}
+                >
+                  {isSavingContext ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  className='px-3 py-2 rounded-lg bg-black text-white text-xs font-semibold uppercase tracking-wider disabled:opacity-60'
+                  onClick={async () => {
+                    setIsGeneratingContext(true)
+                    try {
+                      await generateProjectContextDoc({ projectId })
+                    } finally {
+                      setIsGeneratingContext(false)
+                    }
+                  }}
+                  disabled={isGeneratingContext}
+                >
+                  {isGeneratingContext ? 'Generating...' : 'Regenerate'}
+                </button>
+              </div>
+            </div>
+            <div className='grid grid-cols-1 lg:grid-cols-2 gap-6 p-6'>
+              <textarea
+                className='min-h-[320px] w-full rounded-lg border border-gray-200 p-4 text-sm text-gray-800 outline-none resize-none'
+                value={contextEditorValue}
+                onChange={(e) => setContextEditorValue(e.target.value)}
+                placeholder='Project context summary will appear here. You can edit freely.'
+              />
+              <div className='text-sm text-gray-700'>
+                {contextEditorValue.trim() ? (
+                  <div className='prose prose-sm max-w-none'>
+                    <ReactMarkdown>{contextEditorValue}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className='text-gray-400 italic'>No project context document yet.</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className='bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden'>
+            <div className='px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between'>
+              <h4 className='font-semibold text-gray-900'>Regeneration feedback</h4>
+              <button
+                className='px-3 py-2 rounded-lg bg-black text-white text-xs font-semibold uppercase tracking-wider disabled:opacity-60'
+                onClick={async () => {
+                  setIsGeneratingContext(true)
+                  try {
+                    await generateProjectContextDoc({
+                      projectId,
+                      feedback: contextFeedback.trim() || undefined,
+                    })
+                    setContextFeedback('')
+                  } finally {
+                    setIsGeneratingContext(false)
+                  }
+                }}
+                disabled={isGeneratingContext || contextFeedback.trim().length === 0}
+              >
+                {isGeneratingContext ? 'Generating...' : 'Regenerate with feedback'}
+              </button>
+            </div>
+            <div className='p-6'>
+              <textarea
+                className='min-h-[120px] w-full rounded-lg border border-gray-200 p-4 text-sm text-gray-800 outline-none resize-none'
+                placeholder='Add feedback to refine the project context (missing scope, risks, costs, etc.)'
+                value={contextFeedback}
+                onChange={(e) => setContextFeedback(e.target.value)}
+              />
+              <p className='mt-2 text-xs text-gray-500'>Feedback is stored in the project log and used to regenerate the document.</p>
             </div>
           </div>
         </div>

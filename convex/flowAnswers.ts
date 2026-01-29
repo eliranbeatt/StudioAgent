@@ -89,6 +89,24 @@ export const submitAnswers = mutation({
   },
 })
 
+export const submitAnswersAndAdvance = mutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    answersByKey: v.record(v.string(), v.string()),
+  },
+  handler: async (ctx, args) => {
+    await assertBackendEnabled(ctx)
+
+    await ctx.runMutation(api.flowAnswers.submitAnswers, {
+      flowRunId: args.flowRunId,
+      answersByKey: args.answersByKey,
+    })
+
+    await ctx.runAction(internal.flow.flowRunner.tick, { flowRunId: args.flowRunId })
+    return { ok: true }
+  },
+})
+
 export const acceptUnknown = mutation({
   args: {
     flowRunId: v.id('flowRuns'),

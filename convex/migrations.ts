@@ -231,6 +231,46 @@ export const backfillFlowRunApprovalModes = mutation({
   },
 });
 
+export const backfillFlowRunToggles = mutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const dry = !!dryRun;
+    const runs = await ctx.db.query("flowRuns").take(50000);
+    let updated = 0;
+
+    for (const run of runs) {
+      const toggles = (run as any).toggles ?? {};
+      const nextToggles = {
+        autoRun: typeof toggles.autoRun === 'boolean' ? toggles.autoRun : true,
+        autoApprove: typeof toggles.autoApprove === 'boolean' ? toggles.autoApprove : true,
+        useWebSearch: typeof toggles.useWebSearch === 'boolean' ? toggles.useWebSearch : false,
+      };
+
+      const changed =
+        toggles.autoRun !== nextToggles.autoRun ||
+        toggles.autoApprove !== nextToggles.autoApprove ||
+        toggles.useWebSearch !== nextToggles.useWebSearch;
+
+      if (!changed) continue;
+
+      if (!dry) {
+        await ctx.db.patch(run._id, {
+          toggles: nextToggles,
+          updatedAt: Date.now(),
+        });
+      }
+
+      updated += 1;
+    }
+
+    return {
+      dryRun: dry,
+      runsProcessed: runs.length,
+      runsUpdated: updated,
+    };
+  },
+});
+
 export const seedCatalogDefaults = internalMutation({
   args: {},
   handler: async (ctx) => {

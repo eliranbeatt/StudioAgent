@@ -103,11 +103,20 @@ export const listByProject = query({
 export const start = mutation({
   args: {
     projectId: v.id('projects'),
+    useWebSearch: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await assertBackendEnabled(ctx)
 
     const now = Date.now()
+
+    const flags = await loadFlags(ctx)
+    const webPricingEnabled = isEnabled(flags, 'ff_flow_web_pricing', false)
+    const useWebSearch = webPricingEnabled
+      ? args.useWebSearch !== undefined
+        ? !!args.useWebSearch
+        : true
+      : false
 
     const conversationId = await ctx.db.insert('agentConversations', {
       projectId: args.projectId,
@@ -125,7 +134,7 @@ export const start = mutation({
       approvalMode: 'auto',
       approvalModeDefault: 'auto',
       approvalModeOverride: false,
-      toggles: { autoRun: false, autoApprove: false, useWebSearch: false },
+      toggles: { autoRun: true, autoApprove: true, useWebSearch },
       createdAt: now,
       updatedAt: now,
     })
@@ -136,6 +145,8 @@ export const start = mutation({
       status: 'running',
       startedAt: now,
     })
+
+    await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId: runId })
 
     return runId
   },
@@ -425,6 +436,40 @@ export const computeValidation = mutation({
       report = validateG8Quote(snapshot)
     } else if (gateId === 'G9') {
       report = validateG9Audit(snapshot)
+    } else if (gateId === 'G10') {
+      const runningMemory = await ctx.db
+        .query('memoryDocs')
+        .withIndex('by_project_kind', (q: any) => q.eq('projectId', run.projectId).eq('kind', 'RUNNING_MEMORY'))
+        .first()
+
+      if (runningMemory) {
+        report = {
+          status: 'pass',
+          blockingIssues: [],
+          fixableIssues: [],
+          opportunities: [],
+          warnings: [],
+          metrics: { gateId },
+        }
+      } else {
+        report = {
+          status: 'fail',
+          blockingIssues: [
+            {
+              key: 'project_context.missing',
+              severity: 'HIGH',
+              titleHe: 'חסר מסמך הקשר לפרויקט',
+              detailHe: 'כדי לעבור את G10 יש ליצור מסמך Project Context (RUNNING_MEMORY).',
+            },
+          ],
+          fixableIssues: [],
+          opportunities: [],
+          warnings: [],
+          metrics: { gateId },
+        }
+      }
+
+      report.readinessScore = computeReadiness(report)
     } else {
       report = {
         status: 'fail',
@@ -447,7 +492,9 @@ export const computeValidation = mutation({
 
     const now = Date.now()
 
-    if (report.status !== 'pass' && isEnabled(flags, 'ff_flow_clarification_pack_v1', false)) {
+    const forceQuestions = run.forceQuestionGateId && run.forceQuestionGateId === gateId
+
+    if ((report.status !== 'pass' || forceQuestions) && isEnabled(flags, 'ff_flow_clarification_pack_v1', false)) {
       const project = await ctx.db.get(run.projectId)
       const qaPairs = await ctx.db
         .query('qaPairs')
@@ -455,9 +502,38 @@ export const computeValidation = mutation({
         .order('desc')
         .take(200)
 
+      let reportForQuestions = report
+      const hasBlocking = Array.isArray(report?.blockingIssues) && report.blockingIssues.length > 0
+      if (!hasBlocking && forceQuestions) {
+        const warnings = Array.isArray(report?.warnings) ? report.warnings : []
+        const opportunities = Array.isArray(report?.opportunities) ? report.opportunities : []
+        const extraIssues = warnings.map((w: any) => ({
+          key: w.key,
+          severity: w.severity ?? 'LOW',
+          titleHe: w.titleHe,
+          detailHe: w.detailHe,
+        }))
+
+        const oppIssues = opportunities.map((o: any) => ({
+          key: o.key,
+          severity: 'LOW',
+          titleHe: o.titleHe,
+          detailHe: o.detailHe,
+        }))
+
+        const injected = extraIssues.length > 0 ? extraIssues : oppIssues
+        if (injected.length > 0) {
+          reportForQuestions = {
+            ...report,
+            status: 'fail',
+            blockingIssues: injected,
+          }
+        }
+      }
+
       const questionsBlock = buildQuestionsBlock({
         gateId,
-        report,
+        report: reportForQuestions,
         qaPairs,
         unknownAcceptedKeys: project?.unknownAcceptedKeys,
         assumptionsAccepted: project?.assumptionsAccepted,
@@ -466,6 +542,9 @@ export const computeValidation = mutation({
 
       if (questionsBlock) {
         ; (report as any).questionsBlock = questionsBlock
+        if (forceQuestions) {
+          report.status = 'fail'
+        }
       }
     }
 

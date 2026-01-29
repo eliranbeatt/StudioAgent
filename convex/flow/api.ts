@@ -1,6 +1,6 @@
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from "../featureFlags";
 
 const SETTINGS_KEY = "featureFlags";
@@ -126,6 +126,9 @@ export const startProjectFlow = mutation({
       updatedAt: Date.now(),
     });
 
+    const flags = await loadFlags(ctx)
+    const useWebSearch = isEnabled(flags, "ff_flow_web_pricing", false)
+
     const runId = await ctx.db.insert("flowRuns", {
       projectId: args.projectId,
       status: "running",
@@ -135,7 +138,7 @@ export const startProjectFlow = mutation({
       approvalMode: "auto",
       approvalModeDefault: "auto",
       approvalModeOverride: false,
-      toggles: { autoRun: true, autoApprove: false, useWebSearch: false },
+      toggles: { autoRun: true, autoApprove: true, useWebSearch },
       conversationId
     });
 

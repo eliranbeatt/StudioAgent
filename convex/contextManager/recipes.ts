@@ -39,7 +39,14 @@ function isFileHeavySkill(skillId?: string) {
 
 export function getRecipeForSkill(args: {
   skillId?: string
-  allowedTools?: { webSearch?: boolean; ragSearch?: boolean; fileInspect?: boolean; runSkill?: boolean }
+  allowedTools?: {
+    webSearch?: boolean
+    ragSearch?: boolean
+    fileInspect?: boolean
+    runSkill?: boolean
+    generateQuote?: boolean
+    estimateTasks?: boolean
+  }
 }): ContextRecipe {
   const packIds = [...BASE_PACKS]
 
