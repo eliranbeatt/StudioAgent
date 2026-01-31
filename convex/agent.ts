@@ -116,7 +116,7 @@ If you are not providing a ChangeSetBlock or QuestionsBlock, output a Suggestion
 
 Deduplication Rules:
 - Before creating a task or cost line, check the provided context to see if it exists.
-- If it exists, use 'task.patch' or 'accountingLine.patch' instead of '.create'.
+- If it exists, use 'task.patch', 'materialLine.patch', or 'workLine.patch' instead of '.create'.
 - For new items, always provide a 'dedupKey' (e.g., 'task_install_pvc') to ensure idempotency.
 
 When citing web search results or providing URLs, YOU MUST use Markdown format: [Link Title](URL). Do not use bare URLs.

@@ -53,6 +53,37 @@ async function assertValidatorsEnabled(ctx: any) {
   }
 }
 
+function normalizeUnknownAcceptedKeys(keys: unknown): Set<string> {
+  if (!Array.isArray(keys)) return new Set<string>()
+  const out = new Set<string>()
+  for (const key of keys) {
+    const cleaned = String(key || '').trim()
+    if (!cleaned) continue
+    out.add(cleaned)
+  }
+  return out
+}
+
+function applyUnknownAccepted(report: any, unknownAcceptedKeys: unknown) {
+  const unknownAccepted = normalizeUnknownAcceptedKeys(unknownAcceptedKeys)
+  if (unknownAccepted.size === 0) return report
+
+  const blocking = Array.isArray(report?.blockingIssues) ? report.blockingIssues : []
+  const accepted = blocking.filter((i: any) => unknownAccepted.has(String(i?.key ?? '').trim()))
+  if (accepted.length === 0) return report
+
+  const remaining = blocking.filter((i: any) => !unknownAccepted.has(String(i?.key ?? '').trim()))
+  const metrics = { ...(report.metrics ?? {}) }
+  metrics.unknownAcceptedCriticalCount = accepted.filter((i: any) => i?.severity === 'CRITICAL').length
+  metrics.unknownAcceptedKeys = accepted.map((i: any) => i?.key).filter(Boolean)
+
+  return {
+    ...report,
+    blockingIssues: remaining,
+    metrics,
+  }
+}
+
 type FlowRunStatus =
   | 'running'
   | 'blocked'
@@ -184,13 +215,18 @@ export const setToggles = mutation({
     const useWebSearch = isEnabled(flags, 'ff_flow_web_pricing', false) ? args.toggles.useWebSearch : false
     const prevAutoApprove = !!run.toggles?.autoApprove
     const nextAutoApprove = args.toggles.autoApprove
+
+    const mode: "auto" | "manual" = nextAutoApprove ? 'auto' : 'manual'
+    const currentDefault = run.approvalModeDefault as "auto" | "manual" | undefined
+    const newDefault: "auto" | "manual" = currentDefault ?? mode
+
     const approvalModePatch =
       prevAutoApprove !== nextAutoApprove
         ? {
-            approvalMode: nextAutoApprove ? 'auto' : 'manual',
-            approvalModeOverride: true,
-            approvalModeDefault: run.approvalModeDefault ?? (nextAutoApprove ? 'auto' : 'manual'),
-          }
+          approvalMode: mode,
+          approvalModeOverride: true,
+          approvalModeDefault: newDefault,
+        }
         : {}
 
     await ctx.db.patch(args.flowRunId, {
@@ -358,6 +394,43 @@ export const computeValidation = mutation({
     let report: any
     if (gateId === 'G0') {
       report = validateG0Brief(snapshot)
+    } else if (gateId === 'G0C') {
+      const hasElements = snapshot.counts.elements > 0
+      const latestClarification = await ctx.db
+        .query('clarificationSessions')
+        .withIndex('by_project_target', (q: any) =>
+          q.eq('projectId', run.projectId).eq('targetSkillId', 'ELEMENTS_BUILDER_FULL')
+        )
+        .order('desc')
+        .first()
+      if (hasElements || latestClarification?.isSatisfied) {
+        report = {
+          status: 'pass',
+          blockingIssues: [],
+          fixableIssues: [],
+          opportunities: [],
+          warnings: [],
+          metrics: { gateId },
+        }
+      } else {
+        report = {
+          status: 'fail',
+          blockingIssues: [
+            {
+              key: 'clarifications.required',
+              severity: 'HIGH',
+              titleHe: '×—×¡×¨×•×ª ×”×‘×”×¨×•×ª ×¤×¨×•×™×§×˜',
+              detailHe: '×›×“×™ ×œ×”×ª×§×“× ×¢×“ G1 ×™×© ×œ×¢× ×•×ª ×¢×œ ×©××œ×•×ª ×”×‘×”×¨×” ×¤×¨×•×™×§×˜×•×ª.',
+            },
+          ],
+          fixableIssues: [],
+          opportunities: [],
+          warnings: [],
+          metrics: { gateId },
+        }
+      }
+
+      report.readinessScore = computeReadiness(report)
     } else if (gateId === 'G1') {
       report = validateG1Elements(snapshot)
     } else if (gateId === 'G2') {
@@ -491,11 +564,32 @@ export const computeValidation = mutation({
     }
 
     const now = Date.now()
+    const project = await ctx.db.get(run.projectId)
+
+    if (gateId === 'G4' && run.toggles?.autoRun) {
+      const blocking = Array.isArray(report?.blockingIssues) ? report.blockingIssues : []
+      if (blocking.length > 0) {
+        const keepBlocking = blocking.filter((i: any) => String(i?.key ?? '') === 'pricing.none')
+        const toWarnings = blocking.filter((i: any) => !keepBlocking.includes(i))
+        const existingWarnings = Array.isArray(report?.warnings) ? report.warnings : []
+        report = {
+          ...report,
+          blockingIssues: keepBlocking,
+          warnings: [...existingWarnings, ...toWarnings],
+          status: keepBlocking.length === 0 ? 'pass' : 'fail',
+        }
+      }
+    }
+
+    report = applyUnknownAccepted(report, project?.unknownAcceptedKeys)
+    if (Array.isArray(report.blockingIssues) && report.blockingIssues.length === 0) {
+      report.status = 'pass'
+    }
+    report.readinessScore = computeReadiness(report)
 
     const forceQuestions = run.forceQuestionGateId && run.forceQuestionGateId === gateId
 
     if ((report.status !== 'pass' || forceQuestions) && isEnabled(flags, 'ff_flow_clarification_pack_v1', false)) {
-      const project = await ctx.db.get(run.projectId)
       const qaPairs = await ctx.db
         .query('qaPairs')
         .withIndex('by_project', (q: any) => q.eq('projectId', run.projectId))
@@ -531,14 +625,17 @@ export const computeValidation = mutation({
         }
       }
 
-      const questionsBlock = buildQuestionsBlock({
-        gateId,
-        report: reportForQuestions,
-        qaPairs,
-        unknownAcceptedKeys: project?.unknownAcceptedKeys,
-        assumptionsAccepted: project?.assumptionsAccepted,
-        dismissedOppKeys: project?.dismissedOppKeys,
-      })
+      const questionsBlock = gateId === 'G0C'
+        ? null
+        : buildQuestionsBlock({
+          gateId,
+          report: reportForQuestions,
+          qaPairs,
+          unknownAcceptedKeys: project?.unknownAcceptedKeys,
+          assumptionsAccepted: project?.assumptionsAccepted,
+          dismissedOppKeys: project?.dismissedOppKeys,
+          hideSuggestions: !!run.toggles?.autoRun,
+        })
 
       if (questionsBlock) {
         ; (report as any).questionsBlock = questionsBlock
@@ -772,3 +869,15 @@ export const tickValidation = internalMutation({
   }
 })
 
+export const setForceQuestionGate = internalMutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    gateId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.flowRunId, {
+      forceQuestionGateId: args.gateId,
+      updatedAt: Date.now(),
+    })
+  },
+})

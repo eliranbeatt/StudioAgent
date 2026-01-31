@@ -300,6 +300,7 @@ export default defineSchema({
     type: v.union(
       v.literal("build"),
       v.literal("rent"),
+      v.literal("buy"),
       v.literal("print"),
       v.literal("transport"),
       v.literal("install"),
@@ -1477,7 +1478,7 @@ export default defineSchema({
     skillId: v.string(), // Unique key e.g. "elements_builder_full"
     labelHe: v.string(),
     descriptionHe: v.string(),
-      category: v.string(), // "planning", "tasks", "knowledge", "review", "shopping"
+    category: v.string(), // "planning", "tasks", "knowledge", "review", "shopping"
     flow: v.optional(v.string()),
     scheduling: v.optional(v.object({
       suggestAfter: v.optional(v.array(v.string())),

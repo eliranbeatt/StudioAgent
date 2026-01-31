@@ -1,0 +1,1057 @@
+GPT plan:
+
+Below is a full end-to-end plan to implement your new non-blocking Flow Agent:
+
+No blocks / no pauses / no “await user input.”
+
+Gates run automatically (sequential spine + optional parallel branches).
+
+Main chat continuously shows question sets (detached from the flow).
+
+Each gate uses whatever answers exist at gate start (snapshot).
+
+Intermediate ChangeSets are auto-approved/applied (but fully visible in Debug mode).
+
+Final “Polish / Audit & Repair” step is optional and only runs when the user clicks, producing a ChangeSet that requires explicit approval.
+
+0) Target behavior in one sentence
+
+Two independent engines run side-by-side:
+
+Flow Engine runs gates to completion without waiting.
+
+Clarification Engine continuously asks questions, collects answers, and improves future outputs—but never blocks the Flow.
+
+1) Core architecture changes
+1.1 Kill “blocks” and replace with runs + snapshots
+
+Before: Gate execution is coupled to UI blocks and can pause on missing info.
+After: Gate execution is driven by a backend orchestrator and always proceeds using a snapshot of known answers + artifacts at gate start.
+
+1.2 Introduce three “durable logs”
+
+You’ll stop thinking in terms of “UI state” and instead in terms of append-only logs:
+
+Answer Log
+
+User answers arrive at any time.
+
+You maintain a merged answerState + answerVersion.
+
+Artifact Revisions
+
+Every gate produces a ChangeSet and a resulting artifact revision (applied automatically for regular gates).
+
+Gate Run Log
+
+Every gate run stores inputs hash, snapshots used, output summary, assumptions, and any ChangeSets created/applied.
+
+This is what makes the system deterministic, debuggable, and parallelizable.
+
+2) Data model you need (minimal but complete)
+2.1 Flow execution
+
+FlowRun
+
+runId, projectId, status, startedAt, finishedAt
+
+graphVersion
+
+currentArtifactRevisionId
+
+answerVersionAtStart
+
+debugModeEnabled
+
+FlowNodeRun (one per gate attempt)
+
+runId, nodeId, attempt
+
+status: queued|running|done|failed|stale
+
+dependsOn[]
+
+artifactRevisionInId
+
+artifactRevisionOutId
+
+answerVersionUsed
+
+inputsHash (idempotency key)
+
+assumptions[], confidence
+
+changesetId (+ appliedAt if auto-applied)
+
+logsRef (prompt/trace token usage / errors)
+
+2.2 Clarification loop
+
+QuestionSet
+
+runId, questionSetId, createdAt
+
+basedOnArtifactRevisionId
+
+basedOnAnswerVersion
+
+questions[] (each with questionId, fieldKey, prompt, choices, priority, whyAsked)
+
+AnswerEvent
+
+runId, questionId, answer, createdAt
+
+fieldKey
+
+source: user|system
+
+answerVersion
+
+AnswerState (derived)
+
+materialized view: fieldKey -> currentValue, with provenance
+
+2.3 ChangeSet system (for everything)
+
+ChangeSet
+
+changesetId, runId, nodeId, createdAt
+
+artifactRevisionInId
+
+ops[] (create/patch/archive/link)
+
+summary, riskLevel
+
+applyPolicy: auto|manual
+
+status: proposed|applied|rejected|stale
+
+ChangeSetApplyLog
+
+changesetId, appliedBy, appliedAt, result: success|failure
+
+artifactRevisionOutId
+
+2.4 Optional polish gate
+
+AuditRun
+
+runId, auditRunId, createdAt
+
+answerVersionUsed, artifactRevisionUsed
+
+validatorFindings[]
+
+changesetId (manual approval)
+
+verificationReport (before/after metrics)
+
+3) Gate execution semantics (the new contract)
+
+Each gate must follow the same lifecycle:
+
+3.1 Gate input = stable snapshot
+
+When a gate starts, it reads:
+
+artifactRevisionInId (latest applied revision)
+
+answerState snapshot at answerVersionUsed
+
+(optional) questionHistory to avoid asking the same thing repeatedly
+
+Rule: once started, it does not change inputs mid-run.
+
+3.2 Gate output = ChangeSet + metadata
+
+A gate produces:
+
+assumptions[] if data was missing
+
+confidence
+
+changeset to update artifacts (elements/tasks/accounting/etc.)
+
+3.3 Auto-approval policy (your requirement)
+
+For all regular gates:
+
+applyPolicy = auto
+
+the system automatically applies the ChangeSet immediately (server-side)
+
+the gate completes and unblocks dependent gates
+
+For the final polish gate:
+
+applyPolicy = manual
+
+nothing is applied until the user clicks “Approve”
+
+4) Flow Orchestrator (how gates run with no pauses)
+4.1 Replace “block UI” with a DAG scheduler
+
+Model gates as a DAG:
+
+Nodes = gates
+
+Edges = dependencies (what must exist before another can run)
+
+Then implement a scheduler loop:
+
+Find all nodes with status=queued and whose dependencies are done
+
+Start up to concurrencyLimit nodes
+
+Each node runs independently and writes results
+
+On completion, mark node done, update currentArtifactRevisionId, and schedule the next tick
+
+Continue until all nodes are done
+
+4.2 Sequential spine + safe parallel branches
+
+Don’t parallelize everything. Do this:
+
+Sequential spine (typical):
+
+Normalize Brief → Ideation → Plan → Tasks → Accounting → Quote → Consolidate
+
+Parallel branches (examples):
+
+Risk analysis
+
+Vendor/lead-time research
+
+Print feasibility checklist
+These branches feed into Consolidate.
+
+4.3 Idempotency & locking (so “true parallel” is safe)
+
+Every node run uses:
+
+inputsHash = hash(artifactRevisionInId + answerVersionUsed + nodeId + graphVersion)
+
+Only one run per (runId, nodeId, inputsHash) may apply
+
+Use a lease/lock when transitioning queued→running
+
+Retries create attempt+1 but only apply if still current
+
+5) Clarification Engine (always-on questions in the main chat)
+5.1 Detached, event-driven question generation (not “continuous spam”)
+
+Generate a new QuestionSet only on triggers:
+
+After gate completion (new artifacts → new unknowns)
+
+After user answers (debounced)
+
+Optional: periodic tick (only if flow still running and no recent questions)
+
+5.2 QuestionSet rules (so it stays clean)
+
+Always derived from:
+
+current artifactRevision
+
+current answerState
+
+previous questions asked + already answered fields
+
+Questions map to canonical fieldKeys so answers are machine-usable.
+
+A QuestionSet should be small (e.g., 3–7 questions) and ordered by “impact.”
+
+5.3 Main chat UX
+
+The main chat shows:
+
+QuestionSet #1 → user answers → QuestionSet #2 → etc.
+
+User can ignore indefinitely.
+
+Answers update answerState immediately.
+
+Importantly: the flow doesn’t pause, and doesn’t “ask for permission.”
+
+6) How gates consume answers without blocking
+6.1 Snapshot timing
+
+When gate starts:
+
+it reads answerVersionUsed = currentAnswerVersion
+
+Late answers do not affect that gate run.
+
+6.2 Late answer policy (recommended default)
+
+To keep behavior predictable:
+
+Do not automatically rerun completed gates.
+
+Late answers influence future gates and the optional polish step.
+
+Optionally (later), you can add:
+
+“Mark stale + selective rerun” for specific gates while flow is still running.
+
+7) Debug mode (show everything, but don’t interrupt)
+
+You want auto-approval + full visibility.
+
+7.1 What debug mode shows (per gate)
+
+For each gate node, show:
+
+Status timeline: queued → running → done
+
+answerVersionUsed
+
+artifactRevisionInId → artifactRevisionOutId
+
+Assumptions + confidence
+
+ChangeSet summary
+
+Applied result (success/failure)
+
+InputsHash (idempotency)
+
+Logs/trace (prompt tokens, errors)
+
+7.2 Where to display it
+
+A Debug panel/side drawer or a “Debug” tab.
+
+Never as blocking modals.
+
+Allow “download / copy ChangeSet” for troubleshooting.
+
+8) Final optional “Polish / Audit & Repair” step (manual trigger)
+8.1 When it appears
+
+Only when FlowRun reaches completed:
+
+UI shows:
+
+✅ Flow completed
+
+Button: Run Audit & Repair (recommended)
+
+Button: Finish without polish
+
+8.2 What it does (pipeline)
+
+When clicked, it runs:
+
+Stage A — Deterministic validators
+
+duplicates
+
+broken links / orphans
+
+enum mismatches
+
+accounting/quote mismatch
+
+missing required fields
+
+dependency cycles
+
+etc.
+
+Stage B — GPT-5.2 medium reasoning “deep audit”
+Input:
+
+latest answerState
+
+compressed artifact graph
+
+validator findings
+Output:
+
+audit report
+
+a ChangeSet bundle (create/patch/archive/link)
+
+expected improvements
+
+Stage C — Verify
+
+simulate apply
+
+rerun validators
+
+produce before/after metrics
+
+8.3 Approval rules
+
+The polish gate produces a ChangeSet with applyPolicy=manual.
+
+User sees grouped changes:
+
+Link repairs
+
+Dedup merges
+
+Missing fields
+
+Accounting/quote sync
+
+Risky changes (unchecked by default)
+
+User clicks Approve to apply.
+
+If answers/artifacts changed since the audit started, mark it stale and recommend re-run.
+
+9) Implementation process (safe rollout)
+Phase 1 — Foundations
+
+Add FlowRun + FlowNodeRun logs
+
+Add ChangeSet entity + apply log
+
+Convert one gate to “produce ChangeSet + auto apply”
+
+Add Debug panel reading from FlowNodeRun
+
+Phase 2 — Remove blocks
+
+Replace UI blocks with orchestrator scheduling
+
+Gate execution no longer depends on UI state
+
+Ensure gates never emit “await input”
+
+Phase 3 — Clarification engine in main chat
+
+Add QuestionSet + AnswerEvent + AnswerState
+
+Implement triggers (gate done / answer submitted)
+
+Show QuestionSets in main chat as the primary interaction
+
+Phase 4 — DAG + limited parallelism
+
+Define dependencies between gates
+
+Add concurrency limit (2–4 to start)
+
+Parallelize safe branches only
+
+Phase 5 — Optional polish gate
+
+Build validator suite + findings format
+
+Implement audit pipeline
+
+Add “Run Audit & Repair” UI + manual approval flow
+
+Phase 6 — Hardening
+
+Idempotency keys + locks/leases
+
+Retry logic and failure containment
+
+Staleness detection
+
+Integration tests + “replay a run” from logs
+
+10) Acceptance criteria (so you know it’s done)
+
+Starting a flow completes without the user answering anything.
+
+Main chat continuously shows question sets; answering never pauses flow.
+
+Each gate logs answerVersionUsed and applies its ChangeSet automatically.
+
+Debug mode shows every gate, its ChangeSet, and applied state.
+
+After completion, polish is offered and only runs on click.
+
+Polish produces a manual ChangeSet; nothing changes until approval.
+
+After applying polish, validators show improved metrics (fewer duplicates/orphans/mismatches).
+
+
+code based plan:
+Below is a repo-aligned implementation plan that maps your non‑blocking Flow Agent requirements onto the existing Flow Agent backend/frontend structure. I’m grounding the plan in what’s currently implemented (flow runs/steps, validation gates, chat blocks, and change sets) and then outlining the precise deltas needed to introduce durable logs, snapshots, non‑blocking gate execution, and the optional audit step. Citations reference the current code and schema so you can trace each recommendation to its starting point.
+
+Current state (from the codebase)
+Flow orchestration + gating (today)
+The flow runner is a single sequential “tick” loop that advances through G0 → G10, runs validation, and blocks when a gate fails validation. It emits FlowGateBlock and FlowBrainDumpBlock messages and, if autoApprove is on, it auto‑applies ChangeSets. This is all in convex/flow/flowRunner.ts.
+
+The runner depends on the flowRuns and flowSteps tables to track the current gate, statuses, and draft ChangeSet IDs.
+
+Flow is tied to chat messages via the flow.chat.* API, which stores agentMessages in agentConversations and triggers the runner when new user messages arrive.
+
+Clarifications (today)
+Clarifications are built from validation blocking issues into a QuestionsBlock via buildQuestionsBlock, which uses QA pairs, unknown‑accepted keys, and dismissed opportunities to filter questions.
+
+Answers are currently stored as QA pairs (qaPairs table) via flowAnswers.submitAnswers, and some “accept unknown / dismiss” actions patch projects state directly.
+
+FlowGateBlock handles submission (ask more / advance / skip) and then triggers flowRunner.tick, which is another blocking linkage between the UI and gate execution.
+
+ChangeSet application (today)
+The flow runner auto‑applies ChangeSets by calling changeSets.applyChangeSetOps, then emits FlowChangeSetSummaryBlock to the chat when auto‑approve is enabled.
+
+The Flow Agent page shows a chat‑first layout with debug/timeline panels and run toggles, but these are still tied to the blocking run model and gate-based flow steps.
+
+Snapshots (today)
+There is already a snapshot builder (buildProjectSnapshot) that creates a full project snapshot (project, elements, tasks, lines, etc.). This can be reused as the basis for artifact revisions.
+
+Implementation plan (repo‑aligned)
+1) Add durable logs + snapshot-aware data model
+Goal: create the three durable logs + audit constructs described in your plan, without breaking existing flowRuns/flowSteps.
+
+Schema updates (new tables + new fields)
+
+Extend flowRuns with:
+
+graphVersion
+
+currentArtifactRevisionId
+
+answerVersionAtStart
+
+debugModeEnabled
+
+(Optional) latestAnswerVersion for quick access
+_Existing flowRuns already stores currentGateId, status, and toggles; we’ll add these alongside the current fields._
+
+Introduce new tables (in convex/schema.ts):
+
+flowArtifactRevisions (artifact snapshot + metadata)
+
+flowNodeRuns (gate run log: inputs hash, snapshots, assumptions, changeSet refs)
+
+flowAnswerEvents (append‑only answer log with answerVersion)
+
+flowQuestionSets (question set log + metadata)
+
+flowChangeSetApplyLogs (applied changeSets + artifact revision outputs)
+
+flowAuditRuns (polish/audit logs + findings + changeSet id)
+
+Preserve existing flowSteps for backwards compatibility; use them as “legacy” gate runs until the new logs take over.
+
+Why this aligns with code:
+The flow runner and UI already expect flowRuns and flowSteps records. Adding new tables lets us introduce the log‑based model without breaking existing runtime assumptions.
+
+2) Artifact revisions + ChangeSet apply pipeline
+Goal: ensure every gate reads a stable snapshot and produces a ChangeSet that results in a new artifact revision.
+
+Backend changes
+
+Create convex/flow/artifactRevisions.ts:
+
+createRevisionFromLive(projectId, source) → uses buildProjectSnapshot and saves to flowArtifactRevisions.
+
+applyChangeSetAndRevision(changeSetId, baseRevisionId) → apply ops and generate new revision.
+
+Hook into changeSets.applyChangeSetOps or add a new wrapper so that any auto‑applied ChangeSet (or manual approval) produces a flowChangeSetApplyLog entry + updated artifact revision pointer.
+
+Update flowRuns.start to generate the first flowArtifactRevision and store it in flowRuns.currentArtifactRevisionId. Currently flowRuns.start just creates a run and enqueues the runner; this is where the initial snapshot should be inserted.
+
+3) Replace the blocking runner with a DAG orchestrator
+Goal: eliminate blocking and run gates with snapshots + answer version.
+
+Implementation steps
+
+Create a new orchestrator action (e.g., convex/flow/orchestrator.ts) that replaces the blocking logic in flowRunner.tick. It should:
+
+Load flowRuns.currentArtifactRevisionId and the latest answerVersion.
+
+Find ready nodes from a DAG definition (new file convex/flow/graph.ts).
+
+Start FlowNodeRun entries for each ready node (respect concurrency limits).
+
+Run gate logic (validators, skills, changeSet creation).
+
+Auto‑apply ChangeSets for regular gates, update currentArtifactRevisionId, and log outcomes.
+
+Move gate order from flowRunner.tick into DAG config. Today the order is hard‑coded (G0‑G10) and the runner blocks on validation issues.
+
+Change blocking semantics: instead of returning on failed validation, gather assumptions + confidence and proceed. The gate’s FlowNodeRun should record:
+
+assumptions[]
+
+confidence
+
+answerVersionUsed
+
+inputsHash
+
+Idempotency + locking: use inputsHash (same hashing approach as today’s gate dedupe hash) to guarantee only one apply per (runId, nodeId, inputsHash) and mark “stale” runs if out of date.
+
+Why this aligns with code:
+The existing flowRunner.tick is a sequential, blocking loop that emits gate blocks and returns when a gate is blocked. We’ll replace that with a scheduler that never blocks, but we can reuse runSkillForGate patterns and ChangeSet application logic from the existing runner.
+
+4) Clarification engine (detached from flow)
+Goal: always‑on questions in chat, but never block the flow.
+
+Backend changes
+
+Add flowQuestionSets + flowAnswerEvents tables.
+
+Build a new “QuestionSet generator” that uses:
+
+flowArtifactRevision (current snapshot)
+
+answerState (derived from flowAnswerEvents)
+
+last question sets (to avoid duplicates)
+
+Trigger question set generation:
+
+After each gate completes (or after ChangeSet apply)
+
+After flowAnswerEvents write (debounced)
+
+Keep using buildQuestionsBlock as a scoring/priority helper but remove the dependency on “blocking issues” to gate flow execution.
+
+Frontend changes
+
+Add a new block component (e.g., FlowQuestionSetBlock) for chat rendering alongside existing block types in FlowChat’s renderer. Right now FlowChat is set up to render QuestionsBlock and FlowGateBlock from messages; you’ll add a new block type for non‑blocking question sets and route answer submissions to the new answer log endpoint.
+
+5) Gate execution contract (snapshot + ChangeSet)
+Goal: every gate reads a stable snapshot and produces a ChangeSet, never blocking.
+
+Implementation detail
+
+When a node starts:
+
+Store artifactRevisionInId
+
+Store answerVersionUsed
+
+Read answerState as of that version
+
+Gate outputs:
+
+ChangeSet + metadata (assumptions/confidence/summary)
+
+auto‑apply for non‑polish gates
+
+Update runSkillForGate to accept artifactRevisionInId and answerSnapshot (or at minimum, include revision id in skill params for traceability).
+
+Why this aligns with code:
+The current flow runner uses buildProjectSnapshot for validation reports and then runs skills to produce ChangeSets. This can be reused but gated by a new snapshot‑first contract rather than live state plus blocking validation checks.
+
+6) Debug mode + logs surfaced in UI
+Goal: show full provenance without blocking the flow.
+
+Frontend changes
+
+Update FlowDebugPanel and FlowTimeline to read from flowNodeRuns and flowChangeSetApplyLogs rather than legacy flowSteps.
+
+Add UI fields for answerVersionUsed, artifactRevisionIn/Out, inputsHash, assumptions/confidence.
+
+Keep the existing debug toggle in FlowAgentPage, just wire it to the new log sources.
+
+7) Optional Audit & Repair step (manual approval)
+Goal: manual “Polish/Audit & Repair” after flow completion.
+
+Backend
+
+Add flowAuditRuns table and an audit.run action:
+
+Stage A: deterministic validators (can reuse validation functions already imported in flowRuns.ts).
+
+Stage B: LLM audit → ChangeSet proposal (manual apply).
+
+Stage C: verify metrics before/after.
+
+Store artifactRevisionUsed + answerVersionUsed to detect staleness.
+
+Frontend
+
+When FlowRun.status === completed, show:
+
+Button: “Run Audit & Repair”
+
+Button: “Finish without polish”
+
+Render the resulting audit ChangeSet in the chat (manual approval in ChangeSetReviewDrawer already exists).
+
+8) Migration + rollout
+Goal: transition safely without breaking current runs.
+
+Steps
+
+Phase 1: Add new tables + write paths (logs, revisions) without turning off old flowSteps. Keep flowRunner.tick but begin storing flowNodeRuns + flowArtifactRevisions in parallel.
+
+Phase 2: Introduce orchestrator with a feature flag (e.g., ff_flow_runner_v2) and route flowRuns.runNext to it when enabled.
+
+Phase 3: Replace FlowGateBlock blocking semantics with non‑blocking question sets and retire forceQuestionGateId in flowRuns.
+(You can keep the component but use it only for debugging or admin override if needed.)
+
+Phase 4: Add audit pipeline + manual approval.
+
+
+
+phase by phase implemtation:
+
+Below is a phase‑by‑phase task list with the specific files to touch for each phase, based on the current repo structure. I’m only listing work (no code changes), as requested.
+
+Phase 1 — Foundations (durable logs + artifact revisions)
+Tasks
+
+Extend flowRuns schema to add run‑level fields needed for snapshots + versioning (e.g., graphVersion, currentArtifactRevisionId, answerVersionAtStart, debugModeEnabled).
+
+Add new log tables:
+
+flowNodeRuns (gate run log with inputsHash, snapshots, assumptions, changeSet refs)
+
+flowArtifactRevisions (snapshot + metadata)
+
+flowAnswerEvents (append‑only answers + version)
+
+flowQuestionSets (question batches)
+
+flowChangeSetApplyLogs (apply outcomes)
+
+flowAuditRuns (optional polish)
+
+Create an artifact revision API (create/read/apply) based on the existing snapshot builder.
+
+Initialize first artifact revision when a flow run starts.
+
+Files
+
+convex/schema.ts — add new tables/fields; currently defines flowRuns, flowSteps, and qaPairs to extend alongside.
+
+convex/flow/snapshotBuilder.ts — reuse buildProjectSnapshot to back artifact revisions.
+
+convex/flowRuns.ts — start flow runs here; hook in revision creation at run start.
+
+Phase 2 — Replace blocking flow runner with orchestrator
+Tasks
+
+Create a new DAG orchestrator that schedules gate runs without pausing on missing info.
+
+Record every gate run into flowNodeRuns (inputs hash, snapshot ids, assumptions, confidence).
+
+Auto‑apply ChangeSets for non‑polish gates and advance currentArtifactRevisionId.
+
+Files
+
+convex/flow/flowRunner.ts — currently a sequential, blocking runner; replace or route to new orchestrator logic here or in a new module.
+
+convex/flowRuns.ts — wire runNext / scheduled ticks to the new orchestrator.
+
+Phase 3 — Clarification engine (detached questions in chat)
+Tasks
+
+Implement flowAnswerEvents write path (append‑only answers + version).
+
+Build a QuestionSet generator based on:
+
+current flowArtifactRevision
+
+derived answerState
+
+question history
+
+Emit QuestionSet blocks into the chat on:
+
+gate completion
+
+answer submission (debounced)
+
+Files
+
+convex/flow/clarificationPackBuilder.ts — already builds QuestionsBlock based on blocking issues; reuse logic for prioritization but detach from blocking gates.
+
+convex/flow/chat.ts — chat emitters and triggers already exist; add QuestionSet emission here or via a helper.
+
+convex/flowAnswers.ts — currently stores answers as qaPairs; add new flowAnswerEvents pipeline here or new module.
+
+Phase 4 — DAG + limited parallelism
+Tasks
+
+Define the DAG graph (sequential spine + safe parallel branches).
+
+Add concurrency limits (2–4) for gate runs.
+
+Add idempotency + locking using an inputsHash at the flowNodeRuns layer.
+
+Files
+
+convex/flow/flowRunner.ts — existing GATE_ORDER is sequential; replace with DAG node/edge config.
+
+(New file) convex/flow/graph.ts — define DAG and dependencies (introduced in this phase).
+
+Phase 5 — Optional “Polish / Audit & Repair”
+Tasks
+
+Add Audit pipeline:
+
+Deterministic validators
+
+LLM audit pass
+
+Verification after simulated apply
+
+Emit a manual ChangeSet (applyPolicy=manual) and require explicit approval.
+
+Expose UI entry point only after flow completes.
+
+Files
+
+convex/flowRuns.ts — run completion already handled here; add “post‑completion” audit trigger or link to audit action.
+
+convex/flow/validation/* — validators used today; reuse for audit checks.
+
+src/app/projects/[id]/flow-agent/page.tsx — render audit controls in the Flow Agent UI after completion.
+
+Phase 6 — Debug panel & UX visibility
+Tasks
+
+Replace debug/timeline data sources to read from flowNodeRuns and flowChangeSetApplyLogs.
+
+Expose snapshots + assumptions + inputs hash in Debug view.
+
+Files
+
+src/app/projects/[id]/flow-agent/_components/FlowDebugPanel.tsx — currently reads steps/reports; update to new logs.
+
+src/app/projects/[id]/flow-agent/_components/FlowTimeline.tsx — adjust to new run log model.
+
+Phase 7 — Chat rendering for QuestionSets
+Tasks
+
+Add a new FlowQuestionSetBlock component for non‑blocking questions in the main chat feed.
+
+Update FlowChat BlockRenderer to render this new block type.
+
+Files
+
+src/app/projects/[id]/flow-agent/_components/FlowChat.tsx — add new block rendering case here.
+
+src/app/projects/[id]/flow-agent/_components/Blocks/* — add a new block component near existing flow blocks (FlowGateBlock, FlowBrainDumpBlock).
+
+
+
+per ticket with acceptance critiria:
+
+Below is a per‑ticket breakdown with acceptance criteria and files to touch (or create). This is grounded in the current repo structure and existing Flow Agent implementation. Citations point to the current code and schema locations that each ticket builds upon.
+
+Epic: Non‑blocking Flow Agent (Flow v2)
+Ticket 1 — Add durable logs + revision schema
+Description: Extend the schema to support Flow v2 logs and artifact revisions (no runtime changes yet).
+Files
+
+convex/schema.ts (add tables + new flowRuns fields).
+
+Acceptance Criteria
+
+New tables exist: flowArtifactRevisions, flowNodeRuns, flowAnswerEvents, flowQuestionSets, flowChangeSetApplyLogs, flowAuditRuns.
+
+flowRuns includes fields for graphVersion, currentArtifactRevisionId, answerVersionAtStart, debugModeEnabled.
+
+Schema validates (Convex compile passes).
+
+Ticket 2 — Artifact revision API
+Description: Create a minimal API for writing and reading artifact revisions.
+Files
+
+convex/flow/snapshotBuilder.ts (reuse snapshot structure).
+
+(New) convex/flow/artifactRevisions.ts (create/get/apply).
+
+Acceptance Criteria
+
+A revision can be created from a live project snapshot.
+
+A revision record includes a stable snapshot and metadata (createdAt, source).
+
+API returns the created revision id.
+
+Ticket 3 — Initialize revision on FlowRun start
+Description: Update FlowRun creation to store the initial artifact revision.
+Files
+
+convex/flowRuns.ts (flow run start).
+
+Acceptance Criteria
+
+Starting a flow run creates a flowArtifactRevision.
+
+flowRuns.currentArtifactRevisionId is set.
+
+Existing FlowRun creation still works as before.
+
+Ticket 4 — DAG definition + concurrency limits
+Description: Introduce a formal DAG graph definition for the new orchestrator.
+Files
+
+(New) convex/flow/graph.ts
+
+convex/flow/flowRunner.ts (reference graph).
+
+Acceptance Criteria
+
+Graph defines nodes, dependencies, and concurrency limits.
+
+Graph includes the sequential spine (G0 → G10) plus placeholders for safe branches.
+
+Graph is exportable for orchestrator use.
+
+Ticket 5 — Orchestrator skeleton (non‑blocking)
+Description: Replace blocking flow runner with a scheduler that runs ready nodes in a DAG.
+Files
+
+convex/flow/flowRunner.ts (replace tick logic).
+
+Acceptance Criteria
+
+Orchestrator schedules nodes with dependencies satisfied.
+
+No gate can block the orchestrator (no returns for missing info).
+
+Each node run creates a flowNodeRuns entry.
+
+Ticket 6 — Gate snapshot contract + inputs hash
+Description: Each node run uses a stable snapshot and answer version.
+Files
+
+convex/flow/flowRunner.ts (node run creation).
+
+Acceptance Criteria
+
+Node runs store: artifactRevisionInId, answerVersionUsed, inputsHash.
+
+Inputs hash is stable for the same (revision + answerVersion + nodeId + graphVersion).
+
+A node run can be marked stale if inputs change mid‑run.
+
+Ticket 7 — Auto‑apply ChangeSets + revision outputs
+Description: Auto‑apply ChangeSets for non‑polish gates and log revision outputs.
+Files
+
+convex/flow/flowRunner.ts (apply + advance).
+
+convex/changeSets.ts (apply logic hook).
+
+Acceptance Criteria
+
+When a ChangeSet is auto‑applied, flowChangeSetApplyLogs is written.
+
+A new flowArtifactRevision is created and set on the run.
+
+Existing ChangeSet approval flow still works for manual mode.
+
+Ticket 8 — Answer event log + derived AnswerState
+Description: Store answers in an append‑only stream and build a derived view.
+Files
+
+convex/flowAnswers.ts (write answer events).
+
+(New) convex/flow/answerState.ts (derive current answers).
+
+Acceptance Criteria
+
+Each answer creates a flowAnswerEvent with incrementing answerVersion.
+
+A read API returns answerState by fieldKey.
+
+Existing QA pair writes can remain (for backwards compatibility).
+
+Ticket 9 — QuestionSet generator
+Description: Generate small, prioritized question sets on triggers.
+Files
+
+convex/flow/clarificationPackBuilder.ts (reuse prioritization).
+
+(New) convex/flow/questionSets.ts (generator + trigger).
+
+Acceptance Criteria
+
+New QuestionSets are created after gate completion and answer submission.
+
+QuestionSet size is limited (e.g., 3–7 questions).
+
+QuestionSet excludes previously answered fieldKeys.
+
+Ticket 10 — Emit QuestionSets into chat
+Description: Show QuestionSets in main chat without blocking flow.
+Files
+
+convex/flow/chat.ts (emit blocks).
+
+src/app/projects/[id]/flow-agent/_components/FlowChat.tsx (renderer).
+
+Acceptance Criteria
+
+QuestionSet blocks appear as assistant messages.
+
+Answering a QuestionSet does not pause or gate the flow.
+
+Existing chat blocks still render correctly.
+
+Ticket 11 — Gate UI no longer blocks flow
+Description: Update FlowGateBlock semantics (no “submit to unblock”).
+Files
+
+src/app/projects/[id]/flow-agent/_components/Blocks/FlowGateBlock.tsx (update actions).
+
+convex/flow/gateActions.ts (submit actions).
+
+Acceptance Criteria
+
+Gate block can submit answers but does not pause/advance flow.
+
+“Submit and continue” does not control orchestration flow.
+
+Flow continues to run with snapshots regardless of gate input state.
+
+Ticket 12 — Debug panel uses new logs
+Description: Replace flowSteps debug data with flowNodeRuns + apply logs.
+Files
+
+src/app/projects/[id]/flow-agent/_components/FlowDebugPanel.tsx
+
+src/app/projects/[id]/flow-agent/_components/FlowTimeline.tsx
+
+Acceptance Criteria
+
+Debug panel shows node status timeline, inputsHash, snapshot ids.
+
+Debug panel shows ChangeSet summary + apply outcome.
+
+No dependency on legacy flowSteps.
+
+Ticket 13 — Polish / Audit & Repair (manual)
+Description: Add optional audit pipeline after flow completion.
+Files
+
+convex/flowRuns.ts (completion).
+
+convex/flow/validation/* (reuse validators).
+
+src/app/projects/[id]/flow-agent/page.tsx (UI buttons).
+
+Acceptance Criteria
+
+Button appears after flow completes: “Run Audit & Repair”.
+
+Audit run produces a ChangeSet with manual apply policy.
+
+Applying audit ChangeSet updates revision logs and marks audit run complete.
+
+Ticket 14 — Feature flag + staged rollout
+Description: Gate new orchestrator behind a new flag (e.g., ff_flow_runner_v2).
+Files
+
+convex/flow/flowRunner.ts (branch by flag).
+
+convex/featureFlags config (new flag, if used).
+
+Acceptance Criteria
+
+ff_flow_runner_v2 toggles between old and new runner.
+
+Legacy flow remains functional when flag is off.

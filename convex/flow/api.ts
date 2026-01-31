@@ -126,7 +126,6 @@ export const startProjectFlow = mutation({
       updatedAt: Date.now(),
     });
 
-    const flags = await loadFlags(ctx)
     const useWebSearch = isEnabled(flags, "ff_flow_web_pricing", false)
 
     const runId = await ctx.db.insert("flowRuns", {

@@ -1,0 +1,122 @@
+AutoFlow v2 (Validated, repo-aligned)
+Date: 2026-01-31
+
+Validation Summary (from current code)
+- Flow Runner is sequential + blocking in `convex/flow/flowRunner.ts`, driven by `flowRuns`/`flowSteps` and validation gates. This matches the spec’s “current state.”
+- Clarification questions are produced by `buildQuestionsBlock` and rendered as `QuestionsBlock` in Flow chat. A dedicated FlowGateBlock is implemented in UI, but is not emitted by the backend today. Plan below uses `QuestionsBlock` for non-blocking QuestionSets and leaves FlowGateBlock as optional debug/admin tooling.
+- Skills runner builds context from live DB (`convex/skills/runner.ts`), so true snapshot-determinism requires an explicit snapshot input path. Plan includes this delta.
+- ChangeSets already support base snapshots + apply logic. We can add apply logs + revision outputs without breaking existing flows.
+- No hard technical blockers. Main risks (snapshot size, parallel apply conflicts, snapshot-context wiring) are addressed in Phase 0/7.
+
+Phase 0 — Alignment + Flags (short prep)
+Tasks
+- Add `ff_flow_runner_v2` to `convex/featureFlags.ts` and expose in UI/runner routing.
+- Decide QuestionSet format: reuse `QuestionsBlock` renderer in Flow chat (no new UI type needed unless you want distinct styling).
+- Define gate graph IDs and node list (match current G0–G10 + optional branches).
+- Define snapshot policy for skills: `buildContext` can accept `{ artifactRevisionId }` and read from stored snapshot instead of live DB.
+- Update `scripts/flow_chat_smoke.ts` expectations to allow QuestionsBlock (not FlowGateBlock) for non-blocking mode.
+Acceptance
+- Feature flag present; routing decision documented; smoke script aligned with new block type.
+
+Phase 1 — Durable Logs + New Tables
+Tasks
+- Extend `flowRuns` with: `graphVersion`, `currentArtifactRevisionId`, `answerVersionAtStart`, `debugModeEnabled`, optional `latestAnswerVersion`.
+- Add new tables in `convex/schema.ts`:
+  - `flowArtifactRevisions` (snapshot + metadata)
+  - `flowNodeRuns` (gate run log)
+  - `flowAnswerEvents` (append-only answers)
+  - `flowQuestionSets` (question batches)
+  - `flowChangeSetApplyLogs` (apply outcomes)
+  - `flowAuditRuns` (polish runs)
+- Add minimal indexes for run lookups: by runId, by nodeId, by createdAt.
+Acceptance
+- Convex schema compiles; new tables accessible.
+
+Phase 2 — Artifact Revisions + Apply Pipeline
+Tasks
+- Create `convex/flow/artifactRevisions.ts`:
+  - `createRevisionFromLive(projectId, source)` uses `buildProjectSnapshot`.
+  - `createRevisionFromSnapshot(snapshot, meta)` stores snapshot + hash.
+  - `applyChangeSetAndCreateRevision(changeSetId, baseRevisionId)` wrapper.
+- Update `flowRuns.start` (`convex/flowRuns.ts`) to create initial artifact revision and store `currentArtifactRevisionId`.
+- Update auto-apply path in `flowRunner` (v2) to call the wrapper and write `flowChangeSetApplyLogs`.
+- Ensure manual apply (existing ChangeSet UI) can still write apply logs when invoked via flow.
+Acceptance
+- New revision created on run start; apply log exists for each auto-applied ChangeSet; `currentArtifactRevisionId` advances.
+
+Phase 3 — Non-blocking Orchestrator (DAG)
+Tasks
+- Add DAG config in `convex/flow/graph.ts` (nodes, edges, concurrency limit).
+- Create new orchestrator action (e.g., `convex/flow/orchestrator.ts`) that:
+  - Loads run + `currentArtifactRevisionId` + latest `answerVersion`.
+  - Picks ready nodes (dependencies satisfied) up to concurrency limit.
+  - Creates `flowNodeRuns` with `inputsHash`, `answerVersionUsed`, `artifactRevisionInId`.
+  - Runs gate skills/validators and produces ChangeSets.
+  - Auto-applies ChangeSets for regular gates and advances `currentArtifactRevisionId`.
+- Replace `flowRunner.tick` internals to route to v2 when `ff_flow_runner_v2` is enabled; keep v1 as fallback.
+- Remove “blocked” early returns for missing info; record assumptions in `flowNodeRuns` instead.
+Acceptance
+- Flow run completes without user answers; gates do not block; `flowNodeRuns` entries exist for each node.
+
+Phase 4 — Snapshot-aware Context + Answer Events
+Tasks
+- Add `flowAnswerEvents` write path (append-only) in `convex/flowAnswers.ts` (or new module), with `answerVersion` incrementing per run.
+- Add `convex/flow/answerState.ts` to derive `answerState` by `fieldKey` at a given version.
+- Bridge to legacy `qaPairs` (write-through or derived) so skills still see answers.
+- Update `convex/skills/runner.ts` `buildContext` to accept optional `artifactRevisionId` and `answerState` snapshot. Use stored snapshot when provided.
+- Ensure gates pass `artifactRevisionId` + `answerVersionUsed` into skill params for traceability.
+Acceptance
+- Answer events stored; answerState can be retrieved by version; skills can run against snapshot context when provided.
+
+Phase 5 — Clarification Engine (QuestionSets)
+Tasks
+- Add `convex/flow/questionSets.ts` to generate small QuestionSets (3–7), using:
+  - current artifact revision
+  - answerState snapshot
+  - prior questions to avoid repeats
+- Triggers:
+  - after each gate completion
+  - after answer submission (debounced)
+- Emit QuestionSets into chat using `flow.chat.emitAssistantBlocks` with `QuestionsBlock` payload.
+- Update `flow.gateActions.submitGateAnswers` to write answer events without advancing flow; remove forceQuestionGate logic for v2.
+Acceptance
+- QuestionSets appear in chat even if flow is running; answering never blocks or advances gates.
+
+Phase 6 — UI Updates + Debug Visibility
+Tasks
+- Flow chat: keep rendering `QuestionsBlock` via `FlowQuestionsBlock` for non-blocking sets.
+- Update `FlowDebugPanel` + `FlowTimeline` to read from `flowNodeRuns` + `flowChangeSetApplyLogs`.
+- Optionally keep `FlowGateBlock` for admin/debug actions only (not required in normal flow).
+Acceptance
+- Debug shows inputsHash, revision IDs, answerVersionUsed, ChangeSet apply results; no dependency on legacy `flowSteps`.
+
+Phase 7 — Optional Audit & Repair (Manual)
+Tasks
+- Add `flowAuditRuns` table and `flow.audit.run` action:
+  - Stage A: deterministic validators (reuse `validateG*` where applicable).
+  - Stage B: LLM audit to propose ChangeSet (manual approval only).
+  - Stage C: simulate apply + re-validate; store before/after metrics.
+- UI: in `src/app/projects/[id]/flow-agent/page.tsx`, show “Run Audit & Repair” when flow completes; route to ChangeSet review drawer for approval.
+Acceptance
+- Audit only runs on click; produces manual ChangeSet; apply updates revision logs and audit run status.
+
+Phase 8 — Hardening + Rollout
+Tasks
+- Idempotency & locks: enforce single apply per `(runId, nodeId, inputsHash)`; mark stale node runs.
+- Parallelism safety: restrict parallel branches to non-overlapping artifacts or serialize apply to avoid base snapshot conflicts.
+- Staleness detection: if `currentArtifactRevisionId` advances after node start, mark node run stale and skip apply.
+- Add replay tooling: rebuild final state from `flowNodeRuns` + revision logs.
+- Update/replace scripts/tests to reflect v2 behavior.
+Acceptance
+- No duplicate applies; stale runs are detected; flow can be replayed from logs.
+
+Notes on Known Risks (mitigated)
+- Snapshot size: if full snapshots exceed Convex doc limits, store compact snapshots (ids + fields needed by skills) or split by entity type.
+- Parallel apply conflicts: apply sequentially or restrict parallel branches to read-only/output-only until merge strategy exists.
+- Skill determinism: ensure `buildContext` can be fed a stored snapshot to avoid live DB drift during a gate run.
+
+End State
+- Flow runs end-to-end without blocking.
+- Questions appear continuously in main chat, detached from gate execution.
+- Each gate uses stable snapshots, logs inputs/outputs, and auto-applies ChangeSets.
+- Optional audit is manual and reversible.

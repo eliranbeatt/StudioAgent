@@ -157,7 +157,7 @@ export const tick = internalAction({
       await ctx.runMutation(internal.flowRuns.clearAwaitingApproval, { flowRunId })
     }
 
-    const GATE_ORDER = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'] as const
+    const GATE_ORDER = ['G0', 'G0C', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'] as const
 
     // Auto-advance can walk multiple gates in one tick, but is bounded.
     // We stop as soon as we generate draft ChangeSets (awaiting approval) or hit a blocked gate.
@@ -210,30 +210,7 @@ export const tick = internalAction({
           }
         }
 
-        if (step?.lastEmittedHash !== gateHash) {
-          await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
-            conversationId,
-            blocks: [
-              {
-                type: 'FlowGateBlock',
-                gateId: refreshed.currentGateId,
-                status: report?.status,
-                readinessScore: report?.readinessScore,
-                blockingIssues: report?.blockingIssues ?? [],
-                warnings: report?.warnings ?? [],
-                questionsBlock: report?.questionsBlock ?? null,
-              },
-            ],
-          })
-
-          await ctx.runMutation(internal.flowRuns.setStepLastEmittedHash, {
-            flowRunId,
-            gateId: refreshed.currentGateId,
-            lastEmittedHash: gateHash,
-          })
-        }
-
-        if (!step?.draftChangeSetIds || step.draftChangeSetIds.length === 0) {
+        if (refreshed.toggles?.autoRun && (!step?.draftChangeSetIds || step.draftChangeSetIds.length === 0)) {
           const dependsOnIssueKeys = Array.isArray(report?.blockingIssues)
             ? report.blockingIssues.map((i: any) => i.key).filter(Boolean)
             : []
@@ -241,9 +218,9 @@ export const tick = internalAction({
             ? project.assumptionsAccepted.map((a: any) => a?.key).filter(Boolean)
             : []
 
-          const draftIds = await runSkillForGate(ctx, {
+          const draftResult = await runSkillForGate(ctx, {
             projectId: refreshed.projectId,
-            conversationId: await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId }),
+            conversationId,
             gateId: refreshed.currentGateId,
             useWebSearch: !!refreshed.toggles?.useWebSearch,
             flags,
@@ -252,30 +229,19 @@ export const tick = internalAction({
             assumptionsUsed,
           })
 
-          console.log('[flowRunner.tick] draft ChangeSets', {
-            flowRunId,
-            gateId: refreshed.currentGateId,
-            count: draftIds.length,
-          })
-
-          if (draftIds.length > 0) {
+          if (draftResult.changeSetIds.length > 0) {
             await ctx.runMutation(internal.flowRuns.setDraftChangeSets, {
               flowRunId,
               gateId: refreshed.currentGateId,
-              draftChangeSetIds: draftIds,
+              draftChangeSetIds: draftResult.changeSetIds,
             })
           }
-        }
 
-        if (refreshed.toggles?.autoApprove) {
-          const stepAfter = await ctx.runQuery(internal.flowRuns.getStepInternal, {
-            flowRunId,
-            gateId: refreshed.currentGateId,
-          })
-
-          const ids = (stepAfter?.draftChangeSetIds ?? []) as Array<Id<'changeSets'>>
-          if (ids.length > 0) {
-            const changeSets = await Promise.all(ids.map((id) => ctx.runQuery(api.changeSets.get, { id })))
+          if (refreshed.toggles?.autoApprove && draftResult.changeSetIds.length > 0) {
+            let didApplyAny = false
+            const changeSets = await Promise.all(
+              draftResult.changeSetIds.map((id) => ctx.runQuery(api.changeSets.get, { id }))
+            )
             const summaries: Array<{ changeSetId: Id<'changeSets'>; title?: string; detail?: string }> = []
             for (const cs of changeSets) {
               if (!cs || isResolvedChangeSetStatus(cs.status)) continue
@@ -286,6 +252,7 @@ export const tick = internalAction({
                 changeSetId: cs._id,
                 opIndices,
               })
+              didApplyAny = true
               summaries.push({
                 changeSetId: cs._id,
                 title: cs.reason_he ?? cs.report_he?.summaryHe ?? 'Change set applied',
@@ -294,7 +261,6 @@ export const tick = internalAction({
             }
 
             if (summaries.length > 0) {
-              const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
               await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
                 conversationId,
                 blocks: [
@@ -305,11 +271,93 @@ export const tick = internalAction({
                 ],
               })
             }
+
+            if (didApplyAny) {
+              await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
+              return
+            }
           }
 
-          await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
+          if (draftResult.hasQuestions) {
+            return
+          }
         }
-        return
+
+        if (report?.questionsBlock) {
+          if (step?.lastEmittedHash !== gateHash) {
+            await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
+              conversationId,
+              blocks: [report.questionsBlock],
+            })
+
+            await ctx.runMutation(internal.flowRuns.setStepLastEmittedHash, {
+              flowRunId,
+              gateId: refreshed.currentGateId,
+              lastEmittedHash: gateHash,
+            })
+          }
+
+          return
+        }
+
+        const currentGateId = refreshed.currentGateId
+        const currentIndex = GATE_ORDER.indexOf(currentGateId as any)
+        const nextGateId = currentIndex >= 0 ? (GATE_ORDER[currentIndex + 1] as string | undefined) : undefined
+        if (!nextGateId) {
+          console.log('[flowRunner.tick] completed after skip', { flowRunId })
+          await ctx.runAction(api.memory.generateProjectContextDoc, { projectId: refreshed.projectId })
+          const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
+          const contextDoc = await ctx.runQuery(api.memory.getProjectContextDoc, { projectId: refreshed.projectId })
+          await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
+            conversationId,
+            blocks: [
+              {
+                type: 'ChatBlock',
+                markdownHe: 'Project Context document created and saved in Knowledge → Project Context.',
+              },
+              ...(contextDoc?.contentMd_he
+                ? [
+                    {
+                      type: 'ChatBlock',
+                      markdownHe: contextDoc.contentMd_he,
+                    },
+                  ]
+                : []),
+            ],
+          })
+          await ctx.runMutation(internal.flowRuns.setRunStatus, { flowRunId, status: 'completed' })
+          return
+        }
+
+        console.log('[flowRunner.tick] auto-skip blocked gate', { flowRunId, from: currentGateId, to: nextGateId })
+        await ctx.runMutation(internal.flowRuns.setRunStatus, { flowRunId, status: 'running' })
+        await ctx.runMutation(internal.flowRuns.advanceToGate, {
+          flowRunId,
+          gateId: nextGateId,
+        })
+
+        const conversationIdForNext = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
+        const maybeDraftChangeSetIds = await runSkillForGate(ctx, {
+          projectId: refreshed.projectId,
+          conversationId: conversationIdForNext,
+          gateId: nextGateId,
+          useWebSearch: !!refreshed.toggles?.useWebSearch,
+          flags,
+        })
+
+        if (maybeDraftChangeSetIds.changeSetIds.length > 0) {
+          await ctx.runMutation(internal.flowRuns.setAwaitingApproval, {
+            flowRunId,
+            gateId: nextGateId,
+            draftChangeSetIds: maybeDraftChangeSetIds.changeSetIds,
+          })
+          if (refreshed.toggles?.autoApprove) {
+            await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
+          }
+          return
+        }
+
+        continue
       }
 
       const projectId = refreshed.projectId
@@ -362,14 +410,14 @@ export const tick = internalAction({
       console.log('[flowRunner.tick] gate result', {
         flowRunId,
         gateId: nextGateId,
-        changeSets: maybeDraftChangeSetIds.length,
+        changeSets: maybeDraftChangeSetIds.changeSetIds.length,
       })
 
-      if (maybeDraftChangeSetIds.length > 0) {
+      if (maybeDraftChangeSetIds.changeSetIds.length > 0) {
         await ctx.runMutation(internal.flowRuns.setAwaitingApproval, {
           flowRunId,
           gateId: nextGateId,
-          draftChangeSetIds: maybeDraftChangeSetIds,
+          draftChangeSetIds: maybeDraftChangeSetIds.changeSetIds,
         })
         if (refreshed.toggles?.autoApprove) {
           await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
@@ -392,12 +440,13 @@ async function runSkillForGate(
     dependsOnIssueKeys?: string[]
     assumptionsUsed?: string[]
   }
-): Promise<Array<Id<'changeSets'>>> {
+): Promise<{ changeSetIds: Array<Id<'changeSets'>>; hasQuestions: boolean }> {
   const pricingGatesEnabled = isEnabled(args.flags, 'ff_flow_pricing_gates', false)
   const webPricingEnabled = isEnabled(args.flags, 'ff_flow_web_pricing', false)
 
   const skills: string[] = []
 
+  if (args.gateId === 'G0C') skills.push('ELEMENTS_BUILDER_FULL')
   if (args.gateId === 'G1') skills.push('ELEMENTS_BUILDER_FULL')
   if (args.gateId === 'G2') skills.push('TASKS_BUILDER_FULL')
   if (args.gateId === 'G3') skills.push('ACCOUNTING_BUILDER_FULL')
@@ -409,6 +458,7 @@ async function runSkillForGate(
       skills.push('PRICING_RESEARCH_WEB_BATCH')
     }
     skills.push('PRICING_ESTIMATE_FALLBACK_BATCH')
+    skills.push('BOM_DUPLICATE_ANALYZER')
   }
 
   if (args.gateId === 'G5') {
@@ -437,7 +487,7 @@ async function runSkillForGate(
     skills.push('CONTEXT_GENERATION')
   }
 
-  if (skills.length === 0) return []
+  if (skills.length === 0) return { changeSetIds: [], hasQuestions: false }
 
   console.log('[flowRunner.runSkillForGate] start', {
     gateId: args.gateId,
@@ -447,9 +497,12 @@ async function runSkillForGate(
   })
 
   const out: Array<Id<'changeSets'>> = []
+  let hasQuestions = false
 
   for (const skillId of skills) {
     console.log('[flowRunner.runSkillForGate] runSkill', { gateId: args.gateId, skillId })
+    const shouldSkipClarifications = !['G0C', 'G1', 'G2', 'G3'].includes(args.gateId)
+    const forceClarifications = args.gateId === 'G0C' && skillId === 'ELEMENTS_BUILDER_FULL'
     const blocks = await ctx.runAction(api.skills.runner.runSkill, {
       projectId: args.projectId,
       conversationId: args.conversationId,
@@ -458,7 +511,8 @@ async function runSkillForGate(
         source: 'flow_runner',
         toggles: { useWebSearch: args.useWebSearch },
         draftOnly: !!args.draftOnly,
-        skipClarifications: true,
+        skipClarifications: shouldSkipClarifications,
+        forceClarifications,
         dependsOnIssueKeys: args.dependsOnIssueKeys,
         assumptionsUsed: args.assumptionsUsed,
       },
@@ -467,9 +521,10 @@ async function runSkillForGate(
     for (const block of Array.isArray(blocks) ? blocks : []) {
       const id = block?.changeSetId
       if (id) out.push(id)
+      if (block?.type === 'QuestionsBlock') hasQuestions = true
     }
   }
 
   console.log('[flowRunner.runSkillForGate] done', { gateId: args.gateId, changeSets: out.length })
-  return out
+  return { changeSetIds: out, hasQuestions }
 }

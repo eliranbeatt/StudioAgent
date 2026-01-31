@@ -457,7 +457,7 @@ export const updateElementMeta = mutation({
   handler: async (ctx, args) => {
     const element = await ctx.db.get(args.elementId);
     if (!element) throw new Error("Element not found.");
-    const allowedTypes = new Set(["build", "rent", "print", "transport", "install", "subcontract", "mixed"]);
+    const allowedTypes = new Set(["build", "rent", "buy", "print", "transport", "install", "subcontract", "mixed"]);
     if (args.type && !allowedTypes.has(args.type)) throw new Error("Invalid element type.");
     const updates: any = { updatedAt: Date.now() };
     if (args.title !== undefined) updates.title = args.title;

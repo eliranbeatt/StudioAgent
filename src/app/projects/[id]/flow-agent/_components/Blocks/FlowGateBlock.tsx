@@ -41,6 +41,9 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
   const suggestions = useMemo(() => (questionsBlock?.suggestions ?? []) as Array<any>, [questionsBlock])
   const blockingIssues = Array.isArray(block?.blockingIssues) ? block.blockingIssues : []
   const warnings = Array.isArray(block?.warnings) ? block.warnings : []
+  const hideSuggestions = !!(block?.hideSuggestions || questionsBlock?.hideSuggestions)
+  const freeTextTitle = questionsBlock?.freeTextTitleHe ?? 'Free text'
+  const freeTextPrompt = questionsBlock?.freeTextPromptHe ?? 'Add any extra context or notes...'
 
   const submit = async (intent: 'ask_more' | 'advance' | 'skip') => {
     if (isSubmitting) return
@@ -74,11 +77,30 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
     }
   }
 
+  const GATE_TITLES: Record<string, string> = {
+    G0: 'Project Brief',
+    G0C: 'Clarifications',
+    G1: 'Elements',
+    G2: 'Tasks',
+    G3: 'Accounting',
+    G4: 'Pricing',
+    G5: 'Enrichment',
+    G6: 'Logistics',
+    G7: 'Approval',
+    G8: 'Quote',
+    G9: 'Audit',
+    G10: 'Context',
+  }
+
+  const gateTitle = GATE_TITLES[block?.gateId] ?? ''
+
   return (
     <div className='rounded-xl border border-amber-200 bg-white p-4 shadow-sm'>
       <div className='flex items-start justify-between gap-3'>
         <div>
-          <div className='text-xs font-semibold text-gray-900'>Gate {block?.gateId ?? '—'} needs input</div>
+          <div className='text-xs font-semibold text-gray-900'>
+            Gate {block?.gateId ?? '—'} {gateTitle ? `• ${gateTitle}` : ''} needs input
+          </div>
           <div className='mt-1 text-[11px] text-gray-500'>
             Status: {block?.status ?? 'blocked'} • Readiness:{' '}
             {typeof block?.readinessScore === 'number' ? block.readinessScore.toFixed(2) : '—'}
@@ -127,6 +149,9 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
           {questions.map((q: any, index: number) => {
             const qid = q.id ?? `q${index}`
             const options = Array.isArray(q.optionsHe) ? q.optionsHe : []
+            const qType = q.type ?? 'text'
+            const isSingle = qType === 'single' || qType === 'toggle'
+            const isMulti = qType === 'multi'
             return (
               <div key={qid} className='rounded-lg border border-gray-200 bg-white p-3'>
                 <div className='text-xs font-medium text-gray-900'>{q.textHe ?? qid}</div>
@@ -149,7 +174,13 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
                               if (current.includes(opt)) {
                                 return { ...prev, [qid]: current.filter((v) => v !== opt) }
                               }
-                              return { ...prev, [qid]: [...current, opt] }
+                              if (isSingle) {
+                                return { ...prev, [qid]: [opt] }
+                              }
+                              if (isMulti) {
+                                return { ...prev, [qid]: [...current, opt] }
+                              }
+                              return { ...prev, [qid]: [opt] }
                             })
                           }}
                           disabled={isSubmitting}
@@ -160,17 +191,32 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
                     })}
                   </div>
                 ) : null}
-                <textarea
-                  className='mt-2 w-full min-h-[72px] rounded-md border border-gray-200 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-100'
-                  value={answersByKey[qid] ?? ''}
-                  onChange={(e) =>
-                    setAnswersByKey((prev) => ({
-                      ...prev,
-                      [qid]: e.target.value,
-                    }))
-                  }
-                  placeholder='Type your answer...'
-                />
+                {qType === 'date' || qType === 'number' ? (
+                  <input
+                    type={qType === 'date' ? 'date' : 'number'}
+                    className='mt-2 w-full rounded-md border border-gray-200 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-100'
+                    value={answersByKey[qid] ?? ''}
+                    onChange={(e) =>
+                      setAnswersByKey((prev) => ({
+                        ...prev,
+                        [qid]: e.target.value,
+                      }))
+                    }
+                    placeholder='Type your answer...'
+                  />
+                ) : (
+                  <textarea
+                    className='mt-2 w-full min-h-[72px] rounded-md border border-gray-200 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-100'
+                    value={answersByKey[qid] ?? ''}
+                    onChange={(e) =>
+                      setAnswersByKey((prev) => ({
+                        ...prev,
+                        [qid]: e.target.value,
+                      }))
+                    }
+                    placeholder='Type your answer...'
+                  />
+                )}
               </div>
             )
           })}
@@ -178,16 +224,16 @@ export function FlowGateBlock({ block, flowRunId, onOpenChangeSet }: Props) {
       ) : null}
 
       <div className='mt-4 border-t border-gray-100 pt-4'>
-        <div className='text-[11px] font-semibold text-gray-700 uppercase tracking-wide'>Free text</div>
+        <div className='text-[11px] font-semibold text-gray-700 uppercase tracking-wide'>{freeTextTitle}</div>
         <textarea
           className='mt-2 w-full min-h-[80px] rounded-md border border-gray-200 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-100'
           value={freeText}
           onChange={(e) => setFreeText(e.target.value)}
-          placeholder='Add any extra context or notes...'
+          placeholder={freeTextPrompt}
         />
       </div>
 
-      {suggestions.length > 0 ? (
+      {!hideSuggestions && suggestions.length > 0 ? (
         <div className='mt-4 space-y-2'>
           <div className='text-[11px] font-semibold text-gray-700 uppercase tracking-wide'>Suggestions</div>
           {suggestions.map((s: any) => (

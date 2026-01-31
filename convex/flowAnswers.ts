@@ -89,7 +89,7 @@ export const submitAnswers = mutation({
   },
 })
 
-export const submitAnswersAndAdvance = mutation({
+export const submitAnswersAndAdvance = action({
   args: {
     flowRunId: v.id('flowRuns'),
     answersByKey: v.record(v.string(), v.string()),

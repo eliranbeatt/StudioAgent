@@ -726,11 +726,221 @@ export const saveRunResult = internalMutation({
     projectId: v.id("projects")
   },
   handler: async (ctx, args) => {
-    const blocks = args.blocks;
+      let blocks = args.blocks;
 
-    const run = await ctx.db.get(args.runId);
-    // Removed isPricingSkill logic that forced webPriceOps into the blocks.
-    // We now trust the LLM to output the parsed ChangeSetBlock.
+      const run = await ctx.db.get(args.runId);
+      // Removed isPricingSkill logic that forced webPriceOps into the blocks.
+      // We now trust the LLM to output the parsed ChangeSetBlock.
+      const suppressSuggestions = run?.inputParams?.source === "flow_runner";
+      if (suppressSuggestions) {
+        blocks = (Array.isArray(blocks) ? blocks : []).filter((b: any) =>
+          b?.type !== "SuggestionsBlock" && b?.type !== "SuggestionBlock"
+        );
+      }
+
+      const isPricingFallback = run?.skillId === "PRICING_ESTIMATE_FALLBACK_BATCH";
+      const needsLineState = isPricingFallback || (Array.isArray(blocks) && blocks.some((b: any) =>
+        b?.type === "ChangeSetBlock" && Array.isArray(b?.changeSet?.ops) &&
+        b.changeSet.ops.some((op: any) => op?.kind === "materialLine.create" || op?.kind === "workLine.create")
+      ));
+      const [materialLines, workLines] = needsLineState
+        ? await Promise.all([
+          ctx.db.query("materialLines").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
+          ctx.db.query("workLines").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect()
+        ])
+        : [[], []];
+
+      const normalizeKey = (value: any) => String(value ?? "").trim().toLowerCase();
+      const pickFields = (fields: any, keys: string[]) => {
+        const out: any = {};
+        for (const key of keys) {
+          if (fields && fields[key] !== undefined) out[key] = fields[key];
+        }
+        return out;
+      };
+
+      const coercePricingFallbackOps = (ops: any[]) => {
+        if (!isPricingFallback) return ops;
+        return ops.map((op: any) => {
+          if (!op || !op.kind || !op.payload) return op;
+          if (op.kind === "materialLine.create") {
+            const fields = op.payload.fields ?? op.payload;
+            const itemName = fields?.itemName ?? fields?.title ?? op.payload?.itemName;
+            if (!itemName) return op;
+            const elementId = op.payload?.elementId ?? fields?.elementId;
+            const taskId = op.payload?.taskId ?? fields?.taskId;
+            const nameKey = normalizeKey(itemName);
+            const candidates = materialLines.filter((l: any) => normalizeKey(l.itemName) === nameKey)
+              .filter((l: any) => (elementId ? String(l.elementId ?? "") === String(elementId) : true))
+              .filter((l: any) => (taskId ? String(l.taskId ?? "") === String(taskId) : true));
+            if (candidates.length === 0) return op;
+            const scored = candidates.sort((a: any, b: any) => {
+              const aMissing = (!a.plannedUnitCost || !a.plannedTotalCost || !a.pricingSourceCode || !a.priceCheckedAt || a.confidence === undefined) ? 1 : 0;
+              const bMissing = (!b.plannedUnitCost || !b.plannedTotalCost || !b.pricingSourceCode || !b.priceCheckedAt || b.confidence === undefined) ? 1 : 0;
+              return bMissing - aMissing;
+            });
+            const target = scored[0];
+            const pricingFields = pickFields(fields, [
+              "plannedUnitCost",
+              "plannedTotalCost",
+              "pricingSourceCode",
+              "priceCheckedAt",
+              "priceUrl",
+              "confidence",
+              "sourceCode",
+              "sourceLabelHe",
+              "source",
+              "vendorId",
+              "vendorName",
+              "notes",
+            ]);
+            if (Object.keys(pricingFields).length === 0) return op;
+            return {
+              kind: "materialLine.patch",
+              payload: {
+                lineId: target._id,
+                fields: pricingFields,
+              },
+            };
+          }
+          if (op.kind === "workLine.create") {
+            const fields = op.payload.fields ?? op.payload;
+            const roleHe = fields?.roleHe ?? fields?.title ?? op.payload?.roleHe;
+            if (!roleHe) return op;
+            const elementId = op.payload?.elementId ?? fields?.elementId;
+            const taskId = op.payload?.taskId ?? fields?.taskId;
+            const nameKey = normalizeKey(roleHe);
+            const candidates = workLines.filter((l: any) => normalizeKey(l.roleHe) === nameKey)
+              .filter((l: any) => (elementId ? String(l.elementId ?? "") === String(elementId) : true))
+              .filter((l: any) => (taskId ? String(l.taskId ?? "") === String(taskId) : true));
+            if (candidates.length === 0) return op;
+            const scored = candidates.sort((a: any, b: any) => {
+              const aMissing = (!a.plannedUnitCost || !a.plannedTotalCost || a.confidence === undefined) ? 1 : 0;
+              const bMissing = (!b.plannedUnitCost || !b.plannedTotalCost || b.confidence === undefined) ? 1 : 0;
+              return bMissing - aMissing;
+            });
+            const target = scored[0];
+            const pricingFields = pickFields(fields, [
+              "plannedUnitCost",
+              "plannedTotalCost",
+              "confidence",
+              "sourceCode",
+              "sourceLabelHe",
+              "source",
+              "notes",
+            ]);
+            if (Object.keys(pricingFields).length === 0) return op;
+            return {
+              kind: "workLine.patch",
+              payload: {
+                lineId: target._id,
+                fields: pricingFields,
+              },
+            };
+          }
+          return op;
+        });
+      };
+      const coerceDuplicateLineCreates = (ops: any[]) => {
+        if (!needsLineState) return ops;
+        const normalizeKey = (value: any) => String(value ?? "").trim().toLowerCase();
+        const materialByDedup = new Map<string, any>();
+        const workByDedup = new Map<string, any>();
+        for (const line of materialLines) {
+          if (line?.dedupKey) materialByDedup.set(String(line.dedupKey), line);
+        }
+        for (const line of workLines) {
+          if (line?.dedupKey) workByDedup.set(String(line.dedupKey), line);
+        }
+        const findMaterialMatch = (fields: any, payload: any) => {
+          const dedupKey = fields?.dedupKey;
+          if (dedupKey && materialByDedup.has(dedupKey)) return materialByDedup.get(dedupKey);
+          const nameKey = normalizeKey(fields?.itemName ?? fields?.title ?? payload?.itemName);
+          if (!nameKey) return null;
+          const elementId = payload?.elementId ?? fields?.elementId;
+          const taskId = payload?.taskId ?? fields?.taskId;
+          return materialLines.find((l: any) =>
+            normalizeKey(l.itemName) === nameKey &&
+            String(l.elementId ?? "") === String(elementId ?? "") &&
+            String(l.taskId ?? "") === String(taskId ?? "")
+          ) ?? null;
+        };
+        const findWorkMatch = (fields: any, payload: any) => {
+          const dedupKey = fields?.dedupKey;
+          if (dedupKey && workByDedup.has(dedupKey)) return workByDedup.get(dedupKey);
+          const roleKey = normalizeKey(fields?.roleHe ?? fields?.title ?? payload?.roleHe);
+          if (!roleKey) return null;
+          const elementId = payload?.elementId ?? fields?.elementId;
+          const taskId = payload?.taskId ?? fields?.taskId;
+          return workLines.find((l: any) =>
+            normalizeKey(l.roleHe) === roleKey &&
+            String(l.elementId ?? "") === String(elementId ?? "") &&
+            String(l.taskId ?? "") === String(taskId ?? "")
+          ) ?? null;
+        };
+        const materialPatchFields = [
+          "itemName",
+          "spec",
+          "quantity",
+          "uomCode",
+          "unitCode",
+          "plannedUnitCost",
+          "plannedTotalCost",
+          "vendorName",
+          "notes",
+          "workType",
+          "templateId",
+          "variantId",
+          "priceRecordId",
+          "pricingSourceCode",
+          "priceCheckedAt",
+          "priceUrl",
+          "confidence",
+          "dedupKey",
+        ];
+        const workPatchFields = [
+          "roleHe",
+          "plannedQuantity",
+          "plannedUnitCost",
+          "plannedTotalCost",
+          "notes",
+          "status",
+          "assignee",
+          "assigneeId",
+          "workType",
+          "workTypeLabelHe",
+          "confidence",
+          "dedupKey",
+        ];
+        return ops.map((op: any) => {
+          if (!op || !op.kind || !op.payload) return op;
+          if (op.kind === "materialLine.create") {
+            const fields = op.payload.fields ?? op.payload;
+            const match = findMaterialMatch(fields, op.payload);
+            if (!match) return op;
+            return {
+              kind: "materialLine.patch",
+              payload: {
+                lineId: match._id,
+                fields: pickFields(fields, materialPatchFields),
+              },
+            };
+          }
+          if (op.kind === "workLine.create") {
+            const fields = op.payload.fields ?? op.payload;
+            const match = findWorkMatch(fields, op.payload);
+            if (!match) return op;
+            return {
+              kind: "workLine.patch",
+              payload: {
+                lineId: match._id,
+                fields: pickFields(fields, workPatchFields),
+              },
+            };
+          }
+          return op;
+        });
+      };
 
     // Post-process ChangeSets
     for (const block of blocks) {
@@ -830,51 +1040,55 @@ export const saveRunResult = internalMutation({
             }
           }
         }
-        const normalizedOps = rawOps.map((op: any) => {
-          if (op.kind && op.payload) return op; // Already correct
+        const normalizedOps = coercePricingFallbackOps(
+          coerceDuplicateLineCreates(
+            rawOps.map((op: any) => {
+              if (op.kind && op.payload) return op; // Already correct
 
-          let kind = op.kind ?? op.op;
-          const payload = { ...op };
-          delete payload.kind;
-          delete payload.op;
-          delete payload.entity; // Remove entity/action from payload as they are metadata for kind mapping
-          delete payload.action;
+              let kind = op.kind ?? op.op;
+              const payload = { ...op };
+              delete payload.kind;
+              delete payload.op;
+              delete payload.entity; // Remove entity/action from payload as they are metadata for kind mapping
+              delete payload.action;
 
-          if (!kind && op.entity && op.action) {
-            const e = op.entity;
-            const a = op.action;
-            if (e === "task") {
-              if (a === "create") kind = "task.create";
-              if (a === "update") kind = "task.patch";
-              if (a === "archive") {
-                kind = "task.patch";
-                // Ensure fields object exists
-                if (!payload.fields) payload.fields = {};
-                payload.fields.status = "archived";
+              if (!kind && op.entity && op.action) {
+                const e = op.entity;
+                const a = op.action;
+                if (e === "task") {
+                  if (a === "create") kind = "task.create";
+                  if (a === "update") kind = "task.patch";
+                  if (a === "archive") {
+                    kind = "task.patch";
+                    // Ensure fields object exists
+                    if (!payload.fields) payload.fields = {};
+                    payload.fields.status = "archived";
+                  }
+                } else if (e === "taskAccountingLink") {
+                  if (a === "upsert" || a === "create") kind = "taskAccountingLink.create";
+                  if (a === "delete") kind = "taskAccountingLink.delete";
+                } else if (e === "workLine") {
+                  if (a === "create") kind = "workLine.create";
+                  if (a === "update") kind = "workLine.patch";
+                  if (a === "delete") kind = "workLine.delete";
+                } else if (e === "materialLine") {
+                  if (a === "create") kind = "materialLine.create";
+                  if (a === "update") kind = "materialLine.patch";
+                  if (a === "delete") kind = "materialLine.delete";
+                }
               }
-            } else if (e === "taskAccountingLink") {
-              if (a === "upsert" || a === "create") kind = "taskAccountingLink.create";
-              if (a === "delete") kind = "taskAccountingLink.delete";
-            } else if (e === "workLine") {
-              if (a === "create") kind = "workLine.create";
-              if (a === "update") kind = "workLine.patch";
-              if (a === "delete") kind = "workLine.delete";
-            } else if (e === "materialLine") {
-              if (a === "create") kind = "materialLine.create";
-              if (a === "update") kind = "materialLine.patch";
-              if (a === "delete") kind = "materialLine.delete";
-            }
-          }
 
-          // Compatibility Fix: Normalize "update" to "patch" if the model guessed wrong
-          if (kind === "task.update") kind = "task.patch";
-          if (kind === "workLine.update") kind = "workLine.patch";
-          if (kind === "materialLine.update") kind = "materialLine.patch";
+              // Compatibility Fix: Normalize "update" to "patch" if the model guessed wrong
+              if (kind === "task.update") kind = "task.patch";
+              if (kind === "workLine.update") kind = "workLine.patch";
+              if (kind === "materialLine.update") kind = "materialLine.patch";
 
-          if (!kind) kind = "unknown";
+              if (!kind) kind = "unknown";
 
-          return { kind, payload };
-        });
+              return { kind, payload };
+            })
+          )
+        );
 
         const lifecycleStatus = run?.inputParams?.draftOnly ? "draft" : "proposed";
         const dependsOnIssueKeys = Array.isArray(run?.inputParams?.dependsOnIssueKeys)
@@ -987,16 +1201,33 @@ export const sendUserMessage = mutation({
   },
 });
 
-export const submitClarifications = mutation({
-  args: {
-    conversationId: v.id("agentConversations"),
-    answersById: v.any()
-  },
-  handler: async (ctx, args) => {
-    // 1. Find the session (using filter fallback for robustness)
-    const session = await ctx.db
-      .query("clarificationSessions")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+  export const submitClarifications = mutation({
+    args: {
+      conversationId: v.id("agentConversations"),
+      answersById: v.any()
+    },
+    handler: async (ctx, args) => {
+      const maybeKickFlow = async (projectId: any) => {
+        const blocked = await ctx.db
+          .query("flowRuns")
+          .withIndex("by_project_status", (q: any) => q.eq("projectId", projectId).eq("status", "blocked"))
+          .first();
+        const running = blocked
+          ? null
+          : await ctx.db
+            .query("flowRuns")
+            .withIndex("by_project_status", (q: any) => q.eq("projectId", projectId).eq("status", "running"))
+            .first();
+        const flowRun = blocked ?? running;
+        if (flowRun && flowRun.toggles?.autoRun) {
+          await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId: flowRun._id });
+        }
+      };
+
+      // 1. Find the session (using filter fallback for robustness)
+      const session = await ctx.db
+        .query("clarificationSessions")
+        .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
       .order("desc")
       .first();
 
@@ -1021,15 +1252,16 @@ export const submitClarifications = mutation({
 
       await persistClarificationAnswers(ctx, fallback, args.answersById);
 
-      await ctx.db.insert("agentMessages", {
-        conversationId: args.conversationId,
-        role: "user",
-        text: "Submitted answers for clarifications.",
-        createdAt: Date.now(),
-      });
+        await ctx.db.insert("agentMessages", {
+          conversationId: args.conversationId,
+          role: "user",
+          text: "Submitted answers for clarifications.",
+          createdAt: Date.now(),
+        });
 
-      return { success: true, targetSkillId: fallback.targetSkillId };
-    }
+        await maybeKickFlow(fallback.projectId);
+        return { success: true, targetSkillId: fallback.targetSkillId };
+      }
 
     // 2. Update session
     await ctx.db.patch(session._id, {
@@ -1041,17 +1273,18 @@ export const submitClarifications = mutation({
     await persistClarificationAnswers(ctx, session, args.answersById);
 
     // 3. Add User Message to chat
-    await ctx.db.insert("agentMessages", {
-      conversationId: args.conversationId,
-      role: "user",
-      text: "Submitted answers for clarifications.",
-      createdAt: Date.now(),
-    });
+      await ctx.db.insert("agentMessages", {
+        conversationId: args.conversationId,
+        role: "user",
+        text: "Submitted answers for clarifications.",
+        createdAt: Date.now(),
+      });
 
-    return {
-      success: true,
-      targetSkillId: session.targetSkillId
-    };
+      await maybeKickFlow(session.projectId);
+      return {
+        success: true,
+        targetSkillId: session.targetSkillId
+      };
   }
 });
 

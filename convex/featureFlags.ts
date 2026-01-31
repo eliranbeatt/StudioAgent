@@ -12,8 +12,8 @@ export const DEFAULT_FLAGS: Record<string, boolean> = {
   ff_flow_runner_v1: true,
 
   // Pricing + ops
-  ff_flow_pricing_gates: false,
-  ff_flow_web_pricing: false,
+  ff_flow_pricing_gates: true,
+  ff_flow_web_pricing: true,
 
   // Prompt/context performance
   ff_ctx_packs_v1: false,

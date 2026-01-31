@@ -28,8 +28,8 @@ export function QuestionsBlock({
   const [targetSkillId, setTargetSkillId] = useState<string | null>(null);
 
   // Robust property access with fallbacks
-  const continueLabel = block.continueAction?.labelHe ?? block.continueAction?.label_he ?? "Continue";
-  const followupLabel = block.followupAction?.labelHe ?? block.followupAction?.label_he ?? "Ask more questions";
+  const continueLabel = block.continueAction?.labelHe ?? block.continueAction?.label_he ?? "Submit and skip to next level";
+  const followupLabel = block.followupAction?.labelHe ?? block.followupAction?.label_he ?? "Submit and ask more";
   const shouldAutoRun = block.autoRun === true || block.auto_run === true;
   const freeTextTitle = block.freeTextTitleHe ?? block.freeTextTitle_he ?? block.free_text_title_he ?? "טקסט חופשי";
   const freeTextPrompt = block.freeTextPromptHe ?? block.freeTextPrompt_he ?? block.free_text_prompt_he ?? "כתיבה חופשית...";

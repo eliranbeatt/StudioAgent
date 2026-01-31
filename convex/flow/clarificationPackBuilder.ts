@@ -15,8 +15,26 @@ export type QuestionsBlockV1 = {
   type: 'QuestionsBlock'
   titleHe: string
   submitLabelHe: string
-  questions: Array<{ id: string; textHe: string; detailHe?: string }>
+  continueAction?: {
+    labelHe: string
+    payload?: { targetSkillId?: string }
+  }
+  followupAction?: {
+    labelHe: string
+    payload?: { targetSkillId?: string }
+  }
+  freeTextTitleHe?: string
+  freeTextPromptHe?: string
+  questions: Array<{
+    id: string
+    textHe: string
+    detailHe?: string
+    type?: 'text' | 'date' | 'number' | 'single' | 'multi' | 'toggle'
+    optionsHe?: string[]
+    topicKey?: string
+  }>
   suggestions?: Array<{ key: string; titleHe: string; detailHe?: string }>
+  hideSuggestions?: boolean
 }
 
 function severityWeight(sev: IssueSeverity): number {
@@ -79,11 +97,33 @@ function normalizeAssumptionsAccepted(list: unknown): Set<string> {
   return out
 }
 
-function toQuestion(issue: IssueV1): { id: string; textHe: string; detailHe?: string } {
+const FRIENDLY_QUESTION_MAP: Record<string, string> = {
+  'pricing.material.unit_cost_missing_or_invalid': 'חלק משורות החומר חסרות מחיר יחידה. האם לאשר הערכה אוטומטית?',
+  'pricing.material.total_cost_missing_or_invalid': 'יש שורות חומר ללא מחיר כולל. האם לחשב אוטומטית לפי הכמות?',
+  'pricing.material.provenance_missing': 'חסר מקור מחיר (ספק/לינק) לחלק מהשורות. האם להשתמש בהערכות?',
+  'pricing.material.checked_at_missing': 'תאריך בדיקת המחיר חסר. האם לאשר שימוש במחירים קיימים?',
+  'pricing.material.confidence_missing': 'חסר ציון ביטחון (Confidence) למחירים. האם להגדיר כנמוך ולהמשיך?',
+  'pricing.work.unit_cost_missing_or_invalid': 'חסרה הערכת עלות לשעות עבודה. האם להשלים לפי תעריף ברירת מחדל?',
+  'pricing.work.total_cost_missing_or_invalid': 'יש שורות עבודה ללא מחיר כולל. האם לחשב אוטומטית?',
+}
+
+function toQuestion(issue: IssueV1): {
+  id: string
+  textHe: string
+  detailHe?: string
+  type?: 'text' | 'date' | 'number' | 'single' | 'multi' | 'toggle'
+  optionsHe?: string[]
+  topicKey?: string
+} {
+  const rawIssue = issue as any
+  const friendlyText = FRIENDLY_QUESTION_MAP[issue.key] ?? issue.titleHe
   return {
     id: issue.key,
-    textHe: issue.titleHe,
+    textHe: friendlyText,
     detailHe: issue.detailHe,
+    type: rawIssue.type ?? 'text',
+    optionsHe: Array.isArray(rawIssue.optionsHe) ? rawIssue.optionsHe : undefined,
+    topicKey: typeof rawIssue.topicKey === 'string' ? rawIssue.topicKey : undefined,
   }
 }
 
@@ -107,6 +147,7 @@ export function buildQuestionsBlock(args: {
   unknownAcceptedKeys?: unknown
   assumptionsAccepted?: unknown
   dismissedOppKeys?: unknown
+  hideSuggestions?: boolean
 }): QuestionsBlockV1 | null {
   const { report } = args
 
@@ -119,6 +160,18 @@ export function buildQuestionsBlock(args: {
 
   const remaining = blocking
     .filter((i) => i && typeof i.key === 'string')
+    .filter((i) => (i as any)?.askUser === true)
+    .filter((i) => {
+      const key = String(i.key || '')
+      if (!key) return true
+      if (key === 'elements.none') return false
+      if (key === 'tasks.none') return false
+      if (key === 'accounting.none') return false
+      if (key === 'pricing.none') return false
+      if (key === 'quote.missing') return false
+      if (key === 'audit.quote.missing') return false
+      return true
+    })
     .filter((i) => !answered.has(i.key))
     .filter((i) => !unknownAccepted.has(i.key))
     .filter((i) => !assumptionsAccepted.has(i.key))
@@ -160,17 +213,19 @@ export function buildQuestionsBlock(args: {
   const questions = [...prioritized, ...leftovers].slice(0, 6).map(toQuestion)
 
   const dismissedOpp = normalizeDismissedOppKeys(args.dismissedOppKeys)
-  const suggestions = (Array.isArray(report.opportunities) ? report.opportunities : [])
-    .filter((o: any) => o && typeof o.key === 'string')
-    .filter((o: any) => !dismissedOpp.has(o.key))
-    .slice()
-    .sort((a: any, b: any) => String(a.key).localeCompare(String(b.key)))
-    .slice(0, 2)
-    .map((o: any) => ({
-      key: o.key,
-      titleHe: o.titleHe,
-      detailHe: o.detailHe,
-    }))
+  const suggestions = args.hideSuggestions
+    ? []
+    : (Array.isArray(report.opportunities) ? report.opportunities : [])
+      .filter((o: any) => o && typeof o.key === 'string')
+      .filter((o: any) => !dismissedOpp.has(o.key))
+      .slice()
+      .sort((a: any, b: any) => String(a.key).localeCompare(String(b.key)))
+      .slice(0, 2)
+      .map((o: any) => ({
+        key: o.key,
+        titleHe: o.titleHe,
+        detailHe: o.detailHe,
+      }))
 
   const gateLabel = args.gateId ? ` (${args.gateId})` : ''
 
@@ -178,7 +233,12 @@ export function buildQuestionsBlock(args: {
     type: 'QuestionsBlock',
     titleHe: `שאלות להשלמה${gateLabel}`,
     submitLabelHe: 'שמור תשובות',
+    continueAction: { labelHe: 'Submit and skip to next level' },
+    followupAction: { labelHe: 'Submit and ask more' },
+    freeTextTitleHe: '???????? ??????????',
+    freeTextPromptHe: '?????????? ????????????...',
     questions,
     suggestions: suggestions.length > 0 ? suggestions : undefined,
+    hideSuggestions: !!args.hideSuggestions
   }
 }

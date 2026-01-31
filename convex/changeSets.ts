@@ -510,6 +510,30 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (ref.tempId) return resolveFromTemp(ref.tempId, elementTempMap);
     return null;
   };
+  const normalizeElementType = (value: any) => {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (!raw) return "build";
+    switch (raw) {
+      case "build":
+      case "rent":
+      case "buy":
+      case "print":
+      case "transport":
+      case "install":
+      case "subcontract":
+      case "mixed":
+        return raw;
+      case "purchase":
+      case "procure":
+      case "procurement":
+        return "buy";
+      case "vendor":
+      case "external":
+        return "subcontract";
+      default:
+        return "build";
+    }
+  };
 
   const now = Date.now();
 
@@ -526,7 +550,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const { tempId, element } = op.payload ?? {};
 
     const elementTitle = element?.title || "Untitled Element";
-    const elementType = element?.type ?? "build";
+    const elementType = normalizeElementType(element?.type ?? "build");
 
     const elementId = await ctx.db.insert("elements", {
       projectId: cs.projectId,
@@ -763,6 +787,15 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       resolveFromTemp(taskTempOrId, taskTempMap) ??
       resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
     const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
+    const elementScope = op.payload?.elementScope ?? fields?.elementScope;
+    const forceProjectLevel =
+      elementScope === "project" ||
+      elementScope === "projectLevel" ||
+      elementScope === "global" ||
+      op.payload?.projectLevel === true ||
+      fields?.projectLevel === true;
+    const taskForElement = !elementId && !forceProjectLevel && taskId ? await ctx.db.get(taskId) : null;
+    const resolvedElementId = elementId ?? (taskForElement?.elementId as any) ?? undefined;
     const rawVendorId =
       resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
       fields.vendorId;
@@ -782,9 +815,89 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       now
     );
 
+    const normalizeKey = (value: any) => String(value ?? "").trim().toLowerCase();
+    const dedupKey = fields?.dedupKey;
+    let existingLine: any = null;
+    if (resolvedElementId) {
+      const candidates = await ctx.db
+        .query("materialLines")
+        .withIndex("by_element", (q) => q.eq("elementId", resolvedElementId))
+        .collect();
+      const cleanName = normalizeKey(fields.itemName);
+      existingLine = candidates.find((l: any) =>
+        (dedupKey && l.dedupKey === dedupKey) ||
+        (normalizeKey(l.itemName) === cleanName && String(l.taskId ?? "") === String(taskId ?? ""))
+      );
+    } else {
+      const candidates = await ctx.db
+        .query("materialLines")
+        .withIndex("by_project", (q) => q.eq("projectId", cs.projectId))
+        .collect();
+      const cleanName = normalizeKey(fields.itemName);
+      existingLine = candidates.find((l: any) =>
+        (!l.elementId) &&
+        ((dedupKey && l.dedupKey === dedupKey) ||
+        (normalizeKey(l.itemName) === cleanName && String(l.taskId ?? "") === String(taskId ?? "")))
+      );
+    }
+
+    if (existingLine) {
+      const before = existingLine;
+      const patch: any = {
+        elementId: resolvedElementId,
+        taskId,
+        sectionId,
+        sectionKey,
+        sectionLabelHe,
+        workType: normalizeWorkType(fields.workType),
+        workTypeLabelHe: fields.workTypeLabelHe ?? undefined,
+        itemName: fields.itemName ?? undefined,
+        spec: fields.spec ?? undefined,
+        templateId: fields.templateId ? ctx.db.normalizeId("materialTemplates", fields.templateId) : undefined,
+        variantId: fields.variantId ? ctx.db.normalizeId("materialVariants", fields.variantId) : undefined,
+        priceRecordId: fields.priceRecordId ? ctx.db.normalizeId("catalogPriceRecords", fields.priceRecordId) : undefined,
+        quantity: fields.quantity ?? undefined,
+        uomCode: normalizeUomCode(fields.uomCode ?? fields.unitCode),
+        wastePct: fields.wastePct ?? undefined,
+        plannedUnitCost: fields.plannedUnitCost ?? undefined,
+        plannedTotalCost: fields.plannedTotalCost ?? undefined,
+        vendorId: resolvedVendorId ?? undefined,
+        vendorName: fields.vendorName ?? undefined,
+        leadTimeDays: fields.leadTimeDays ?? undefined,
+        procurementCode: normalizeProcurementCode(fields.procurementCode),
+        procurementLabelHe: fields.procurementLabelHe ?? undefined,
+        procurement: fields.procurement ?? (fields.procurementCode && !normalizeProcurementCode(fields.procurementCode) ? fields.procurementCode : undefined),
+        notes: fields.notes ?? undefined,
+        sourceCode: fields.sourceCode ?? undefined,
+        sourceLabelHe: fields.sourceLabelHe ?? undefined,
+        source: fields.source ?? undefined,
+        pricingSourceCode: fields.pricingSourceCode ?? undefined,
+        priceCheckedAt: fields.priceCheckedAt ?? undefined,
+        priceUrl: fields.priceUrl ?? undefined,
+        confidence: fields.confidence ?? undefined,
+        checklistItemId: fields.checklistItemId ?? undefined,
+        dedupKey: toOptional(fields.dedupKey),
+        updatedAt: now,
+      };
+      await ctx.db.patch(existingLine._id, patch);
+      const after = await ctx.db.get(existingLine._id);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "update",
+        entityRef: `materialLine:${existingLine._id}`,
+        before,
+        after,
+        appliedAt: now,
+      });
+      if (tempId) materialLineTempMap.set(tempId, existingLine._id);
+      if (resolvedElementId) elementsToBump.add(resolvedElementId);
+      continue;
+    }
+
     const lineId = await ctx.db.insert("materialLines", {
       projectId: cs.projectId,
-      elementId,
+      elementId: resolvedElementId,
       taskId,
       sectionId,
       sectionKey,
@@ -834,7 +947,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     });
 
     if (tempId) materialLineTempMap.set(tempId, lineId);
-    if (elementId) elementsToBump.add(elementId);
+    if (resolvedElementId) elementsToBump.add(resolvedElementId);
   }
 
   for (const op of cs.ops) {
@@ -848,6 +961,15 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       resolveFromTemp(taskTempOrId, taskTempMap) ??
       resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
     const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
+    const elementScope = op.payload?.elementScope ?? fields?.elementScope;
+    const forceProjectLevel =
+      elementScope === "project" ||
+      elementScope === "projectLevel" ||
+      elementScope === "global" ||
+      op.payload?.projectLevel === true ||
+      fields?.projectLevel === true;
+    const taskForElement = !elementId && !forceProjectLevel && taskId ? await ctx.db.get(taskId) : null;
+    const resolvedElementId = elementId ?? (taskForElement?.elementId as any) ?? undefined;
     const sectionKey = normalizeSectionKey(
       fields.sectionKey ?? op.payload?.sectionKey,
       fields.sectionLabelHe ?? op.payload?.sectionLabelHe
@@ -861,9 +983,81 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       now
     );
 
+    const normalizeKey = (value: any) => String(value ?? "").trim().toLowerCase();
+    const dedupKey = fields?.dedupKey;
+    let existingLine: any = null;
+    if (resolvedElementId) {
+      const candidates = await ctx.db
+        .query("workLines")
+        .withIndex("by_element", (q) => q.eq("elementId", resolvedElementId))
+        .collect();
+      const cleanRole = normalizeKey(fields.roleHe);
+      existingLine = candidates.find((l: any) =>
+        (dedupKey && l.dedupKey === dedupKey) ||
+        (normalizeKey(l.roleHe) === cleanRole && String(l.taskId ?? "") === String(taskId ?? ""))
+      );
+    } else {
+      const candidates = await ctx.db
+        .query("workLines")
+        .withIndex("by_project", (q) => q.eq("projectId", cs.projectId))
+        .collect();
+      const cleanRole = normalizeKey(fields.roleHe);
+      existingLine = candidates.find((l: any) =>
+        (!l.elementId) &&
+        ((dedupKey && l.dedupKey === dedupKey) ||
+        (normalizeKey(l.roleHe) === cleanRole && String(l.taskId ?? "") === String(taskId ?? "")))
+      );
+    }
+
+    if (existingLine) {
+      const before = existingLine;
+      const patch: any = {
+        elementId: resolvedElementId,
+        taskId,
+        sectionId,
+        sectionKey,
+        sectionLabelHe,
+        workType: normalizeWorkType(fields.workType),
+        workTypeLabelHe: fields.workTypeLabelHe ?? undefined,
+        roleHe: fields.roleHe ?? undefined,
+        rateTypeCode: fields.rateTypeCode ?? undefined,
+        rateTypeLabelHe: fields.rateTypeLabelHe ?? undefined,
+        rateType: fields.rateType ?? undefined,
+        crewSize: fields.crewSize ?? undefined,
+        plannedQuantity: fields.plannedQuantity ?? undefined,
+        plannedUnitCost: fields.plannedUnitCost ?? undefined,
+        plannedTotalCost: fields.plannedTotalCost ?? undefined,
+        isManagement: fields.isManagement ?? undefined,
+        notes: fields.notes ?? undefined,
+        sourceCode: fields.sourceCode ?? undefined,
+        sourceLabelHe: fields.sourceLabelHe ?? undefined,
+        source: fields.source ?? undefined,
+        confidence: fields.confidence ?? undefined,
+        status: fields.status ?? undefined,
+        assignee: fields.assignee ?? undefined,
+        assigneeId: fields.assigneeId ?? undefined,
+        dedupKey: toOptional(fields.dedupKey),
+        updatedAt: now,
+      };
+      await ctx.db.patch(existingLine._id, patch);
+      const after = await ctx.db.get(existingLine._id);
+      await recordAudit(ctx, {
+        projectId: cs.projectId,
+        changeSetId: auditChangeSetId,
+        operation: "update",
+        entityRef: `workLine:${existingLine._id}`,
+        before,
+        after,
+        appliedAt: now,
+      });
+      if (tempId) workLineTempMap.set(tempId, existingLine._id);
+      if (resolvedElementId) elementsToBump.add(resolvedElementId);
+      continue;
+    }
+
     const lineId = await ctx.db.insert("workLines", {
       projectId: cs.projectId,
-      elementId,
+      elementId: resolvedElementId,
       taskId,
       sectionId,
       sectionKey,
@@ -905,7 +1099,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     });
 
     if (tempId) workLineTempMap.set(tempId, lineId);
-    if (elementId) elementsToBump.add(elementId);
+    if (resolvedElementId) elementsToBump.add(resolvedElementId);
   }
 
   for (const op of cs.ops) {
@@ -1558,6 +1752,9 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (!element) throw new Error("element.patch element not found");
 
     if (patch && Object.keys(patch).length > 0) {
+      if ("type" in patch) {
+        patch.type = normalizeElementType((patch as any).type);
+      }
       await ctx.db.patch(elementId, {
         ...patch,
         updatedAt: now,

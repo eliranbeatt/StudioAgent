@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../../../../../../convex/_generated/api'
 import { Id } from '../../../../../../convex/_generated/dataModel'
 import { ChatBlock } from '../../agent/_components/Blocks/ChatBlock'
-import { QuestionsBlock } from '../../agent/_components/Blocks/QuestionsBlock'
 import { SuggestionBlock } from '../../agent/_components/Blocks/SuggestionBlock'
 import { ChangeSetBlock } from '../../agent/_components/Blocks/ChangeSetBlock'
 import { ReviewBlock } from '../../agent/_components/Blocks/ReviewBlock'
@@ -16,6 +15,7 @@ import { RunbookBlock } from '../../agent/_components/Blocks/RunbookBlock'
 import { DailyPlanBlock } from '../../agent/_components/Blocks/DailyPlanBlock'
 import ChangeSetReviewDrawer from '../../agent/_components/ChangeSetReviewDrawer'
 import { FlowGateBlock } from './Blocks/FlowGateBlock'
+import { FlowQuestionsBlock } from './Blocks/FlowQuestionsBlock'
 import { FlowBrainDumpBlock } from './Blocks/FlowBrainDumpBlock'
 import { FlowChangeSetSummaryBlock } from './Blocks/FlowChangeSetSummaryBlock'
 
@@ -152,7 +152,7 @@ function BlockRenderer({
 
   if (block.type === 'ChatBlock') return <ChatBlock block={block} />
   if (block.type === 'QuestionsBlock') {
-    return <QuestionsBlock block={block} conversationId={conversationId} projectId={projectId} />
+    return <FlowQuestionsBlock block={block} flowRunId={flowRunId} />
   }
   if (block.type === 'SuggestionBlock' || block.type === 'SuggestionsBlock') {
     return (

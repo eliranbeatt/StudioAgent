@@ -56,8 +56,20 @@ export const submitGateAnswers = action({
       })
     }
 
-    if (args.intent === 'skip' && Array.isArray(args.questionKeys)) {
-      for (const key of args.questionKeys) {
+    if (args.intent === 'skip') {
+      const step = await ctx.runQuery(internal.flowRuns.getStepInternal, {
+        flowRunId: args.flowRunId,
+        gateId: run.currentGateId,
+      })
+      const blockingKeys = Array.isArray(step?.validationReport?.blockingIssues)
+        ? step.validationReport.blockingIssues.map((i: any) => i?.key).filter(Boolean)
+        : []
+      const fallbackKeys = Array.isArray(args.questionKeys) ? args.questionKeys : []
+      const keysToAccept = (blockingKeys.length > 0 ? blockingKeys : fallbackKeys)
+        .map((k: any) => String(k ?? '').trim())
+        .filter((k: string) => k.length > 0)
+      const unique = Array.from(new Set(keysToAccept))
+      for (const key of unique) {
         const cleaned = String(key ?? '').trim()
         if (!cleaned) continue
         await ctx.runMutation(api.flowAnswers.acceptUnknown, {
@@ -68,14 +80,14 @@ export const submitGateAnswers = action({
     }
 
     if (args.intent === 'ask_more') {
-      await ctx.db.patch(args.flowRunId, {
-        forceQuestionGateId: run.currentGateId,
-        updatedAt: Date.now(),
+      await ctx.runMutation(internal.flowRuns.setForceQuestionGate, {
+        flowRunId: args.flowRunId,
+        gateId: run.currentGateId,
       })
     } else {
-      await ctx.db.patch(args.flowRunId, {
-        forceQuestionGateId: undefined,
-        updatedAt: Date.now(),
+      await ctx.runMutation(internal.flowRuns.setForceQuestionGate, {
+        flowRunId: args.flowRunId,
+        gateId: undefined,
       })
     }
 

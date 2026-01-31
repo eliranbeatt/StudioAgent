@@ -31,6 +31,18 @@ function isAccountingSkill(skillId?: string) {
   return key.includes('ACCOUNTING') || key.includes('BOM')
 }
 
+function isBuilderSkill(skillId?: string) {
+  if (!skillId) return false
+  const key = skillId.toUpperCase()
+  return key.includes('ELEMENTS_BUILDER') || key.includes('TASKS_BUILDER') || key.includes('ACCOUNTING_BUILDER')
+}
+
+function isClarificationSkill(skillId?: string) {
+  if (!skillId) return false
+  const key = skillId.toUpperCase()
+  return key.includes('CLARIFICATIONS_GATE') || key.includes('CONTEXT_GENERATION')
+}
+
 function isFileHeavySkill(skillId?: string) {
   if (!skillId) return false
   const key = skillId.toUpperCase()
@@ -62,7 +74,7 @@ export function getRecipeForSkill(args: {
     packIds.push(...QUOTE_PACKS, ...ACCOUNTING_PACKS)
   }
 
-  if (isFileHeavySkill(args.skillId)) {
+  if (isFileHeavySkill(args.skillId) || isBuilderSkill(args.skillId) || isClarificationSkill(args.skillId)) {
     packIds.push(...FILE_PACKS)
   }
 
