@@ -10,6 +10,8 @@ export const DEFAULT_FLAGS: Record<string, boolean> = {
   ff_flow_validators_v1: true,
   ff_flow_clarification_pack_v1: true,
   ff_flow_runner_v1: true,
+  ff_flow_runner_v2: false,
+  ff_flow_runner_v3: true, // V3 is the new default
 
   // Pricing + ops
   ff_flow_pricing_gates: true,

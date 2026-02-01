@@ -69,7 +69,7 @@ export const analytics = query({
       .query("llmTraces")
       .order("desc")
       .filter((q) => q.gte(q.field("_creationTime"), args.since))
-      .collect();
+      .take(100);
 
     return traces.map((t) => ({
       _id: t._id,

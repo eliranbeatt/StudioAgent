@@ -1,0 +1,454 @@
+AutoFlow v2.1 (Repo-aligned + Contract-complete)
+Date: 2026-01-31
+
+This is an updated v2 plan that **keeps all repo-aligned implementation steps** from v2, while **re-introducing the missing “contracts” and semantics** that v1 required (ChangeSet lifecycle + risk/applyPolicy, late-answer semantics, richer node run logs, QuestionSet UX constitution, debug affordances, “finish without polish”, and audit staleness).
+
+──────────────────────────────────────────────────────────────────────────────
+0) Non-Negotiable Product/Runtime Contract (must be true in v2.1)
+
+0.1 Two engines, always decoupled
+
+* Flow Engine: runs gates to completion **without waiting** for user input.
+* Clarification Engine: continuously asks small QuestionSets in chat, collects answers, improves future outputs — **never blocks flow**.
+
+0.2 Gate snapshot contract (determinism + debuggability)
+When a gate starts, it snapshots:
+
+* artifactRevisionInId = the latest applied artifact revision
+* answerVersionUsed = the current answerVersion at gate start
+* answerState snapshot at answerVersionUsed
+  Rule:
+* Inputs do not change mid-run.
+* **Late answers DO NOT affect that gate run.**
+
+0.3 Late answer policy (default)
+
+* Do NOT auto-rerun completed gates.
+* Late answers influence:
+
+  * future gates (gates that start after the answers exist)
+  * the optional final Audit/Polish step
+    Optional (later, not required for v2.1 MVP):
+* “Selective rerun”: mark some nodes stale and rerun if flow still running.
+
+0.4 Gate output contract
+Each gate produces:
+
+* assumptions[] (explicitly listed, if missing data)
+* confidence (or confidenceNotes)
+* a ChangeSet (+ metadata) describing the proposed edits
+* applyPolicy:
+
+  * regular gates: auto
+  * audit/polish: manual
+* status transitions are tracked (see ChangeSet contract)
+
+0.5 ChangeSet contract (first-class lifecycle)
+Every ChangeSet has:
+
+* ops[]: create | patch | archive | link (etc.)
+* summary
+* riskLevel
+* applyPolicy: auto | manual
+* status: proposed | applied | rejected | stale
+  And every apply attempt is recorded:
+* ChangeSetApplyLog: appliedBy, appliedAt, result success|failure, error, artifactRevisionOutId
+
+0.6 QuestionSet UX constitution (chat stays clean)
+
+* QuestionSets are event-triggered (no spam):
+
+  * after gate completion/apply
+  * after answer submission (debounced)
+  * optional periodic tick ONLY if flow running and no recent questions
+* A QuestionSet is small (3–7) and ordered by impact.
+* Questions map to canonical fieldKeys so answers are machine-usable.
+* Each question includes: questionId, fieldKey, prompt, choices?, priority, whyAsked
+* User can ignore indefinitely.
+* Answer submission updates answerState immediately.
+* The flow does not pause and does not ask for “permission”.
+
+0.7 Debug visibility is rich but never blocking
+Debug shows per node:
+
+* status timeline (queued → running → done/failed/stale)
+* attempt #
+* answerVersionUsed
+* artifactRevisionInId → artifactRevisionOutId
+* inputsHash (idempotency key)
+* assumptions + confidence
+* ChangeSet summary + riskLevel + applyPolicy + status
+* apply result (success/failure + error)
+* logsRef (prompt/trace/token usage/errors)
+  Also:
+* Provide “download / copy ChangeSet” for troubleshooting.
+* Never show blocking modals.
+
+0.8 Audit/Polish contract
+
+* Only appears after flow completes.
+* UI shows TWO buttons:
+
+  * “Run Audit & Repair” (recommended)
+  * “Finish without polish”
+* Audit produces a manual ChangeSet (applyPolicy=manual).
+* If answers/artifacts changed since audit started → mark audit stale and recommend rerun.
+
+──────────────────────────────────────────────────────────────────────────────
+Validation Summary (from current code)
+
+* Flow Runner is sequential + blocking in `convex/flow/flowRunner.ts`, driven by `flowRuns`/`flowSteps` and validation gates. v2.1 adds a v2 orchestrator path behind a flag.
+* Clarification questions are produced by `buildQuestionsBlock` and rendered as `QuestionsBlock` in Flow chat. v2.1 reuses `QuestionsBlock` for non-blocking QuestionSets (no new UI type required).
+* Skills runner builds context from live DB (`convex/skills/runner.ts`). v2.1 adds explicit snapshot inputs (artifactRevisionId + answerState snapshot) for determinism.
+* ChangeSets already support base snapshots + apply logic. v2.1 adds lifecycle status + apply logs + revision outputs without breaking existing flows.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 0 — Alignment + Flags (short prep)
+Tasks
+
+* Add `ff_flow_runner_v2` to `convex/featureFlags.ts` and wire routing in backend + UI.
+* Codify the “Non-Negotiable Contract” above as a short `docs/autoflow_v2_1_contract.md` (or equivalent) so engineers don’t regress on semantics.
+* Decide QuestionSet renderer: reuse `QuestionsBlock` in Flow chat (recommended).
+* Define gate graph IDs and node list (G0–G10 + optional branches), plus which nodes are “safe branches”.
+* Update `scripts/flow_chat_smoke.ts` expectations:
+
+  * QuestionSets appear as `QuestionsBlock`
+  * flow never blocks
+  * audit is manual and optional
+    Acceptance
+* Flag present; routing documented; smoke script aligned.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 1 — Durable Logs + New Tables (complete schema, not “minimal vague”)
+Tasks
+
+1. Extend `flowRuns` with:
+
+* graphVersion
+* currentArtifactRevisionId
+* answerVersionAtStart
+* latestAnswerVersion (optional)
+* debugModeEnabled
+
+2. Add new tables in `convex/schema.ts`:
+   A) flowArtifactRevisions
+
+* projectId, runId?
+* snapshot (or references if split)
+* hash
+* createdAt
+* source (runStart|autoApply|manualApply|audit|replay)
+* baseRevisionId?
+
+B) flowNodeRuns (one per gate attempt)
+
+* runId, nodeId, attempt
+* status: queued|running|done|failed|stale
+* dependsOn[]
+* artifactRevisionInId, artifactRevisionOutId?
+* answerVersionUsed
+* inputsHash (idempotency)
+* assumptions[]
+* confidence / confidenceNotes
+* changesetId
+* logsRef (trace/prompt/token/errors)
+* startedAt, finishedAt
+
+C) flowAnswerEvents (append-only)
+
+* runId, questionId?
+* fieldKey
+* answer (typed payload)
+* source: user|system
+* answerVersion
+* createdAt
+
+D) flowQuestionSets
+
+* runId, questionSetId, createdAt
+* basedOnArtifactRevisionId
+* basedOnAnswerVersion
+* questions[]: { questionId, fieldKey, prompt, choices?, priority, whyAsked }
+* emittedToChatAt?
+
+E) flowChangeSetApplyLogs
+
+* changeSetId, runId, nodeId?
+* appliedBy (auto|user|system)
+* appliedAt
+* result: success|failure
+* error?
+* artifactRevisionOutId
+
+F) flowAuditRuns
+
+* runId, auditRunId, createdAt
+* answerVersionUsed, artifactRevisionUsed
+* status: queued|running|done|failed|stale
+* validatorFindings[]
+* changeSetId (manual)
+* verificationReport (before/after metrics)
+* finishedAt
+
+Indexes
+
+* by runId, by nodeId+runId, by createdAt, by changeSetId
+  Acceptance
+* Schema compiles; tables writable/readable; basic indexes in place.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 2 — Artifact Revisions + Apply Pipeline (with ChangeSet lifecycle)
+Tasks
+
+* Create `convex/flow/artifactRevisions.ts`:
+
+  * `createRevisionFromLive(projectId, source)` uses `buildProjectSnapshot`.
+  * `createRevisionFromSnapshot(snapshot, meta)` stores snapshot + hash.
+  * `applyChangeSetAndCreateRevision(changeSetId, baseRevisionId, appliedBy)`:
+
+    * validates base revision matches changeSet.artifactRevisionInId
+    * applies
+    * writes ChangeSetApplyLog
+    * creates artifactRevisionOutId
+    * updates ChangeSet.status -> applied on success; failure logged
+
+* Update `flowRuns.start` (`convex/flowRuns.ts`):
+
+  * create initial artifact revision
+  * set `currentArtifactRevisionId`, `answerVersionAtStart`, `latestAnswerVersion`
+
+* Ensure manual apply (existing ChangeSet UI) also writes:
+
+  * apply logs
+  * artifact revisions
+  * ChangeSet.status transitions (applied/rejected)
+
+Acceptance
+
+* Run start creates revision.
+* Auto-apply creates apply logs + advances `currentArtifactRevisionId`.
+* Manual apply path also produces logs + revision.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 3 — Non-blocking Orchestrator (DAG) with snapshot semantics
+Tasks
+
+* Add DAG config in `convex/flow/graph.ts`:
+
+  * nodes, edges, concurrency limit (start 2–4)
+  * label nodes as spine vs safe-branches (examples below)
+
+* Create orchestrator action (e.g., `convex/flow/orchestrator.ts`) that:
+
+  * loads run + `currentArtifactRevisionId` + `latestAnswerVersion`
+  * selects ready nodes (deps satisfied) up to concurrency limit
+  * for each node start:
+
+    * compute `answerVersionUsed = latestAnswerVersion`
+    * write `flowNodeRuns` status=running with `inputsHash`
+    * build snapshot-aware context (artifactRevisionId + answerState at answerVersionUsed)
+    * run gate skill/validator
+    * produce ChangeSet + assumptions + confidence + logsRef
+    * set ChangeSet.applyPolicy:
+
+      * regular nodes: auto
+      * audit: manual (not part of this phase)
+    * auto-apply ChangeSet (regular nodes) via Phase 2 wrapper
+    * write node run artifactRevisionOutId + mark done
+  * crucial rules:
+
+    * never block for missing info → record assumptions instead
+    * inputs are stable per node run (no mid-run changes)
+
+* Route `flowRunner.tick` to v2 orchestrator when `ff_flow_runner_v2` enabled; keep v1 fallback.
+
+Safe branch guidance (keep it sane)
+
+* Sequential spine (typical): Normalize Brief → Ideation → Plan → Tasks → Accounting → Quote → Consolidate
+* Safe parallel branches (examples): Risk analysis, Vendor/lead-time research, Print feasibility checklist
+* Branches feed into Consolidate (single merge point)
+
+Acceptance
+
+* Flow completes without user answers.
+* Node runs have answerVersionUsed + revision ids + assumptions.
+* Late answers do not retroactively change completed nodes.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 4 — Snapshot-aware Context + Answer Events (deterministic skill inputs)
+Tasks
+
+* Add `flowAnswerEvents` write path (e.g., `convex/flowAnswers.ts`):
+
+  * append-only events
+  * increment `latestAnswerVersion` on flowRun
+* Add `convex/flow/answerState.ts`:
+
+  * derive answerState by fieldKey at a given answerVersion (with provenance)
+* Bridge to legacy `qaPairs` if needed (write-through or derived view) so existing skills don’t break.
+* Update `convex/skills/runner.ts` buildContext:
+
+  * accept `{ artifactRevisionId, answerStateSnapshot, answerVersionUsed }`
+  * use stored snapshot instead of live DB when provided
+* Ensure every gate run records `answerVersionUsed` in node run.
+
+Acceptance
+
+* You can fetch answerState “as of” answerVersion N.
+* Skills can run deterministically against stored artifact revision + answerState snapshot.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 5 — Clarification Engine (QuestionSets) + UX constitution enforced
+Tasks
+
+* Add `convex/flow/questionSets.ts`:
+
+  * generate QuestionSets (3–7) derived from:
+
+    * current artifact revision
+    * answerState snapshot
+    * question history (avoid repeats)
+  * each question includes:
+
+    * questionId, fieldKey, prompt, choices?, priority, whyAsked
+
+Triggers (anti-spam)
+
+* after each gate completion/apply (new unknowns)
+* after answer submission (debounced)
+* optional periodic tick if flow is running and no recent QuestionSet
+
+Chat emission
+
+* Emit QuestionSets as `QuestionsBlock` via `flow.chat.emitAssistantBlocks`.
+* Answer submission writes AnswerEvents only; does not advance flow; does not “unlock” anything.
+
+UX rules (must be true)
+
+* User can ignore indefinitely.
+* Answers update answerState immediately.
+* No permission prompts, no pauses.
+
+Acceptance
+
+* QuestionSets appear naturally after gates/answers.
+* Answering never blocks, never “unfreezes” flow.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 6 — UI Updates + Debug Visibility + Troubleshooting affordances
+Tasks
+
+* Flow chat:
+
+  * keep rendering `QuestionsBlock` as the non-blocking QuestionSet UI
+* Debug panel/timeline:
+
+  * read from `flowNodeRuns` + `flowChangeSetApplyLogs` (+ ChangeSet status)
+  * show: attempts, inputsHash, answerVersionUsed, revision in/out, assumptions, confidence, logsRef
+* Add “Download / Copy ChangeSet” action in debug drawer (copy JSON / export file)
+* Optional: keep `FlowGateBlock` only for admin/debug actions (not required for normal runs)
+
+Completion UX (new requirement)
+
+* When flow completes:
+
+  * show “Run Audit & Repair”
+  * show “Finish without polish”
+
+Acceptance
+
+* Debug is rich, but never blocking.
+* Copy/export ChangeSet works.
+* Both completion buttons appear.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 7 — Optional Audit & Repair (manual) + audit staleness
+Tasks
+
+* Add `flow.audit.run` action and `flowAuditRuns` lifecycle:
+
+  * Stage A: deterministic validators (reuse existing validate modules)
+  * Stage B: LLM audit → proposes ChangeSet bundle (manual)
+  * Stage C: simulate apply + re-validate → before/after metrics
+* Manual approval only:
+
+  * audit ChangeSet applyPolicy=manual
+  * user reviews grouped changes:
+
+    * link repairs, dedup merges, missing fields, accounting/quote sync
+    * risky changes unchecked by default (if applicable)
+
+Audit staleness rule (must be implemented)
+
+* If answers/artifacts changed since audit started:
+
+  * mark auditRun stale
+  * recommend rerun before approval
+
+UI behavior
+
+* After clicking “Run Audit & Repair”:
+
+  * show the audit ChangeSet in the review drawer
+  * also emit a chat message summarizing findings + linking to the ChangeSet review
+
+Acceptance
+
+* Audit only runs on click.
+* Produces manual ChangeSet + verification report.
+* Stale audit is detected and communicated.
+
+──────────────────────────────────────────────────────────────────────────────
+Phase 8 — Hardening + Rollout (idempotency, staleness, replay, parallel safety)
+Tasks
+Idempotency & locks
+
+* Enforce single apply per (runId, nodeId, inputsHash).
+* Use lease/lock for queued→running.
+* Retries increment attempt but only apply if still current.
+
+Staleness detection
+
+* If `currentArtifactRevisionId` advances after node start:
+
+  * mark the node run stale
+  * skip apply (or record “discarded” outcome)
+
+Parallelism safety
+
+* Start with limited concurrency (2–4) and serialize applies if needed.
+* Restrict safe branches to:
+
+  * read-only analyses, or
+  * outputs that merge only at Consolidate,
+    until a merge strategy is formalized.
+
+Replay tooling
+
+* Rebuild final state from:
+
+  * flowNodeRuns
+  * artifact revisions
+  * apply logs
+* Helpful for debugging and regression tests.
+
+Acceptance
+
+* No duplicate applies.
+* Stale runs are detected.
+* Replay reproduces end state deterministically.
+
+──────────────────────────────────────────────────────────────────────────────
+End State (what “done” means)
+
+* Starting a flow completes without the user answering anything.
+* Main chat shows small, event-triggered QuestionSets; user can ignore indefinitely.
+* Each gate logs answerVersionUsed and revision in/out, records assumptions/confidence, and auto-applies its ChangeSet.
+* Late answers don’t affect already-finished gates (no surprise reruns).
+* Debug panel shows full provenance + lets you copy/download ChangeSets.
+* After completion, the user can either:
+
+  * Run Audit & Repair (manual ChangeSet + verification), or
+  * Finish without polish.
+* Audit becomes stale if underlying answers/artifacts change mid-audit.
+

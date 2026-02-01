@@ -26,6 +26,7 @@ export type SkillTagSource = {
       runSkill?: boolean
       generateQuote?: boolean
       estimateTasks?: boolean
+      agentData?: boolean
     }
     outputContract?: string
   }

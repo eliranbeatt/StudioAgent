@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useAction, useMutation, useQuery } from 'convex/react'
 import { useParams } from 'next/navigation'
@@ -7,7 +7,10 @@ import { api } from '../../../../../convex/_generated/api'
 import { FlowRunHeader } from './_components/FlowRunHeader'
 import { FlowTimeline } from './_components/FlowTimeline'
 import { FlowDebugPanel } from './_components/FlowDebugPanel'
-import { FlowChat } from './_components/FlowChat'
+import { FlowQuestionsLane } from './_components/FlowQuestionsLane'
+import { FlowElementsHealthPanel } from './_components/FlowElementsHealthPanel'
+import { FlowWorkflowGpsPanel } from './_components/FlowWorkflowGpsPanel'
+import ChangeSetReviewDrawer from '../agent/_components/ChangeSetReviewDrawer'
 
 function formatTs(ts: number | null | undefined) {
   if (!ts) return '—'
@@ -48,7 +51,8 @@ export default function FlowAgentPage() {
   const featureFlags = useQuery(api.featureFlags.getAll)
   const tabEnabled = !!featureFlags?.ff_flow_agent_tab
   const backendEnabled = !!featureFlags?.ff_flow_agent_backend
-  const runnerEnabled = !!featureFlags?.ff_flow_runner_v1
+  const runnerEnabled = !!featureFlags?.ff_flow_runner_v1 || !!featureFlags?.ff_flow_runner_v2
+  const v2Enabled = !!featureFlags?.ff_flow_runner_v2
   const webPricingEnabled = !!featureFlags?.ff_flow_web_pricing
 
   const activeRun = useQuery(
@@ -61,14 +65,9 @@ export default function FlowAgentPage() {
     projectId && backendEnabled ? { projectId } : 'skip'
   )
 
-  const elementsSummary = useQuery(
-    api.elements.listByProject,
-    projectId && backendEnabled ? { projectId } : 'skip'
-  )
-
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-  const [showPanel, setShowPanel] = useState(true)
   const [showDebug, setShowDebug] = useState(false)
+  const [reviewChangeSetId, setReviewChangeSetId] = useState<string | null>(null)
 
   const defaultSelectedRunId = useMemo(() => {
     if (!backendEnabled) return null
@@ -88,6 +87,14 @@ export default function FlowAgentPage() {
     api.flowSteps.listByRun,
     selectedRun?._id && backendEnabled ? { flowRunId: selectedRun._id } : 'skip'
   )
+  const nodeRuns = useQuery(
+    api.flowNodeRuns.listByRun,
+    selectedRun?._id && backendEnabled ? { flowRunId: selectedRun._id } : 'skip'
+  )
+  const applyLogs = useQuery(
+    api.flowChangeSetApplyLogs.listByRun,
+    selectedRun?._id && backendEnabled ? { flowRunId: selectedRun._id } : 'skip'
+  )
 
   const startRun = useMutation(api.flowRuns.start)
   const pauseRun = useMutation(api.flowRuns.pause)
@@ -96,6 +103,12 @@ export default function FlowAgentPage() {
   const runNext = useAction(api.flowRuns.runNext)
   const setToggles = useMutation(api.flowRuns.setToggles)
   const setApprovalMode = useMutation(api.flowRuns.setApprovalMode)
+  const runAudit = useAction(api.flow.audit.run)
+  const setFlag = useMutation(api.featureFlags.setFlag)
+  const auditStaleness = useQuery(
+    api.flow.audit.getStaleness,
+    selectedRun?._id ? { flowRunId: selectedRun._id } : 'skip'
+  )
 
   if (!resolved) {
     return <div className='p-8 text-gray-500'>Loading project...</div>
@@ -165,16 +178,9 @@ export default function FlowAgentPage() {
                   if (!selectedRun?._id) return
                   await runNext({ flowRunId: selectedRun._id })
                 }}
-                title={runnerEnabled ? 'Advance to next step' : 'Enable ff_flow_runner_v1'}
+                title={runnerEnabled ? 'Advance to next step' : 'Enable ff_flow_runner_v1 or ff_flow_runner_v2'}
               >
                 Run next
-              </button>
-
-              <button
-                className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
-                onClick={() => setShowPanel((prev) => !prev)}
-              >
-                {showPanel ? 'Hide panel' : 'Show panel'}
               </button>
 
               <button
@@ -247,45 +253,82 @@ export default function FlowAgentPage() {
                 />
                 <span>Web pricing</span>
               </label>
+
+              <label className='inline-flex items-center gap-2'>
+                <input
+                  type='checkbox'
+                  className='h-4 w-4'
+                  checked={v2Enabled}
+                  onChange={async (e) => {
+                    await setFlag({ name: 'ff_flow_runner_v2', enabled: e.target.checked })
+                  }}
+                />
+                <span>Use v2 runner</span>
+              </label>
+            </div>
+          ) : null}
+
+          {activeRun ? (
+            <div className='mt-4 flex flex-wrap items-center gap-2'>
+              <button
+                className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
+                onClick={async () => {
+                  await cancelRun({ flowRunId: activeRun._id })
+                  await startRun({ projectId: projectId as any, useWebSearch: !!activeRun.toggles?.useWebSearch })
+                }}
+              >
+                Restart flow
+              </button>
+            </div>
+          ) : null}
+
+          {selectedRun?.status === 'completed' ? (
+            <div className='mt-4 flex flex-wrap items-center gap-2'>
+              <button
+                className='px-3 py-2 rounded-lg bg-slate-900 text-white text-sm'
+                onClick={async () => {
+                  if (!selectedRun?._id) return
+                  await runAudit({ flowRunId: selectedRun._id })
+                }}
+              >
+                Run Audit & Repair
+              </button>
+              <button
+                className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
+                onClick={() => null}
+              >
+                Finish without polish
+              </button>
+              {auditStaleness?.stale ? (
+                <div className='text-xs text-amber-600'>
+                  Audit stale: answers/artifacts changed since last audit.
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
       </div>
 
-      <div className='flex flex-1 min-h-0 border-t border-slate-200'>
-        <div className='flex-1 min-w-0'>
-          {selectedRun?.conversationId ? (
-            <FlowChat
-              conversationId={selectedRun.conversationId}
-              projectId={projectId as any}
-              flowRunId={selectedRun._id}
-            />
-          ) : (
-            <div className='p-8 text-sm text-slate-500'>Start a run to open the flow chat.</div>
-          )}
-        </div>
-
-        {showPanel ? (
-          <div className='w-80 border-l border-slate-200 bg-white p-4 overflow-y-auto'>
-            <div className='text-xs font-semibold text-slate-700 uppercase tracking-wide'>Project data</div>
-            <div className='mt-2 text-xs text-slate-500'>
-              Elements: {elementsSummary?.elements?.length ?? 0}
-            </div>
-            <div className='mt-4 space-y-3'>
-              {(elementsSummary?.elements ?? []).slice(0, 12).map((el: any) => (
-                <div key={el.id} className='rounded-lg border border-slate-100 p-3 text-xs'>
-                  <div className='font-medium text-slate-800'>{el.title}</div>
-                  <div className='mt-1 text-[11px] text-slate-500'>
-                    {el.type} • Tasks: {el.taskCount ?? 0}
-                  </div>
-                </div>
-              ))}
-              {(elementsSummary?.elements ?? []).length > 12 ? (
-                <div className='text-[11px] text-slate-400'>Showing first 12 elements.</div>
-              ) : null}
-            </div>
+      <div className='flex-1 min-h-0 border-t border-slate-200'>
+        <div className='grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px_280px] gap-4 p-6 h-full'>
+          <div className='flex flex-col min-h-0'>
+            {selectedRun?._id ? (
+              <FlowQuestionsLane flowRunId={selectedRun._id} isRunning={selectedRun.status === 'running'} />
+            ) : (
+              <div className='rounded-xl border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500'>
+                Start a run to open the clarifications lane.
+              </div>
+            )}
           </div>
-        ) : null}
+
+          <div className='hidden xl:flex min-h-0'>
+            {projectId ? <FlowElementsHealthPanel projectId={projectId as any} /> : null}
+          </div>
+
+          <div className='hidden xl:flex min-h-0'>
+            {selectedRun?._id ? <FlowWorkflowGpsPanel flowRunId={selectedRun._id} /> : null}
+          </div>
+        </div>
       </div>
 
       {showDebug ? (
@@ -293,12 +336,27 @@ export default function FlowAgentPage() {
           <FlowTimeline
             selectedRun={selectedRun}
             steps={steps as any}
+            nodeRuns={nodeRuns as any}
             formatTs={formatTs}
             statusLabelHe={statusLabelHe}
-            onOpenChangeSet={() => null}
+            onOpenChangeSet={(id) => setReviewChangeSetId(id)}
           />
-          <FlowDebugPanel selectedRun={selectedRun} latestStepWithReport={steps?.[steps.length - 1] ?? null} />
+          <FlowDebugPanel
+            selectedRun={selectedRun}
+            latestStepWithReport={steps?.[steps.length - 1] ?? null}
+            nodeRuns={nodeRuns as any}
+            applyLogs={applyLogs as any}
+          />
         </div>
+      ) : null}
+
+      {reviewChangeSetId ? (
+        <ChangeSetReviewDrawer
+          open={true}
+          onClose={() => setReviewChangeSetId(null)}
+          changeSetId={reviewChangeSetId as any}
+          projectId={projectId as any}
+        />
       ) : null}
     </div>
   )

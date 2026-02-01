@@ -1,4 +1,4 @@
-import { action } from '../_generated/server'
+import { action, internalMutation } from '../_generated/server'
 import { v } from 'convex/values'
 import { api, internal } from '../_generated/api'
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from '../featureFlags'
@@ -53,6 +53,16 @@ export const submitGateAnswers = action({
       await ctx.runMutation(internal.memory.appendUserInput, {
         projectId: run.projectId,
         text: `Gate ${run.currentGateId}: ${args.freeText.trim()}`,
+      })
+    }
+
+    if (run.currentGateId === 'G0C' && args.intent !== 'ask_more') {
+      await ctx.runMutation(internal.flow.gateActions.satisfyClarifications, {
+        flowRunId: args.flowRunId,
+        conversationId,
+        answersByKey: args.answersByKey,
+        questionKeys: args.questionKeys ?? [],
+        freeText: args.freeText,
       })
     }
 
@@ -112,5 +122,64 @@ export const submitGateAnswers = action({
     }
 
     await ctx.runAction(internal.flow.flowRunner.tick, { flowRunId: args.flowRunId })
+  },
+})
+
+export const satisfyClarifications = internalMutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    conversationId: v.id('agentConversations'),
+    answersByKey: v.record(v.string(), v.string()),
+    questionKeys: v.array(v.string()),
+    freeText: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.flowRunId)
+    if (!run) return
+
+    const now = Date.now()
+    const targetSkillId = 'ELEMENTS_BUILDER_FULL'
+    const existing = await ctx.db
+      .query('clarificationSessions')
+      .withIndex('by_project_target', (q) =>
+        q.eq('projectId', run.projectId).eq('targetSkillId', targetSkillId)
+      )
+      .order('desc')
+      .first()
+
+    const answers: Record<string, string> = {}
+    for (const [key, value] of Object.entries(args.answersByKey ?? {})) {
+      const cleanedKey = String(key ?? '').trim()
+      const cleanedValue = String(value ?? '').trim()
+      if (!cleanedKey || !cleanedValue) continue
+      answers[cleanedKey] = cleanedValue
+    }
+    if (args.freeText && args.freeText.trim()) {
+      answers.__free_text = args.freeText.trim()
+    }
+
+    const questions = (args.questionKeys ?? [])
+      .map((key) => String(key ?? '').trim())
+      .filter((key) => key.length > 0)
+      .map((id) => ({ id }))
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        answers: { ...(existing.answers ?? {}), ...answers },
+        isSatisfied: true,
+        updatedAt: now,
+      })
+    } else {
+      await ctx.db.insert('clarificationSessions', {
+        projectId: run.projectId,
+        conversationId: args.conversationId,
+        targetSkillId,
+        questions,
+        answers,
+        isSatisfied: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
   },
 })

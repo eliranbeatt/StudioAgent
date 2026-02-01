@@ -217,6 +217,7 @@ export const createChangeSet = mutation({
     // V2
     scope: v.optional(v.any()), // v.union(...) too verbose to repeat, lenient for now
     baseSnapshot: v.optional(v.any()),
+    artifactRevisionInId: v.optional(v.id("flowArtifactRevisions")),
     runConfig: v.optional(v.any()),
     report_he: v.optional(v.any()),
     gaps: v.optional(v.any()),
@@ -238,6 +239,7 @@ export const createChangeSet = mutation({
 
       scope: args.scope,
       baseSnapshot: args.baseSnapshot,
+      artifactRevisionInId: args.artifactRevisionInId,
       runConfig: args.runConfig,
       report_he: args.report_he,
       gaps: args.gaps,
@@ -2094,7 +2096,8 @@ async function applyOpsList(ctx: any, args: { projectId: Id<"projects">, ops: an
 export const applyChangeSetOps = mutation({
   args: {
     changeSetId: v.id("changeSets"),
-    opIndices: v.array(v.number())
+    opIndices: v.array(v.number()),
+    allowHardDelete: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const cs = await ctx.db.get(args.changeSetId);
@@ -2107,6 +2110,13 @@ export const applyChangeSetOps = mutation({
       .map(i => cs.ops![i]);
 
     if (selectedOps.length === 0) return;
+
+    const hasHardDelete = selectedOps.some((op: any) =>
+      op?.kind === "task.delete" || op?.kind === "materialLine.delete" || op?.kind === "workLine.delete"
+    );
+    if (hasHardDelete && !args.allowHardDelete) {
+      throw new Error("Hard deletes require explicit approval.");
+    }
 
     // Apply them
     await applyOpsList(ctx, {

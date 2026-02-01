@@ -30,6 +30,7 @@ export function FlowQuestionsBlock({
     block?.followupAction?.labelHe ??
     block?.followupAction?.label_he ??
     'Submit and ask more'
+  const v3Actions = Array.isArray(block?.actions) ? block.actions : null
   const freeTextTitle =
     block?.freeTextTitleHe ??
     block?.freeTextTitle_he ??
@@ -49,7 +50,7 @@ export function FlowQuestionsBlock({
   const showFreeText =
     hasFreeTextProps || block?.showFreeText === true || block?.show_free_text === true
 
-  const handleSubmit = async (intent: 'ask_more' | 'advance') => {
+  const handleSubmit = async (intent: 'ask_more' | 'advance' | 'skip') => {
     if (isSubmitting || submitted) return
     setIsSubmitting(true)
 
@@ -188,27 +189,59 @@ export function FlowQuestionsBlock({
       ) : null}
 
       <div className='flex gap-2 w-full'>
-        <button
-          onClick={() => handleSubmit('ask_more')}
-          disabled={isSubmitting || submitted}
-          className='flex-1 bg-white text-amber-700 border border-amber-600 py-2 rounded text-xs font-bold hover:bg-amber-50 disabled:opacity-50 flex justify-center items-center transition-colors'
-        >
-          {followupLabel}
-        </button>
-        <button
-          onClick={() => handleSubmit('advance')}
-          disabled={isSubmitting || submitted}
-          className='flex-1 bg-amber-600 text-white py-2 rounded text-xs font-bold hover:bg-amber-700 disabled:opacity-50 flex justify-center items-center transition-colors'
-        >
-          {isSubmitting ? (
-            <span className='flex items-center gap-2'>
-              <span className='animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full' />
-              Processing...
-            </span>
-          ) : (
-            continueLabel
-          )}
-        </button>
+        {v3Actions ? (
+          <>
+            <button
+              onClick={() => handleSubmit('ask_more')}
+              disabled={isSubmitting || submitted}
+              className='flex-1 bg-white text-amber-700 border border-amber-600 py-2 rounded text-xs font-bold hover:bg-amber-50 disabled:opacity-50 flex justify-center items-center transition-colors'
+            >
+              {v3Actions.find((a: any) => a.id === 'submit_more')?.labelHe ?? followupLabel}
+            </button>
+            <button
+              onClick={() => handleSubmit('skip')}
+              disabled={isSubmitting || submitted}
+              className='flex-1 bg-amber-600 text-white py-2 rounded text-xs font-bold hover:bg-amber-700 disabled:opacity-50 flex justify-center items-center transition-colors'
+            >
+              {isSubmitting ? (
+                <span className='flex items-center gap-2'>
+                  <span className='animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full' />
+                  Processing...
+                </span>
+              ) : (
+                v3Actions.find((a: any) => a.id === 'submit_skip')?.labelHe ?? continueLabel
+              )}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => handleSubmit('ask_more')}
+              disabled={isSubmitting || submitted}
+              className='flex-1 bg-white text-amber-700 border border-amber-600 py-2 rounded text-xs font-bold hover:bg-amber-50 disabled:opacity-50 flex justify-center items-center transition-colors'
+            >
+              {followupLabel}
+            </button>
+            <button
+              onClick={() => {
+                const intent =
+                  block?.continueAction?.payload?.intent === 'skip' ? 'skip' : 'advance'
+                handleSubmit(intent)
+              }}
+              disabled={isSubmitting || submitted}
+              className='flex-1 bg-amber-600 text-white py-2 rounded text-xs font-bold hover:bg-amber-700 disabled:opacity-50 flex justify-center items-center transition-colors'
+            >
+              {isSubmitting ? (
+                <span className='flex items-center gap-2'>
+                  <span className='animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full' />
+                  Processing...
+                </span>
+              ) : (
+                continueLabel
+              )}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

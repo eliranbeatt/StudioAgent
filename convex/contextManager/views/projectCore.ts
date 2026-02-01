@@ -15,6 +15,7 @@ export async function buildProjectCorePacks(
   const needsAccounting = requested.has('accounting')
   const needsQuote = requested.has('quote')
   const needsCatalog = requested.has('catalog')
+  const needsV3RunMeta = requested.has('v3RunMeta')
 
   const project = needsProject ? await ctx.db.get(args.projectId) : null
   const scopeElementIds = args.params?.scope?.elementIds
@@ -114,6 +115,16 @@ export async function buildProjectCorePacks(
     : elements
 
   return {
+    v3RunMeta: needsV3RunMeta
+      ? {
+          projectId: args.projectId,
+          runId: args.params?.runId ?? null,
+          stageKey: args.params?.stageKey ?? null,
+          runStartedAtISO: args.params?.runStartedAtISO ?? null,
+          answerVersion: args.params?.answerVersion ?? null,
+          autoApprove: args.params?.autoApprove ?? null,
+        }
+      : null,
     project: project
       ? {
           id: project._id,

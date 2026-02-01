@@ -728,22 +728,54 @@ export const agentRespond = action({
       }
     }
 
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "web_search",
-          description: "Search the web for real-time information, prices, specs, or vendors.",
-          parameters: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "Search query" },
+      const tools = [
+        {
+          type: "function",
+          function: {
+            name: "web_search",
+            description: "Search the web for real-time information, prices, specs, or vendors.",
+            parameters: {
+              type: "object",
+              properties: {
+                query: { type: "string", description: "Search query" },
+              },
+              required: ["query"],
             },
-            required: ["query"],
           },
         },
-      },
-    ];
+        {
+          type: "function",
+          function: {
+            name: "fetch_data",
+            description: "Fetch project data on demand (tasks, elements, material lines, work lines, files, QA pairs).",
+            parameters: {
+              type: "object",
+              properties: {
+                resource: {
+                  type: "string",
+                  enum: ["project", "elements", "tasks", "materialLines", "workLines", "files", "qaPairs"],
+                },
+                projectId: { type: "string", description: "Project ID. Optional if already in context." },
+                filters: {
+                  type: "object",
+                  properties: {
+                    elementId: { type: "string" },
+                    taskId: { type: "string" },
+                    status: { type: "string" },
+                    text: { type: "string" },
+                    dateFrom: { type: "string", description: "YYYY-MM-DD" },
+                    dateTo: { type: "string", description: "YYYY-MM-DD" },
+                  },
+                },
+                fields: { type: "array", items: { type: "string" } },
+                limit: { type: "number" },
+                cursor: { type: ["string", "null"] },
+              },
+              required: ["resource"],
+            },
+          },
+        },
+      ];
 
     try {
       if (process.env.OPENAI_API_KEY) {
@@ -888,6 +920,42 @@ export const agentRespond = action({
                 });
 
                 responseText += `\n\n*(תוצאות חיפוש עבור "${args.query}" התקבלו)*\n`;
+              } else if (call.function.name === "fetch_data") {
+                let args: any;
+                try { args = JSON.parse(call.function.arguments); } catch { args = {}; }
+
+                const projectId = args.projectId ?? conversation.projectId;
+                if (!projectId) {
+                  messages.push({
+                    role: "tool",
+                    tool_call_id: call.id,
+                    content: JSON.stringify({ error: "Missing projectId" })
+                  });
+                  continue;
+                }
+
+                try {
+                  const dataResult = await ctx.runAction(internal.agentData.fetch, {
+                    resource: args.resource,
+                    projectId,
+                    filters: args.filters,
+                    fields: args.fields,
+                    limit: args.limit,
+                    cursor: args.cursor ?? null,
+                  });
+
+                  messages.push({
+                    role: "tool",
+                    tool_call_id: call.id,
+                    content: JSON.stringify(dataResult)
+                  });
+                } catch (e: any) {
+                  messages.push({
+                    role: "tool",
+                    tool_call_id: call.id,
+                    content: JSON.stringify({ error: e.message })
+                  });
+                }
               } else {
                 messages.push({
                   role: "tool",

@@ -3,6 +3,7 @@ import { v } from 'convex/values'
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from './featureFlags'
 import { api, internal } from './_generated/api'
 import { buildProjectSnapshot } from './flow/snapshotBuilder'
+import { createRevisionFromLive } from './flow/artifactRevisions'
 import { validateG0Brief } from './flow/validation/validateG0Brief'
 import { validateG1Elements } from './flow/validation/validateG1Elements'
 import { validateG2Tasks } from './flow/validation/validateG2Tasks'
@@ -19,35 +20,57 @@ import { buildQuestionsBlock } from './flow/clarificationPackBuilder'
 const SETTINGS_KEY = 'featureFlags'
 
 async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
-  if (ctx.db) {
-    const existing = await ctx.db
-      .query('appSettings')
-      .withIndex('by_key', (q: any) => q.eq('key', SETTINGS_KEY))
-      .first()
+  if (ctx.db && typeof ctx.db.query === 'function') {
+    try {
+      const existing = await ctx.db
+        .query('appSettings')
+        .withIndex('by_key', (q: any) => q.eq('key', SETTINGS_KEY))
+        .first()
 
-    const stored = normalizeFlags(existing?.value)
-    return { ...DEFAULT_FLAGS, ...stored }
-  } else {
-    return await ctx.runQuery(api.featureFlags.getAll)
+      const stored = normalizeFlags(existing?.value)
+      return { ...DEFAULT_FLAGS, ...stored }
+    } catch {
+      // Fall through to runQuery/defaults
+    }
+  }
+
+  if (typeof ctx.runQuery === 'function') {
+    try {
+      return await ctx.runQuery(api.featureFlags.getAll)
+    } catch {
+      return { ...DEFAULT_FLAGS }
+    }
+  }
+
+  return { ...DEFAULT_FLAGS }
+}
+
+async function safeLoadFlags(ctx: any): Promise<Record<string, boolean>> {
+  try {
+    return await loadFlags(ctx)
+  } catch {
+    return { ...DEFAULT_FLAGS }
   }
 }
 
 async function assertBackendEnabled(ctx: any) {
-  const flags = await loadFlags(ctx)
+  const flags = await safeLoadFlags(ctx)
   if (!isEnabled(flags, 'ff_flow_agent_backend', false)) {
     throw new Error('Flow Agent is disabled (ff_flow_agent_backend)')
   }
 }
 
 async function assertRunnerEnabled(ctx: any) {
-  const flags = await loadFlags(ctx)
-  if (!isEnabled(flags, 'ff_flow_runner_v1', false)) {
-    throw new Error('Flow runner is disabled (ff_flow_runner_v1)')
+  const flags = await safeLoadFlags(ctx)
+  const v1Enabled = isEnabled(flags, 'ff_flow_runner_v1', false)
+  const v2Enabled = isEnabled(flags, 'ff_flow_runner_v2', false)
+  if (!v1Enabled && !v2Enabled) {
+    throw new Error('Flow runner is disabled (ff_flow_runner_v1/ff_flow_runner_v2)')
   }
 }
 
 async function assertValidatorsEnabled(ctx: any) {
-  const flags = await loadFlags(ctx)
+  const flags = await safeLoadFlags(ctx)
   if (!isEnabled(flags, 'ff_flow_validators_v1', false)) {
     throw new Error('Flow validators are disabled (ff_flow_validators_v1)')
   }
@@ -161,19 +184,34 @@ export const start = mutation({
       projectId: args.projectId,
       status: 'running' as FlowRunStatus,
       currentGateId: 'G0',
+      graphVersion: 'v2.1',
       conversationId,
       approvalMode: 'auto',
       approvalModeDefault: 'auto',
       approvalModeOverride: false,
       toggles: { autoRun: true, autoApprove: true, useWebSearch },
+      answerVersionAtStart: 0,
+      latestAnswerVersion: 0,
       createdAt: now,
       updatedAt: now,
+    })
+
+    const artifactRevisionId = await createRevisionFromLive(ctx, {
+      projectId: args.projectId,
+      runId,
+      source: 'runStart',
+    })
+
+    await ctx.db.patch(runId, {
+      currentArtifactRevisionId: artifactRevisionId,
+      updatedAt: Date.now(),
     })
 
     await ctx.db.insert('flowSteps', {
       flowRunId: runId,
       gateId: 'G0',
       status: 'running',
+      retryCount: 0,
       startedAt: now,
     })
 
@@ -305,11 +343,27 @@ export const applyChangeSetOpsAndContinue = action({
   handler: async (ctx, args) => {
     await assertBackendEnabled(ctx)
     await assertRunnerEnabled(ctx)
+    try {
+      await ctx.runMutation(api.changeSets.applyChangeSetOps, {
+        changeSetId: args.changeSetId,
+        opIndices: args.opIndices,
+        allowHardDelete: true,
+      })
 
-    await ctx.runMutation(api.changeSets.applyChangeSetOps, {
-      changeSetId: args.changeSetId,
-      opIndices: args.opIndices,
-    })
+      await ctx.runMutation(internal.flow.artifactRevisions.recordApplySuccess, {
+        flowRunId: args.flowRunId,
+        changeSetId: args.changeSetId,
+        appliedBy: 'user',
+      })
+    } catch (error: any) {
+      await ctx.runMutation(internal.flow.artifactRevisions.recordApplyFailure, {
+        flowRunId: args.flowRunId,
+        changeSetId: args.changeSetId,
+        appliedBy: 'user',
+        error: error?.message ?? String(error),
+      })
+      throw error
+    }
 
     await ctx.runAction(internal.flow.flowRunner.tick, { flowRunId: args.flowRunId })
     return { ok: true }
@@ -658,6 +712,7 @@ export const computeValidation = mutation({
         gateId,
         status: stepStatus,
         validationReport: report,
+        retryCount: 0,
         startedAt: now,
         finishedAt: now,
       })
@@ -673,8 +728,11 @@ export const computeValidation = mutation({
     const readinessScore = typeof report.readinessScore === 'number' ? report.readinessScore : undefined
 
     let nextRunStatus = run.status
+    const autoRunEnabled = !!run.toggles?.autoRun
     if (report.status !== 'pass') {
-      nextRunStatus = 'blocked'
+      if (!autoRunEnabled && run.status !== 'awaiting_approval') {
+        nextRunStatus = 'blocked'
+      }
     } else if (run.status === 'blocked') {
       nextRunStatus = 'running'
     }
@@ -729,12 +787,34 @@ export const advanceToGate = internalMutation({
         flowRunId: args.flowRunId,
         gateId: args.gateId,
         status: 'running',
+        retryCount: 0,
         startedAt: now
       })
     } else {
       await ctx.db.patch(existing._id, { status: 'running', startedAt: now })
     }
   }
+})
+
+export const bumpStepRetry = internalMutation({
+  args: {
+    flowRunId: v.id('flowRuns'),
+    gateId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const step = await ctx.db
+      .query('flowSteps')
+      .withIndex('by_run_gate', (q) => q.eq('flowRunId', args.flowRunId).eq('gateId', args.gateId))
+      .first()
+
+    if (!step) return { retryCount: 0 }
+    const nextRetry = (step.retryCount ?? 0) + 1
+    await ctx.db.patch(step._id, {
+      retryCount: nextRetry,
+      lastRetryAt: Date.now(),
+    })
+    return { retryCount: nextRetry }
+  },
 })
 
 export const ensureConversation = internalMutation({

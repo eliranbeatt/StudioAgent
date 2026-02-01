@@ -52,12 +52,31 @@ export const submitAnswers = mutation({
 
     const projectId = run.projectId
     const now = Date.now()
+    let nextAnswerVersion = typeof run.latestAnswerVersion === 'number' ? run.latestAnswerVersion : 0
+
+    // Fetch question text mapping
+    const questionSets = await ctx.db
+      .query('flowQuestionSets')
+      .withIndex('by_run', (q) => q.eq('runId', args.flowRunId))
+      .collect()
+
+    const questionTextMap = new Map<string, string>()
+    for (const qs of questionSets) {
+      if (Array.isArray(qs.questions)) {
+        for (const q of qs.questions) {
+          if (q.fieldKey && q.prompt) {
+            questionTextMap.set(q.fieldKey, q.prompt)
+          }
+        }
+      }
+    }
 
     for (const [questionKey, rawAnswer] of Object.entries(args.answersByKey)) {
       const key = String(questionKey || '').trim()
       const ans = String(rawAnswer || '').trim()
       if (!key) continue
       if (!ans) continue
+      nextAnswerVersion += 1
 
       const existing = await ctx.db
         .query('qaPairs')
@@ -70,22 +89,45 @@ export const submitAnswers = mutation({
         messageId: undefined,
       }
 
+      const questionText = questionTextMap.get(key) || key
+
       if (existing) {
         await ctx.db.patch(existing._id, {
+          question_he: questionText,
           answer_he: ans,
           source,
         })
       } else {
         await ctx.db.insert('qaPairs', {
           projectId,
-          question_he: key,
+          question_he: questionText,
           questionKey: key,
           answer_he: ans,
           source,
           createdAt: now,
         })
       }
+
+      await ctx.db.insert('flowAnswerEvents', {
+        runId: args.flowRunId,
+        questionId: key,
+        fieldKey: key,
+        answer: ans,
+        source: 'user',
+        answerVersion: nextAnswerVersion,
+        createdAt: now,
+      })
     }
+
+    await ctx.db.patch(args.flowRunId, {
+      latestAnswerVersion: nextAnswerVersion,
+      updatedAt: now,
+    })
+
+    await ctx.runMutation(internal.flow.questionSets.generateAndEmit, {
+      flowRunId: args.flowRunId,
+      reason: 'answer',
+    })
   },
 })
 

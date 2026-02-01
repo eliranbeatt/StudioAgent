@@ -122,6 +122,47 @@ export const createDraftFromUi = mutation({
   },
 });
 
+export const saveDraftFromPayload = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    payload: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const latest = await ctx.db
+      .query("quoteVersions")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .first();
+
+    const version = (latest?.version ?? 0) + 1;
+    const now = Date.now();
+    const totals = args.payload?.totals ?? {
+      directCost: 0,
+      overhead: 0,
+      risk: 0,
+      profit: 0,
+      grandTotal: 0,
+    };
+    const quoteText = args.payload?.contentMd_he ?? args.payload?.contentMdHe ?? undefined;
+
+    const quoteId = await ctx.db.insert("quoteVersions", {
+      projectId: args.projectId,
+      version,
+      status: "draft",
+      sourceElementVersionIds: [],
+      language: "he",
+      quoteBlocks: args.payload,
+      quoteText_he: quoteText,
+      totals,
+      createdAt: now,
+    });
+
+    await ctx.scheduler.runAfter(0, api.projectsStage.recomputeStage, { projectId: args.projectId });
+
+    return quoteId;
+  },
+});
+
 export const listApprovedElementVersions = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {

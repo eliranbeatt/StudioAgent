@@ -23,6 +23,7 @@ export const ctxPull = internalQuery({
         ragSearch: v.optional(v.boolean()),
         fileInspect: v.optional(v.boolean()),
         runSkill: v.optional(v.boolean()),
+        agentData: v.optional(v.boolean()),
       })
     ),
   },
@@ -35,6 +36,7 @@ export const ctxPull = internalQuery({
     })
 
     const packMap: Record<string, { title: string; payload: any }> = {
+      v3RunMeta: { title: 'V3 Run Meta', payload: (data as any).v3RunMeta },
       project: { title: 'Project', payload: data.project },
       elements: { title: 'Elements', payload: data.elements },
       tasks: { title: 'Tasks', payload: data.tasks },

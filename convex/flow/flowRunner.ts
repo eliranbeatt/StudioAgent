@@ -7,17 +7,29 @@ import { Id } from '../_generated/dataModel'
 const SETTINGS_KEY = 'featureFlags'
 
 async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
-  if (ctx.db) {
-    const existing = await ctx.db
-      .query('appSettings')
-      .withIndex('by_key', (q: any) => q.eq('key', SETTINGS_KEY))
-      .first()
+  if (ctx.db && typeof ctx.db.query === 'function') {
+    try {
+      const existing = await ctx.db
+        .query('appSettings')
+        .withIndex('by_key', (q: any) => q.eq('key', SETTINGS_KEY))
+        .first()
 
-    const stored = normalizeFlags(existing?.value)
-    return { ...DEFAULT_FLAGS, ...stored }
-  } else {
-    return await ctx.runQuery(api.featureFlags.getAll)
+      const stored = normalizeFlags(existing?.value)
+      return { ...DEFAULT_FLAGS, ...stored }
+    } catch {
+      // Fall through to runQuery/defaults
+    }
   }
+
+  if (typeof ctx.runQuery === 'function') {
+    try {
+      return await ctx.runQuery(api.featureFlags.getAll)
+    } catch {
+      return { ...DEFAULT_FLAGS }
+    }
+  }
+
+  return { ...DEFAULT_FLAGS }
 }
 
 function isResolvedChangeSetStatus(status: unknown): boolean {
@@ -60,6 +72,38 @@ function buildGateDedupeHash(gateId: string, report: any): string {
   return `${gateId}:${reportHash}:${questionsHash}`
 }
 
+async function applyChangeSetOpsWithRevision(
+  ctx: any,
+  args: {
+    flowRunId: Id<'flowRuns'>
+    changeSetId: Id<'changeSets'>
+    opIndices: number[]
+    appliedBy: 'auto' | 'user' | 'system'
+  }
+) {
+  try {
+    await ctx.runMutation(api.changeSets.applyChangeSetOps, {
+      changeSetId: args.changeSetId,
+      opIndices: args.opIndices,
+      allowHardDelete: true,
+    })
+
+    await ctx.runMutation(internal.flow.artifactRevisions.recordApplySuccess, {
+      flowRunId: args.flowRunId,
+      changeSetId: args.changeSetId,
+      appliedBy: args.appliedBy,
+    })
+  } catch (error: any) {
+    await ctx.runMutation(internal.flow.artifactRevisions.recordApplyFailure, {
+      flowRunId: args.flowRunId,
+      changeSetId: args.changeSetId,
+      appliedBy: args.appliedBy,
+      error: error?.message ?? String(error),
+    })
+    throw error
+  }
+}
+
 async function maybeUpdateApprovalMode(ctx: any, run: any): Promise<any> {
   const approvalModeOverride = !!run.approvalModeOverride
   const approvalModeDefault = run.approvalModeDefault ?? 'auto'
@@ -83,6 +127,38 @@ export const tick = internalAction({
     flowRunId: v.id('flowRuns'),
   },
   handler: async (ctx, args) => {
+    const flags = await loadFlags(ctx)
+    if (!isEnabled(flags, 'ff_flow_agent_backend', false)) {
+      throw new Error('Flow Agent is disabled (ff_flow_agent_backend)')
+    }
+
+    // V3 takes priority
+    const v3Enabled = isEnabled(flags, 'ff_flow_runner_v3', false)
+    if (v3Enabled) {
+      await ctx.runAction(internal.flow.flowRunnerV3.tickV3, { flowRunId: args.flowRunId })
+      return
+    }
+
+    const v1Enabled = isEnabled(flags, 'ff_flow_runner_v1', false)
+    const v2Enabled = isEnabled(flags, 'ff_flow_runner_v2', false)
+    if (!v1Enabled && !v2Enabled) {
+      throw new Error('Flow runner is disabled (ff_flow_runner_v1/ff_flow_runner_v2)')
+    }
+
+    if (v2Enabled) {
+      await ctx.runAction(internal.flow.orchestrator.tick, { flowRunId: args.flowRunId })
+      return
+    }
+
+    await ctx.runAction(internal.flow.flowRunner.tickLegacy, { flowRunId: args.flowRunId })
+  },
+})
+
+export const tickLegacy = internalAction({
+  args: {
+    flowRunId: v.id('flowRuns'),
+  },
+  handler: async (ctx, args) => {
     const { flowRunId } = args
 
     console.log('[flowRunner.tick] start', { flowRunId })
@@ -91,8 +167,10 @@ export const tick = internalAction({
     if (!isEnabled(flags, 'ff_flow_agent_backend', false)) {
       throw new Error('Flow Agent is disabled (ff_flow_agent_backend)')
     }
-    if (!isEnabled(flags, 'ff_flow_runner_v1', false)) {
-      throw new Error('Flow runner is disabled (ff_flow_runner_v1)')
+    const v1Enabled = isEnabled(flags, 'ff_flow_runner_v1', false)
+    const v2Enabled = isEnabled(flags, 'ff_flow_runner_v2', false)
+    if (!v1Enabled && !v2Enabled) {
+      throw new Error('Flow runner is disabled (ff_flow_runner_v1/ff_flow_runner_v2)')
     }
 
     // Load run state
@@ -124,9 +202,11 @@ export const tick = internalAction({
             const opCount = cs.ops?.length ?? 0
             if (opCount === 0) continue
             const opIndices = Array.from({ length: opCount }, (_, i) => i)
-            await ctx.runMutation(api.changeSets.applyChangeSetOps, {
+            await applyChangeSetOpsWithRevision(ctx, {
+              flowRunId,
               changeSetId: cs._id,
               opIndices,
+              appliedBy: 'auto',
             })
             summaries.push({
               changeSetId: cs._id,
@@ -172,75 +252,48 @@ export const tick = internalAction({
       if (!refreshed) return
 
       if (report?.status !== 'pass') {
-        console.log('[flowRunner.tick] blocked', {
+        console.log('[flowRunner.tick] validation failed', {
           flowRunId,
           gateId: refreshed.currentGateId,
           status: report?.status,
           blockingIssues: report?.blockingIssues?.length ?? 0,
         })
-        // Optionally compute draft ChangeSets for the current gate while blocked
+
+        const currentGateId = refreshed.currentGateId
         const step = await ctx.runQuery(internal.flowRuns.getStepInternal, {
           flowRunId,
-          gateId: refreshed.currentGateId,
+          gateId: currentGateId,
         })
 
-        const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
-        const gateHash = buildGateDedupeHash(refreshed.currentGateId, report)
+        const retryInfo = await ctx.runMutation(internal.flowRuns.bumpStepRetry, {
+          flowRunId,
+          gateId: currentGateId,
+        })
 
         const project = await ctx.runQuery(api.projects.getProjectInternal, { id: refreshed.projectId })
-        const needsBrainDump =
-          refreshed.currentGateId === 'G0' && !String(project?.brainDumpRaw ?? '').trim()
+        const dependsOnIssueKeys = Array.isArray(report?.blockingIssues)
+          ? report.blockingIssues.map((i: any) => i.key).filter(Boolean)
+          : []
+        const assumptionsUsed = Array.isArray(project?.assumptionsAccepted)
+          ? project.assumptionsAccepted.map((a: any) => a?.key).filter(Boolean)
+          : []
 
-        if (needsBrainDump) {
-          const existing = await ctx.runQuery(internal.flow.chat.findRecentBlock, {
-            conversationId,
-            blockType: 'FlowBrainDumpBlock',
-            limit: 50,
-          })
+        const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
+        const runResult = await runSkillForGate(ctx, {
+          projectId: refreshed.projectId,
+          conversationId,
+          gateId: currentGateId,
+          useWebSearch: !!refreshed.toggles?.useWebSearch,
+          flags,
+          draftOnly: false,
+          dependsOnIssueKeys,
+          assumptionsUsed,
+        })
 
-          if (!existing) {
-            await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
-              conversationId,
-              blocks: [
-                {
-                  type: 'FlowBrainDumpBlock',
-                },
-              ],
-            })
-          }
-        }
-
-        if (refreshed.toggles?.autoRun && (!step?.draftChangeSetIds || step.draftChangeSetIds.length === 0)) {
-          const dependsOnIssueKeys = Array.isArray(report?.blockingIssues)
-            ? report.blockingIssues.map((i: any) => i.key).filter(Boolean)
-            : []
-          const assumptionsUsed = Array.isArray(project?.assumptionsAccepted)
-            ? project.assumptionsAccepted.map((a: any) => a?.key).filter(Boolean)
-            : []
-
-          const draftResult = await runSkillForGate(ctx, {
-            projectId: refreshed.projectId,
-            conversationId,
-            gateId: refreshed.currentGateId,
-            useWebSearch: !!refreshed.toggles?.useWebSearch,
-            flags,
-            draftOnly: true,
-            dependsOnIssueKeys,
-            assumptionsUsed,
-          })
-
-          if (draftResult.changeSetIds.length > 0) {
-            await ctx.runMutation(internal.flowRuns.setDraftChangeSets, {
-              flowRunId,
-              gateId: refreshed.currentGateId,
-              draftChangeSetIds: draftResult.changeSetIds,
-            })
-          }
-
-          if (refreshed.toggles?.autoApprove && draftResult.changeSetIds.length > 0) {
-            let didApplyAny = false
+        if (runResult.changeSetIds.length > 0) {
+          if (refreshed.toggles?.autoApprove) {
             const changeSets = await Promise.all(
-              draftResult.changeSetIds.map((id) => ctx.runQuery(api.changeSets.get, { id }))
+              runResult.changeSetIds.map((id) => ctx.runQuery(api.changeSets.get, { id }))
             )
             const summaries: Array<{ changeSetId: Id<'changeSets'>; title?: string; detail?: string }> = []
             for (const cs of changeSets) {
@@ -248,11 +301,12 @@ export const tick = internalAction({
               const opCount = cs.ops?.length ?? 0
               if (opCount === 0) continue
               const opIndices = Array.from({ length: opCount }, (_, i) => i)
-              await ctx.runMutation(api.changeSets.applyChangeSetOps, {
+              await applyChangeSetOpsWithRevision(ctx, {
+                flowRunId,
                 changeSetId: cs._id,
                 opIndices,
+                appliedBy: 'auto',
               })
-              didApplyAny = true
               summaries.push({
                 changeSetId: cs._id,
                 title: cs.reason_he ?? cs.report_he?.summaryHe ?? 'Change set applied',
@@ -272,92 +326,27 @@ export const tick = internalAction({
               })
             }
 
-            if (didApplyAny) {
-              await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
-              return
-            }
-          }
-
-          if (draftResult.hasQuestions) {
+            await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
             return
           }
-        }
 
-        if (report?.questionsBlock) {
-          if (step?.lastEmittedHash !== gateHash) {
-            await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
-              conversationId,
-              blocks: [report.questionsBlock],
-            })
-
-            await ctx.runMutation(internal.flowRuns.setStepLastEmittedHash, {
-              flowRunId,
-              gateId: refreshed.currentGateId,
-              lastEmittedHash: gateHash,
-            })
-          }
-
-          return
-        }
-
-        const currentGateId = refreshed.currentGateId
-        const currentIndex = GATE_ORDER.indexOf(currentGateId as any)
-        const nextGateId = currentIndex >= 0 ? (GATE_ORDER[currentIndex + 1] as string | undefined) : undefined
-        if (!nextGateId) {
-          console.log('[flowRunner.tick] completed after skip', { flowRunId })
-          await ctx.runAction(api.memory.generateProjectContextDoc, { projectId: refreshed.projectId })
-          const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
-          const contextDoc = await ctx.runQuery(api.memory.getProjectContextDoc, { projectId: refreshed.projectId })
-          await ctx.runMutation(internal.flow.chat.emitAssistantBlocks, {
-            conversationId,
-            blocks: [
-              {
-                type: 'ChatBlock',
-                markdownHe: 'Project Context document created and saved in Knowledge → Project Context.',
-              },
-              ...(contextDoc?.contentMd_he
-                ? [
-                    {
-                      type: 'ChatBlock',
-                      markdownHe: contextDoc.contentMd_he,
-                    },
-                  ]
-                : []),
-            ],
-          })
-          await ctx.runMutation(internal.flowRuns.setRunStatus, { flowRunId, status: 'completed' })
-          return
-        }
-
-        console.log('[flowRunner.tick] auto-skip blocked gate', { flowRunId, from: currentGateId, to: nextGateId })
-        await ctx.runMutation(internal.flowRuns.setRunStatus, { flowRunId, status: 'running' })
-        await ctx.runMutation(internal.flowRuns.advanceToGate, {
-          flowRunId,
-          gateId: nextGateId,
-        })
-
-        const conversationIdForNext = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
-        const maybeDraftChangeSetIds = await runSkillForGate(ctx, {
-          projectId: refreshed.projectId,
-          conversationId: conversationIdForNext,
-          gateId: nextGateId,
-          useWebSearch: !!refreshed.toggles?.useWebSearch,
-          flags,
-        })
-
-        if (maybeDraftChangeSetIds.changeSetIds.length > 0) {
           await ctx.runMutation(internal.flowRuns.setAwaitingApproval, {
             flowRunId,
-            gateId: nextGateId,
-            draftChangeSetIds: maybeDraftChangeSetIds.changeSetIds,
+            gateId: currentGateId,
+            draftChangeSetIds: runResult.changeSetIds,
           })
-          if (refreshed.toggles?.autoApprove) {
-            await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId })
-          }
           return
         }
 
-        continue
+        await ctx.runMutation(internal.flow.questionSets.generateAndEmit, {
+          flowRunId,
+          reason: 'validation_failed',
+        })
+
+        const retryCount = retryInfo?.retryCount ?? step?.retryCount ?? 0
+        const delayMs = Math.min(60000, 2000 * Math.max(1, retryCount))
+        await ctx.scheduler.runAfter(delayMs, internal.flow.flowRunner.tick, { flowRunId })
+        return
       }
 
       const projectId = refreshed.projectId
@@ -379,11 +368,11 @@ export const tick = internalAction({
             },
             ...(contextDoc?.contentMd_he
               ? [
-                  {
-                    type: 'ChatBlock',
-                    markdownHe: contextDoc.contentMd_he,
-                  },
-                ]
+                {
+                  type: 'ChatBlock',
+                  markdownHe: contextDoc.contentMd_he,
+                },
+              ]
               : []),
           ],
         })
@@ -452,7 +441,7 @@ async function runSkillForGate(
   if (args.gateId === 'G3') skills.push('ACCOUNTING_BUILDER_FULL')
 
   if (args.gateId === 'G4') {
-    if (!pricingGatesEnabled) return []
+    if (!pricingGatesEnabled) return { changeSetIds: [], hasQuestions: false }
     skills.push('PRICING_LOOKUP_CATALOG_BATCH')
     if (webPricingEnabled && args.useWebSearch) {
       skills.push('PRICING_RESEARCH_WEB_BATCH')
@@ -462,24 +451,24 @@ async function runSkillForGate(
   }
 
   if (args.gateId === 'G5') {
-    if (!pricingGatesEnabled) return []
+    if (!pricingGatesEnabled) return { changeSetIds: [], hasQuestions: false }
     skills.push('TASKS_ENRICH_FROM_ACCOUNTING_BATCH')
   }
 
   if (args.gateId === 'G6') {
-    if (!pricingGatesEnabled) return []
+    if (!pricingGatesEnabled) return { changeSetIds: [], hasQuestions: false }
     skills.push('OVERHEAD_AND_LOGISTICS_COMPLETER')
   }
 
   // G7 is a deterministic recheck; no skill required.
 
   if (args.gateId === 'G8') {
-    if (!pricingGatesEnabled) return []
+    if (!pricingGatesEnabled) return { changeSetIds: [], hasQuestions: false }
     skills.push('QUOTE_BUILD_OR_FIX')
   }
 
   if (args.gateId === 'G9') {
-    if (!pricingGatesEnabled) return []
+    if (!pricingGatesEnabled) return { changeSetIds: [], hasQuestions: false }
     skills.push('FINAL_AUDIT_FIXER')
   }
 

@@ -45,7 +45,9 @@ export const sendUserMessage = mutation({
     await ctx.db.patch(args.conversationId, { updatedAt: Date.now() })
 
     const flags = await loadFlags(ctx)
-    if (!isEnabled(flags, 'ff_flow_runner_v1', false)) return
+    const v1Enabled = isEnabled(flags, 'ff_flow_runner_v1', false)
+    const v2Enabled = isEnabled(flags, 'ff_flow_runner_v2', false)
+    if (!v1Enabled && !v2Enabled) return
 
     const conversation = await ctx.db.get(args.conversationId)
     if (!conversation) return

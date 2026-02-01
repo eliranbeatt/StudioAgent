@@ -49,6 +49,11 @@ function isFileHeavySkill(skillId?: string) {
   return key.includes('FILE') || key.includes('IMPORT')
 }
 
+function isV3Skill(skillId?: string) {
+  if (!skillId) return false
+  return skillId.startsWith('V3_')
+}
+
 export function getRecipeForSkill(args: {
   skillId?: string
   allowedTools?: {
@@ -58,8 +63,28 @@ export function getRecipeForSkill(args: {
     runSkill?: boolean
     generateQuote?: boolean
     estimateTasks?: boolean
+    agentData?: boolean
   }
 }): ContextRecipe {
+  if (isV3Skill(args.skillId)) {
+    const toolBundleId = [
+      args.allowedTools?.webSearch ? 'web' : null,
+      args.allowedTools?.ragSearch ? 'rag' : null,
+      args.allowedTools?.fileInspect ? 'files' : null,
+      args.allowedTools?.runSkill ? 'skill' : null,
+      args.allowedTools?.agentData ? 'data' : null,
+    ]
+      .filter(Boolean)
+      .join('+') || 'none'
+
+    return {
+      view: 'project_core_v1',
+      version: 'v3',
+      packIds: ['v3RunMeta'],
+      toolBundleId,
+    }
+  }
+
   const packIds = [...BASE_PACKS]
 
   if (isAccountingSkill(args.skillId)) {
@@ -83,6 +108,7 @@ export function getRecipeForSkill(args: {
     args.allowedTools?.ragSearch ? 'rag' : null,
     args.allowedTools?.fileInspect ? 'files' : null,
     args.allowedTools?.runSkill ? 'skill' : null,
+    args.allowedTools?.agentData ? 'data' : null,
   ]
     .filter(Boolean)
     .join('+') || 'none'

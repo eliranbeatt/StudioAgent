@@ -900,6 +900,7 @@ export default defineSchema({
       accountingUpdatedAt: v.optional(v.number()),
       quoteUpdatedAt: v.optional(v.number()),
     })),
+    artifactRevisionInId: v.optional(v.id("flowArtifactRevisions")),
     runConfig: v.optional(v.object({
       modelPreset: v.string(),
       allowWeb: v.boolean(),
@@ -1494,6 +1495,7 @@ export default defineSchema({
         runSkill: v.optional(v.boolean()),
         generateQuote: v.optional(v.boolean()),
         estimateTasks: v.optional(v.boolean()),
+        agentData: v.optional(v.boolean()),
       }),
       outputContract: v.string(), // "blocks", "changeset"
     }),
@@ -1550,6 +1552,7 @@ export default defineSchema({
       v.literal("cancelled")
     ),
     currentGateId: v.string(),
+    graphVersion: v.optional(v.string()),
     approvalMode: v.optional(v.union(v.literal("auto"), v.literal("manual"))),
     approvalModeDefault: v.optional(v.union(v.literal("auto"), v.literal("manual"))),
     approvalModeOverride: v.optional(v.boolean()),
@@ -1562,7 +1565,17 @@ export default defineSchema({
       autoApprove: v.optional(v.boolean()),
       useWebSearch: v.optional(v.boolean()),
     })),
+    currentArtifactRevisionId: v.optional(v.id("flowArtifactRevisions")),
+    answerVersionAtStart: v.optional(v.number()),
+    latestAnswerVersion: v.optional(v.number()),
+    debugModeEnabled: v.optional(v.boolean()),
     conversationId: v.optional(v.id("agentConversations")),
+    // V3 Flow fields
+    v3StageKey: v.optional(v.union(
+      v.literal("A"), v.literal("B"), v.literal("C"), v.literal("D"), v.literal("E")
+    )),
+    v3Mode: v.optional(v.union(v.literal("questions"), v.literal("build"))),
+    v3RunStartedAtISO: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     finishedAt: v.optional(v.number()),
@@ -1584,12 +1597,148 @@ export default defineSchema({
     validationReport: v.optional(v.any()),
     draftChangeSetIds: v.optional(v.array(v.id("changeSets"))),
     lastEmittedHash: v.optional(v.string()),
+    retryCount: v.optional(v.number()),
+    lastRetryAt: v.optional(v.number()),
     error: v.optional(v.string()),
     startedAt: v.number(),
     finishedAt: v.optional(v.number()),
   })
     .index("by_run", ["flowRunId"])
     .index("by_run_gate", ["flowRunId", "gateId"]),
+
+  flowArtifactRevisions: defineTable({
+    projectId: v.id("projects"),
+    runId: v.optional(v.id("flowRuns")),
+    snapshot: v.any(),
+    hash: v.string(),
+    createdAt: v.number(),
+    source: v.union(
+      v.literal("runStart"),
+      v.literal("autoApply"),
+      v.literal("manualApply"),
+      v.literal("audit"),
+      v.literal("replay")
+    ),
+    baseRevisionId: v.optional(v.id("flowArtifactRevisions")),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_run", ["runId"])
+    .index("by_createdAt", ["createdAt"]),
+
+  flowNodeRuns: defineTable({
+    runId: v.id("flowRuns"),
+    nodeId: v.string(),
+    attempt: v.number(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+      v.literal("stale")
+    ),
+    dependsOn: v.optional(v.array(v.string())),
+    artifactRevisionInId: v.optional(v.id("flowArtifactRevisions")),
+    artifactRevisionOutId: v.optional(v.id("flowArtifactRevisions")),
+    answerVersionUsed: v.optional(v.number()),
+    inputsHash: v.string(),
+    assumptions: v.optional(v.array(v.string())),
+    confidence: v.optional(v.number()),
+    confidenceNotes: v.optional(v.string()),
+    changesetId: v.optional(v.id("changeSets")),
+    logsRef: v.optional(v.any()),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_node", ["runId", "nodeId"])
+    .index("by_changeset", ["changesetId"])
+    .index("by_createdAt", ["createdAt"]),
+
+  flowAnswerEvents: defineTable({
+    runId: v.id("flowRuns"),
+    questionId: v.optional(v.string()),
+    fieldKey: v.string(),
+    answer: v.any(),
+    source: v.union(v.literal("user"), v.literal("system")),
+    answerVersion: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_answerVersion", ["runId", "answerVersion"])
+    .index("by_createdAt", ["createdAt"]),
+
+  flowQuestionSets: defineTable({
+    runId: v.id("flowRuns"),
+    questionSetId: v.string(),
+    createdAt: v.number(),
+    gateId: v.optional(v.string()),
+    titleHe: v.optional(v.string()),
+    basedOnArtifactRevisionId: v.optional(v.id("flowArtifactRevisions")),
+    basedOnAnswerVersion: v.optional(v.number()),
+    questions: v.array(v.object({
+      questionId: v.string(),
+      fieldKey: v.string(),
+      prompt: v.string(),
+      choices: v.optional(v.array(v.string())),
+      type: v.optional(v.string()),
+      placeholderHe: v.optional(v.string()),
+      priority: v.optional(v.number()),
+      whyAsked: v.optional(v.string()),
+    })),
+    emittedToChatAt: v.optional(v.number()),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_questionSet", ["runId", "questionSetId"])
+    .index("by_createdAt", ["createdAt"]),
+
+  flowQuestionSetResponses: defineTable({
+    runId: v.id("flowRuns"),
+    questionSetId: v.id("flowQuestionSets"),
+    intent: v.union(v.literal("answer"), v.literal("ask_more"), v.literal("skip")),
+    status: v.union(v.literal("answered"), v.literal("skipped")),
+    answersByKey: v.optional(v.record(v.string(), v.string())),
+    createdAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_questionSet", ["questionSetId"])
+    .index("by_run_createdAt", ["runId", "createdAt"]),
+
+  flowChangeSetApplyLogs: defineTable({
+    changeSetId: v.id("changeSets"),
+    runId: v.id("flowRuns"),
+    nodeId: v.optional(v.string()),
+    appliedBy: v.union(v.literal("auto"), v.literal("user"), v.literal("system")),
+    appliedAt: v.number(),
+    result: v.union(v.literal("success"), v.literal("failure")),
+    error: v.optional(v.string()),
+    artifactRevisionOutId: v.optional(v.id("flowArtifactRevisions")),
+  })
+    .index("by_changeSet", ["changeSetId"])
+    .index("by_run", ["runId"])
+    .index("by_appliedAt", ["appliedAt"]),
+
+  flowAuditRuns: defineTable({
+    runId: v.id("flowRuns"),
+    auditRunId: v.string(),
+    createdAt: v.number(),
+    answerVersionUsed: v.optional(v.number()),
+    artifactRevisionUsed: v.optional(v.id("flowArtifactRevisions")),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+      v.literal("stale")
+    ),
+    validatorFindings: v.optional(v.array(v.any())),
+    changeSetId: v.optional(v.id("changeSets")),
+    verificationReport: v.optional(v.any()),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_run", ["runId"])
+    .index("by_changeSet", ["changeSetId"])
+    .index("by_createdAt", ["createdAt"]),
 
   // Agent Conversations (New)
   agentConversations: defineTable({
@@ -1731,6 +1880,52 @@ export default defineSchema({
     key: v.string(), // e.g. "global"
     value: v.any(),
   }).index("by_key", ["key"]),
+
+  agentDataLogs: defineTable({
+    projectId: v.id("projects"),
+    resource: v.string(),
+    filters: v.optional(v.any()),
+    fields: v.optional(v.array(v.string())),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+    resultCount: v.number(),
+    status: v.union(v.literal("success"), v.literal("error")),
+    latencyMs: v.number(),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_resource", ["projectId", "resource"])
+    .index("by_createdAt", ["createdAt"]),
+
+  skillToolLogs: defineTable({
+    projectId: v.optional(v.id("projects")),
+    conversationId: v.optional(v.union(v.id("conversations"), v.id("agentConversations"), v.string())),
+    skillRunId: v.optional(v.id("skillRuns")),
+    skillId: v.optional(v.string()),
+    toolName: v.string(),
+    argsHash: v.string(),
+    argsBytes: v.number(),
+    resultBytes: v.optional(v.number()),
+    latencyMs: v.number(),
+    status: v.union(v.literal("success"), v.literal("error")),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_skill_run", ["skillRunId"])
+    .index("by_createdAt", ["createdAt"]),
+
+  flowRunTimelineEvents: defineTable({
+    runId: v.id("flowRuns"),
+    stageKey: v.optional(v.string()),
+    eventType: v.string(),
+    detail: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_stage", ["runId", "stageKey"])
+    .index("by_createdAt", ["createdAt"]),
 
   // LLM Traces
   llmTraces: defineTable({

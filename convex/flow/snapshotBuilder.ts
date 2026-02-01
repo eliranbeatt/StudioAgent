@@ -1,4 +1,6 @@
 import { Id } from '../_generated/dataModel'
+import { internalQuery } from '../_generated/server'
+import { v } from 'convex/values'
 
 export type ProjectSnapshotV1 = {
   projectId: Id<'projects'>
@@ -275,3 +277,10 @@ export async function buildProjectSnapshot(
     },
   }
 }
+
+export const getProjectSnapshot = internalQuery({
+  args: { projectId: v.id('projects') },
+  handler: async (ctx, args) => {
+    return await buildProjectSnapshot(ctx, args.projectId)
+  },
+})

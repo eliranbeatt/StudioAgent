@@ -3,7 +3,7 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Pencil, Plus, Send } from "lucide-react";
 import { ACTIVE_AGENT_PROMPT_ID } from "../../../../lib/agentPrompts";
 
@@ -35,6 +35,7 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
   const [renameDraft, setRenameDraft] = useState("");
   const user = useQuery(api.users.getViewer);
   const model = user?.preferredModel ?? "gpt-5-mini";
+  const endRef = useRef<HTMLDivElement>(null);
 
   const conversations = useQuery(api.agent.listConversations, { projectId });
   const messages = useQuery(
@@ -126,6 +127,12 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
         setIsWaiting(false);
       }
     };
+
+    useEffect(() => {
+      if (isWaiting) {
+        endRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    }, [isWaiting]);
 
     const handleRename = async (id: Id<"conversations">) => {
       const nextTitle = renameDraft.trim();
@@ -340,6 +347,13 @@ export default function StudioAgentPage({ params }: { params: Promise<{ id: stri
                   />
                 ))
               )}
+              {isWaiting ? (
+                <div className="flex items-center gap-2 text-xs text-gray-400 animate-pulse">
+                  <Loader2 size={12} className="animate-spin" />
+                  <span>Thinking</span>
+                </div>
+              ) : null}
+              <div ref={endRef} />
             </div>
           </div>
   

@@ -17,11 +17,11 @@ export type QuestionsBlockV1 = {
   submitLabelHe: string
   continueAction?: {
     labelHe: string
-    payload?: { targetSkillId?: string }
+    payload?: { targetSkillId?: string; intent?: 'skip' | 'advance' }
   }
   followupAction?: {
     labelHe: string
-    payload?: { targetSkillId?: string }
+    payload?: { targetSkillId?: string; intent?: 'skip' | 'advance' }
   }
   freeTextTitleHe?: string
   freeTextPromptHe?: string
@@ -233,7 +233,7 @@ export function buildQuestionsBlock(args: {
     type: 'QuestionsBlock',
     titleHe: `שאלות להשלמה${gateLabel}`,
     submitLabelHe: 'שמור תשובות',
-    continueAction: { labelHe: 'Submit and skip to next level' },
+    continueAction: { labelHe: 'Submit and skip to next level', payload: { intent: 'skip' } },
     followupAction: { labelHe: 'Submit and ask more' },
     freeTextTitleHe: '???????? ??????????',
     freeTextPromptHe: '?????????? ????????????...',

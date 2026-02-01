@@ -29,7 +29,7 @@ function buildPromptCacheOptions(args: {
   flags: Record<string, boolean>
   model?: string
   skillId: string
-  allowedTools?: { webSearch?: boolean; ragSearch?: boolean; fileInspect?: boolean; runSkill?: boolean; generateQuote?: boolean; estimateTasks?: boolean }
+  allowedTools?: { webSearch?: boolean; ragSearch?: boolean; fileInspect?: boolean; runSkill?: boolean; generateQuote?: boolean; estimateTasks?: boolean; agentData?: boolean }
   viewId?: string
 }) {
   if (!isEnabled(args.flags, "ff_prompt_cache", false)) return {};
@@ -41,6 +41,7 @@ function buildPromptCacheOptions(args: {
     args.allowedTools?.runSkill ? "skill" : null,
     args.allowedTools?.generateQuote ? "quote" : null,
     args.allowedTools?.estimateTasks ? "estimate" : null,
+    args.allowedTools?.agentData ? "data" : null,
   ]
     .filter(Boolean)
     .join("+") || "none";
@@ -121,6 +122,7 @@ export const runSkill = action({
       runSkill: !!skillData.skill.config.allowedTools?.runSkill,
       generateQuote: !!skillData.skill.config.allowedTools?.generateQuote,
       estimateTasks: !!skillData.skill.config.allowedTools?.estimateTasks,
+      agentData: !!skillData.skill.config.allowedTools?.agentData,
     };
 
     // 3. Build Context (Query)
@@ -726,221 +728,251 @@ export const saveRunResult = internalMutation({
     projectId: v.id("projects")
   },
   handler: async (ctx, args) => {
-      let blocks = args.blocks;
+    let blocks = sanitizeKeys(args.blocks);
 
-      const run = await ctx.db.get(args.runId);
-      // Removed isPricingSkill logic that forced webPriceOps into the blocks.
-      // We now trust the LLM to output the parsed ChangeSetBlock.
-      const suppressSuggestions = run?.inputParams?.source === "flow_runner";
-      if (suppressSuggestions) {
-        blocks = (Array.isArray(blocks) ? blocks : []).filter((b: any) =>
-          b?.type !== "SuggestionsBlock" && b?.type !== "SuggestionBlock"
-        );
+    const run = await ctx.db.get(args.runId);
+    // Removed isPricingSkill logic that forced webPriceOps into the blocks.
+    // We now trust the LLM to output the parsed ChangeSetBlock.
+    const suppressSuggestions = run?.inputParams?.source === "flow_runner";
+    if (suppressSuggestions) {
+      blocks = (Array.isArray(blocks) ? blocks : []).filter((b: any) =>
+        b?.type !== "SuggestionsBlock" && b?.type !== "SuggestionBlock"
+      );
+    }
+
+    let quoteDraftSavedId: any = null;
+
+    for (const block of Array.isArray(blocks) ? blocks : []) {
+      const memoryDocs = Array.isArray(block?.memoryDocs)
+        ? block.memoryDocs
+        : block?.memoryDoc
+          ? [block.memoryDoc]
+          : null;
+      if (memoryDocs) {
+        for (const doc of memoryDocs) {
+          if (!doc?.kind || !doc?.contentMd_he) continue;
+          const id = await ctx.runMutation(internal.memory.upsertMemoryDoc, {
+            projectId: args.projectId,
+            kind: String(doc.kind),
+            title_he: typeof doc.title_he === "string" ? doc.title_he : undefined,
+            contentMd_he: String(doc.contentMd_he),
+          });
+        }
       }
 
-      const isPricingFallback = run?.skillId === "PRICING_ESTIMATE_FALLBACK_BATCH";
-      const needsLineState = isPricingFallback || (Array.isArray(blocks) && blocks.some((b: any) =>
-        b?.type === "ChangeSetBlock" && Array.isArray(b?.changeSet?.ops) &&
-        b.changeSet.ops.some((op: any) => op?.kind === "materialLine.create" || op?.kind === "workLine.create")
-      ));
-      const [materialLines, workLines] = needsLineState
-        ? await Promise.all([
-          ctx.db.query("materialLines").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
-          ctx.db.query("workLines").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect()
-        ])
-        : [[], []];
+      const quoteDraft = block?.quoteDraft ?? block?.quote ?? null;
+      if (quoteDraft) {
+        quoteDraftSavedId = await ctx.runMutation(internal.quotes.saveDraftFromPayload, {
+          projectId: args.projectId,
+          payload: quoteDraft,
+        });
+        block.quoteDraftSavedId = quoteDraftSavedId;
+      }
+    }
 
+    const isPricingFallback = run?.skillId === "PRICING_ESTIMATE_FALLBACK_BATCH";
+    const needsLineState = isPricingFallback || (Array.isArray(blocks) && blocks.some((b: any) =>
+      b?.type === "ChangeSetBlock" && Array.isArray(b?.changeSet?.ops) &&
+      b.changeSet.ops.some((op: any) => op?.kind === "materialLine.create" || op?.kind === "workLine.create")
+    ));
+    const [materialLines, workLines] = needsLineState
+      ? await Promise.all([
+        ctx.db.query("materialLines").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
+        ctx.db.query("workLines").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect()
+      ])
+      : [[], []];
+
+    const normalizeKey = (value: any) => String(value ?? "").trim().toLowerCase();
+    const pickFields = (fields: any, keys: string[]) => {
+      const out: any = {};
+      for (const key of keys) {
+        if (fields && fields[key] !== undefined) out[key] = fields[key];
+      }
+      return out;
+    };
+
+    const coercePricingFallbackOps = (ops: any[]) => {
+      if (!isPricingFallback) return ops;
+      return ops.map((op: any) => {
+        if (!op || !op.kind || !op.payload) return op;
+        if (op.kind === "materialLine.create") {
+          const fields = op.payload.fields ?? op.payload;
+          const itemName = fields?.itemName ?? fields?.title ?? op.payload?.itemName;
+          if (!itemName) return op;
+          const elementId = op.payload?.elementId ?? fields?.elementId;
+          const taskId = op.payload?.taskId ?? fields?.taskId;
+          const nameKey = normalizeKey(itemName);
+          const candidates = materialLines.filter((l: any) => normalizeKey(l.itemName) === nameKey)
+            .filter((l: any) => (elementId ? String(l.elementId ?? "") === String(elementId) : true))
+            .filter((l: any) => (taskId ? String(l.taskId ?? "") === String(taskId) : true));
+          if (candidates.length === 0) return op;
+          const scored = candidates.sort((a: any, b: any) => {
+            const aMissing = (!a.plannedUnitCost || !a.plannedTotalCost || !a.pricingSourceCode || !a.priceCheckedAt || a.confidence === undefined) ? 1 : 0;
+            const bMissing = (!b.plannedUnitCost || !b.plannedTotalCost || !b.pricingSourceCode || !b.priceCheckedAt || b.confidence === undefined) ? 1 : 0;
+            return bMissing - aMissing;
+          });
+          const target = scored[0];
+          const pricingFields = pickFields(fields, [
+            "plannedUnitCost",
+            "plannedTotalCost",
+            "pricingSourceCode",
+            "priceCheckedAt",
+            "priceUrl",
+            "confidence",
+            "sourceCode",
+            "sourceLabelHe",
+            "source",
+            "vendorId",
+            "vendorName",
+            "notes",
+          ]);
+          if (Object.keys(pricingFields).length === 0) return op;
+          return {
+            kind: "materialLine.patch",
+            payload: {
+              lineId: target._id,
+              fields: pricingFields,
+            },
+          };
+        }
+        if (op.kind === "workLine.create") {
+          const fields = op.payload.fields ?? op.payload;
+          const roleHe = fields?.roleHe ?? fields?.title ?? op.payload?.roleHe;
+          if (!roleHe) return op;
+          const elementId = op.payload?.elementId ?? fields?.elementId;
+          const taskId = op.payload?.taskId ?? fields?.taskId;
+          const nameKey = normalizeKey(roleHe);
+          const candidates = workLines.filter((l: any) => normalizeKey(l.roleHe) === nameKey)
+            .filter((l: any) => (elementId ? String(l.elementId ?? "") === String(elementId) : true))
+            .filter((l: any) => (taskId ? String(l.taskId ?? "") === String(taskId) : true));
+          if (candidates.length === 0) return op;
+          const scored = candidates.sort((a: any, b: any) => {
+            const aMissing = (!a.plannedUnitCost || !a.plannedTotalCost || a.confidence === undefined) ? 1 : 0;
+            const bMissing = (!b.plannedUnitCost || !b.plannedTotalCost || b.confidence === undefined) ? 1 : 0;
+            return bMissing - aMissing;
+          });
+          const target = scored[0];
+          const pricingFields = pickFields(fields, [
+            "plannedUnitCost",
+            "plannedTotalCost",
+            "confidence",
+            "sourceCode",
+            "sourceLabelHe",
+            "source",
+            "notes",
+          ]);
+          if (Object.keys(pricingFields).length === 0) return op;
+          return {
+            kind: "workLine.patch",
+            payload: {
+              lineId: target._id,
+              fields: pricingFields,
+            },
+          };
+        }
+        return op;
+      });
+    };
+    const coerceDuplicateLineCreates = (ops: any[]) => {
+      if (!needsLineState) return ops;
       const normalizeKey = (value: any) => String(value ?? "").trim().toLowerCase();
-      const pickFields = (fields: any, keys: string[]) => {
-        const out: any = {};
-        for (const key of keys) {
-          if (fields && fields[key] !== undefined) out[key] = fields[key];
-        }
-        return out;
+      const materialByDedup = new Map<string, any>();
+      const workByDedup = new Map<string, any>();
+      for (const line of materialLines) {
+        if (line?.dedupKey) materialByDedup.set(String(line.dedupKey), line);
+      }
+      for (const line of workLines) {
+        if (line?.dedupKey) workByDedup.set(String(line.dedupKey), line);
+      }
+      const findMaterialMatch = (fields: any, payload: any) => {
+        const dedupKey = fields?.dedupKey;
+        if (dedupKey && materialByDedup.has(dedupKey)) return materialByDedup.get(dedupKey);
+        const nameKey = normalizeKey(fields?.itemName ?? fields?.title ?? payload?.itemName);
+        if (!nameKey) return null;
+        const elementId = payload?.elementId ?? fields?.elementId;
+        const taskId = payload?.taskId ?? fields?.taskId;
+        return materialLines.find((l: any) =>
+          normalizeKey(l.itemName) === nameKey &&
+          String(l.elementId ?? "") === String(elementId ?? "") &&
+          String(l.taskId ?? "") === String(taskId ?? "")
+        ) ?? null;
       };
-
-      const coercePricingFallbackOps = (ops: any[]) => {
-        if (!isPricingFallback) return ops;
-        return ops.map((op: any) => {
-          if (!op || !op.kind || !op.payload) return op;
-          if (op.kind === "materialLine.create") {
-            const fields = op.payload.fields ?? op.payload;
-            const itemName = fields?.itemName ?? fields?.title ?? op.payload?.itemName;
-            if (!itemName) return op;
-            const elementId = op.payload?.elementId ?? fields?.elementId;
-            const taskId = op.payload?.taskId ?? fields?.taskId;
-            const nameKey = normalizeKey(itemName);
-            const candidates = materialLines.filter((l: any) => normalizeKey(l.itemName) === nameKey)
-              .filter((l: any) => (elementId ? String(l.elementId ?? "") === String(elementId) : true))
-              .filter((l: any) => (taskId ? String(l.taskId ?? "") === String(taskId) : true));
-            if (candidates.length === 0) return op;
-            const scored = candidates.sort((a: any, b: any) => {
-              const aMissing = (!a.plannedUnitCost || !a.plannedTotalCost || !a.pricingSourceCode || !a.priceCheckedAt || a.confidence === undefined) ? 1 : 0;
-              const bMissing = (!b.plannedUnitCost || !b.plannedTotalCost || !b.pricingSourceCode || !b.priceCheckedAt || b.confidence === undefined) ? 1 : 0;
-              return bMissing - aMissing;
-            });
-            const target = scored[0];
-            const pricingFields = pickFields(fields, [
-              "plannedUnitCost",
-              "plannedTotalCost",
-              "pricingSourceCode",
-              "priceCheckedAt",
-              "priceUrl",
-              "confidence",
-              "sourceCode",
-              "sourceLabelHe",
-              "source",
-              "vendorId",
-              "vendorName",
-              "notes",
-            ]);
-            if (Object.keys(pricingFields).length === 0) return op;
-            return {
-              kind: "materialLine.patch",
-              payload: {
-                lineId: target._id,
-                fields: pricingFields,
-              },
-            };
-          }
-          if (op.kind === "workLine.create") {
-            const fields = op.payload.fields ?? op.payload;
-            const roleHe = fields?.roleHe ?? fields?.title ?? op.payload?.roleHe;
-            if (!roleHe) return op;
-            const elementId = op.payload?.elementId ?? fields?.elementId;
-            const taskId = op.payload?.taskId ?? fields?.taskId;
-            const nameKey = normalizeKey(roleHe);
-            const candidates = workLines.filter((l: any) => normalizeKey(l.roleHe) === nameKey)
-              .filter((l: any) => (elementId ? String(l.elementId ?? "") === String(elementId) : true))
-              .filter((l: any) => (taskId ? String(l.taskId ?? "") === String(taskId) : true));
-            if (candidates.length === 0) return op;
-            const scored = candidates.sort((a: any, b: any) => {
-              const aMissing = (!a.plannedUnitCost || !a.plannedTotalCost || a.confidence === undefined) ? 1 : 0;
-              const bMissing = (!b.plannedUnitCost || !b.plannedTotalCost || b.confidence === undefined) ? 1 : 0;
-              return bMissing - aMissing;
-            });
-            const target = scored[0];
-            const pricingFields = pickFields(fields, [
-              "plannedUnitCost",
-              "plannedTotalCost",
-              "confidence",
-              "sourceCode",
-              "sourceLabelHe",
-              "source",
-              "notes",
-            ]);
-            if (Object.keys(pricingFields).length === 0) return op;
-            return {
-              kind: "workLine.patch",
-              payload: {
-                lineId: target._id,
-                fields: pricingFields,
-              },
-            };
-          }
-          return op;
-        });
+      const findWorkMatch = (fields: any, payload: any) => {
+        const dedupKey = fields?.dedupKey;
+        if (dedupKey && workByDedup.has(dedupKey)) return workByDedup.get(dedupKey);
+        const roleKey = normalizeKey(fields?.roleHe ?? fields?.title ?? payload?.roleHe);
+        if (!roleKey) return null;
+        const elementId = payload?.elementId ?? fields?.elementId;
+        const taskId = payload?.taskId ?? fields?.taskId;
+        return workLines.find((l: any) =>
+          normalizeKey(l.roleHe) === roleKey &&
+          String(l.elementId ?? "") === String(elementId ?? "") &&
+          String(l.taskId ?? "") === String(taskId ?? "")
+        ) ?? null;
       };
-      const coerceDuplicateLineCreates = (ops: any[]) => {
-        if (!needsLineState) return ops;
-        const normalizeKey = (value: any) => String(value ?? "").trim().toLowerCase();
-        const materialByDedup = new Map<string, any>();
-        const workByDedup = new Map<string, any>();
-        for (const line of materialLines) {
-          if (line?.dedupKey) materialByDedup.set(String(line.dedupKey), line);
+      const materialPatchFields = [
+        "itemName",
+        "spec",
+        "quantity",
+        "uomCode",
+        "unitCode",
+        "plannedUnitCost",
+        "plannedTotalCost",
+        "vendorName",
+        "notes",
+        "workType",
+        "templateId",
+        "variantId",
+        "priceRecordId",
+        "pricingSourceCode",
+        "priceCheckedAt",
+        "priceUrl",
+        "confidence",
+        "dedupKey",
+      ];
+      const workPatchFields = [
+        "roleHe",
+        "plannedQuantity",
+        "plannedUnitCost",
+        "plannedTotalCost",
+        "notes",
+        "status",
+        "assignee",
+        "assigneeId",
+        "workType",
+        "workTypeLabelHe",
+        "confidence",
+        "dedupKey",
+      ];
+      return ops.map((op: any) => {
+        if (!op || !op.kind || !op.payload) return op;
+        if (op.kind === "materialLine.create") {
+          const fields = op.payload.fields ?? op.payload;
+          const match = findMaterialMatch(fields, op.payload);
+          if (!match) return op;
+          return {
+            kind: "materialLine.patch",
+            payload: {
+              lineId: match._id,
+              fields: pickFields(fields, materialPatchFields),
+            },
+          };
         }
-        for (const line of workLines) {
-          if (line?.dedupKey) workByDedup.set(String(line.dedupKey), line);
+        if (op.kind === "workLine.create") {
+          const fields = op.payload.fields ?? op.payload;
+          const match = findWorkMatch(fields, op.payload);
+          if (!match) return op;
+          return {
+            kind: "workLine.patch",
+            payload: {
+              lineId: match._id,
+              fields: pickFields(fields, workPatchFields),
+            },
+          };
         }
-        const findMaterialMatch = (fields: any, payload: any) => {
-          const dedupKey = fields?.dedupKey;
-          if (dedupKey && materialByDedup.has(dedupKey)) return materialByDedup.get(dedupKey);
-          const nameKey = normalizeKey(fields?.itemName ?? fields?.title ?? payload?.itemName);
-          if (!nameKey) return null;
-          const elementId = payload?.elementId ?? fields?.elementId;
-          const taskId = payload?.taskId ?? fields?.taskId;
-          return materialLines.find((l: any) =>
-            normalizeKey(l.itemName) === nameKey &&
-            String(l.elementId ?? "") === String(elementId ?? "") &&
-            String(l.taskId ?? "") === String(taskId ?? "")
-          ) ?? null;
-        };
-        const findWorkMatch = (fields: any, payload: any) => {
-          const dedupKey = fields?.dedupKey;
-          if (dedupKey && workByDedup.has(dedupKey)) return workByDedup.get(dedupKey);
-          const roleKey = normalizeKey(fields?.roleHe ?? fields?.title ?? payload?.roleHe);
-          if (!roleKey) return null;
-          const elementId = payload?.elementId ?? fields?.elementId;
-          const taskId = payload?.taskId ?? fields?.taskId;
-          return workLines.find((l: any) =>
-            normalizeKey(l.roleHe) === roleKey &&
-            String(l.elementId ?? "") === String(elementId ?? "") &&
-            String(l.taskId ?? "") === String(taskId ?? "")
-          ) ?? null;
-        };
-        const materialPatchFields = [
-          "itemName",
-          "spec",
-          "quantity",
-          "uomCode",
-          "unitCode",
-          "plannedUnitCost",
-          "plannedTotalCost",
-          "vendorName",
-          "notes",
-          "workType",
-          "templateId",
-          "variantId",
-          "priceRecordId",
-          "pricingSourceCode",
-          "priceCheckedAt",
-          "priceUrl",
-          "confidence",
-          "dedupKey",
-        ];
-        const workPatchFields = [
-          "roleHe",
-          "plannedQuantity",
-          "plannedUnitCost",
-          "plannedTotalCost",
-          "notes",
-          "status",
-          "assignee",
-          "assigneeId",
-          "workType",
-          "workTypeLabelHe",
-          "confidence",
-          "dedupKey",
-        ];
-        return ops.map((op: any) => {
-          if (!op || !op.kind || !op.payload) return op;
-          if (op.kind === "materialLine.create") {
-            const fields = op.payload.fields ?? op.payload;
-            const match = findMaterialMatch(fields, op.payload);
-            if (!match) return op;
-            return {
-              kind: "materialLine.patch",
-              payload: {
-                lineId: match._id,
-                fields: pickFields(fields, materialPatchFields),
-              },
-            };
-          }
-          if (op.kind === "workLine.create") {
-            const fields = op.payload.fields ?? op.payload;
-            const match = findWorkMatch(fields, op.payload);
-            if (!match) return op;
-            return {
-              kind: "workLine.patch",
-              payload: {
-                lineId: match._id,
-                fields: pickFields(fields, workPatchFields),
-              },
-            };
-          }
-          return op;
-        });
-      };
+        return op;
+      });
+    };
 
     // Post-process ChangeSets
     for (const block of blocks) {
@@ -1201,33 +1233,65 @@ export const sendUserMessage = mutation({
   },
 });
 
-  export const submitClarifications = mutation({
-    args: {
-      conversationId: v.id("agentConversations"),
-      answersById: v.any()
-    },
-    handler: async (ctx, args) => {
-      const maybeKickFlow = async (projectId: any) => {
-        const blocked = await ctx.db
-          .query("flowRuns")
-          .withIndex("by_project_status", (q: any) => q.eq("projectId", projectId).eq("status", "blocked"))
-          .first();
-        const running = blocked
-          ? null
-          : await ctx.db
-            .query("flowRuns")
-            .withIndex("by_project_status", (q: any) => q.eq("projectId", projectId).eq("status", "running"))
-            .first();
-        const flowRun = blocked ?? running;
-        if (flowRun && flowRun.toggles?.autoRun) {
-          await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId: flowRun._id });
-        }
-      };
+export const logToolCall = internalMutation({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    conversationId: v.optional(v.union(v.id("conversations"), v.id("agentConversations"), v.string())),
+    skillRunId: v.optional(v.id("skillRuns")),
+    skillId: v.optional(v.string()),
+    toolName: v.string(),
+    argsHash: v.string(),
+    argsBytes: v.number(),
+    resultBytes: v.optional(v.number()),
+    latencyMs: v.number(),
+    status: v.union(v.literal("success"), v.literal("error")),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("skillToolLogs", {
+      projectId: args.projectId,
+      conversationId: args.conversationId,
+      skillRunId: args.skillRunId,
+      skillId: args.skillId,
+      toolName: args.toolName,
+      argsHash: args.argsHash,
+      argsBytes: args.argsBytes,
+      resultBytes: args.resultBytes,
+      latencyMs: args.latencyMs,
+      status: args.status,
+      error: args.error,
+      createdAt: Date.now(),
+    });
+  },
+});
 
-      // 1. Find the session (using filter fallback for robustness)
-      const session = await ctx.db
-        .query("clarificationSessions")
-        .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+export const submitClarifications = mutation({
+  args: {
+    conversationId: v.id("agentConversations"),
+    answersById: v.any()
+  },
+  handler: async (ctx, args) => {
+    const maybeKickFlow = async (projectId: any) => {
+      const blocked = await ctx.db
+        .query("flowRuns")
+        .withIndex("by_project_status", (q: any) => q.eq("projectId", projectId).eq("status", "blocked"))
+        .first();
+      const running = blocked
+        ? null
+        : await ctx.db
+          .query("flowRuns")
+          .withIndex("by_project_status", (q: any) => q.eq("projectId", projectId).eq("status", "running"))
+          .first();
+      const flowRun = blocked ?? running;
+      if (flowRun && flowRun.toggles?.autoRun) {
+        await ctx.scheduler.runAfter(0, internal.flow.flowRunner.tick, { flowRunId: flowRun._id });
+      }
+    };
+
+    // 1. Find the session (using filter fallback for robustness)
+    const session = await ctx.db
+      .query("clarificationSessions")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
       .order("desc")
       .first();
 
@@ -1252,16 +1316,16 @@ export const sendUserMessage = mutation({
 
       await persistClarificationAnswers(ctx, fallback, args.answersById);
 
-        await ctx.db.insert("agentMessages", {
-          conversationId: args.conversationId,
-          role: "user",
-          text: "Submitted answers for clarifications.",
-          createdAt: Date.now(),
-        });
+      await ctx.db.insert("agentMessages", {
+        conversationId: args.conversationId,
+        role: "user",
+        text: "Submitted answers for clarifications.",
+        createdAt: Date.now(),
+      });
 
-        await maybeKickFlow(fallback.projectId);
-        return { success: true, targetSkillId: fallback.targetSkillId };
-      }
+      await maybeKickFlow(fallback.projectId);
+      return { success: true, targetSkillId: fallback.targetSkillId };
+    }
 
     // 2. Update session
     await ctx.db.patch(session._id, {
@@ -1273,18 +1337,18 @@ export const sendUserMessage = mutation({
     await persistClarificationAnswers(ctx, session, args.answersById);
 
     // 3. Add User Message to chat
-      await ctx.db.insert("agentMessages", {
-        conversationId: args.conversationId,
-        role: "user",
-        text: "Submitted answers for clarifications.",
-        createdAt: Date.now(),
-      });
+    await ctx.db.insert("agentMessages", {
+      conversationId: args.conversationId,
+      role: "user",
+      text: "Submitted answers for clarifications.",
+      createdAt: Date.now(),
+    });
 
-      await maybeKickFlow(session.projectId);
-      return {
-        success: true,
-        targetSkillId: session.targetSkillId
-      };
+    await maybeKickFlow(session.projectId);
+    return {
+      success: true,
+      targetSkillId: session.targetSkillId
+    };
   }
 });
 
@@ -1608,6 +1672,9 @@ function buildSystemPrompt(skill: any, context: any) {
   if (skill.config.allowedTools?.webSearch) {
     toolInstructions += `\nYou have access to a 'web_search' tool. Use it to find real-time info. When using it, output a tool call, not a block.`;
   }
+  if (skill.config.allowedTools?.agentData) {
+    toolInstructions += `\nYou have access to an 'agent.data' tool. Use it to pull project data (memoryDocs, qaPairs, elements, tasks, lines, files). Always pass projectId as args.projectId.`;
+  }
   if (skill.config.allowedTools?.runSkill) {
     toolInstructions += `\nYou have access to a 'run_skill' tool. Use it to invoke other skills (builders, research, etc) when you are confident they are needed. Do not ask for permission if the user intent is clear.`;
   }
@@ -1619,8 +1686,23 @@ function buildSystemPrompt(skill: any, context: any) {
   }
 
   const addon = skill.prompts?.promptAddon ?? "";
+  const skillId = String(skill?.skillId ?? "");
+  const isV3Skill = skillId.startsWith("V3_");
 
   if (context?.ctxPacks) {
+    if (isV3Skill) {
+      const envelope = context.ctxPacks;
+      const manifest = JSON.stringify(envelope.manifest, null, 2);
+      const packsText = envelope.packs
+        .map((pack: any) => `## ${pack.id} — ${pack.title}\n${pack.content}`)
+        .join("\n\n");
+      const clarifications = context.clarifications
+        ? `\n\nCLARIFICATIONS:\n${JSON.stringify(context.clarifications, null, 2)}`
+        : "";
+      const extra = context.extraContext ? `\n\nEXTRA_CONTEXT:\n${JSON.stringify(context.extraContext, null, 2)}` : "";
+      return `${SHARED_HEADER}${toolInstructions}\n\nCONTEXT_MANIFEST:\n${manifest}\n\nCONTEXT_PACKS:\n${packsText}${clarifications}${extra}\n\n${addon}`;
+    }
+
     return buildContextPackPrompt({
       header: SHARED_HEADER,
       toolInstructions,
@@ -1631,7 +1713,54 @@ function buildSystemPrompt(skill: any, context: any) {
     });
   }
 
+  if (isV3Skill) {
+    return `${SHARED_HEADER}${toolInstructions}\n\nCONTEXT:\n${JSON.stringify(context, null, 2)}\n\n${addon}`;
+  }
+
   return `${SHARED_HEADER}${toolInstructions}\n\n${addon}\n\nCONTEXT:\n${JSON.stringify(context, null, 2)}`;
+}
+
+function hashString(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function bytesOf(value: any): number {
+  try {
+    return JSON.stringify(value ?? {}).length;
+  } catch {
+    return 0;
+  }
+}
+
+async function logToolCallHelper(ctx: any, args: {
+  contextInfo?: { projectId?: any; conversationId?: any; skillId?: string; runId?: string }
+  toolName: string
+  toolArgs: any
+  status: "success" | "error"
+  latencyMs: number
+  result?: any
+  error?: string
+}) {
+  if (!args.contextInfo?.projectId) return;
+  const argsText = JSON.stringify(args.toolArgs ?? {});
+  await ctx.runMutation(internal.skills.runner.logToolCall, {
+    projectId: args.contextInfo.projectId,
+    conversationId: args.contextInfo.conversationId,
+    skillRunId: args.contextInfo.runId,
+    skillId: args.contextInfo.skillId,
+    toolName: args.toolName,
+    argsHash: hashString(argsText),
+    argsBytes: argsText.length,
+    resultBytes: args.result ? bytesOf(args.result) : undefined,
+    latencyMs: args.latencyMs,
+    status: args.status,
+    error: args.error,
+  });
 }
 
 async function callLLM(
@@ -1664,6 +1793,28 @@ async function callLLM(
             uomCode: { type: "string", description: "UOM code for pricing context" }
           },
           required: ["query"]
+        }
+      }
+    });
+  }
+
+  if (allowedTools?.agentData) {
+    tools.push({
+      type: "function",
+      function: {
+        name: "agent.data",
+        description: "Fetch project data (memoryDocs, qaPairs, elements, tasks, lines, files).",
+        parameters: {
+          type: "object",
+          properties: {
+            resource: { type: "string" },
+            projectId: { type: "string" },
+            filters: { type: "object" },
+            fields: { type: "array", items: { type: "string" } },
+            limit: { type: "number" },
+            cursor: { type: ["string", "null"] },
+          },
+          required: ["resource"]
         }
       }
     });
@@ -1762,6 +1913,7 @@ async function callLLM(
     if (message.tool_calls && message.tool_calls.length > 0) {
       for (const toolCall of message.tool_calls) {
         const tc = toolCall as any;
+        const toolStart = Date.now();
         if (tc.function.name === "web_search") {
           const args = JSON.parse(tc.function.arguments);
 
@@ -1771,13 +1923,66 @@ async function callLLM(
             args.query += " price";
           }
 
-          const result = await searchWeb(args.query);
-          // Removed auto-save of web results. The LLM must process them.
-          messages.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(result)
-          });
+          try {
+            const result = await searchWeb(args.query);
+            // Removed auto-save of web results. The LLM must process them.
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(result)
+            });
+            await logToolCallHelper(ctx, {
+              contextInfo,
+              toolName: "web_search",
+              toolArgs: args,
+              status: "success",
+              latencyMs: Date.now() - toolStart,
+              result,
+            });
+          } catch (e: any) {
+            await logToolCallHelper(ctx, {
+              contextInfo,
+              toolName: "web_search",
+              toolArgs: args,
+              status: "error",
+              latencyMs: Date.now() - toolStart,
+              error: e?.message ?? String(e),
+            });
+            throw e;
+          }
+        }
+        if (tc.function.name === "agent.data") {
+          const args = JSON.parse(tc.function.arguments);
+          const toolArgs = {
+            ...args,
+            projectId: args?.projectId ?? contextInfo?.projectId,
+          };
+          try {
+            const result = await ctx.runAction(api.agentData.fetch, toolArgs);
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(result)
+            });
+            await logToolCallHelper(ctx, {
+              contextInfo,
+              toolName: "agent.data",
+              toolArgs,
+              status: "success",
+              latencyMs: Date.now() - toolStart,
+              result,
+            });
+          } catch (e: any) {
+            await logToolCallHelper(ctx, {
+              contextInfo,
+              toolName: "agent.data",
+              toolArgs,
+              status: "error",
+              latencyMs: Date.now() - toolStart,
+              error: e?.message ?? String(e),
+            });
+            throw e;
+          }
         }
         if (tc.function.name === "run_skill") {
           const args = JSON.parse(tc.function.arguments);
@@ -1794,11 +1999,27 @@ async function callLLM(
                 tool_call_id: toolCall.id,
                 content: JSON.stringify({ status: "success", resultSummary: "Skill executed successfully. Results added to chat." })
               });
+              await logToolCallHelper(ctx, {
+                contextInfo,
+                toolName: "run_skill",
+                toolArgs: args,
+                status: "success",
+                latencyMs: Date.now() - toolStart,
+                result: { ok: true },
+              });
             } catch (e: any) {
               messages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
                 content: JSON.stringify({ status: "error", error: e.message })
+              });
+              await logToolCallHelper(ctx, {
+                contextInfo,
+                toolName: "run_skill",
+                toolArgs: args,
+                status: "error",
+                latencyMs: Date.now() - toolStart,
+                error: e?.message ?? String(e),
               });
             }
           } else {
@@ -1806,6 +2027,14 @@ async function callLLM(
               role: "tool",
               tool_call_id: toolCall.id,
               content: JSON.stringify({ status: "error", error: "Context missing" })
+            });
+            await logToolCallHelper(ctx, {
+              contextInfo,
+              toolName: "run_skill",
+              toolArgs: args,
+              status: "error",
+              latencyMs: Date.now() - toolStart,
+              error: "Context missing",
             });
           }
         }
@@ -1827,11 +2056,27 @@ async function callLLM(
                 tool_call_id: toolCall.id,
                 content: JSON.stringify({ status: "success", quoteId })
               });
+              await logToolCallHelper(ctx, {
+                contextInfo,
+                toolName: "generate_quote",
+                toolArgs: args,
+                status: "success",
+                latencyMs: Date.now() - toolStart,
+                result: { quoteId },
+              });
             } catch (e: any) {
               messages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
                 content: JSON.stringify({ status: "error", error: e.message })
+              });
+              await logToolCallHelper(ctx, {
+                contextInfo,
+                toolName: "generate_quote",
+                toolArgs: args,
+                status: "error",
+                latencyMs: Date.now() - toolStart,
+                error: e?.message ?? String(e),
               });
             }
           } else {
@@ -1839,6 +2084,14 @@ async function callLLM(
               role: "tool",
               tool_call_id: toolCall.id,
               content: JSON.stringify({ status: "error", error: "Context missing" })
+            });
+            await logToolCallHelper(ctx, {
+              contextInfo,
+              toolName: "generate_quote",
+              toolArgs: args,
+              status: "error",
+              latencyMs: Date.now() - toolStart,
+              error: "Context missing",
             });
           }
         }
@@ -1853,11 +2106,27 @@ async function callLLM(
                 tool_call_id: toolCall.id,
                 content: JSON.stringify({ status: "success", result })
               });
+              await logToolCallHelper(ctx, {
+                contextInfo,
+                toolName: "estimate_tasks",
+                toolArgs: {},
+                status: "success",
+                latencyMs: Date.now() - toolStart,
+                result,
+              });
             } catch (e: any) {
               messages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
                 content: JSON.stringify({ status: "error", error: e.message })
+              });
+              await logToolCallHelper(ctx, {
+                contextInfo,
+                toolName: "estimate_tasks",
+                toolArgs: {},
+                status: "error",
+                latencyMs: Date.now() - toolStart,
+                error: e?.message ?? String(e),
               });
             }
           } else {
@@ -1865,6 +2134,14 @@ async function callLLM(
               role: "tool",
               tool_call_id: toolCall.id,
               content: JSON.stringify({ status: "error", error: "Context missing" })
+            });
+            await logToolCallHelper(ctx, {
+              contextInfo,
+              toolName: "estimate_tasks",
+              toolArgs: {},
+              status: "error",
+              latencyMs: Date.now() - toolStart,
+              error: "Context missing",
             });
           }
         }
@@ -1900,6 +2177,7 @@ async function callLLM(
       // Better strategy: Execute them, and append a "system" message with the results.
       const results = [];
       for (const tc of embeddedToolCalls) {
+        const toolStart = Date.now();
         if (tc.name === "web_search") {
           const args = tc.arguments;
 
@@ -1912,6 +2190,31 @@ async function callLLM(
           const result = await searchWeb(args.query);
           // Removed auto-save of web results.
           results.push(`Tool 'web_search' (${args.query}) result: ${JSON.stringify(result)}`);
+          await logToolCallHelper(ctx, {
+            contextInfo,
+            toolName: "web_search",
+            toolArgs: args,
+            status: "success",
+            latencyMs: Date.now() - toolStart,
+            result,
+          });
+        }
+        if (tc.name === "agent.data") {
+          const args = typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : (tc.arguments ?? {});
+          const toolArgs = {
+            ...args,
+            projectId: args?.projectId ?? contextInfo?.projectId,
+          };
+          const result = await ctx.runAction(api.agentData.fetch, toolArgs);
+          results.push(`Tool 'agent.data' result: ${JSON.stringify(result)}`);
+          await logToolCallHelper(ctx, {
+            contextInfo,
+            toolName: "agent.data",
+            toolArgs,
+            status: "success",
+            latencyMs: Date.now() - toolStart,
+            result,
+          });
         }
         if (tc.name === "generate_quote") {
           if (!contextInfo) continue;
@@ -1926,6 +2229,14 @@ async function callLLM(
             quoteId,
           });
           results.push(`Tool 'generate_quote' result: ${JSON.stringify({ quoteId })}`);
+          await logToolCallHelper(ctx, {
+            contextInfo,
+            toolName: "generate_quote",
+            toolArgs: args,
+            status: "success",
+            latencyMs: Date.now() - toolStart,
+            result: { quoteId },
+          });
         }
         if (tc.name === "estimate_tasks") {
           if (!contextInfo) continue;
@@ -1933,6 +2244,14 @@ async function callLLM(
             projectId: contextInfo.projectId,
           });
           results.push(`Tool 'estimate_tasks' result: ${JSON.stringify(result)}`);
+          await logToolCallHelper(ctx, {
+            contextInfo,
+            toolName: "estimate_tasks",
+            toolArgs: {},
+            status: "success",
+            latencyMs: Date.now() - toolStart,
+            result,
+          });
         }
       }
 
@@ -2178,3 +2497,25 @@ function tryParseJson(text: string) {
   }
   return null;
 }
+
+// --- Utils ---
+
+function sanitizeKeys(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeKeys);
+  }
+  if (obj && typeof obj === "object") {
+    const newObj: any = {};
+    for (const key of Object.keys(obj)) {
+      // Allow only non-control ASCII characters (32-126)
+      if (/^[\x20-\x7E]+$/.test(key)) {
+        newObj[key] = sanitizeKeys(obj[key]);
+      } else {
+        console.warn(`[sanitizeKeys] Dropping invalid key: "${key}"`);
+      }
+    }
+    return newObj;
+  }
+  return obj;
+}
+

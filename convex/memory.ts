@@ -2,7 +2,6 @@ import { action, internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import OpenAI from "openai";
-import { buildProjectSnapshot } from "./flow/snapshotBuilder";
 
 // ---------------------------------------------------------
 // Mutations (Internal & Public)
@@ -86,6 +85,39 @@ export const saveProjectContextDoc = internalMutation({
         updatedAt: Date.now(),
       });
     }
+  },
+});
+
+export const upsertMemoryDoc = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    kind: v.string(),
+    title_he: v.optional(v.string()),
+    contentMd_he: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("memoryDocs")
+      .withIndex("by_project_kind", (q) => q.eq("projectId", args.projectId).eq("kind", args.kind))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        title_he: args.title_he ?? existing.title_he,
+        contentMd_he: args.contentMd_he,
+        updatedAt: Date.now(),
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("memoryDocs", {
+      projectId: args.projectId,
+      kind: args.kind,
+      title_he: args.title_he ?? undefined,
+      contentMd_he: args.contentMd_he,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -379,7 +411,7 @@ export const generateProjectContextDoc = action({
     feedback: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const snapshot = await buildProjectSnapshot(ctx, args.projectId);
+    const snapshot = await ctx.runQuery(internal.flow.snapshotBuilder.getProjectSnapshot, { projectId: args.projectId });
 
     let contentMd_he = buildFallbackProjectContext(snapshot);
 

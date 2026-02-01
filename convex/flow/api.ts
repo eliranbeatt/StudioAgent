@@ -2,6 +2,7 @@ import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from "../featureFlags";
+import { createRevisionFromLive } from "./artifactRevisions";
 
 const SETTINGS_KEY = "featureFlags";
 
@@ -58,7 +59,9 @@ export const sendMessage = mutation({
     // Trigger Flow Runner if user message
     if (role === "user") {
       const flags = await loadFlags(ctx);
-      if (!isEnabled(flags, "ff_flow_runner_v1", false)) return;
+      const v1Enabled = isEnabled(flags, "ff_flow_runner_v1", false);
+      const v2Enabled = isEnabled(flags, "ff_flow_runner_v2", false);
+      if (!v1Enabled && !v2Enabled) return;
 
       const conversation = await ctx.db.get(args.conversationId);
       if (conversation) {
@@ -100,8 +103,10 @@ export const startProjectFlow = mutation({
   },
   handler: async (ctx, args) => {
     const flags = await loadFlags(ctx);
-    if (!isEnabled(flags, "ff_flow_runner_v1", false)) {
-      throw new Error("Flow runner is disabled (ff_flow_runner_v1)");
+    const v1Enabled = isEnabled(flags, "ff_flow_runner_v1", false);
+    const v2Enabled = isEnabled(flags, "ff_flow_runner_v2", false);
+    if (!v1Enabled && !v2Enabled) {
+      throw new Error("Flow runner is disabled (ff_flow_runner_v1/ff_flow_runner_v2)");
     }
 
     // Check if already running
@@ -132,6 +137,7 @@ export const startProjectFlow = mutation({
       projectId: args.projectId,
       status: "running",
       currentGateId: args.initialGate ?? "G0",
+      graphVersion: "v2.1",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       approvalMode: "auto",
@@ -139,6 +145,19 @@ export const startProjectFlow = mutation({
       approvalModeOverride: false,
       toggles: { autoRun: true, autoApprove: true, useWebSearch },
       conversationId
+    });
+
+    const artifactRevisionId = await createRevisionFromLive(ctx, {
+      projectId: args.projectId,
+      runId,
+      source: "runStart"
+    });
+
+    await ctx.db.patch(runId, {
+      currentArtifactRevisionId: artifactRevisionId,
+      answerVersionAtStart: 0,
+      latestAnswerVersion: 0,
+      updatedAt: Date.now()
     });
 
     // Start the runner

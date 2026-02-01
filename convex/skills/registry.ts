@@ -23,6 +23,7 @@ export interface SkillDefinition {
       runSkill?: boolean;
       generateQuote?: boolean;
       estimateTasks?: boolean;
+      agentData?: boolean;
     };
     outputContract: "blocks" | "changeset" | "suggestions";
   };
@@ -47,7 +48,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     scheduling: { suggestAtStage: ["ideation", "planning", "execution", "review"] },
     config: {
       requiresClarifications: false,
-      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, runSkill: true },
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, runSkill: true, agentData: true },
       outputContract: "blocks",
     },
     prompts: {
@@ -687,6 +688,179 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     },
     model: "gpt-5-mini",
   },
+  // ============================================
+  // V3 FLOW SKILLS
+  // ============================================
+  {
+    skillId: "V3_Q_A_INTAKE",
+    labelHe: "V3 שאלות שלב A",
+    descriptionHe: "איסוף מידע ראשוני",
+    category: "knowledge",
+    flow: "ideation",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_A_INTAKE,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "V3_Q_B_PLAN",
+    labelHe: "V3 שאלות שלב B",
+    descriptionHe: "הבהרות לתכנון",
+    category: "knowledge",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_B_PLAN,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "V3_Q_C_COST",
+    labelHe: "V3 שאלות שלב C",
+    descriptionHe: "הבהרות לתמחור",
+    category: "knowledge",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_C_COST,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "V3_Q_D_POLISH_APPROVALS",
+    labelHe: "V3 שאלות שלב D",
+    descriptionHe: "אישורים לפוליש",
+    category: "knowledge",
+    flow: "review",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_D_POLISH_APPROVALS,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "V3_Q_E_QUOTE",
+    labelHe: "V3 שאלות שלב E",
+    descriptionHe: "הבהרות להצעה",
+    category: "knowledge",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_E_QUOTE,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "V3_BUILD_A_MEMORYDOCS",
+    labelHe: "V3 בנייה שלב A",
+    descriptionHe: "יצירת מסמך קונטקסט",
+    category: "knowledge",
+    flow: "ideation",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_A_MEMORYDOCS,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "V3_BUILD_B_PLAN",
+    labelHe: "V3 בנייה שלב B",
+    descriptionHe: "יצירת אלמנטים ומשימות",
+    category: "planning",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_B_PLAN,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "V3_BUILD_C_ACCOUNTING",
+    labelHe: "V3 בנייה שלב C",
+    descriptionHe: "יצירת BOM ותקציב",
+    category: "planning",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_C_ACCOUNTING,
+    },
+    model: "gpt-5-mini",
+  },
+  {
+    skillId: "V3_BUILD_D_POLISH",
+    labelHe: "V3 בנייה שלב D",
+    descriptionHe: "פוליש וניקוי",
+    category: "review",
+    flow: "review",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_D_POLISH,
+    },
+    model: "gpt-5.2",
+  },
+  {
+    skillId: "V3_BUILD_E_QUOTE",
+    labelHe: "V3 בנייה שלב E",
+    descriptionHe: "יצירת הצעת מחיר",
+    category: "planning",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_E_QUOTE,
+    },
+    model: "gpt-5-mini",
+  },
 ];
 
 const seedSkillsCore = async (ctx: any) => {
@@ -719,7 +893,6 @@ const seedSkillsCore = async (ctx: any) => {
         descriptionHe: skill.descriptionHe,
         category: skill.category,
         flow: skill.flow,
-          allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, estimateTasks: true },
         config: skill.config,
         prompts: skill.prompts,
         model: skill.model,

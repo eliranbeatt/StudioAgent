@@ -17,7 +17,7 @@ try {
 test.describe('Flow Agent', () => {
 
     test('FF-01: Tab should be visible if flag is on (assuming defaults or manually set)', async ({ page }) => {
-        if (p1Id === 'TODO_FILL_IN') test.skip('No P1 ID available');
+        if (p1Id === 'TODO_FILL_IN') test.skip(true, 'No P1 ID available');
 
         // Navigate to overview to ensure layout renders
         await page.goto(`/projects/${p1Id}/overview`);
@@ -31,7 +31,7 @@ test.describe('Flow Agent', () => {
     });
 
     test('RUN-01: Start creates run', async ({ page }) => {
-        if (p1Id === 'TODO_FILL_IN') test.skip('No P1 ID available');
+        if (p1Id === 'TODO_FILL_IN') test.skip(true, 'No P1 ID available');
 
         // Navigate via Overview
         await page.goto(`/projects/${p1Id}/overview`);
@@ -60,7 +60,7 @@ test.describe('Flow Agent', () => {
     });
 
     test('BD-01: Brain Dump interaction', async ({ page }) => {
-        if (p1Id === 'TODO_FILL_IN') test.skip('No P1 ID available');
+        if (p1Id === 'TODO_FILL_IN') test.skip(true, 'No P1 ID available');
 
         // Navigate via Overview
         await page.goto(`/projects/${p1Id}/overview`);
