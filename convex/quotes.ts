@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { action, mutation, query, internalQuery } from "./_generated/server";
+import { action, mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 
@@ -25,12 +25,12 @@ export const generateQuote = mutation({
         const mats = Object.values(snapshot.materials?.byId || {});
         const labs = Object.values(snapshot.labor?.byId || {});
 
-        const elementDirectCost = 
-            (mats.reduce((sum: number, m: any) => sum + (m.qty * m.unitCost), 0) as number) +
-            (labs.reduce((sum: number, l: any) => sum + (l.qty * l.rate), 0) as number);
+        const elementDirectCost =
+          (mats.reduce((sum: number, m: any) => sum + (m.qty * m.unitCost), 0) as number) +
+          (labs.reduce((sum: number, l: any) => sum + (l.qty * l.rate), 0) as number);
 
         totalDirectCost += elementDirectCost;
-        
+
         sections.push({
           title: snapshot.title || "Untitled Element",
           directCost: elementDirectCost,
@@ -205,11 +205,11 @@ export const getQuote = query({
 export const updateQuote = mutation({
   args: {
     quoteId: v.id("quoteVersions"),
-      patch: v.object({
-        status: v.optional(v.string()),
-        sourceElementVersionIds: v.optional(v.array(v.id("elementVersions"))),
-        sections: v.optional(v.any()),
-        totals: v.optional(v.any()),
+    patch: v.object({
+      status: v.optional(v.string()),
+      sourceElementVersionIds: v.optional(v.array(v.id("elementVersions"))),
+      sections: v.optional(v.any()),
+      totals: v.optional(v.any()),
       inputs: v.optional(v.any()),
       priceSummary: v.optional(v.any()),
       sellBreakdown: v.optional(v.any()),
@@ -418,10 +418,10 @@ export const generateQuoteV2 = action({
       deliverables_he: deliverablesItems,
       schedule_he: includeFlags.includeDates
         ? [
-            overview.project.details?.eventDate
-              ? `תאריך אירוע: ${new Date(overview.project.details.eventDate).toLocaleDateString("he-IL")}`
-              : "תאריך האירוע והלו\"ז הסופי יתואמו לאחר אישור.",
-          ]
+          overview.project.details?.eventDate
+            ? `תאריך אירוע: ${new Date(overview.project.details.eventDate).toLocaleDateString("he-IL")}`
+            : "תאריך האירוע והלו\"ז הסופי יתואמו לאחר אישור.",
+        ]
         : [],
       priceSummary_he: [
         `${priceLabel}: ${formatCurrency(Math.round(sellSubtotal))}`,
@@ -439,9 +439,9 @@ export const generateQuoteV2 = action({
       ],
       terms_he: includeFlags.includeTerms
         ? [
-            "תנאי תשלום: 50% בעת אישור, 50% עם סיום העבודה.",
-            validUntilText,
-          ]
+          "תנאי תשלום: 50% בעת אישור, 50% עם סיום העבודה.",
+          validUntilText,
+        ]
         : [],
       validUntil_he: validUntilText,
       signatureBlock_he: "בברכה,\nצוות הסטודיו",
@@ -854,7 +854,7 @@ export const findLatestQuote = internalQuery({
       .query("quoteVersions")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .order("desc");
-    
+
     if (args.excludeQuoteId) {
       query = query.filter((q) => q.neq(q.field("_id"), args.excludeQuoteId));
     }
