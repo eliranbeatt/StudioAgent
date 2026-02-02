@@ -6,7 +6,6 @@ import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from "../featureFlags";
 import { buildContextPackPrompt } from "../contextManager/promptBuilder";
-import { OpenAIAgent } from "openai-agents";
 
 const OPENAI_MODEL = "gpt-4o";
 const SMALL_MODEL = "gpt-5-nano";

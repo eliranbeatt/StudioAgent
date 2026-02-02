@@ -99,6 +99,7 @@ import type * as taskRevisions from "../taskRevisions.js";
 import type * as tasks from "../tasks.js";
 import type * as tasksStudio from "../tasksStudio.js";
 import type * as test_chat from "../test_chat.js";
+import type * as test_hello_world from "../test_hello_world.js";
 import type * as testing from "../testing.js";
 import type * as tracing from "../tracing.js";
 import type * as trelloSync from "../trelloSync.js";
@@ -202,6 +203,7 @@ declare const fullApi: ApiFromModules<{
   tasks: typeof tasks;
   tasksStudio: typeof tasksStudio;
   test_chat: typeof test_chat;
+  test_hello_world: typeof test_hello_world;
   testing: typeof testing;
   tracing: typeof tracing;
   trelloSync: typeof trelloSync;
