@@ -1,0 +1,234 @@
+Agent SDK v2 implementation plan (codexplan)
+
+This plan is based on:
+- Specs/sdk/plan.txt (base roadmap)
+- Specs/sdk/Clarification.txt (clarify.next_questions)
+- Specs/sdk/Orchesrator.txt (orchestrator)
+- Specs/sdk/free chat.txt (chat.free)
+- Specs/sdk/full prompts.txt (all other agents/tools)
+
+The goal is to add an OpenAI Agents SDK powered system in parallel to the current skills + flow agent system, and add a new SDK Agent tab in the UI.
+
+---
+
+0) Repo alignment (current code reality)
+- Next.js App Router UI: src/app/
+- Convex backend: convex/
+- Legacy skills runner: convex/skills/* and UI in src/app/projects/[id]/agent
+- Flow agent runner: convex/flow/* and UI in src/app/projects/[id]/flow-agent
+- Existing tables for chat/skills: agentConversations, agentMessages, skillRuns
+- No agentRuns table yet (schema.ts note at tasks.createdByRunId)
+
+We keep legacy and flow intact and add a new sdk namespace with separate registry, prompts, and runner.
+
+---
+
+1) Architecture decisions (v2)
+- Engine location: Convex actions (to reuse db access, existing run logging, and tool calls). If streaming becomes a requirement, add a thin Next route that proxies to Convex later.
+- Separation rule: new files only under convex/sdk/* (and UI under src/app/projects/[id]/sdk-agent) so legacy can be deleted later.
+- Write wall: only changeset.apply mutates DB. All other agents/tools produce intents.
+- Language + JSON rules come from Specs/sdk prompts (Hebrew-first values, English keys, JSON only for tool outputs).
+
+---
+
+2) New SDK Agent tab (separate UI tab)
+Add a brand new tab for SDK Agent so it can run autonomously without mixing with legacy or flow.
+
+2.1 Feature flags
+- Add to convex/featureFlags.ts DEFAULT_FLAGS:
+  - ff_sdk_agent_tab: false (UI visibility)
+  - ff_sdk_agent_backend: false (backend gating)
+
+2.2 Navigation
+- Update src/app/projects/[id]/layout.tsx to include:
+  { name: 'SDK Agent', href: `/projects/${projectId}/sdk-agent`, icon: Bot }
+  gated by ff_sdk_agent_tab.
+
+2.3 New page
+- Create src/app/projects/[id]/sdk-agent/page.tsx
+  - Left: conversation list (reuse agentConversations)
+  - Center: chat + blocks (reuse AgentChat block renderers)
+  - Right: run status + approve changeset + debug
+  - Buttons: Start run, Pause, Resume, Cancel, Run next, Approve changeset
+  - Feature flag gate: show disabled message when ff_sdk_agent_backend is off
+
+2.4 Data wiring
+- New Convex endpoints (convex/sdk/api.ts):
+  - sdk.createConversation
+  - sdk.listConversations
+  - sdk.listMessages
+  - sdk.appendUserMessage
+  - sdk.startRun / sdk.runNext / sdk.pause / sdk.resume / sdk.cancel
+  - sdk.approveChangeSet
+
+---
+
+3) New SDK data model (telemetry)
+Add new tables in convex/schema.ts to keep v2 clean and separate:
+- sdkRuns
+  - projectId, conversationId
+  - status: running|paused|blocked|awaiting_approval|completed|failed|cancelled
+  - stageKey, currentAgentName, engine='sdk'
+  - parentRunId (optional for sub-agents)
+  - createdAt, updatedAt, finishedAt
+- sdkRunEvents
+  - runId, type, payload, createdAt
+
+Reuse agentMessages for UI blocks, and store a runId on messages for linking.
+
+---
+
+4) Prompt store (use Specs/sdk files directly)
+Create convex/sdk/prompts.ts that embeds all prompts from Specs/sdk:
+- ORCHESTRATOR_SYSTEM (from Orchesrator.txt)
+- CLARIFY_SYSTEM (from Clarification.txt)
+- FREE_CHAT_SYSTEM (from free chat.txt)
+- FULL_PROMPTS (from full prompts.txt, split into individual tool/agent prompts)
+
+Keep prompts in the SDK namespace, do not modify convex/skills/prompts.ts.
+
+---
+
+5) Registry and schemas (v2)
+5.1 Registry
+Create convex/sdk/registry.ts with a catalog of:
+- Option A agents (agentic, looping)
+  - clarify.next_questions
+  - chat.free
+  - pricing.resolve_lines
+  - procurement.shopping_plan
+  - finance.ingest_receipt
+  - audit.project
+  - qa.print_files
+  - maint.sync_and_repair
+- Option B tools (single-shot, strict JSON)
+  - intake.parse_brief
+  - plan.elements
+  - plan.tasks
+  - plan.execution_phases
+  - cost.build_budget
+  - quote.generate
+  - runbook.installation
+  - ops.daily_plan
+  - admin.set_labor_rates
+  - admin.confirm_measurements
+  - knowledge.summarize_or_update
+  - changeset.compile
+  - changeset.review
+
+Each registry entry should include:
+- id, kind ('agent'|'tool')
+- systemPrompt
+- allowedTools
+- model + params
+- output schema name
+
+5.2 Schemas
+- Add convex/sdk/schemas.ts with JSON schemas or Zod.
+- If using Zod, add dependency "zod" to package.json.
+- Validate tool outputs; if invalid, re-ask with a JSON repair prompt.
+
+---
+
+6) SDK tools and deterministic utilities
+6.1 context.get
+- Add convex/sdk/context.ts query implementing the contract from full prompts.txt:
+  input: projectId, packs[], filters
+  output: project, elements, tasks, materialLines, workLines, quote, runbook, knowledgeDoc, pricingCatalog, pricingLogs, recentQA
+- Implement by reading existing tables and mapping to the contract.
+- Keep packs minimal and only return requested sections.
+
+6.2 knowledge.summarize_or_update
+- Add convex/sdk/knowledge.ts action
+- Uses Agents SDK with the knowledge prompt from full prompts.txt
+- Store output in memoryDocs (kind RUNNING_MEMORY or PROJECT_CONTEXT)
+
+6.3 changeset.compile / review / apply
+- Add convex/sdk/changeset.ts
+  - compile: transform intents to current changeSets ops format (kind + payload) and return a ChangeSet draft
+  - review: validate structure and links (reuse existing flow validators where possible)
+  - apply: call existing changeSets.applyChangeSet after explicit approval token
+
+---
+
+7) Agents SDK runner (core)
+Create convex/sdk/runner.ts
+- Use OpenAIAgent from openai-agents
+- The orchestrator agent uses ORCHESTRATOR_SYSTEM and exposes tools:
+  - context.get
+  - knowledge.summarize_or_update
+  - changeset.compile / review / apply
+  - all registry agents and tools
+- Implement tool dispatch so:
+  - Option A agents are called as sub-agents (their own system prompt)
+  - Option B tools are single-shot LLM calls with strict JSON output
+- All tool outputs are validated against schemas and saved to sdkRunEvents
+- Save messages as blocks into agentMessages for UI rendering
+
+---
+
+8) Orchestrator flow (v2)
+- Stage machine per Orchesrator.txt: intake -> planning -> costing -> quote -> review -> execution
+- Always pull context via context.get before planning or pricing
+- Use clarify.next_questions when missing info
+- Compile intents -> review -> present summary -> wait for user approval -> apply
+- Never call changeset.apply without user approval
+
+---
+
+9) Phased build (updated from plan.txt)
+Phase 1: scaffolding
+- folders: convex/sdk/* and UI route
+- feature flags
+- schema tables sdkRuns + sdkRunEvents
+- basic runner that can echo a ChatBlock
+
+Phase 2: Option B tools
+- intake.parse_brief
+- plan.elements
+- plan.tasks
+- plan.execution_phases
+- cost.build_budget
+- quote.generate
+- runbook.installation
+- ops.daily_plan
+- knowledge.summarize_or_update
+
+Phase 3: ChangeSet chain
+- compile -> review -> apply (dryRun first)
+- UI approval gate in SDK Agent tab
+
+Phase 4: Option A agents
+- clarify.next_questions first
+- then pricing, procurement, audit, receipt, print QA, maintenance, free chat
+
+Phase 5: Orchestrator end-to-end
+- Orchestrator can finish a full cycle on a test project
+- All writes only via ChangeSet apply
+
+Phase 6: SDK Agent tab UX
+- full run controls, telemetry, approval UI
+- reuse existing block components (ChatBlock, QuestionsBlock, SuggestionBlock, ChangeSetBlock, ReviewBlock, ShoppingPlanBlock, PrintQaBlock, ReceiptBlock, RunbookBlock, DailyPlanBlock)
+
+Phase 7: Shadow mode + evaluation
+- Run SDK in shadow mode against legacy/flow
+- Compare elements/tasks/lines coverage, missing price rate, audit findings
+
+Phase 8: Cutover
+- Default ff_sdk_agent_tab + ff_sdk_agent_backend on for new projects
+- Keep legacy and flow as fallback before removal
+
+---
+
+10) Acceptance criteria for SDK Agent tab
+- Can start a run and see sdkRuns + sdkRunEvents + agentMessages
+- Orchestrator can call at least one tool and produce valid JSON blocks
+- ChangeSet dryRun compiles and review passes
+- Apply requires explicit approval and updates tables correctly
+
+---
+
+Notes
+- Keep all new code under convex/sdk and src/app/projects/[id]/sdk-agent
+- Do not modify legacy skills runner or flow runner.
+- Prompts must match Specs/sdk files exactly (Hebrew-first rules).
