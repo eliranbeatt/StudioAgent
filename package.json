@@ -27,6 +27,7 @@
     "mammoth": "^1.7.2",
     "next": "^16.1.1",
     "openai": "^6.15.0",
+    "openai-agents": "^1.1.0",
     "pdf-parse": "^1.1.1",
     "playwright": "^1.55.0",
     "react": "^19.2.3",

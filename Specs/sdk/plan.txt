@@ -1,0 +1,531 @@
+Here’s a **full, detailed implementation plan** to build your **new Agent SDK–based v2 agent system** *in parallel* to the existing (legacy) skills/agents system — with **separate files, separate registries, separate runners**, and a clean cutover path so you can delete the old system later with minimal dead code.
+
+This plan is grounded in your current **Next.js App Router + Convex** console architecture, routes, tables, and existing agents tooling. 
+It also follows your studio workflow + language rules and pricing/taskcraft conventions.  
+
+---
+
+## 0) Goals, constraints, and the “no-dead-code” approach
+
+### Goals
+
+1. Build **v2** using the **OpenAI Agents SDK** with your new split:
+
+   * **Option A: Skill Agents** (agentic, looping, branchy)
+   * **Option B: Skills as Tools** (one-shot, strict structured output)
+2. Keep the **legacy system fully operational** during v2 development.
+3. Make v2 **cleanly removable** later:
+
+   * You can delete the legacy code without losing v2.
+4. Preserve your “write wall” principle:
+
+   * **Only ChangeSet tools** can cause DB mutations (and apply is approval-gated).
+
+### Key constraints from your system
+
+* Your app already has project-scoped pages (Clarification, Planning, Solutioning, Tasks, Quote, Accounting, etc.), Convex tables, and agent telemetry patterns. 
+* Your studio workflow requires consistent mapping: **Projects → Elements → Tasks → Accounting → Quote**, plus procurement, printing QA, execution planning.  
+* Language rule: **instructions in English, user-facing Hebrew**, JSON keys in English. 
+
+### The “parallel system” rule
+
+We’ll create a **v2 namespace** across code and optional metadata:
+
+* New folders: `agents_v2/`, `skills_v2/`, `runner_v2/`, `schemas_v2/`
+* New registries, prompts, and “SDK runner”
+* Feature flag to switch per project/session
+
+You can then delete the legacy folder tree and its wiring when v2 is stable.
+
+---
+
+## 1) Target architecture (v2)
+
+### 1.1 Components (v2)
+
+**A) Main Orchestrator Agent (v2)**
+
+* Responsible for stage management + delegation.
+* Never writes DB directly.
+* Always uses:
+
+  * `context.get` (tool)
+  * Option A agents (as tools) and Option B skills (as tools)
+  * ChangeSet compile/review/apply tool chain
+
+**B) Option A Skill Agents (v2)**
+Agentic/iterative tools (sub-agents) you specified:
+
+* pricing.resolve_lines (Agent)
+* procurement.shopping_plan (Agent)
+* finance.ingest_receipt (Agent)
+* audit.project (Agent)
+* qa.print_files (Agent)
+* clarify.next_questions (Agent, with knowledge updates per loop)
+* maint.sync_and_repair (Agent, iterative repair sets)
+
+**C) Option B Skills-as-Tools (v2)**
+Strict, one-shot, schema-only:
+
+* intake.parse_brief
+* plan.elements
+* plan.tasks
+* plan.execution_phases
+* runbook.installation
+* ops.daily_plan
+* cost.build_budget
+* quote.generate
+* changeset.compile / review / apply (tools; deterministic/gated)
+* admin.set_labor_rates / admin.confirm_measurements
+
+**D) Core tools (v2)**
+
+* `context.get` (non-LLM, deterministic)
+* `knowledge.summarize_or_update` (single LLM call tool)
+* `changeset.compile` (deterministic transform; minimal creativity)
+* `changeset.review` (validator)
+* `changeset.apply` (approval-gated)
+
+### 1.2 Where v2 runs (recommended)
+
+Keep v2 “engine” in **Next.js server-side** (Route Handler / Server Action) and talk to Convex via client:
+
+* Pros: easy Node SDK usage, streaming, web tools.
+* Keeps Convex actions simpler (data reads/writes).
+* Fits your current UI that triggers agents via buttons and displays run telemetry. 
+
+(If you prefer running the SDK inside Convex actions, we can do it too — but separation is cleaner when you want to delete legacy later.)
+
+---
+
+## 2) Repo layout changes (new files only)
+
+Create a new top-level v2 folder tree (names are examples, but keep them consistent):
+
+### 2.1 New directories
+
+**Server (Next.js)**
+
+* `studio-console/src/agent_v2/`
+
+  * `orchestrator/`
+  * `skill_agents/`  *(Option A)*
+  * `skill_tools/`   *(Option B)*
+  * `shared/`        *(shared header, language rules, utilities)*
+  * `schemas/`       *(Zod schemas for every tool + response)*
+  * `runner/`        *(Agents SDK runner + telemetry emission)*
+  * `registry/`      *(catalog & routing metadata)*
+
+**Convex**
+
+* `studio-console/convex/v2/`
+
+  * `context.ts`  *(queries for context packs)*
+  * `changeset.ts` *(apply mutations + validation helpers)*
+  * `knowledge.ts` *(working knowledge doc writes)*
+  * `telemetry.ts` *(agentRuns append events, if you keep it in Convex)*
+
+### 2.2 Do NOT touch legacy paths
+
+Leave these intact:
+
+* legacy `prompts.ts`, `runner.ts`, `registry.ts`, existing convex agents (`convex/agents/...`) 
+
+---
+
+## 3) Feature flag + routing strategy (run both systems safely)
+
+### 3.1 Add a v2 feature flag
+
+* `ff_agents_sdk_v2`
+* Controlled by:
+
+  * env var default
+  * per-project setting in `settings` (you already have a settings table pattern). 
+
+### 3.2 UI toggle behavior
+
+In each agent-trigger UI (Clarification/Planning/Tasks/Quote/etc.):
+
+* If v2 flag ON → call v2 runner endpoint
+* If OFF → call legacy Convex agent action
+
+Keep it *per project* so you can pilot v2 on a test project.
+
+### 3.3 Shadow mode (optional but powerful)
+
+Add a “shadow run” option:
+
+* user sees legacy result
+* v2 runs silently and logs output for comparison (no apply)
+  This helps you evaluate safely before cutover.
+
+---
+
+## 4) Telemetry & run records (so UI doesn’t break)
+
+Your console already uses:
+
+* `agentRuns` + events and AgentActivityPanel patterns. 
+
+### Plan
+
+* Keep using `agentRuns`, add fields:
+
+  * `engine: "legacy" | "v2"`
+  * `agentName` (orchestrator / pricing_agent / etc.)
+  * `stage`
+  * `parentRunId` (for nested skill-agents)
+* Store structured “tool call history” in events (sanitized)
+
+This lets the **same UI** show runs for both engines.
+
+---
+
+## 5) The v2 tool/agent contracts (schemas first)
+
+### 5.1 Define the shared “StudioOps v2 types”
+
+Create Zod schemas (single source of truth) for:
+
+* `ProjectSnapshot`
+* `ElementIntent`, `TaskIntent`, `AccountingIntent`, `QuoteIntent`
+* `AuditFinding`, `FixIntent`
+* `PriceCandidate`, `NormalizedUnit`, `Confidence`
+* `ChangeSet` + operations
+* `WorkingKnowledgeDoc`
+
+These reflect your canonical mapping model (Projects→Elements→Tasks→Accounting→Quote). 
+
+### 5.2 Enforce language rules centrally
+
+A shared validator or post-processor:
+
+* Hebrew for user-facing strings
+* English keys in JSON
+* hard-coded studio tone constraints 
+
+### 5.3 Context packs (v2) — keep minimal and explicit
+
+Implement `context.get` to fetch **only what’s needed** per tool call:
+
+* Project metadata
+* Approved elements
+* Tasks
+* Accounting sections/lines
+* Quote snapshot
+* Price memory (observations)
+* Vendor catalog
+* Labor rates
+* Working knowledge doc
+
+This aligns with your system spec tables and avoids sending “everything always”. 
+
+---
+
+## 6) Implement the “Write Wall” (ChangeSet chain)
+
+### 6.1 `changeset.compile` (tool, deterministic)
+
+**Input**
+
+* `currentSnapshot` (includes IDs)
+* `intents[]` (from Option A/B tools)
+* `policy` (allowed operations, deletion rules, etc.)
+
+**Output**
+
+* `ChangeSet` with operations:
+
+  * create/update/delete for tasks, elements, lines, etc.
+  * includes safety metadata (risk flags)
+
+**Rules**
+
+* minimal creativity: no new content, only transform intents into exact operations
+* strict ID usage: never invent IDs
+
+### 6.2 `changeset.review` (tool)
+
+Validate:
+
+* schema correctness
+* referential integrity (task element exists, accounting links valid)
+* risky deletes
+* duplicate operations
+* missing required fields
+
+### 6.3 `changeset.apply` (tool; approval-gated)
+
+* Does the actual Convex mutations, in a transaction-like sequence
+* Must support “dryRun” for testing
+* Must emit telemetry events so UI can show progress
+
+This matches your existing workflow of human gating before data mutation. 
+
+---
+
+## 7) Build v2 in phases (detailed, with acceptance criteria)
+
+### Phase 1 — Scaffolding & plumbing (foundation)
+
+**Deliverables**
+
+1. Feature flag `ff_agents_sdk_v2` (UI + backend)
+2. v2 folder structure + empty registries
+3. Telemetry writer for v2 runs (create run, append events, close status)
+4. Convex v2 endpoints:
+
+   * `v2/context.getPack(...)`
+   * `v2/changeset.apply(...)`
+   * `v2/knowledge.updateWorkingDoc(...)`
+
+**Acceptance criteria**
+
+* You can click “Run v2 test” on a project and see:
+
+  * a new agentRuns row with engine=v2
+  * events streaming to UI
+  * no changes applied yet
+
+---
+
+### Phase 2 — Implement Option B tools (one-shot skills)
+
+Implement these as **strict structured output** calls:
+
+1. intake.parse_brief
+2. plan.elements
+3. plan.tasks
+4. plan.execution_phases
+5. cost.build_budget
+6. quote.generate
+7. runbook.installation
+8. ops.daily_plan
+9. knowledge.summarize_or_update
+
+**Acceptance criteria**
+
+* Each tool:
+
+  * returns valid schema
+  * Hebrew user-facing strings
+  * stable on the same input (low randomness)
+* Orchestrator can call them and produce a coherent “intent package”
+* `changeset.compile` can turn that into a valid ChangeSet (dry run)
+
+Grounding rules for tasks and pricing should match your playbooks (task granularity, stages, procurement/build/install split, pricing buckets).  
+
+---
+
+### Phase 3 — Implement ChangeSet chain end-to-end
+
+1. `changeset.compile`
+2. `changeset.review`
+3. `changeset.apply` (approval gated)
+
+**Acceptance criteria**
+
+* Dry run produces a ChangeSet and passes review
+* Apply writes to the same canonical tables you already use (tasks, lines, quotes, etc.). 
+* UI shows:
+
+  * summary of changes
+  * “Approve / Reject”
+  * apply emits progress events
+
+---
+
+### Phase 4 — Implement Option A Skill Agents (agentic sub-agents)
+
+Build each as a standalone agent with:
+
+* its own system prompt
+* its own toolset (limited)
+* ability to loop internally and then return final structured output
+
+#### A1) Clarification Agent (highest leverage)
+
+Must:
+
+* loop: ask → update working knowledge doc → decide advance stage
+* output next question set + “ready to advance” boolean
+
+**Acceptance criteria**
+
+* After 1–3 loops, it reliably stops asking and advances when sufficient.
+
+#### A2) Pricing Agent
+
+Must:
+
+* catalog lookup → web research → fallback estimate
+* normalize units, attach sources, compute confidence
+* return “price updates intent” only (no DB writes)
+
+#### A3) Procurement Agent
+
+Must:
+
+* vendor plan, alternates, delivery schedule, risks
+* return structured shopping plan intent
+
+#### A4) Audit/Critic Agent
+
+Must:
+
+* run checks (duplicates, missing prices, missing links, quote inconsistencies, risk hotspots)
+* propose fix intents
+* optionally re-check (or simulate re-check) before returning
+
+#### A5) Receipt Agent
+
+Must:
+
+* parse messy input formats
+* propose mappings and uncertainties
+* produce a “needs human confirm” list
+
+#### A6) Print QA Agent
+
+Must:
+
+* validate print part requirements against uploaded artifacts and spec (even if metadata-only at first)
+* return blockers + fixes
+  Printing QA is explicitly recommended by your workflow playbook as a dedicated sub-workstream. 
+
+#### A7) Maintenance Agent
+
+Must:
+
+* iterative fix set A → sanity re-audit → fix set B
+
+**Acceptance criteria (Option A overall)**
+
+* Each agent produces deterministic-ish structured output
+* Agents never call changeset.apply
+* Agents can be run independently (for debugging)
+
+---
+
+### Phase 5 — Orchestrator v2 end-to-end flow
+
+Orchestrator responsibilities:
+
+* stage machine
+* calls context.get
+* delegates to Option A or Option B
+* compiles/reviews/applies changesets
+* keeps user oriented (stage + what’s next)
+
+**Acceptance criteria**
+
+* End-to-end run on a test project:
+
+  * results in elements + tasks + accounting + quote + runbook
+  * all via ChangeSet apply
+  * audit runs before apply
+
+This matches your console’s lifecycle and page structure. 
+
+---
+
+### Phase 6 — UI integration (minimal + safe)
+
+Add a **single entrypoint UI** for v2 so you don’t rebuild all pages at once:
+
+Option 1 (recommended): a new page/tab:
+
+* `/projects/[id]/agent-v2`
+* A single chat-like “guided flow”
+* Shows:
+
+  * stage
+  * questions
+  * suggested actions
+  * ChangeSet summary + approve button
+
+Option 2: add a v2 toggle inside existing tabs (Clarification/Planning/etc.)
+
+* Faster, but you’ll touch more UI surfaces.
+
+**Acceptance criteria**
+
+* You can complete a project flow without jumping tabs.
+
+---
+
+### Phase 7 — Evaluation & hardening (so you can delete legacy safely)
+
+Build an eval harness:
+
+* Use 5–10 representative projects
+* For each stage:
+
+  * run legacy output
+  * run v2 output (dryRun apply)
+  * compare:
+
+    * number of elements
+    * tasks coverage by stage (buy/build/install/teardown)
+    * missing prices rate
+    * audit findings count
+    * total budget variance
+      This is directly aligned with your “pricing from tasks” reality. 
+
+**Acceptance criteria**
+
+* v2 consistently meets or exceeds legacy on:
+
+  * fewer missing lines
+  * fewer duplicates
+  * more explicit assumptions
+  * fewer “surprises” in execution planning
+
+---
+
+### Phase 8 — Cutover & deletion plan (no trash)
+
+Once v2 is stable:
+
+1. Default flag ON for new projects
+2. Keep legacy only behind a fallback toggle for 1–2 weeks
+3. Remove legacy wiring:
+
+   * delete old runner files and registries
+   * remove old UI buttons/handlers
+   * remove old prompt store UI if replaced
+4. Keep migration notes for old data stored in tables (usually no need to delete tables; only code)
+
+---
+
+## 8) Work breakdown checklist (what you’ll actually build)
+
+### Must-have v2 MVP (ship first)
+
+* Orchestrator v2
+* context.get
+* changeset.compile/review/apply
+* clarify.next_questions (agent)
+* plan.elements / plan.tasks / cost.build_budget / quote.generate (tools)
+* audit.project (agent)
+
+### v2 “power pack” (second wave)
+
+* pricing.resolve_lines (agent)
+* procurement.shopping_plan (agent)
+* finance.ingest_receipt (agent)
+* runbook.installation + ops.daily_plan
+* qa.print_files (agent)
+
+---
+
+## 9) What I suggest we do next (concrete)
+
+To start building with minimal rework, do this order:
+
+1. **Schemas v2** (Zod contracts for intents + ChangeSet)
+2. **context.get** tool (packs)
+3. **changeset.compile/review/apply** (dryRun first)
+4. **Orchestrator prompt v1** (we iterate together)
+5. **Clarification Agent prompt v1** (because it drives the whole flo

@@ -6,6 +6,7 @@ import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
 import { DEFAULT_FLAGS, isEnabled, normalizeFlags } from "../featureFlags";
 import { buildContextPackPrompt } from "../contextManager/promptBuilder";
+import { OpenAIAgent } from "openai-agents";
 
 const OPENAI_MODEL = "gpt-4o";
 const SMALL_MODEL = "gpt-5-nano";
@@ -150,6 +151,18 @@ export const runSkill = action({
         : { ...context, clarifications: clarification };
 
       const systemPrompt = buildSystemPrompt(skillData.skill, promptContext);
+
+      if (skillId === "HELLO_WORLD_TEST") {
+        const blocks = await callHelloWorldAgent(systemPrompt, skillData.skill.model, skillData.skill.llmParams);
+        const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
+          runId,
+          conversationId,
+          blocks,
+          projectId,
+        });
+        console.log("[skills.runSkill] hello world saved", { runId, projectId, skillId, blocks: blocks.length });
+        return savedBlocks;
+      }
 
       const promptCache = buildPromptCacheOptions({
         flags,
@@ -1761,6 +1774,33 @@ async function logToolCallHelper(ctx: any, args: {
     status: args.status,
     error: args.error,
   });
+}
+
+async function callHelloWorldAgent(
+  systemPrompt: string,
+  model?: string,
+  llmParams?: any
+) {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("Missing OPENAI_API_KEY");
+  }
+
+  const agent = new OpenAIAgent({
+    model: model ?? OPENAI_MODEL,
+    system_instruction: systemPrompt,
+    temperature: llmParams?.temperature,
+    max_tokens: llmParams?.max_tokens,
+  });
+
+  const result = await agent.createChatCompletion("Hello World test");
+  const content = Array.isArray((result as any)?.choices) ? (result as any).choices[0] : "";
+  if (!content) throw new Error("Empty response from agent");
+
+  const parsed = tryParseJson(content);
+  if (!parsed) return [{ type: "ChatBlock", markdownHe: content }];
+
+  const blocks = (parsed as any).blocks || parsed;
+  return Array.isArray(blocks) ? blocks : [{ type: "ChatBlock", markdownHe: content }];
 }
 
 async function callLLM(

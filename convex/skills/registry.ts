@@ -73,6 +73,24 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     model: "gpt-5-mini",
   },
   {
+    skillId: "HELLO_WORLD_TEST",
+    labelHe: "?????????? ???????? ????????",
+    descriptionHe: "?????????? ?????????? ???????? hello world",
+    category: "knowledge",
+    flow: "ideation",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false },
+      outputContract: "blocks",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.HELLO_WORLD_TEST,
+    },
+    model: "gpt-4o-mini",
+    llmParams: { temperature: 0.2, max_tokens: 200 },
+  },
+  {
     skillId: "CLARIFICATIONS_GATE",
     labelHe: "שאלות הבהרה",
     descriptionHe: "ניהול שאלות הבהרה",
