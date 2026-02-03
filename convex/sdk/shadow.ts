@@ -8,7 +8,7 @@ export const evaluate = action({
     runId: v.id('sdkRuns'),
   },
   handler: async (ctx, args) => {
-    const context = await ctx.runQuery(api.sdk.context.get, {
+    const context = await ctx.runQuery(api['sdk/context'].get, {
       projectId: args.projectId,
       packs: ['elements', 'tasks', 'accounting'],
     });

@@ -172,7 +172,7 @@ export const runNext = action({
       currentAgentName: 'orchestrator',
     });
 
-    const history = await ctx.runQuery(api.sdk.api.listMessages, {
+    const history = await ctx.runQuery(api['sdk/api'].listMessages, {
       conversationId: args.conversationId,
       limit: 50,
     });
@@ -187,20 +187,20 @@ export const runNext = action({
 
     const toolHandlers: Record<string, ToolHandler> = {
       'context.get': async (input: any) =>
-        ctx.runQuery(api.sdk.api.contextGet, {
+        ctx.runQuery(api['sdk/context'].get, {
           projectId: args.projectId,
           packs: input?.packs ?? ['project', 'knowledge'],
           filters: input?.filters,
         }),
       'knowledge.summarize_or_update': async (input: any) =>
-        ctx.runAction(api.sdk.api.knowledgeUpdate, {
+        ctx.runAction(api['sdk/knowledge'].summarizeOrUpdate, {
           projectId: args.projectId,
           currentDoc: input?.currentDoc,
           newFacts: input?.newFacts ?? [],
           userText: input?.userText,
         }),
       'changeset.compile': async (input: any) =>
-        ctx.runAction(api.sdk.api.compileChangeSet, {
+        ctx.runAction(api['sdk/changeset'].compile, {
           projectId: args.projectId,
           intents: input?.intents ?? [],
           context: input?.context,
@@ -231,13 +231,13 @@ export const runNext = action({
           return result;
         }),
       'changeset.review': async (input: any) =>
-        ctx.runAction(api.sdk.api.reviewChangeSet, {
+        ctx.runAction(api['sdk/changeset'].review, {
           projectId: args.projectId,
           changeSetId: input?.changeSetId,
           changeSet: input?.changeSet,
         }),
       'changeset.apply': async (input: any) =>
-        ctx.runAction(api.sdk.api.applyChangeSet, {
+        ctx.runAction(api['sdk/changeset'].apply, {
           runId: args.runId,
           approvalToken: input?.approvalToken ?? '',
         }),

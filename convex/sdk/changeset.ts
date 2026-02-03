@@ -1,3 +1,5 @@
+"use node";
+
 import { action } from '../_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from '../_generated/api';
@@ -14,7 +16,7 @@ export const compile = action({
   handler: async (ctx, args) => {
     const context =
       args.context ??
-      (await ctx.runQuery(api.sdk.context.get, {
+      (await ctx.runQuery(api['sdk/context'].get, {
         projectId: args.projectId,
         packs: ['project', 'elements', 'tasks', 'accounting', 'quote', 'runbook', 'knowledge', 'pricing', 'qa', 'vendors', 'receipts'],
       }));

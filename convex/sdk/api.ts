@@ -1,3 +1,5 @@
+"use node";
+
 // convex/sdk/api.ts
 import { action, mutation, query } from '../_generated/server';
 import { v } from 'convex/values';
