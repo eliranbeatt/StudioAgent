@@ -41,6 +41,9 @@ export default function ProjectLayout({
     ...(featureFlags?.ff_flow_agent_tab
       ? [{ name: "Flow Agent", href: `/projects/${projectId}/flow-agent`, icon: Bot }]
       : []),
+    ...(featureFlags?.ff_sdk_agent_tab
+      ? [{ name: "SDK Agent", href: `/projects/${projectId}/sdk-agent`, icon: Bot }]
+      : []),
     { name: "Elements", href: `/projects/${projectId}/elements`, icon: Layers },
     { name: "Accounting", href: `/projects/${projectId}/accounting`, icon: Calculator },
     { name: "Tasks", href: `/projects/${projectId}/tasks`, icon: ListTodo },

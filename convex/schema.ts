@@ -1755,7 +1755,7 @@ export default defineSchema({
     role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
     text: v.optional(v.string()),
     blocks: v.optional(v.array(v.any())),
-    runId: v.optional(v.id("skillRuns")),
+    runId: v.optional(v.union(v.id("skillRuns"), v.id("sdkRuns"))),
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
 
@@ -1947,4 +1947,42 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_run", ["runId"])
     .index("by_conversation", ["conversationId"]),
+
+  // SDK Agent Runs (v2)
+  sdkRuns: defineTable({
+    projectId: v.id("projects"),
+    conversationId: v.id("agentConversations"),
+    status: v.union(
+      v.literal("running"),
+      v.literal("paused"),
+      v.literal("blocked"),
+      v.literal("awaiting_approval"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    stageKey: v.optional(v.string()),
+    currentAgentName: v.optional(v.string()),
+    engine: v.literal("sdk"),
+    parentRunId: v.optional(v.id("sdkRuns")),
+    pendingChangeSetId: v.optional(v.id("changeSets")),
+    approvalToken: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    shadowMode: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_conversation", ["conversationId"])
+    .index("by_project_status", ["projectId", "status"]),
+
+  sdkRunEvents: defineTable({
+    runId: v.id("sdkRuns"),
+    type: v.string(), // "tool_call", "log", "error", "block_emit"
+    payload: v.any(),
+    createdAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_type", ["runId", "type"]),
 });

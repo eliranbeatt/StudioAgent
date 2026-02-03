@@ -24,6 +24,10 @@ export const DEFAULT_FLAGS: Record<string, boolean> = {
 
   // Wizard
   ff_wizard_brain_dump: false,
+
+  // SDK Agent (v2)
+  ff_sdk_agent_tab: true,
+  ff_sdk_agent_backend: true,
 }
 
 export function normalizeFlags(raw: unknown): Record<string, boolean> {
