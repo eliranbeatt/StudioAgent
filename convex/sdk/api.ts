@@ -1,27 +1,13 @@
-"use node";
-
 // convex/sdk/api.ts
-import { action, mutation, query } from '../_generated/server';
+// This file contains mutations and queries only (no "use node")
+// For Node.js actions, see nodeActions.ts
+
+import { mutation, query } from '../_generated/server';
 import { v } from 'convex/values';
-import { get as contextGetFunc } from './context';
-import { runTool as runToolFunc } from './runner';
-import { apply as applyChangeSetFunc, compile as compileChangeSetFunc, review as reviewChangeSetFunc } from './changeset';
-import { summarizeOrUpdate as knowledgeUpdateFunc } from './knowledge';
+import { internal } from '../_generated/api';
 
-import { runNext as runNextFunc } from './dispatch';
-import { evaluate as shadowEvaluateFunc } from './shadow';
-import { api, internal } from '../_generated/api';
-
-// SDK Runner API Endpoints
-
-export const contextGet = contextGetFunc;
-export const runTool = runToolFunc;
-export const applyChangeSet = applyChangeSetFunc;
-export const compileChangeSet = compileChangeSetFunc;
-export const reviewChangeSet = reviewChangeSetFunc;
-export const knowledgeUpdate = knowledgeUpdateFunc;
-export const runNext = runNextFunc;
-export const shadowEvaluate = shadowEvaluateFunc;
+// Re-export context query (doesn't need Node.js)
+export { get as contextGet } from './context';
 
 export const createConversation = mutation({
   args: {
@@ -160,33 +146,5 @@ export const cancelRun = mutation({
       runId: args.runId,
       status: 'cancelled',
     });
-  },
-});
-
-export const approveChangeSet = action({
-  args: {
-    runId: v.id('sdkRuns'),
-    approvalToken: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.runId);
-    if (!run) throw new Error('Run not found');
-    if (run.shadowMode) throw new Error('Shadow runs cannot apply ChangeSets');
-    if (!run.pendingChangeSetId) throw new Error('No pending ChangeSet');
-    if (!run.approvalToken || run.approvalToken !== args.approvalToken) {
-      throw new Error('Invalid approval token');
-    }
-    await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
-      runId: args.runId,
-      status: 'running',
-      currentAgentName: run.currentAgentName ?? 'orchestrator',
-    });
-    await ctx.runMutation(internal.sdk.telemetry.clearPendingChangeSet, {
-      runId: args.runId,
-    });
-    await ctx.runMutation(api.changeSets.applyChangeSet, {
-      changeSetId: run.pendingChangeSetId,
-    });
-    return { ok: true, applied: run.pendingChangeSetId };
   },
 });

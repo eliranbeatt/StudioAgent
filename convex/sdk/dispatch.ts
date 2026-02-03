@@ -187,20 +187,20 @@ export const runNext = action({
 
     const toolHandlers: Record<string, ToolHandler> = {
       'context.get': async (input: any) =>
-        ctx.runQuery(api['sdk/context'].get, {
+        ctx.runQuery(api['sdk/api'].contextGet, {
           projectId: args.projectId,
           packs: input?.packs ?? ['project', 'knowledge'],
           filters: input?.filters,
         }),
       'knowledge.summarize_or_update': async (input: any) =>
-        ctx.runAction(api['sdk/knowledge'].summarizeOrUpdate, {
+        ctx.runAction(api['sdk/api'].knowledgeUpdate, {
           projectId: args.projectId,
           currentDoc: input?.currentDoc,
           newFacts: input?.newFacts ?? [],
           userText: input?.userText,
         }),
       'changeset.compile': async (input: any) =>
-        ctx.runAction(api['sdk/changeset'].compile, {
+        ctx.runAction(api['sdk/api'].compileChangeSet, {
           projectId: args.projectId,
           intents: input?.intents ?? [],
           context: input?.context,
@@ -231,13 +231,13 @@ export const runNext = action({
           return result;
         }),
       'changeset.review': async (input: any) =>
-        ctx.runAction(api['sdk/changeset'].review, {
+        ctx.runAction(api['sdk/api'].reviewChangeSet, {
           projectId: args.projectId,
           changeSetId: input?.changeSetId,
           changeSet: input?.changeSet,
         }),
       'changeset.apply': async (input: any) =>
-        ctx.runAction(api['sdk/changeset'].apply, {
+        ctx.runAction(api['sdk/api'].applyChangeSet, {
           runId: args.runId,
           approvalToken: input?.approvalToken ?? '',
         }),

@@ -16,7 +16,7 @@ export const compile = action({
   handler: async (ctx, args) => {
     const context =
       args.context ??
-      (await ctx.runQuery(api['sdk/context'].get, {
+      (await ctx.runQuery(api['sdk/api'].contextGet, {
         projectId: args.projectId,
         packs: ['project', 'elements', 'tasks', 'accounting', 'quote', 'runbook', 'knowledge', 'pricing', 'qa', 'vendors', 'receipts'],
       }));
