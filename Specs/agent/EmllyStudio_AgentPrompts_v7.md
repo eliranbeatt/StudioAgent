@@ -148,6 +148,11 @@ Output a SINGLE JSON object with:
 1) summaryHe (Hebrew) - short + practical
 2) changeSet.ops[] - machine payload with EN keys ONLY
 
+### ChangeSetBlock (required for planning)
+When the user asks to plan the project, open elements, create tasks, or build a budget (e.g., “plan to quote”),
+you MUST output a ChangeSetBlock that contains the proposedChangeSet.ops.
+This is mandatory so the system can create and apply the plan automatically.
+
 When providing structured blocks, prefer:
 {
   "blocks": [ <primary block>, <next steps SuggestionBlock> ]
@@ -158,66 +163,82 @@ If you output a ChangeSetBlock or QuestionsBlock, also include a next steps Sugg
 ```json
 {
   "summaryHe": "סיכום קצר וברור.",
-  "changeSet": {
-    "ops": [
-      {
-        "kind": "task.create",
-        "payload": {
-          "tempId": "t1",
-          "fields": {
-            "title": "בניית שלד מתכת לתצוגה",
-            "description": "חתוך פרופילים, ריתוך בסיס, בדיקת זוויות וסיום.",
-            "workType": "metal_fab",
-            "workTypeLabelHe": "מסגרות/ברזל",
-            "estimatedHours": 3,
-            "plannedStartDate": "2026-01-12",
-            "plannedEndDate": "2026-01-12",
-            "checklist": [
-              { "id": "c1", "title": "חיתוך לפי שרטוט", "estimatedHours": 0.33, "done": false }
-            ]
+  "blocks": [
+    {
+      "type": "ChangeSetBlock",
+      "title_he": "שינויים מוצעים",
+      "summary_he": "הוכנו אלמנטים, משימות ועלויות בהתאם לבריף.",
+      "proposedChangeSet": {
+        "ops": [
+          {
+            "kind": "task.create",
+            "payload": {
+              "tempId": "t1",
+              "fields": {
+                "title": "בניית שלד מתכת לתצוגה",
+                "description": "חתוך פרופילים, ריתוך בסיס, בדיקת זוויות וסיום.",
+                "workType": "metal_fab",
+                "workTypeLabelHe": "מסגרות/ברזל",
+                "estimatedHours": 3,
+                "plannedStartDate": "2026-01-12",
+                "plannedEndDate": "2026-01-12",
+                "checklist": [
+                  { "id": "c1", "title": "חיתוך לפי שרטוט", "estimatedHours": 0.33, "done": false }
+                ]
+              }
+            }
+          },
+          {
+            "kind": "workLine.create",
+            "payload": {
+              "taskTempOrId": "t1",
+              "fields": {
+                "lineType": "work",
+                "sectionKey": "labor_direct",
+                "sectionLabelHe": "עבודה (סטודיו)",
+                "roleHe": "מסגר",
+                "rateTypeCode": "hour",
+                "rateTypeLabelHe": "שעה",
+                "plannedQuantity": 3,
+                "plannedUnitCost": 250,
+                "crewSize": 1,
+                "isManagement": false
+              }
+            }
+          },
+          {
+            "kind": "materialLine.create",
+            "payload": {
+              "taskTempOrId": "t1",
+              "fields": {
+                "lineType": "material",
+                "sectionKey": "hardware_consumables",
+                "sectionLabelHe": "חומרי עזר/מתכלים",
+                "itemName": "פרופיל ברזל 25x25",
+                "spec": "שחור",
+                "quantity": 2,
+                "unitCode": "ea",
+                "unitLabelHe": "יחידה",
+                "plannedUnitCost": 18,
+                "plannedTotalCost": 36,
+                "procurementCode": "local_buy",
+                "procurementLabelHe": "קנייה מקומית"
+              }
+            }
           }
-        }
-      },
-      {
-        "kind": "workLine.create",
-        "payload": {
-          "taskTempOrId": "t1",
-          "fields": {
-            "lineType": "work",
-            "sectionKey": "labor_direct",
-            "sectionLabelHe": "עבודה (סטודיו)",
-            "roleHe": "מסגר",
-            "rateTypeCode": "hour",
-            "rateTypeLabelHe": "שעה",
-            "plannedQuantity": 3,
-            "plannedUnitCost": 250,
-            "crewSize": 1,
-            "isManagement": false
-          }
-        }
-      },
-      {
-        "kind": "materialLine.create",
-        "payload": {
-          "taskTempOrId": "t1",
-          "fields": {
-            "lineType": "material",
-            "sectionKey": "hardware_consumables",
-            "sectionLabelHe": "חומרי עזר/מתכלים",
-            "itemName": "פרופיל ברזל 25x25",
-            "spec": "שחור",
-            "quantity": 2,
-            "unitCode": "ea",
-            "unitLabelHe": "יחידה",
-            "plannedUnitCost": 18,
-            "plannedTotalCost": 36,
-            "procurementCode": "local_buy",
-            "procurementLabelHe": "קנייה מקומית"
-          }
-        }
+        ]
       }
-    ]
-  }
+    },
+    {
+      "type": "SuggestionBlock",
+      "title_he": "הצעדים הבאים",
+      "submitLabel_he": "בוא נתקדם",
+      "selectionMode": "single",
+      "items": [
+        { "id": "generate_quote", "label_he": "ליצור הצעת מחיר", "why_he": "מחשב סיכומי עלות והצעה." }
+      ]
+    }
+  ]
 }
 ```
 

@@ -2,25 +2,94 @@
 
 import { action } from '../_generated/server';
 import { v } from 'convex/values';
-import { OpenAIAgent } from 'openai-agents';
 import { randomUUID } from 'crypto';
 import { api, internal } from '../_generated/api';
 import { REGISTRY } from './registry';
 import { runToolInternal } from './runner';
 import { assertAsciiKeys } from './schemas';
 import { searchWeb } from '../lib/webSearch';
+import { completionWithTracing } from '../lib/llm';
 
 const MAX_TOOL_LOOPS = 6;
 
+function toHeList(items: any) {
+  const list = Array.isArray(items) ? items : items ? [items] : [];
+  return list.map((item) => {
+    if (typeof item === 'string') return item;
+    if (item?.messageHe) return item.messageHe;
+    if (item?.message_he) return item.message_he;
+    if (item?.labelHe) return item.labelHe;
+    if (item?.label_he) return item.label_he;
+    if (item?.titleHe) return item.titleHe;
+    if (item?.title_he) return item.title_he;
+    return JSON.stringify(item);
+  });
+}
+
+function buildReviewBlock(args: { titleHe: string; summaryHe?: string; risks?: any }) {
+  const risksHe = toHeList(args.risks ?? []);
+  const highlightsHe = args.summaryHe ? [args.summaryHe] : [];
+  return {
+    type: 'ReviewBlock',
+    titleHe: args.titleHe,
+    sections: [
+      {
+        sectionHe: 'סיכום',
+        highlightsHe,
+        risksHe,
+      },
+    ],
+    risksHe,
+  };
+}
+
+const STAGE_ORDER = ['intake', 'planning', 'costing', 'quote', 'review', 'execution'] as const;
+type StageKey = (typeof STAGE_ORDER)[number];
+
+function normalizeStageKey(value: any): StageKey | null {
+  if (!value || typeof value !== 'string') return null;
+  const key = value.trim().toLowerCase();
+  return (STAGE_ORDER as readonly string[]).includes(key) ? (key as StageKey) : null;
+}
+
+function enforceStageTransition(current: StageKey, requested: StageKey) {
+  const currentIndex = STAGE_ORDER.indexOf(current);
+  const requestedIndex = STAGE_ORDER.indexOf(requested);
+  if (requestedIndex === -1) return { next: current, reason: 'invalid' as const };
+  if (requestedIndex <= currentIndex) return { next: requested, reason: 'same_or_back' as const };
+  if (requestedIndex === currentIndex + 1) return { next: requested, reason: 'ok' as const };
+  return { next: STAGE_ORDER[Math.min(currentIndex + 1, STAGE_ORDER.length - 1)], reason: 'skip' as const };
+}
+
 type ToolHandler = (args: any) => Promise<any>;
 
-function buildToolDefinitions(allowedTools: string[]) {
-  return allowedTools.map((name) => {
+function toOpenAIToolName(name: string) {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function buildToolDefinitions(allowedTools: string[], nameMap: Map<string, string>) {
+  const usedNames = new Set<string>();
+  const makeUniqueName = (base: string) => {
+    let candidate = base || 'tool';
+    let counter = 1;
+    while (usedNames.has(candidate)) {
+      candidate = `${base || 'tool'}_${counter}`;
+      counter += 1;
+    }
+    usedNames.add(candidate);
+    return candidate;
+  };
+
+  return allowedTools.map((name, index) => {
+    const baseName = toOpenAIToolName(name);
+    const safeBase = /^[a-zA-Z0-9_-]+$/.test(baseName) ? baseName : `tool_${index}`;
+    const openAiName = makeUniqueName(safeBase);
+    nameMap.set(openAiName, name);
     if (name === 'context.get') {
       return {
         type: 'function',
         function: {
-          name,
+          name: openAiName,
           description: 'Fetch minimal project context by packs.',
           parameters: {
             type: 'object',
@@ -37,7 +106,7 @@ function buildToolDefinitions(allowedTools: string[]) {
       return {
         type: 'function',
         function: {
-          name,
+          name: openAiName,
           description: 'Update working knowledge doc with new facts.',
           parameters: {
             type: 'object',
@@ -55,7 +124,7 @@ function buildToolDefinitions(allowedTools: string[]) {
       return {
         type: 'function',
         function: {
-          name,
+          name: openAiName,
           description: 'Compile intents into a ChangeSet draft.',
           parameters: {
             type: 'object',
@@ -72,7 +141,7 @@ function buildToolDefinitions(allowedTools: string[]) {
       return {
         type: 'function',
         function: {
-          name,
+          name: openAiName,
           description: 'Review a ChangeSet draft.',
           parameters: {
             type: 'object',
@@ -88,7 +157,7 @@ function buildToolDefinitions(allowedTools: string[]) {
       return {
         type: 'function',
         function: {
-          name,
+          name: openAiName,
           description: 'Apply ChangeSet after approval.',
           parameters: {
             type: 'object',
@@ -104,7 +173,7 @@ function buildToolDefinitions(allowedTools: string[]) {
       return {
         type: 'function',
         function: {
-          name,
+          name: openAiName,
           description: 'Search the web for real-time information.',
           parameters: {
             type: 'object',
@@ -122,7 +191,7 @@ function buildToolDefinitions(allowedTools: string[]) {
     return {
       type: 'function',
       function: {
-        name,
+        name: openAiName,
         description: `Run tool ${name}`,
         parameters: {
           type: 'object',
@@ -143,7 +212,16 @@ export const runNext = action({
     userMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.runId);
+    const sdkApi = (api as any)['sdk/api'] ?? (api as any).sdk?.api;
+    const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
+    const sdkChangeset = (api as any)['sdk/changeset'] ?? (api as any).sdk?.changeset;
+    if (!sdkApi || !sdkKnowledge || !sdkChangeset) {
+      throw new Error('SDK API modules not available. Run Convex codegen and restart the server.');
+    }
+
+    const run = await ctx.runQuery(internal.sdk.queries.getRun, {
+      runId: args.runId,
+    });
     if (!run) throw new Error('Run not found');
 
     if (run.status === 'paused' || run.status === 'cancelled' || run.status === 'completed') {
@@ -172,13 +250,22 @@ export const runNext = action({
       currentAgentName: 'orchestrator',
     });
 
-    const history = await ctx.runQuery(api['sdk/api'].listMessages, {
+    const history = await ctx.runQuery(sdkApi.listMessages, {
       conversationId: args.conversationId,
       limit: 50,
     });
 
+    const bootstrapContext = await ctx.runQuery(sdkApi.contextGet, {
+      projectId: args.projectId,
+      packs: ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa'],
+    });
+
     const messages: any[] = [
       { role: 'system', content: orchestrator.systemPrompt },
+      {
+        role: 'system',
+        content: `PROJECT CONTEXT (bootstrap, may be partial):\n${JSON.stringify(bootstrapContext, null, 2)}`,
+      },
       ...history.map((m: any) => ({
         role: m.role,
         content: m.text ?? (m.blocks ? JSON.stringify(m.blocks) : ''),
@@ -187,60 +274,160 @@ export const runNext = action({
 
     const toolHandlers: Record<string, ToolHandler> = {
       'context.get': async (input: any) =>
-        ctx.runQuery(api['sdk/api'].contextGet, {
+        ctx.runQuery(sdkApi.contextGet, {
           projectId: args.projectId,
           packs: input?.packs ?? ['project', 'knowledge'],
           filters: input?.filters,
         }),
       'knowledge.summarize_or_update': async (input: any) =>
-        ctx.runAction(api['sdk/api'].knowledgeUpdate, {
+        ctx.runAction(sdkKnowledge.summarizeOrUpdate, {
           projectId: args.projectId,
           currentDoc: input?.currentDoc,
           newFacts: input?.newFacts ?? [],
           userText: input?.userText,
         }),
-      'changeset.compile': async (input: any) =>
-        ctx.runAction(api['sdk/api'].compileChangeSet, {
+      'changeset.compile': async (input: any) => {
+        const result = await ctx.runAction(sdkChangeset.compile, {
           projectId: args.projectId,
           intents: input?.intents ?? [],
           context: input?.context,
-        }).then(async (result: any) => {
-          if (result?.changeSetId && !run.shadowMode) {
-            const approvalToken = randomUUID();
+        });
+
+        if (result?.changeSetId && !run.shadowMode) {
+          const blocks: any[] = [];
+          let auditResult: any = null;
+          try {
+            auditResult = await runToolInternal({
+              ctx,
+              projectId: args.projectId,
+              toolId: 'audit.project',
+              input: { changeSetId: result.changeSetId },
+              runId: args.runId,
+              conversationId: args.conversationId,
+            });
+          } catch (error: any) {
+            auditResult = { error: error?.message ?? String(error) };
+          }
+
+          if (auditResult && !auditResult.error) {
+            await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+              runId: args.runId,
+              type: 'audit_snapshot',
+              payload: {
+                changeSetId: result.changeSetId,
+                summaryHe: auditResult.summaryHe,
+                findings: auditResult.findings ?? [],
+              },
+            });
+            blocks.push(
+              buildReviewBlock({
+                titleHe: 'ביקורת פרויקט',
+                summaryHe: auditResult.summaryHe,
+                risks: auditResult.findings,
+              })
+            );
+          }
+
+          const review = await ctx.runAction(sdkChangeset.review, {
+            projectId: args.projectId,
+            changeSetId: result.changeSetId,
+          });
+
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'changeset_review',
+            payload: {
+              changeSetId: result.changeSetId,
+              issues: review?.issues ?? [],
+              summaryHe: review?.summaryHe,
+            },
+          });
+
+          const reviewIssues = Array.isArray(review?.issues) ? review.issues : [];
+          blocks.push(
+            buildReviewBlock({
+              titleHe: 'בדיקת ChangeSet',
+              summaryHe: review?.summaryHe,
+              risks: reviewIssues,
+            })
+          );
+
+          if (reviewIssues.length > 0) {
             await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
               runId: args.runId,
-              status: 'awaiting_approval',
+              status: 'blocked',
               pendingChangeSetId: result.changeSetId,
-              approvalToken,
+              approvalToken: undefined,
             });
             await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
               conversationId: args.conversationId,
               role: 'assistant',
-              text: 'יש שינויים מוצעים לאישור.',
-              blocks: [
-                {
-                  type: 'ChangeSetBlock',
-                  titleHe: 'שינויים מוצעים',
-                  summaryHe: 'נדרש אישור לפני ביצוע.',
-                  changeSetId: result.changeSetId,
-                },
-              ],
+              text: 'נדרש תיקון לפני אישור.',
+              blocks,
               runId: args.runId,
             });
+            return result;
           }
-          return result;
-        }),
+
+          const approvalToken = randomUUID();
+          await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+            runId: args.runId,
+            status: 'awaiting_approval',
+            pendingChangeSetId: result.changeSetId,
+            approvalToken,
+          });
+
+          blocks.push({
+            type: 'ChangeSetBlock',
+            titleHe: 'שינויים מוצעים',
+            summaryHe: 'נדרש אישור לפני ביצוע.',
+            changeSetId: result.changeSetId,
+          });
+
+          await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+            conversationId: args.conversationId,
+            role: 'assistant',
+            text: 'יש שינויים מוצעים לאישור.',
+            blocks,
+            runId: args.runId,
+          });
+        }
+
+        return result;
+      },
       'changeset.review': async (input: any) =>
-        ctx.runAction(api['sdk/api'].reviewChangeSet, {
+        ctx.runAction(sdkChangeset.review, {
           projectId: args.projectId,
           changeSetId: input?.changeSetId,
           changeSet: input?.changeSet,
         }),
-      'changeset.apply': async (input: any) =>
-        ctx.runAction(api['sdk/api'].applyChangeSet, {
+      'changeset.apply': async (input: any) => {
+        const reviewEvent = await ctx.runQuery(internal.sdk.queries.getLatestReviewForRun, {
+          runId: args.runId,
+          changeSetId: run.pendingChangeSetId,
+        });
+        if (!reviewEvent) {
+          throw new Error('ChangeSet review required before apply');
+        }
+        const issues = Array.isArray(reviewEvent.payload?.issues)
+          ? reviewEvent.payload.issues
+          : [];
+        if (issues.length > 0) {
+          throw new Error('ChangeSet review has unresolved issues');
+        }
+
+        const auditEvent = await ctx.runQuery(internal.sdk.queries.getLatestAuditForRun, {
+          runId: args.runId,
+        });
+        if (!auditEvent) {
+          throw new Error('Audit required before apply');
+        }
+
+        return await ctx.runAction(sdkChangeset.apply, {
           runId: args.runId,
           approvalToken: input?.approvalToken ?? '',
-        }),
+        });
+      },
       web_search: async (input: any) => {
         const q = String(input?.query ?? '');
         if (!q) {
@@ -265,25 +452,34 @@ export const runNext = action({
       }
     }
 
-    const tools = buildToolDefinitions(orchestrator.allowedTools ?? []);
+    const toolNameMap = new Map<string, string>();
+    const tools = buildToolDefinitions(orchestrator.allowedTools ?? [], toolNameMap);
 
     let finalContent: string | null = null;
-    const agent = new OpenAIAgent({
-      model: orchestrator.model,
-      temperature: orchestrator.temperature,
-      max_tokens: orchestrator.maxTokens,
-      system_instruction: orchestrator.systemPrompt,
-    });
-
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('Missing OPENAI_API_KEY');
+    }
     for (let i = 0; i < MAX_TOOL_LOOPS; i++) {
-      const response = await agent.chat.completions.create({
-        model: orchestrator.model,
-        temperature: orchestrator.temperature,
-        max_tokens: orchestrator.maxTokens,
-        messages,
-        tools,
-        tool_choice: 'auto',
-      });
+      const response = await completionWithTracing(
+        ctx,
+        {
+          model: orchestrator.model,
+          temperature: orchestrator.temperature,
+          max_tokens: orchestrator.maxTokens,
+          messages,
+          tools,
+          tool_choice: 'auto',
+          traceMeta: {
+            source: 'sdk',
+            runId: args.runId,
+          },
+        },
+        {
+          projectId: args.projectId,
+          conversationId: args.conversationId,
+          runId: args.runId,
+        }
+      ) as any;
       const message = response.choices?.[0]?.message;
       if (!message) throw new Error('Empty LLM response');
 
@@ -295,7 +491,8 @@ export const runNext = action({
         });
 
         for (const call of message.tool_calls) {
-          const toolName = call.function.name;
+          const openAiToolName = call.function.name;
+          const toolName = toolNameMap.get(openAiToolName) ?? openAiToolName;
           let toolArgs: any = {};
           try {
             toolArgs = call.function.arguments ? JSON.parse(call.function.arguments) : {};
@@ -361,11 +558,26 @@ export const runNext = action({
       payload: { blocks },
     });
 
-    const nextStage = parsed?.meta?.nextStageKey ?? parsed?.meta?.stageKey ?? parsed?.meta?.stageKeyHint;
-    if (nextStage) {
+    const rawStage = parsed?.meta?.nextStageKey ?? parsed?.meta?.stageKey ?? parsed?.meta?.stageKeyHint;
+    const requestedStage = normalizeStageKey(rawStage);
+    if (requestedStage) {
+      const currentStage = normalizeStageKey(run.stageKey) ?? 'intake';
+      const { next, reason } = enforceStageTransition(currentStage, requestedStage);
+      if (reason === 'skip') {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'stage_guard',
+          payload: {
+            currentStage,
+            requestedStage,
+            appliedStage: next,
+            reason,
+          },
+        });
+      }
       await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
         runId: args.runId,
-        stageKey: nextStage,
+        stageKey: next,
       });
     }
 

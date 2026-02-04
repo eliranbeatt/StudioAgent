@@ -28,11 +28,17 @@ export const compile = action({
     };
 
     const { parsed } = await runJsonCompletion({
+      ctx,
       systemPrompt: FULL_PROMPTS.CHANGESET_COMPILE_SYSTEM,
       userContent: JSON.stringify(payload),
       model: 'gpt-4o-mini',
       temperature: 0.1,
       maxTokens: 2000,
+      projectId: args.projectId,
+      traceMeta: {
+        source: 'sdk',
+        toolId: 'changeset.compile',
+      },
     });
 
     assertAsciiKeys(parsed);
@@ -194,11 +200,17 @@ export const review = action({
     if (!changeSet) throw new Error('ChangeSet not found for review');
 
     const { parsed } = await runJsonCompletion({
+      ctx,
       systemPrompt: FULL_PROMPTS.CHANGESET_REVIEW_SYSTEM,
       userContent: JSON.stringify({ projectId: args.projectId, changeSet }),
       model: 'gpt-4o-mini',
       temperature: 0.1,
       maxTokens: 1600,
+      projectId: args.projectId,
+      traceMeta: {
+        source: 'sdk',
+        toolId: 'changeset.review',
+      },
     });
 
     assertAsciiKeys(parsed);
@@ -216,7 +228,9 @@ export const apply = action({
     approvalToken: v.string(),
   },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.runId);
+    const run = await ctx.runQuery(internal.sdk.queries.getRun, {
+      runId: args.runId,
+    });
     if (!run) throw new Error('Run not found');
     if (run.shadowMode) throw new Error('Shadow runs cannot apply ChangeSets');
     if (!run.pendingChangeSetId) throw new Error('No pending ChangeSet');

@@ -22,11 +22,17 @@ export const summarizeOrUpdate = action({
     };
 
     const { parsed } = await runJsonCompletion({
+      ctx,
       systemPrompt: FULL_PROMPTS.KNOWLEDGE_UPDATE_SYSTEM,
       userContent: JSON.stringify(payload),
       model: 'gpt-4o-mini',
       temperature: 0.2,
       maxTokens: 1600,
+      projectId: args.projectId,
+      traceMeta: {
+        source: 'sdk',
+        toolId: 'knowledge.summarize_or_update',
+      },
     });
 
     assertAsciiKeys(parsed);

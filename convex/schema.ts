@@ -1906,7 +1906,9 @@ export default defineSchema({
     toolName: v.string(),
     argsHash: v.string(),
     argsBytes: v.number(),
+    args: v.optional(v.any()),
     resultBytes: v.optional(v.number()),
+    result: v.optional(v.any()),
     latencyMs: v.number(),
     status: v.union(v.literal("success"), v.literal("error")),
     error: v.optional(v.string()),
@@ -1914,6 +1916,7 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_skill_run", ["skillRunId"])
+    .index("by_conversation", ["conversationId"])
     .index("by_createdAt", ["createdAt"]),
 
   flowRunTimelineEvents: defineTable({

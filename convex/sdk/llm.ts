@@ -1,36 +1,44 @@
 "use node";
 
-import { OpenAIAgent } from 'openai-agents';
+import { completionWithTracing } from '../lib/llm';
 
 export async function runJsonCompletion(args: {
+  ctx: any;
   systemPrompt: string;
   userContent: string;
   model: string;
   temperature?: number;
   maxTokens?: number;
+  projectId?: string;
+  conversationId?: string;
+  runId?: string;
+  traceMeta?: any;
 }) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('Missing OPENAI_API_KEY');
   }
-  const agent = new OpenAIAgent({
-    model: args.model,
-    temperature: args.temperature ?? 0.2,
-    max_tokens: args.maxTokens,
-    system_instruction: args.systemPrompt,
-  });
 
-  const response = await agent.chat.completions.create({
-    model: args.model,
-    temperature: args.temperature ?? 0.2,
-    max_tokens: args.maxTokens,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: args.systemPrompt },
-      { role: 'user', content: args.userContent },
-    ],
-  });
+  const response = await completionWithTracing(
+    args.ctx,
+    {
+      model: args.model,
+      temperature: args.temperature ?? 0.2,
+      max_tokens: args.maxTokens,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: args.systemPrompt },
+        { role: 'user', content: args.userContent },
+      ],
+      traceMeta: args.traceMeta,
+    },
+    {
+      projectId: args.projectId as any,
+      conversationId: args.conversationId as any,
+      runId: args.runId,
+    }
+  ) as any;
 
-  const content = response.choices?.[0]?.message?.content;
+  const content = response?.choices?.[0]?.message?.content;
   if (!content) {
     throw new Error('Empty response from LLM');
   }

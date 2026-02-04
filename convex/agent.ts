@@ -111,6 +111,8 @@ Stage is one of: IDEATION | QUOTE | BREAKDOWN.
 Mode is one of: CHAT | QUESTIONS | SUGGESTIONS (hint only).
 
 Next-best-action policy (choose exactly one): ANSWER | ASK | SUGGEST | PROPOSE_CHANGESET.
+If the user asks to plan the project, open elements, create tasks, or build a budget (especially “plan to quote”),
+you MUST choose PROPOSE_CHANGESET and output a ChangeSetBlock with proposedChangeSet.ops.
 Anti-bloat: if you are about to output > 12 bullets, stop and choose a smaller next step.
 If you are not providing a ChangeSetBlock or QuestionsBlock, output a SuggestionBlock with 2-3 next steps.
 
@@ -118,6 +120,11 @@ Deduplication Rules:
 - Before creating a task or cost line, check the provided context to see if it exists.
 - If it exists, use 'task.patch', 'materialLine.patch', or 'workLine.patch' instead of '.create'.
 - For new items, always provide a 'dedupKey' (e.g., 'task_install_pvc') to ensure idempotency.
+
+ChangeSetBlock requirement (for planning):
+- Use a ChangeSetBlock with proposedChangeSet:
+  { "type": "ChangeSetBlock", "title_he": "שינויים מוצעים", "summary_he": "...", "proposedChangeSet": { "ops": [...] } }
+`;
 
 When citing web search results or providing URLs, YOU MUST use Markdown format: [Link Title](URL). Do not use bare URLs.
 
@@ -665,6 +672,14 @@ export const agentRespond = action({
 
     const lastUserMessage = [...recentMessages].reverse().find((msg) => msg.role === "user");
     const lastText = String(lastUserMessage?.text_he ?? "").toLowerCase();
+    const recentUserTexts = [...recentMessages]
+      .filter((msg) => msg.role === "user")
+      .map((msg) => String(msg.text_he ?? "").toLowerCase());
+    const shouldAutoApplyChangeSet = recentUserTexts.slice(-5).some((text) => {
+      const wantsPlan = /(\bplan\b|planning|תכנן|תכנני|תכנון)/.test(text);
+      const wantsQuote = /(quote|הצעת\s*מחיר|הצעת-מחיר)/.test(text);
+      return wantsPlan && wantsQuote;
+    });
     const wantsTasks = /task|משימ/.test(lastText);
     const wantsAccounting = /cost|price|budget|quote|תקציב|מחיר/.test(lastText);
     const wantsPrinting = /print|printing|דפוס/.test(lastText);
@@ -987,6 +1002,28 @@ export const agentRespond = action({
 
     // If we have a structured block, handle it (creating ChangeSets, etc.)
     let block = parsed.block;
+
+    // Normalize legacy { summaryHe, changeSet: { ops } } payloads into a ChangeSetBlock
+    if (block && !Array.isArray(block) && block.changeSet?.ops && !block.type) {
+      const summaryHe = block.summaryHe ?? block.summary_he ?? "";
+      block = [
+        {
+          type: "ChangeSetBlock",
+          title_he: "שינויים מוצעים",
+          summary_he: summaryHe || "נדרש אישור לפני ביצוע.",
+          proposedChangeSet: {
+            ops: block.changeSet.ops,
+            base: block.changeSet.base,
+            reason_he: block.changeSet.reason_he ?? summaryHe,
+            preview_he: block.changeSet.preview_he,
+          },
+        },
+      ];
+
+      if (!parsed.assistantText_he && summaryHe) {
+        parsed.assistantText_he = summaryHe;
+      }
+    }
     let changeSetId: any = undefined;
 
     const blocksList = Array.isArray(block) ? block.filter(Boolean) : block ? [block] : [];
@@ -1068,6 +1105,14 @@ export const agentRespond = action({
               preview_he: proposed.preview_he || undefined,
               base: sanitizedBase,
             });
+            if (changeSetId && shouldAutoApplyChangeSet) {
+              try {
+                await ctx.runMutation(api.changeSets.applyChangeSet, { changeSetId });
+              } catch (applyError: any) {
+                console.error("Failed to APPLY ChangeSet:", applyError);
+                parsed.assistantText_he = `${parsed.assistantText_he}\n\nשינויים הוכנו אבל ההחלה האוטומטית נכשלה. אפשר לאשר ידנית.`.trim();
+              }
+            }
           } catch (createError: any) {
             console.error("Failed to CREATE ChangeSet mutation:", createError);
             console.error("Proposed Reason:", proposed.reason_he);
@@ -1078,7 +1123,7 @@ export const agentRespond = action({
         }
 
         const { proposedChangeSet, ...rest } = changeSetBlock;
-        blocksList[changeSetBlockIndex] = { ...rest };
+        blocksList[changeSetBlockIndex] = { ...rest, changeSetId };
       } catch (e) {
         console.error("Failed to process ChangeSet block:", e);
       }
