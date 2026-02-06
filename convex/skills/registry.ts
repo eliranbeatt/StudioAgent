@@ -71,6 +71,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       `,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "HELLO_WORLD_TEST",
@@ -107,6 +108,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.CLARIFICATIONS_GATE,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "CONTEXT_GENERATION",
@@ -125,6 +127,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.CONTEXT_GENERATION,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "CHANGESET_REVIEWER",
@@ -143,6 +146,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.CHANGESET_REVIEWER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "PROJECT_BRIEF_BUILDER",
@@ -162,6 +166,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.PROJECT_BRIEF_BUILDER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "ELEMENTS_BUILDER_FULL",
@@ -181,6 +186,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.ELEMENTS_BUILDER_FULL,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "TASKS_BUILDER_FULL",
@@ -200,6 +206,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.TASKS_BUILDER_FULL,
     },
     model: "gpt-5.2",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "ACCOUNTING_BUILDER_FULL",
@@ -219,6 +226,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.ACCOUNTING_BUILDER_FULL,
     },
     model: "gpt-5.2",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "QUOTE_WRITER_FULL",
@@ -239,6 +247,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.QUOTE_WRITER_FULL,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "ELEMENTS_TO_TASKS_SYNC",
@@ -257,6 +266,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.ELEMENTS_TO_TASKS_SYNC,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "TASKS_CRITICAL_PATH_POLISH",
@@ -275,6 +285,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.TASKS_CRITICAL_PATH_POLISH,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "TASK_ACCOUNTING_MAPPING_REPAIR",
@@ -293,6 +304,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.TASK_ACCOUNTING_MAPPING_REPAIR,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "GAP_AUDIT",
@@ -311,6 +323,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.GAP_AUDIT,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "RISK_REVIEW",
@@ -329,6 +342,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.RISK_REVIEW,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "COST_VARIANCE_ANALYZER",
@@ -348,6 +362,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.COST_VARIANCE_ANALYZER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "DAILY_EXECUTION_PLANNER",
@@ -367,6 +382,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.DAILY_EXECUTION_PLANNER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "INSTALL_RUNBOOK_BUILDER",
@@ -385,6 +401,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.INSTALL_RUNBOOK_BUILDER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "SHOPPING_PLANNER_WEB",
@@ -403,7 +420,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.SHOPPING_PLANNER_WEB,
     },
     model: "gpt-5-mini",
-    llmParams: { reasoning_effort: "medium" },
+    llmParams: { reasoning_effort: "medium", max_completion_tokens: 25000 },
   },
   {
     skillId: "BUYING_ASSISTANT_WEB",
@@ -423,6 +440,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.BUYING_ASSISTANT_WEB,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "RESEARCH_INSPIRATION_WEB",
@@ -442,6 +460,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.RESEARCH_INSPIRATION_WEB,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "RESEARCH_PRICING_ESTIMATES_WEB",
@@ -460,7 +479,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.RESEARCH_PRICING_ESTIMATES_WEB,
     },
     model: "gpt-5-mini",
-    llmParams: { reasoning_effort: "medium" },
+    llmParams: { reasoning_effort: "medium", max_completion_tokens: 25000 },
   },
   {
     skillId: "PRINT_QA",
@@ -479,6 +498,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.PRINT_QA,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "RECEIPT_PARSE_AND_MAP",
@@ -498,6 +518,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.RECEIPT_PARSE_AND_MAP,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "BOM_DUPLICATE_ANALYZER",
@@ -516,6 +537,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.BOM_DUPLICATE_ANALYZER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "BUILD_PLANNER",
@@ -534,6 +556,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.BUILD_PLANNER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "TASKS_SYNC_FROM_LABOR_LINES",
@@ -552,6 +575,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.TASKS_SYNC_FROM_LABOR_LINES,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "PRICING_LOOKUP_CATALOG_BATCH",
@@ -569,6 +593,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.PRICING_LOOKUP_CATALOG_BATCH,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "PRICING_RESEARCH_WEB_BATCH",
@@ -586,6 +611,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.PRICING_RESEARCH_WEB_BATCH,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "PRICING_ESTIMATE_FALLBACK_BATCH",
@@ -603,6 +629,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.PRICING_ESTIMATE_FALLBACK_BATCH,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "TASKS_ENRICH_FROM_ACCOUNTING_BATCH",
@@ -620,6 +647,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.TASKS_ENRICH_FROM_ACCOUNTING_BATCH,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "OVERHEAD_AND_LOGISTICS_COMPLETER",
@@ -637,6 +665,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.OVERHEAD_AND_LOGISTICS_COMPLETER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "QUOTE_BUILD_OR_FIX",
@@ -654,6 +683,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.QUOTE_BUILD_OR_FIX,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "FINAL_AUDIT_FIXER",
@@ -671,6 +701,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.FINAL_AUDIT_FIXER,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "setLaborRates",
@@ -688,6 +719,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.setLaborRates,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "confirmMeasurements",
@@ -705,6 +737,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.confirmMeasurements,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   // ============================================
   // V3 FLOW SKILLS
@@ -725,6 +758,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_A_INTAKE,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_Q_B_PLAN",
@@ -742,6 +776,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_B_PLAN,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_Q_C_COST",
@@ -759,6 +794,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_C_COST,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_Q_D_POLISH_APPROVALS",
@@ -776,6 +812,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_D_POLISH_APPROVALS,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_Q_E_QUOTE",
@@ -793,6 +830,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_Q_E_QUOTE,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_BUILD_A_MEMORYDOCS",
@@ -810,6 +848,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_A_MEMORYDOCS,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_BUILD_B_PLAN",
@@ -827,6 +866,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_B_PLAN,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_BUILD_C_ACCOUNTING",
@@ -844,6 +884,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_C_ACCOUNTING,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_BUILD_D_POLISH",
@@ -861,6 +902,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_D_POLISH,
     },
     model: "gpt-5.2",
+    llmParams: { max_completion_tokens: 25000 },
   },
   {
     skillId: "V3_BUILD_E_QUOTE",
@@ -878,6 +920,7 @@ export const SKILL_CATALOG: SkillDefinition[] = [
       promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_E_QUOTE,
     },
     model: "gpt-5-mini",
+    llmParams: { max_completion_tokens: 25000 },
   },
 ];
 

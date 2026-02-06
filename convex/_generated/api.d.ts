@@ -95,7 +95,6 @@ import type * as sdk_dispatch from "../sdk/dispatch.js";
 import type * as sdk_knowledge from "../sdk/knowledge.js";
 import type * as sdk_knowledgeMutations from "../sdk/knowledgeMutations.js";
 import type * as sdk_llm from "../sdk/llm.js";
-import type * as sdk_nodeActions from "../sdk/nodeActions.js";
 import type * as sdk_prompts from "../sdk/prompts.js";
 import type * as sdk_queries from "../sdk/queries.js";
 import type * as sdk_registry from "../sdk/registry.js";
@@ -214,7 +213,6 @@ declare const fullApi: ApiFromModules<{
   "sdk/knowledge": typeof sdk_knowledge;
   "sdk/knowledgeMutations": typeof sdk_knowledgeMutations;
   "sdk/llm": typeof sdk_llm;
-  "sdk/nodeActions": typeof sdk_nodeActions;
   "sdk/prompts": typeof sdk_prompts;
   "sdk/queries": typeof sdk_queries;
   "sdk/registry": typeof sdk_registry;

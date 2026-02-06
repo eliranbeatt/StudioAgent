@@ -112,6 +112,29 @@ export async function completionWithTracing(
         // Construct basic options, filtering out provider
         const { provider: _, traceMeta, ...openAIOptions } = params;
 
+        // Fix parameters for reasoning models (o1/o3/gpt-5)
+        const m = params.model.toLowerCase();
+        if (m.startsWith('o1') || m.startsWith('o3') || m.includes('gpt-5')) {
+            // Fix max_tokens -> max_completion_tokens
+            if (openAIOptions.max_tokens) {
+                console.log(`[LLM] Swapping max_tokens -> max_completion_tokens for model ${params.model}`);
+                (openAIOptions as any).max_completion_tokens = openAIOptions.max_tokens;
+                delete openAIOptions.max_tokens;
+            }
+
+            // Reasoning models include thought trace in token count, so standard 2k-4k limits are too low.
+            // If explicit limit is provided but it's low (< 10k), boost it to 25k to avoid truncation.
+            if ((openAIOptions as any).max_completion_tokens && (openAIOptions as any).max_completion_tokens < 10000) {
+                console.log(`[LLM] Boosting max_completion_tokens from ${(openAIOptions as any).max_completion_tokens} to 25000 for reasoning model`);
+                (openAIOptions as any).max_completion_tokens = 25000;
+            }
+            // Fix temperature: reasoning models often strictly require 1 (or don't support it)
+            if (openAIOptions.temperature !== undefined) {
+                console.log(`[LLM] Removing temperature ${openAIOptions.temperature} for reasoning model ${params.model} (defaults to 1)`);
+                delete openAIOptions.temperature;
+            }
+        }
+
         const response = await client.chat.completions.create(openAIOptions as any);
 
         if (params.stream) {

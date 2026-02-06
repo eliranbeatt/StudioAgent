@@ -14,6 +14,10 @@ export const compile = action({
     context: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const intents = Array.isArray(args.intents) ? args.intents : [];
+    if (intents.length === 0) {
+      throw new Error('changeset.compile requires at least one intent');
+    }
     const context =
       args.context ??
       (await ctx.runQuery(api['sdk/api'].contextGet, {
@@ -24,7 +28,7 @@ export const compile = action({
     const payload = {
       projectId: args.projectId,
       context,
-      intents: args.intents,
+      intents,
     };
 
     const { parsed } = await runJsonCompletion({
@@ -55,12 +59,15 @@ export const compile = action({
     const mappedOps = changeSet.ops
       .map((op: any) => mapCompileOp(op))
       .filter((op: any) => op !== null);
+    if (mappedOps.length === 0) {
+      throw new Error('changeset.compile produced zero ops');
+    }
 
     const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
       projectId: args.projectId,
       stage: 'BREAKDOWN',
       ops: mappedOps,
-      createdBy: { source: 'sdk', tool: 'changeset.compile' },
+      createdBy: { type: 'agent', agentName: 'changeset.compile' },
     });
 
     return {

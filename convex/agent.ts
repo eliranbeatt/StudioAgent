@@ -124,7 +124,6 @@ Deduplication Rules:
 ChangeSetBlock requirement (for planning):
 - Use a ChangeSetBlock with proposedChangeSet:
   { "type": "ChangeSetBlock", "title_he": "שינויים מוצעים", "summary_he": "...", "proposedChangeSet": { "ops": [...] } }
-`;
 
 When citing web search results or providing URLs, YOU MUST use Markdown format: [Link Title](URL). Do not use bare URLs.
 
@@ -743,54 +742,54 @@ export const agentRespond = action({
       }
     }
 
-      const tools = [
-        {
-          type: "function",
-          function: {
-            name: "web_search",
-            description: "Search the web for real-time information, prices, specs, or vendors.",
-            parameters: {
-              type: "object",
-              properties: {
-                query: { type: "string", description: "Search query" },
-              },
-              required: ["query"],
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "web_search",
+          description: "Search the web for real-time information, prices, specs, or vendors.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Search query" },
             },
+            required: ["query"],
           },
         },
-        {
-          type: "function",
-          function: {
-            name: "fetch_data",
-            description: "Fetch project data on demand (tasks, elements, material lines, work lines, files, QA pairs).",
-            parameters: {
-              type: "object",
-              properties: {
-                resource: {
-                  type: "string",
-                  enum: ["project", "elements", "tasks", "materialLines", "workLines", "files", "qaPairs"],
-                },
-                projectId: { type: "string", description: "Project ID. Optional if already in context." },
-                filters: {
-                  type: "object",
-                  properties: {
-                    elementId: { type: "string" },
-                    taskId: { type: "string" },
-                    status: { type: "string" },
-                    text: { type: "string" },
-                    dateFrom: { type: "string", description: "YYYY-MM-DD" },
-                    dateTo: { type: "string", description: "YYYY-MM-DD" },
-                  },
-                },
-                fields: { type: "array", items: { type: "string" } },
-                limit: { type: "number" },
-                cursor: { type: ["string", "null"] },
+      },
+      {
+        type: "function",
+        function: {
+          name: "fetch_data",
+          description: "Fetch project data on demand (tasks, elements, material lines, work lines, files, QA pairs).",
+          parameters: {
+            type: "object",
+            properties: {
+              resource: {
+                type: "string",
+                enum: ["project", "elements", "tasks", "materialLines", "workLines", "files", "qaPairs"],
               },
-              required: ["resource"],
+              projectId: { type: "string", description: "Project ID. Optional if already in context." },
+              filters: {
+                type: "object",
+                properties: {
+                  elementId: { type: "string" },
+                  taskId: { type: "string" },
+                  status: { type: "string" },
+                  text: { type: "string" },
+                  dateFrom: { type: "string", description: "YYYY-MM-DD" },
+                  dateTo: { type: "string", description: "YYYY-MM-DD" },
+                },
+              },
+              fields: { type: "array", items: { type: "string" } },
+              limit: { type: "number" },
+              cursor: { type: ["string", "null"] },
             },
+            required: ["resource"],
           },
         },
-      ];
+      },
+    ];
 
     try {
       if (process.env.OPENAI_API_KEY) {

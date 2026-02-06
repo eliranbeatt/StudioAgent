@@ -67,6 +67,33 @@ function toOpenAIToolName(name: string) {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+// Rich tool descriptions that tell the LLM WHEN and WHY to use each tool
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  'context.get': 'Fetch project context (elements, tasks, accounting, etc). USE THIS at the start of any planning/costing action to get current state.',
+  'knowledge.summarize_or_update': 'Update working knowledge doc with new facts. USE THIS when you learn new info about the project.',
+  'changeset.compile': 'Convert intents to ChangeSet ops to create/update entities in database. USE THIS after generating intents from plan.* or cost.* tools.',
+  'changeset.review': 'Review a ChangeSet draft for issues. USE THIS before applying a changeset.',
+  'changeset.apply': 'Apply ChangeSet after user approval. USE THIS only after review passes and user approves.',
+  'clarify.next_questions': 'Ask focused clarifying questions. USE THIS only if you truly cannot proceed with 80% rule - prefer making assumptions.',
+  'chat.free': 'Free conversation without structured output. USE THIS only when user explicitly wants to chat, not plan.',
+  'pricing.resolve_lines': 'Research prices for materials/items. USE THIS when budget lines need verified pricing.',
+  'procurement.shopping_plan': 'Plan procurement/shopping list. USE THIS for purchasing planning after budget exists.',
+  'finance.ingest_receipt': 'Process and ingest a receipt. USE THIS when user provides receipt for expense tracking.',
+  'audit.project': 'Audit plan for completeness and issues. USE THIS before finalizing quote or when user asks to review.',
+  'qa.print_files': 'QA check for print files. USE THIS when reviewing graphics/print deliverables.',
+  'maint.sync_and_repair': 'Fix data integrity issues. USE THIS when audit finds problems to fix.',
+  'intake.parse_brief': 'Parse initial project brief into structured format. USE THIS at very start with raw user input.',
+  'plan.elements': 'Generate elements (deliverables) for the project. USE THIS when user asks to plan a project and you have basic info. Returns element intents.',
+  'plan.tasks': 'Generate tasks linked to elements. USE THIS after elements exist or together with plan.elements. Returns task intents.',
+  'plan.execution_phases': 'Define execution phases with milestones. USE THIS after tasks are planned to organize timeline.',
+  'cost.build_budget': 'Generate material and labor cost lines. USE THIS after tasks exist to build budget. Returns accounting intents.',
+  'quote.generate': 'Generate client-facing quote from accounting data. USE THIS after budget is built.',
+  'runbook.installation': 'Generate install-day runbook. USE THIS when planning installation day operations.',
+  'ops.daily_plan': 'Generate daily execution plan. USE THIS for day-to-day work scheduling.',
+  'admin.set_labor_rates': 'Set labor rates for work types. USE THIS when updating pricing configuration.',
+  'admin.confirm_measurements': 'Confirm/update element measurements. USE THIS when measurements are verified.',
+};
+
 function buildToolDefinitions(allowedTools: string[], nameMap: Map<string, string>) {
   const usedNames = new Set<string>();
   const makeUniqueName = (base: string) => {
@@ -192,7 +219,7 @@ function buildToolDefinitions(allowedTools: string[], nameMap: Map<string, strin
       type: 'function',
       function: {
         name: openAiName,
-        description: `Run tool ${name}`,
+        description: TOOL_DESCRIPTIONS[name] ?? `Run tool ${name}`,
         parameters: {
           type: 'object',
           properties: {
@@ -241,6 +268,9 @@ export const runNext = action({
       return { status: 'awaiting_approval', pendingChangeSetId: run.pendingChangeSetId };
     }
 
+    const pendingIntents: any[] = [];
+    let autoCompiled = false;
+
     const orchestrator = REGISTRY.orchestrator;
     if (!orchestrator) throw new Error('Agent orchestrator not found in registry');
 
@@ -287,9 +317,22 @@ export const runNext = action({
           userText: input?.userText,
         }),
       'changeset.compile': async (input: any) => {
+        const intents = Array.isArray(input?.intents) ? input.intents : [];
+        if (intents.length === 0) {
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'changeset_compile_error',
+            payload: { reason: 'empty_intents' },
+          });
+          return {
+            error: 'changeset.compile requires intents. Generate plan intents first (plan.elements/plan.tasks/cost.build_budget).',
+            code: 'EMPTY_INTENTS',
+          };
+        }
+
         const result = await ctx.runAction(sdkChangeset.compile, {
           projectId: args.projectId,
-          intents: input?.intents ?? [],
+          intents,
           context: input?.context,
         });
 
@@ -455,23 +498,46 @@ export const runNext = action({
     const toolNameMap = new Map<string, string>();
     const tools = buildToolDefinitions(orchestrator.allowedTools ?? [], toolNameMap);
 
+    // Detect if user is asking to plan/create/build - force tool usage
+    const isPlanningRequest = (text: string): boolean => {
+      const patterns = [
+        'תכנן', 'plan', 'התחל', 'start', 'צור', 'create', 'בנה', 'build',
+        'עשה', 'do', 'הכן', 'prepare', 'תעשה', 'יאללה', 'קדימה', 'go',
+        'אלמנטים', 'elements', 'משימות', 'tasks', 'תקציב', 'budget',
+        'הצעת מחיר', 'quote', 'תמחור', 'pricing'
+      ];
+      const lower = (text || '').toLowerCase();
+      return patterns.some(p => lower.includes(p.toLowerCase()));
+    };
+
+    // Check last user message to determine if we should force tool usage
+    const lastUserMsg = args.userMessage ||
+      history.filter((m: any) => m.role === 'user').slice(-1)[0]?.text || '';
+    const shouldForceTools = isPlanningRequest(lastUserMsg);
+
     let finalContent: string | null = null;
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('Missing OPENAI_API_KEY');
     }
     for (let i = 0; i < MAX_TOOL_LOOPS; i++) {
+      // Force tool usage on first iteration if planning request detected
+      const toolChoice = (i === 0 && shouldForceTools) ? 'required' : 'auto';
+
       const response = await completionWithTracing(
         ctx,
         {
           model: orchestrator.model,
+          reasoning_effort: orchestrator.reasoningEffort,
           temperature: orchestrator.temperature,
           max_tokens: orchestrator.maxTokens,
+          max_completion_tokens: orchestrator.maxCompletionTokens,
           messages,
           tools,
-          tool_choice: 'auto',
+          tool_choice: toolChoice,
           traceMeta: {
             source: 'sdk',
             runId: args.runId,
+            forcedTools: toolChoice === 'required',
           },
         },
         {
@@ -484,6 +550,7 @@ export const runNext = action({
       if (!message) throw new Error('Empty LLM response');
 
       if (message.tool_calls && message.tool_calls.length > 0) {
+        let toolCalledCompile = false;
         messages.push({
           role: 'assistant',
           content: message.content ?? '',
@@ -493,6 +560,7 @@ export const runNext = action({
         for (const call of message.tool_calls) {
           const openAiToolName = call.function.name;
           const toolName = toolNameMap.get(openAiToolName) ?? openAiToolName;
+          if (toolName === 'changeset.compile') toolCalledCompile = true;
           let toolArgs: any = {};
           try {
             toolArgs = call.function.arguments ? JSON.parse(call.function.arguments) : {};
@@ -515,10 +583,31 @@ export const runNext = action({
             result = { error: error?.message ?? String(error) };
           }
 
+          if (result?.intent) {
+            pendingIntents.push(result.intent);
+          }
+
           messages.push({
             role: 'tool',
             tool_call_id: call.id,
             content: JSON.stringify(result),
+          });
+        }
+
+        if (!toolCalledCompile && pendingIntents.length > 0 && !autoCompiled) {
+          autoCompiled = true;
+          let compileResult: any;
+          try {
+            compileResult = await toolHandlers['changeset.compile']({
+              intents: pendingIntents,
+            });
+          } catch (error: any) {
+            compileResult = { error: error?.message ?? String(error) };
+          }
+
+          messages.push({
+            role: 'system',
+            content: `AUTO TOOL RESULT (changeset.compile): ${JSON.stringify(compileResult)}`,
           });
         }
 
@@ -541,8 +630,179 @@ export const runNext = action({
       parsed = { blocks: [{ type: 'ChatBlock', contentHe: finalContent }] };
     }
 
-    const summaryHe = parsed.summaryHe ?? parsed.contentHe ?? 'תשובה מהסוכן';
-    const blocks = parsed.blocks ?? [];
+    // Helper: Check if response has actionable structured content
+    const hasActionableContent = (p: any): boolean => {
+      const blocks = p?.blocks ?? [];
+      const hasBlocks = blocks.some((b: any) =>
+        b?.type === 'QuestionsBlock' ||
+        b?.type === 'SuggestionsBlock' ||
+        b?.type === 'ChangeSetBlock' ||
+        b?.type === 'ReviewBlock'
+      );
+      const hasIntent = p?.intent != null;
+      return hasBlocks || hasIntent;
+    };
+
+    // Helper: Check if text contains refusal phrases
+    const isRefusal = (text: string): boolean => {
+      const refusalPhrases = [
+        'אני לא יכול',
+        'לא יכולה',
+        'אין לי מספיק',
+        'צריך יותר מידע',
+        'cannot create',
+        'cannot generate',
+        'I need more information',
+        'I can\'t',
+      ];
+      const lower = (text || '').toLowerCase();
+      return refusalPhrases.some(p => lower.includes(p.toLowerCase()));
+    };
+
+    // Helper: Check if agent is talking ABOUT doing instead of DOING
+    const isTalkingAboutDoing = (text: string): boolean => {
+      const patterns = [
+        'נצטרך לפרט',        // we'll need to detail
+        'בשלב הבא',         // in the next step
+        'אני אתחיל',         // I'll start
+        'אני אעבור',         // I'll go through
+        'אמשיך ב',           // I'll continue with
+        'נתחיל ב',           // we'll start with
+        'אני מתכנן',         // I'm planning
+        'התכנון יכלול',      // the plan will include
+        'אני אעשה',          // I will do
+        'אני אמשיך',         // I will continue
+        'הנה מה שאני מתכנן',  // here's what I'm planning
+        'אני בונה לך',       // I'm building for you (describing)
+        'כרגע אני מתקדם',    // currently I'm proceeding
+        'הנחות עבודה',       // working assumptions
+        'שאלות כדי לנעול',   // questions to lock in
+        'ענה לי על',         // answer me on
+        'כדי להתקדם',        // in order to proceed
+        'אעדכן את',          // I'll update
+        'I will create',
+        'I will generate',
+        'Let me start by',
+        'I\'ll proceed',
+        'I am going to',
+      ];
+      const lower = (text || '').toLowerCase();
+      return patterns.some(p => lower.includes(p.toLowerCase()));
+    };
+
+    let summaryHe = parsed.summaryHe ?? parsed.contentHe ?? 'תשובה מהסוכן';
+    let blocks = parsed.blocks ?? [];
+
+    // Check if agent needs recovery - use finalContent for pattern matching, not summaryHe
+    // This is critical because when plain text is wrapped in ChatBlock, summaryHe becomes fallback
+    const needsRecovery = !hasActionableContent(parsed) ||
+      isRefusal(finalContent) ||
+      isTalkingAboutDoing(finalContent);
+
+    // DYNAMIC RECOVERY: If agent gave refusal, lacks actionable content, or is just talking about doing
+    if (needsRecovery) {
+      const reason = isRefusal(finalContent) ? 'refusal_detected' :
+        isTalkingAboutDoing(finalContent) ? 'talking_not_doing' :
+          'no_actionable_blocks';
+      console.warn(`[SDK] Agent response needs recovery: ${reason}, re-prompting...`);
+
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'recovery_triggered',
+        payload: {
+          reason,
+          originalSummary: summaryHe
+        },
+      });
+
+      // Add recovery system message with explicit tool hints
+      messages.push({
+        role: 'assistant',
+        content: finalContent,
+      });
+      messages.push({
+        role: 'system',
+        content: `RECOVERY REQUIRED: You described what you will do but did not actually DO it.
+
+Your response: "${summaryHe.slice(0, 150)}..."
+
+This is NOT acceptable. You must CALL TOOLS, not describe calling them.
+
+CALL ONE OF THESE TOOLS NOW:
+• plan.elements - to generate elements for the project
+• plan.tasks - to generate tasks  
+• cost.build_budget - to generate budget lines
+• changeset.compile - to create a ChangeSet from intents
+• clarify.next_questions - ONLY if you truly cannot proceed (use 80% rule first)
+
+DO NOT respond with text describing what you will do.
+DO NOT ask generic questions.
+CALL A TOOL and produce real output.
+
+The user asked to plan - so call plan.elements to generate elements NOW.
+After elements, call plan.tasks to generate tasks.
+Then call changeset.compile to create the ChangeSet.`
+      });
+
+      // Re-run LLM with tool_choice required to force tool usage
+      const recoveryResponse = await completionWithTracing(
+        ctx,
+        {
+          model: orchestrator.model,
+          reasoning_effort: orchestrator.reasoningEffort,
+          temperature: orchestrator.temperature ? Math.min(orchestrator.temperature + 0.1, 0.5) : undefined,
+          max_tokens: orchestrator.maxTokens,
+          max_completion_tokens: orchestrator.maxCompletionTokens,
+          messages,
+          tools,
+          tool_choice: 'required',  // Force tool usage in recovery
+          traceMeta: { source: 'sdk', runId: args.runId, recovery: true },
+        },
+        { projectId: args.projectId, conversationId: args.conversationId, runId: args.runId }
+      ) as any;
+
+      const recoveryMessage = recoveryResponse.choices?.[0]?.message;
+
+      // Handle tool calls from recovery
+      if (recoveryMessage?.tool_calls?.length) {
+        for (const toolCall of recoveryMessage.tool_calls) {
+          const originalName = toolNameMap.get(toolCall.function.name) ?? toolCall.function.name;
+          let toolArgs: any = {};
+          try {
+            toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+          } catch { }
+
+          const handler = toolHandlers[originalName];
+          if (handler) {
+            const result = await handler(toolArgs.input ?? toolArgs);
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: typeof result === 'string' ? result : JSON.stringify(result),
+            });
+
+            // If tool returned structured output, use it
+            if (result?.blocks || result?.intents) {
+              parsed = result;
+              summaryHe = result.summaryHe ?? result.contentHe ?? 'תוצאה מהסוכן';
+              blocks = result.blocks ?? [];
+            }
+          }
+        }
+      } else if (recoveryMessage?.content) {
+        try {
+          const recoveryParsed = JSON.parse(recoveryMessage.content);
+          assertAsciiKeys(recoveryParsed);
+          parsed = recoveryParsed;
+          summaryHe = parsed.summaryHe ?? parsed.contentHe ?? 'תשובה מהסוכן';
+          blocks = parsed.blocks ?? [];
+        } catch {
+          // If recovery also fails to parse, keep original with ChatBlock wrapper
+          blocks = [{ type: 'ChatBlock', contentHe: recoveryMessage.content }];
+          summaryHe = recoveryMessage.content.slice(0, 100);
+        }
+      }
+    }
 
     await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
       conversationId: args.conversationId,
