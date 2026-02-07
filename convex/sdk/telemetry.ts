@@ -20,8 +20,11 @@ export const createRun = internalMutation({
       engine: 'sdk',
       currentAgentName: args.currentAgent || 'orchestrator',
       stageKey: 'intake',
+      runMode: 'PLANNING_FLOW',
       progressCount: 0,
       noProgressCount: 0,
+      dirtyAnswersCount: 0,
+      regenStatus: 'idle',
       shadowMode: args.shadowMode ?? false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -46,24 +49,42 @@ export const updateRunState = internalMutation({
     stageKey: v.optional(v.string()),
     pendingChangeSetId: v.optional(v.id('changeSets')),
     approvalToken: v.optional(v.string()),
+    runMode: v.optional(v.union(v.literal('PLANNING_FLOW'), v.literal('CHAT_EDIT'))),
     lastError: v.optional(v.string()),
     progressKey: v.optional(v.string()),
     progressCount: v.optional(v.number()),
     noProgressCount: v.optional(v.number()),
     lastProgressAt: v.optional(v.number()),
+    dirtyAnswersCount: v.optional(v.number()),
+    regenStatus: v.optional(v.union(v.literal('idle'), v.literal('running'), v.literal('failed'))),
+    regenRunId: v.optional(v.string()),
+    regenRequestedAt: v.optional(v.number()),
+    regenCompletedAt: v.optional(v.number()),
+    planDocVersion: v.optional(v.number()),
+    lastRegenPlanDocVersion: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.runId);
+    if (!existing) return;
     const patch: any = { updatedAt: Date.now() };
     if (args.status) patch.status = args.status;
     if (args.currentAgentName) patch.currentAgentName = args.currentAgentName;
     if (args.stageKey) patch.stageKey = args.stageKey;
     if (args.pendingChangeSetId !== undefined) patch.pendingChangeSetId = args.pendingChangeSetId;
     if (args.approvalToken !== undefined) patch.approvalToken = args.approvalToken;
+    if (args.runMode !== undefined) patch.runMode = args.runMode;
     if (args.lastError !== undefined) patch.lastError = args.lastError;
     if (args.progressKey !== undefined) patch.progressKey = args.progressKey;
     if (args.progressCount !== undefined) patch.progressCount = args.progressCount;
     if (args.noProgressCount !== undefined) patch.noProgressCount = args.noProgressCount;
     if (args.lastProgressAt !== undefined) patch.lastProgressAt = args.lastProgressAt;
+    if (args.dirtyAnswersCount !== undefined) patch.dirtyAnswersCount = args.dirtyAnswersCount;
+    if (args.regenStatus !== undefined) patch.regenStatus = args.regenStatus;
+    if (args.regenRunId !== undefined) patch.regenRunId = args.regenRunId;
+    if (args.regenRequestedAt !== undefined) patch.regenRequestedAt = args.regenRequestedAt;
+    if (args.regenCompletedAt !== undefined) patch.regenCompletedAt = args.regenCompletedAt;
+    if (args.planDocVersion !== undefined) patch.planDocVersion = args.planDocVersion;
+    if (args.lastRegenPlanDocVersion !== undefined) patch.lastRegenPlanDocVersion = args.lastRegenPlanDocVersion;
     if (
       args.status === 'completed' ||
       args.status === 'failed' ||
@@ -82,6 +103,8 @@ export const updateRunState = internalMutation({
 export const clearPendingChangeSet = internalMutation({
   args: { runId: v.id('sdkRuns') },
   handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.runId);
+    if (!existing) return;
     await ctx.db.patch(args.runId, {
       pendingChangeSetId: undefined,
       approvalToken: undefined,

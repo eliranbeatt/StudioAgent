@@ -20,6 +20,10 @@ const filtersValidator = v.object({
   elementId: v.optional(v.id('elements')),
   taskId: v.optional(v.id('tasks')),
   status: v.optional(v.string()),
+  blockingLevel: v.optional(v.string()),
+  scopeKey: v.optional(v.string()),
+  questionKey: v.optional(v.string()),
+  orderKey: v.optional(v.string()),
   text: v.optional(v.string()),
   dateFrom: v.optional(v.string()),
   dateTo: v.optional(v.string()),
@@ -132,8 +136,24 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
     'projectId',
     'elementId',
     'questionHe',
+    'questionText',
     'questionKey',
     'answerHe',
+    'answerText',
+    'status',
+    'questionType',
+    'options',
+    'answer',
+    'scopeType',
+    'scopeKey',
+    'sectionPath',
+    'blockingLevel',
+    'orderKey',
+    'createdFrom',
+    'followUp',
+    'triggeredBy',
+    'dedupeKey',
+    'version',
     'createdAt',
   ],
   memoryDocs: [
@@ -172,7 +192,7 @@ const DEFAULT_FIELDS: Record<string, string[]> = {
   materialLines: ['id', 'itemName', 'quantity', 'plannedUnitCost', 'plannedTotalCost', 'sectionKey', 'taskId'],
   workLines: ['id', 'roleHe', 'plannedQuantity', 'plannedUnitCost', 'plannedTotalCost', 'sectionKey', 'taskId'],
   files: ['id', 'fileName', 'summary', 'createdAt'],
-  qaPairs: ['id', 'questionHe', 'answerHe', 'createdAt'],
+  qaPairs: ['id', 'questionHe', 'answerHe', 'status', 'blockingLevel', 'orderKey', 'createdAt'],
   memoryDocs: ['id', 'kind', 'title_he', 'contentMd_he', 'createdAt'],
   projects: ['id', 'name', 'status', 'clientName', 'overviewSummary', 'updatedAt'],
 }
@@ -182,6 +202,10 @@ type Filters = {
   elementId?: Id<'elements'>
   taskId?: Id<'tasks'>
   status?: string
+  blockingLevel?: string
+  scopeKey?: string
+  questionKey?: string
+  orderKey?: string
   text?: string
   dateFrom?: string
   dateTo?: string
@@ -237,7 +261,12 @@ function applyTextFilter(resource: string, doc: any, search: string) {
     case 'files':
       return textMatch(doc.fileName, search) || textMatch(doc.summary, search)
     case 'qaPairs':
-      return textMatch(doc.questionHe, search) || textMatch(doc.answerHe, search)
+      return (
+        textMatch(doc.questionHe, search) ||
+        textMatch(doc.questionText, search) ||
+        textMatch(doc.answerHe, search) ||
+        textMatch(doc.answerText, search)
+      )
     case 'memoryDocs':
       return textMatch(doc.title_he, search) || textMatch(doc.contentMd_he, search) || textMatch(doc.rawText_he, search)
     case 'projects':
@@ -364,13 +393,30 @@ function normalizeFile(file: any) {
 }
 
 function normalizeQaPair(qa: any) {
+  const answerText = qa.answerText ?? qa.answer_he
   return {
     id: qa._id,
     projectId: qa.projectId,
     elementId: qa.elementId,
     questionHe: qa.question_he,
+    questionText: qa.question_he,
     questionKey: qa.questionKey,
-    answerHe: qa.answer_he,
+    answerHe: answerText,
+    answerText,
+    status: qa.status,
+    questionType: qa.questionType,
+    options: qa.options,
+    answer: qa.answer,
+    scopeType: qa.scopeType,
+    scopeKey: qa.scopeKey,
+    sectionPath: qa.sectionPath,
+    blockingLevel: qa.blockingLevel,
+    orderKey: qa.orderKey,
+    createdFrom: qa.createdFrom,
+    followUp: qa.followUp,
+    triggeredBy: qa.triggeredBy,
+    dedupeKey: qa.dedupeKey,
+    version: qa.version,
     createdAt: qa.createdAt,
   }
 }
@@ -524,6 +570,26 @@ export const fetchInternal = internalQuery({
         query = ctx.db.query('qaPairs').withIndex('by_project_element', (q: any) =>
           q.eq('projectId', effectiveProjectId).eq('elementId', filters.elementId)
         )
+      } else if (filters.questionKey) {
+        query = ctx.db.query('qaPairs').withIndex('by_project_questionKey', (q: any) =>
+          q.eq('projectId', effectiveProjectId).eq('questionKey', filters.questionKey)
+        )
+      } else if (filters.status) {
+        query = ctx.db.query('qaPairs').withIndex('by_project_status', (q: any) =>
+          q.eq('projectId', effectiveProjectId).eq('status', filters.status)
+        )
+      } else if (filters.blockingLevel) {
+        query = ctx.db.query('qaPairs').withIndex('by_project_blockingLevel', (q: any) =>
+          q.eq('projectId', effectiveProjectId).eq('blockingLevel', filters.blockingLevel)
+        )
+      } else if (filters.scopeKey) {
+        query = ctx.db.query('qaPairs').withIndex('by_project_scopeKey', (q: any) =>
+          q.eq('projectId', effectiveProjectId).eq('scopeKey', filters.scopeKey)
+        )
+      } else if (filters.orderKey) {
+        query = ctx.db.query('qaPairs').withIndex('by_project_orderKey', (q: any) =>
+          q.eq('projectId', effectiveProjectId).eq('orderKey', filters.orderKey)
+        )
       } else {
         query = ctx.db.query('qaPairs').withIndex('by_project', (q: any) => q.eq('projectId', effectiveProjectId))
       }
@@ -553,6 +619,21 @@ export const fetchInternal = internalQuery({
 
     if (filters.status && args.resource === 'workLines') {
       query = query.filter((q: any) => q.eq(q.field('status'), filters.status))
+    }
+
+    if (args.resource === 'qaPairs') {
+      if (filters.status) {
+        query = query.filter((q: any) => q.eq(q.field('status'), filters.status))
+      }
+      if (filters.blockingLevel) {
+        query = query.filter((q: any) => q.eq(q.field('blockingLevel'), filters.blockingLevel))
+      }
+      if (filters.scopeKey) {
+        query = query.filter((q: any) => q.eq(q.field('scopeKey'), filters.scopeKey))
+      }
+      if (filters.orderKey) {
+        query = query.filter((q: any) => q.eq(q.field('orderKey'), filters.orderKey))
+      }
     }
 
     if (dateFrom !== undefined) {

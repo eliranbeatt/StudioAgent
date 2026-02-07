@@ -28,6 +28,63 @@ const zChangeSet = z.object({
   ops: z.array(zChangeSetOps),
 });
 
+const zRegenQuestionAdd = z.object({
+  scopeType: z.enum(['project', 'element']),
+  scopeKey: z.string(),
+  blockingLevel: z.enum(['blocker', 'helpful', 'optional']),
+  sectionPath: z.string(),
+  questionText: z.string(),
+  questionType: z.enum([
+    'choice',
+    'number',
+    'date',
+    'shortText',
+    'longText',
+    'fileRef',
+    'single',
+    'multi',
+    'toggle',
+    'text',
+  ]).optional(),
+  options: z.array(z.string()).optional(),
+  followUp: z.boolean().optional(),
+  triggeredBy: z.array(z.string()).optional(),
+  dedupeKey: z.string().optional(),
+  whyNow: z.string().optional(),
+}).passthrough()
+
+export const zQaPairOption = z.object({
+  value: z.string(),
+  labelHe: z.string().optional(),
+});
+
+export const zQaPairFast = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  elementId: z.string().optional().nullable(),
+  questionHe: z.string(),
+  questionText: z.string().optional(),
+  questionKey: z.string().optional(),
+  answerHe: z.string().optional(),
+  answerText: z.string().optional(),
+  status: z.enum(['open', 'answered', 'assumed', 'resolved', 'skipped', 'dismissed']).optional(),
+  questionType: z.enum(['text', 'number', 'date', 'single', 'multi', 'toggle']).optional(),
+  options: z.array(zQaPairOption).optional(),
+  answer: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]).optional(),
+  scopeType: z.enum(['global', 'project', 'element', 'task', 'section']).optional(),
+  scopeKey: z.string().optional(),
+  sectionPath: z.array(z.string()).optional(),
+  blockingLevel: z.enum(['blocker', 'helpful', 'optional']).optional(),
+  orderKey: z.string().optional(),
+  createdFrom: z.enum(['seed', 'rebase', 'manual', 'chat_parse', 'clarification', 'system']).optional(),
+  followUp: z.boolean().optional(),
+  triggeredBy: z.string().optional(),
+  dedupeKey: z.string().optional(),
+  version: z.number().optional(),
+  source: z.any().optional(),
+  createdAt: z.number(),
+}).passthrough();
+
 export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {
   'orchestrator.response': z.object({
     summaryHe: z.string().optional(),
@@ -51,6 +108,28 @@ export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {
     brief: z.any(),
     meta: zBasicMeta.optional(),
     intent: zIntent.optional(),
+  }).passthrough(),
+  'draft.plan_and_questions': z.object({
+    planMd: z.string(),
+    summaryHe: z.string().optional(),
+    assumptionsHe: z.array(z.string()).optional(),
+    questions: z.array(z.object({
+      questionKey: z.string(),
+      questionHe: z.string(),
+      questionType: z.enum(['text', 'number', 'date', 'single', 'multi', 'toggle']).optional(),
+      options: z.array(z.object({
+        value: z.string(),
+        labelHe: z.string().optional(),
+      })).optional(),
+      blockingLevel: z.enum(['blocker', 'helpful', 'optional']).optional(),
+      scopeType: z.enum(['global', 'project', 'element', 'task', 'section']).optional(),
+      scopeKey: z.string().optional(),
+      sectionPath: z.array(z.string()).optional(),
+      orderKey: z.string().optional(),
+      followUp: z.boolean().optional(),
+      triggeredBy: z.string().optional(),
+    })),
+    meta: z.any().optional(),
   }).passthrough(),
   'plan.elements': z.object({
     elements: z.array(z.any()),
@@ -142,6 +221,44 @@ export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {
     isValid: z.boolean().optional(),
     recommendedNextHe: z.array(z.string()).optional(),
     meta: z.any().optional(),
+  }).passthrough(),
+  'finalize.build_structured_package': z.object({
+    generatedAt: z.number().optional(),
+    project: z.any().nullable().optional(),
+    elements: z.array(z.any()).optional(),
+    tasks: z.array(z.any()).optional(),
+    accounting: z.any().optional(),
+    quote: z.any().nullable().optional(),
+    runbooks: z.array(z.any()).optional(),
+    answers: z.array(z.any()).optional(),
+    assumptions: z.array(z.string()).optional(),
+    unresolvedQuestionCount: z.number().optional(),
+  }).passthrough(),
+  'rebase.regenerate_questions_manual': z.object({
+    newPlanDocMarkdown: z.string(),
+    questionOps: z.object({
+      add: z.array(zRegenQuestionAdd).optional(),
+      dismiss: z.array(z.object({
+        questionId: z.string(),
+        reason: z.string().optional(),
+      })).optional(),
+      promote: z.array(z.object({
+        questionId: z.string(),
+        newBlockingLevel: z.literal('blocker').optional(),
+        reason: z.string().optional(),
+      })).optional(),
+      dedupe: z.array(z.object({
+        candidateDedupeKey: z.string(),
+        keepQuestionId: z.string(),
+        dropCandidate: z.boolean().optional(),
+      })).optional(),
+    }).passthrough(),
+    summary: z.object({
+      newBlockersCount: z.number().optional(),
+      newQuestionsCount: z.number().optional(),
+      dismissedCount: z.number().optional(),
+      notes: z.string().optional(),
+    }).optional(),
   }).passthrough(),
 };
 

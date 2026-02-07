@@ -103,8 +103,9 @@ export const analytics = query({
 export const listRunIds = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    // Limit to 200 items to avoid reading too much data
-    const scanLimit = Math.min(args.limit || 100, 200);
+    // Limit to 50 items to avoid reading too much data (limit is 16MB)
+    // traces can be very large
+    const scanLimit = Math.min(args.limit || 20, 50);
 
     const traces = await ctx.db.query("llmTraces")
       .order("desc")

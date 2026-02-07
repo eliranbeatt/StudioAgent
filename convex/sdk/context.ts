@@ -187,7 +187,32 @@ export const get = query({
         .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
         .order('desc')
         .take(50);
-      res.recentQA = qaPairs;
+      res.recentQA = qaPairs.map((qa) => ({
+        id: qa._id,
+        projectId: qa.projectId,
+        elementId: qa.elementId,
+        questionHe: qa.question_he,
+        questionText: qa.question_he,
+        questionKey: qa.questionKey,
+        answerHe: qa.answerText ?? qa.answer_he,
+        answerText: qa.answerText ?? qa.answer_he,
+        status: qa.status,
+        questionType: qa.questionType,
+        options: qa.options,
+        answer: qa.answer,
+        scopeType: qa.scopeType,
+        scopeKey: qa.scopeKey,
+        sectionPath: qa.sectionPath,
+        blockingLevel: qa.blockingLevel,
+        orderKey: qa.orderKey,
+        createdFrom: qa.createdFrom,
+        followUp: qa.followUp,
+        triggeredBy: qa.triggeredBy,
+        dedupeKey: qa.dedupeKey,
+        version: qa.version,
+        source: qa.source,
+        createdAt: qa.createdAt,
+      }));
     }
 
     if (packs.has('vendors')) {

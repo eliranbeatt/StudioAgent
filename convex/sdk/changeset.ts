@@ -6,16 +6,80 @@ import { api, internal } from '../_generated/api';
 import { FULL_PROMPTS } from './prompts';
 import { runJsonCompletion } from './llm';
 import { assertAsciiKeys, validateSdkOutput } from './schemas';
+import { compileDeterministicChangeSet } from './vnext/compiler';
+import { buildTargetPlanSpec } from './vnext/specBuilder';
+import type { StageArtifactMap } from './vnext/contracts';
 
 export const compile = action({
   args: {
     projectId: v.id('projects'),
     intents: v.array(v.any()),
     context: v.optional(v.any()),
+    deterministic: v.optional(v.boolean()),
     runId: v.optional(v.id('sdkRuns')),
     conversationId: v.optional(v.id('agentConversations')),
   },
   handler: async (ctx, args) => {
+    if (args.deterministic && args.runId) {
+      const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId });
+      if (!run) throw new Error('Run not found');
+
+      const [projectContext, artifactsRows, stageDecisions, messages] = await Promise.all([
+        ctx.runQuery(api['sdk/api'].contextGet, {
+          projectId: args.projectId,
+          packs: ['project', 'elements', 'tasks', 'knowledge'],
+        }),
+        ctx.runQuery(internal['sdk/vnext/artifacts'].listStageArtifactsByRun, { runId: args.runId }),
+        ctx.runQuery(internal['sdk/vnext/artifacts'].listStageDecisionsByRun, { runId: args.runId }),
+        ctx.runQuery(api['sdk/api'].listMessages, {
+          conversationId: run.conversationId,
+          runId: args.runId,
+          limit: 60,
+        }),
+      ]);
+
+      const artifacts: StageArtifactMap = {} as StageArtifactMap;
+      for (const row of artifactsRows) {
+        (artifacts as any)[row.stageKey] = row.artifact;
+      }
+      const recentUserTexts = (messages ?? [])
+        .filter((item: any) => item.role === 'user' && typeof item.text === 'string')
+        .map((item: any) => item.text)
+        .slice(-10);
+      const scopeSeed = Array.isArray((artifacts.scope as any)?.proposedElements)
+        ? (artifacts.scope as any).proposedElements
+        : [];
+      const spec = buildTargetPlanSpec({
+        projectId: args.projectId,
+        project: projectContext?.project ?? {},
+        recentUserTexts,
+        stageDecisions,
+        existingScopeElements: scopeSeed,
+      });
+      const deterministic = compileDeterministicChangeSet({
+        spec,
+        artifacts,
+      });
+      if (!Array.isArray(deterministic.ops) || deterministic.ops.length === 0) {
+        throw new Error('deterministic compile produced zero ops');
+      }
+      const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+        projectId: args.projectId,
+        stage: 'BREAKDOWN',
+        ops: deterministic.ops,
+        createdBy: { type: 'agent', agentName: 'changeset.compile.deterministic' },
+      });
+      return {
+        changeSetId,
+        changeSet: { ops: deterministic.ops },
+        meta: {
+          mode: 'deterministic',
+          summaryHe: deterministic.summaryHe,
+          coverage: deterministic.coverage,
+        },
+      };
+    }
+
     const intents = Array.isArray(args.intents) ? args.intents : [];
     if (intents.length === 0) {
       throw new Error('changeset.compile requires at least one intent');

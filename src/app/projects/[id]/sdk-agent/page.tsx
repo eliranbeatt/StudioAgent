@@ -56,6 +56,16 @@ export default function SdkAgentPage() {
     api.sdk.api.listRunEvents,
     activeRun?._id ? { runId: activeRun._id, limit: 4 } : 'skip'
   );
+  const sdkQuestionSet = useQuery(
+    api.sdk.questions.peekNextSet,
+    projectId && activeRun?._id
+      ? { projectId, runId: activeRun._id, limit: 6 }
+      : 'skip'
+  );
+  const finalizeContext = useQuery(
+    api.sdk.api.contextGet,
+    projectId ? { projectId, packs: ['elements', 'tasks', 'accounting'] } : 'skip'
+  );
 
   const createConversation = useMutation(api.sdk.api.createConversation);
   const renameConversation = useMutation(api.sdk.api.renameConversation);
@@ -67,6 +77,10 @@ export default function SdkAgentPage() {
   const resumeRun = useMutation(api.sdk.api.resumeRun);
   const cancelRun = useMutation(api.sdk.api.cancelRun);
   const continueVnext = useAction(api.sdk.api.continueVnext);
+  const bootstrapFastPlan = useAction(api.sdk.api.bootstrapFastPlan);
+  const submitSdkAnswers = useMutation(api.sdk.questions.submitAnswers);
+  const regenerateQuestionsManual = useAction(api.sdk.rebaseNode.regenerateQuestionsManual);
+  const finalizeNow = useAction(api.sdk.api.finalizeNow);
   const generateConversationTitle = useAction(api.sdk.api.generateConversationTitle);
   const approveChangeSet = useAction(api.sdk.api.approveChangeSet);
   const shadowEvaluate = useAction(api.sdk.api.shadowEvaluate);
@@ -81,6 +95,10 @@ export default function SdkAgentPage() {
   const [nowMs, setNowMs] = useState(0);
   const [isDispatching, setIsDispatching] = useState(false);
   const [dispatchStartedAt, setDispatchStartedAt] = useState<number | null>(null);
+  const [manualRegenBusy, setManualRegenBusy] = useState(false);
+  const [manualRegenNotice, setManualRegenNotice] = useState<string | null>(null);
+  const [finalizeBusy, setFinalizeBusy] = useState(false);
+  const [finalizeNotice, setFinalizeNotice] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const runStatus = activeRun?.status;
   const isRunActive =
@@ -114,6 +132,16 @@ export default function SdkAgentPage() {
   const statusDetail = getSdkStatusDetail(activeRun, latestPricingSnapshot, latestEvent);
   const elapsedMs = timerStart ? Math.max(0, nowMs - timerStart) : 0;
   const isStale = !!activeRun?.updatedAt && runStatus === 'running' && nowMs - activeRun.updatedAt > 90_000;
+  const isRegenRunning = manualRegenBusy || activeRun?.regenStatus === 'running';
+  const unresolvedCount = Number(sdkQuestionSet?.unresolvedCount ?? 0);
+  const plannedEntitiesCount =
+    Number((finalizeContext as any)?.elements?.length ?? 0) +
+    Number((finalizeContext as any)?.tasks?.length ?? 0) +
+    Number((finalizeContext as any)?.materialLines?.length ?? 0) +
+    Number((finalizeContext as any)?.workLines?.length ?? 0);
+  const canFinalizeNow =
+    Boolean(activeRun?._id) &&
+    !finalizeBusy;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -130,7 +158,14 @@ export default function SdkAgentPage() {
     const id = await createConversation({ projectId, title: 'New SDK Session' });
     setSelectedConvId(id);
     if (isVnextUiEnabled) {
-      await startVnextRun({ projectId, conversationId: id });
+      const started = await startVnextRun({ projectId, conversationId: id });
+      if (started?.runId) {
+        await bootstrapFastPlan({
+          projectId,
+          conversationId: id,
+          runId: started.runId,
+        });
+      }
     } else {
       await startRun({ projectId, conversationId: id });
     }
@@ -139,7 +174,14 @@ export default function SdkAgentPage() {
   const handleStartRun = async (shadowMode = false) => {
     if (!projectId || !effectiveConvId) return;
     if (isVnextUiEnabled) {
-      await startVnextRun({ projectId, conversationId: effectiveConvId, shadowMode });
+      const started = await startVnextRun({ projectId, conversationId: effectiveConvId, shadowMode });
+      if (started?.runId) {
+        await bootstrapFastPlan({
+          projectId,
+          conversationId: effectiveConvId,
+          runId: started.runId,
+        });
+      }
     } else {
       await startRun({ projectId, conversationId: effectiveConvId, shadowMode });
     }
@@ -254,6 +296,89 @@ export default function SdkAgentPage() {
       });
     } finally {
       setIsDispatching(false);
+    }
+  };
+
+  const handleSubmitSdkQuestionSet = async (answersById: Record<string, string>) => {
+    if (!activeRun?._id || isRegenRunning) return;
+    const answers = Object.entries(answersById).map(([qaPairId, answer]) => ({
+      qaPairId: qaPairId as Id<'qaPairs'>,
+      answer,
+    }));
+    if (answers.length === 0) return;
+
+    setIsDispatching(true);
+    setDispatchStartedAt(Date.now());
+    try {
+      await submitSdkAnswers({
+        runId: activeRun._id,
+        answers,
+        intent: 'answer',
+      });
+      if (projectId && effectiveConvId) {
+        await continueVnext({
+          projectId,
+          conversationId: effectiveConvId,
+          runId: activeRun._id,
+        });
+      }
+    } finally {
+      setIsDispatching(false);
+    }
+  };
+
+  const handleManualRegen = async () => {
+    if (!projectId || !activeRun?._id || isRegenRunning) return;
+    setManualRegenBusy(true);
+    setManualRegenNotice(null);
+    try {
+      const result = await regenerateQuestionsManual({
+        projectId,
+        runId: activeRun._id,
+        conversationId: effectiveConvId ?? undefined,
+      });
+      if (result?.status === 'already_running') {
+        setManualRegenNotice('Regeneration is already running.');
+        return;
+      }
+      if (!result?.ok) {
+        setManualRegenNotice('Regeneration failed. Retry.');
+        return;
+      }
+      const added = Number(result?.summary?.added ?? 0);
+      const dismissed = Number(result?.summary?.dismissed ?? 0);
+      const promoted = Number(result?.summary?.promoted ?? 0);
+      setManualRegenNotice(`Updated: +${added} new questions, ${dismissed} dismissed, ${promoted} promoted to blockers.`);
+    } catch {
+      setManualRegenNotice('Regeneration failed. Retry.');
+    } finally {
+      setManualRegenBusy(false);
+    }
+  };
+
+  const handleFinalizeNow = async () => {
+    if (!projectId || !activeRun?._id) return;
+    setFinalizeBusy(true);
+    setFinalizeNotice(null);
+    try {
+      const pkg = await finalizeNow({
+        projectId,
+        conversationId: effectiveConvId ?? activeRun.conversationId,
+        runId: activeRun._id,
+        includeAssumptions: true,
+      });
+      const counts = pkg?.counts ?? {
+        elements: 0,
+        tasks: 0,
+        unresolved: 0,
+      };
+      setFinalizeNotice(
+        `Finalized package ready. Elements: ${Number(counts.elements ?? 0)}, Tasks: ${Number(counts.tasks ?? 0)}, Unresolved: ${Number(counts.unresolved ?? 0)}`
+      );
+    } catch (error: any) {
+      setFinalizeNotice(`Finalize failed: ${String(error?.message ?? 'unknown error')}`);
+    } finally {
+      setFinalizeBusy(false);
     }
   };
 
@@ -404,6 +529,17 @@ export default function SdkAgentPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {activeRun?._id && (
+            <SdkDeterministicQuestionsPanel
+              questions={sdkQuestionSet?.questions ?? []}
+              onSubmit={handleSubmitSdkQuestionSet}
+              loading={isDispatching || isRegenRunning}
+              regenStatus={activeRun?.regenStatus ?? 'idle'}
+              dirtyAnswersCount={Number(activeRun?.dirtyAnswersCount ?? 0)}
+              onRegenerate={handleManualRegen}
+              notice={manualRegenNotice}
+            />
+          )}
           {!messages ? (
             <div className="text-xs text-slate-400">Loading history...</div>
           ) : messages.length === 0 ? (
@@ -428,6 +564,7 @@ export default function SdkAgentPage() {
                             conversationId={effectiveConvId}
                             projectId={projectId}
                             activeRunId={activeRun?._id ?? null}
+                            suppressQuestionBlocks={Boolean(isVnextUiEnabled)}
                             onReviewChangeSet={(id) => setReviewChangeSetId(id)}
                             onAnswerVnext={answerVnext}
                             onContinueVnext={continueVnext}
@@ -530,11 +667,28 @@ export default function SdkAgentPage() {
                         runId: activeRun._id,
                       })
                     }
-                    disabled={!isBackendEnabled || !effectiveConvId}
+                    disabled={!isBackendEnabled || !effectiveConvId || isRegenRunning}
                     className="px-3 py-1 rounded border text-xs text-blue-700 disabled:opacity-50"
                   >
                     Continue Stage
                   </button>
+                )}
+              </div>
+              <div className="pt-2">
+                <button
+                  onClick={handleFinalizeNow}
+                  disabled={!canFinalizeNow}
+                  className="px-3 py-1 rounded border text-xs text-emerald-700 disabled:opacity-50"
+                >
+                  {finalizeBusy ? 'Finalizing...' : 'Finalize now'}
+                </button>
+                <div className="mt-1 text-[11px] text-slate-500">
+                  Finalize runs immediately and auto-completes missing inputs when needed.
+                </div>
+                {finalizeNotice && (
+                  <div className="mt-1 text-[11px] text-slate-600">
+                    {finalizeNotice}
+                  </div>
                 )}
               </div>
             </div>
@@ -736,11 +890,117 @@ function normalizeBlock(block: any) {
   return block;
 }
 
+function SdkDeterministicQuestionsPanel({
+  questions,
+  onSubmit,
+  loading,
+  regenStatus,
+  dirtyAnswersCount,
+  onRegenerate,
+  notice,
+}: {
+  questions: Array<{
+    id: string;
+    questionHe?: string;
+    questionText?: string;
+    blockingLevel?: string;
+  }>;
+  onSubmit: (answersById: Record<string, string>) => Promise<void>;
+  loading: boolean;
+  regenStatus: 'idle' | 'running' | 'failed' | string;
+  dirtyAnswersCount: number;
+  onRegenerate: () => Promise<void>;
+  notice: string | null;
+}) {
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const isRunning = loading || regenStatus === 'running';
+  const isFailed = regenStatus === 'failed';
+  const pillText =
+    dirtyAnswersCount > 0 ? `Not refreshed (${dirtyAnswersCount} answers)` : 'Up to date';
+
+  const submit = async () => {
+    if (isRunning) return;
+    await onSubmit(answers);
+    setAnswers({});
+  };
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm relative">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold text-slate-700">Current Questions</div>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${dirtyAnswersCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+            {isFailed ? 'Regeneration failed' : pillText}
+          </span>
+          <button
+            onClick={onRegenerate}
+            disabled={isRunning}
+            className="rounded border border-blue-300 px-2 py-1 text-[11px] font-semibold text-blue-700 disabled:opacity-50"
+          >
+            {isRunning ? 'Generating...' : 'Generate new set'}
+          </button>
+          {isFailed && (
+            <button
+              onClick={onRegenerate}
+              disabled={isRunning}
+              className="rounded border border-rose-300 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-50"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
+      {notice && (
+        <div className="mb-3 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+          {notice}
+        </div>
+      )}
+      <div className="space-y-3">
+        {questions.length === 0 && (
+          <div className="rounded border border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-500">
+            No open questions right now.
+          </div>
+        )}
+        {questions.map((q, idx) => {
+          const id = q.id ?? `q_${idx + 1}`;
+          return (
+            <div key={id} className="space-y-1">
+              <div className="text-[11px] text-slate-400 uppercase">{q.blockingLevel ?? 'helpful'}</div>
+              <div className="text-xs text-slate-700">{q.questionHe ?? q.questionText ?? 'Question'}</div>
+              <input
+                className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                value={answers[id] ?? ''}
+                disabled={isRunning}
+                onChange={(event) => setAnswers((prev) => ({ ...prev, [id]: event.target.value }))}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <button
+        onClick={submit}
+        disabled={isRunning}
+        className="mt-3 rounded bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+      >
+        {isRunning ? 'Working...' : 'Submit answers'}
+      </button>
+      {isRunning && (
+        <div className="absolute inset-0 rounded-xl bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+          <div className="text-xs font-semibold text-slate-700">
+            Generating updated plan + questions...
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SdkBlockRenderer({
   block,
   conversationId,
   projectId,
   activeRunId,
+  suppressQuestionBlocks,
   onReviewChangeSet,
   onAnswerVnext,
   onContinueVnext,
@@ -750,6 +1010,7 @@ function SdkBlockRenderer({
   conversationId: Id<'agentConversations'> | null;
   projectId: Id<'projects'>;
   activeRunId: Id<'sdkRuns'> | null;
+  suppressQuestionBlocks: boolean;
   onReviewChangeSet: (id: Id<'changeSets'>) => void;
   onAnswerVnext: (args: {
     runId: Id<'sdkRuns'>;
@@ -768,6 +1029,7 @@ function SdkBlockRenderer({
 
   if (block.type === 'ChatBlock') return <ChatBlock block={block} />;
   if (block.type === 'QuestionsBlock') {
+    if (suppressQuestionBlocks) return null;
     if (block.sdkVnext) {
       return (
         <SdkVnextQuestionsBlock

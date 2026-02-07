@@ -168,7 +168,8 @@ async function buildToolHandlers(args: {
   const sdkApi = (api as any)['sdk/api'] ?? (api as any).sdk?.api;
   const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
   const sdkChangeset = (api as any)['sdk/changeset'] ?? (api as any).sdk?.changeset;
-  if (!sdkApi || !sdkKnowledge || !sdkChangeset) {
+  const sdkFinalize = (api as any)['sdk/finalize'] ?? (api as any).sdk?.finalize;
+  if (!sdkApi || !sdkKnowledge || !sdkChangeset || !sdkFinalize) {
     throw new Error('SDK API modules not available. Run Convex codegen and restart the server.');
   }
 
@@ -208,6 +209,12 @@ async function buildToolHandlers(args: {
       args.ctx.runAction(sdkChangeset.apply, {
         runId: args.runId,
         approvalToken: input?.approvalToken ?? '',
+      }),
+    'finalize.build_structured_package': async (input: any) =>
+      args.ctx.runAction(sdkFinalize.buildStructuredPackage, {
+        projectId: args.projectId,
+        runId: args.runId,
+        includeAssumptions: input?.includeAssumptions,
       }),
     web_search: async (input: any) => {
       const q = String(input?.query ?? '');

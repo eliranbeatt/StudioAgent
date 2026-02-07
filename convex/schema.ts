@@ -39,6 +39,47 @@ const printQaStatus = v.union(
   v.literal("fail")
 );
 
+const qaPairStatus = v.union(
+  v.literal("open"),
+  v.literal("answered"),
+  v.literal("assumed"),
+  v.literal("resolved"),
+  v.literal("skipped"),
+  v.literal("dismissed")
+);
+
+const qaPairQuestionType = v.union(
+  v.literal("text"),
+  v.literal("number"),
+  v.literal("date"),
+  v.literal("single"),
+  v.literal("multi"),
+  v.literal("toggle")
+);
+
+const qaPairScopeType = v.union(
+  v.literal("global"),
+  v.literal("project"),
+  v.literal("element"),
+  v.literal("task"),
+  v.literal("section")
+);
+
+const qaPairBlockingLevel = v.union(
+  v.literal("blocker"),
+  v.literal("helpful"),
+  v.literal("optional")
+);
+
+const qaPairCreatedFrom = v.union(
+  v.literal("seed"),
+  v.literal("rebase"),
+  v.literal("manual"),
+  v.literal("chat_parse"),
+  v.literal("clarification"),
+  v.literal("system")
+);
+
 const StudioWorkType = v.union(
   v.literal("carpentry"),
   v.literal("metal_fab"),
@@ -1837,8 +1878,27 @@ export default defineSchema({
     elementId: v.optional(v.id("elements")),
     question_he: v.string(),
     questionKey: v.optional(v.string()),
-    answer_he: v.string(),
-    source: v.object({
+    answer_he: v.optional(v.string()),
+    status: v.optional(qaPairStatus),
+    questionType: v.optional(qaPairQuestionType),
+    options: v.optional(v.array(v.object({
+      value: v.string(),
+      labelHe: v.optional(v.string()),
+    }))),
+    answer: v.optional(v.union(v.string(), v.number(), v.boolean(), v.array(v.string()))),
+    answerText: v.optional(v.string()),
+    scopeType: v.optional(qaPairScopeType),
+    scopeKey: v.optional(v.string()),
+    sectionPath: v.optional(v.array(v.string())),
+    blockingLevel: v.optional(qaPairBlockingLevel),
+    orderKey: v.optional(v.string()),
+    createdFrom: v.optional(qaPairCreatedFrom),
+    followUp: v.optional(v.boolean()),
+    triggeredBy: v.optional(v.string()),
+    dedupeKey: v.optional(v.string()),
+    createdOrdinal: v.optional(v.number()),
+    version: v.optional(v.number()),
+    source: v.optional(v.object({
       sourceType: v.union(
         v.literal("CLARIFICATION_BLOCK"),
         v.literal("CHAT_PARSE")
@@ -1847,12 +1907,25 @@ export default defineSchema({
         v.union(v.id("conversations"), v.id("agentConversations"), v.string())
       ),
       messageId: v.optional(v.id("conversationMessages")),
-    }),
+    })),
     createdAt: v.number(),
   })
     .index("by_project", ["projectId"])
     .index("by_project_element", ["projectId", "elementId"])
-    .index("by_project_questionKey", ["projectId", "questionKey"]),
+    .index("by_project_questionKey", ["projectId", "questionKey"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_project_blockingLevel", ["projectId", "blockingLevel"])
+    .index("by_project_orderKey", ["projectId", "orderKey"])
+    .index("by_project_scopeKey", ["projectId", "scopeKey"])
+    .index("by_project_dedupeKey", ["projectId", "dedupeKey"])
+    .index("by_project_createdOrdinal", ["projectId", "createdOrdinal"]),
+
+  sdkProjectState: defineTable({
+    projectId: v.id("projects"),
+    nextQuestionOrdinal: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
 
   // -------------------------
   // Project Linking & Digests
@@ -1977,11 +2050,21 @@ export default defineSchema({
     parentRunId: v.optional(v.id("sdkRuns")),
     pendingChangeSetId: v.optional(v.id("changeSets")),
     approvalToken: v.optional(v.string()),
+    runMode: v.optional(v.union(v.literal("PLANNING_FLOW"), v.literal("CHAT_EDIT"))),
     lastError: v.optional(v.string()),
     progressKey: v.optional(v.string()),
     progressCount: v.optional(v.number()),
     noProgressCount: v.optional(v.number()),
     lastProgressAt: v.optional(v.number()),
+    lastServedOrderKey: v.optional(v.string()),
+    lastServedAt: v.optional(v.number()),
+    dirtyAnswersCount: v.optional(v.number()),
+    regenStatus: v.optional(v.union(v.literal("idle"), v.literal("running"), v.literal("failed"))),
+    regenRunId: v.optional(v.string()),
+    regenRequestedAt: v.optional(v.number()),
+    regenCompletedAt: v.optional(v.number()),
+    planDocVersion: v.optional(v.number()),
+    lastRegenPlanDocVersion: v.optional(v.number()),
     shadowMode: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -1989,7 +2072,8 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_conversation", ["conversationId"])
-    .index("by_project_status", ["projectId", "status"]),
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_project_regenStatus", ["projectId", "regenStatus"]),
 
   sdkRunEvents: defineTable({
     runId: v.id("sdkRuns"),

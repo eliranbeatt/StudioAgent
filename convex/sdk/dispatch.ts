@@ -191,6 +191,67 @@ function ensureMinimumBlocks(args: {
   return [buildFallbackSuggestionBlock(args.isPlanningRequest)];
 }
 
+function stableHash(input: string) {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `h${(h >>> 0).toString(16)}`;
+}
+
+function normalizeQaQuestionType(value: any): 'text' | 'number' | 'date' | 'single' | 'multi' | 'toggle' {
+  const raw = String(value ?? '').toLowerCase();
+  if (raw === 'number') return 'number';
+  if (raw === 'date') return 'date';
+  if (raw === 'single' || raw === 'select') return 'single';
+  if (raw === 'multi' || raw === 'multiselect') return 'multi';
+  if (raw === 'toggle' || raw === 'boolean' || raw === 'bool') return 'toggle';
+  return 'text';
+}
+
+function extractVNextQuestionsFromBlocks(blocks: any[]) {
+  const out: Array<{
+    id: string;
+    textHe: string;
+    type: 'text' | 'number' | 'date' | 'single' | 'multi' | 'toggle';
+    options: Array<{ value: string; labelHe?: string }>;
+    blockingLevel: 'blocker' | 'helpful' | 'optional';
+  }> = [];
+
+  for (const block of Array.isArray(blocks) ? blocks : []) {
+    if (!block || block.type !== 'QuestionsBlock') continue;
+    const rawQuestions = Array.isArray(block.questions) ? block.questions : [];
+    for (const raw of rawQuestions) {
+      const textHe = String(raw?.textHe ?? raw?.questionHe ?? '').trim();
+      if (!textHe) continue;
+      const options = (Array.isArray(raw?.optionsHe) ? raw.optionsHe : [])
+        .map((item: any, index: number) => {
+          if (typeof item === 'string') {
+            const label = item.trim();
+            if (!label) return null;
+            return { value: `opt_${index + 1}`, labelHe: label };
+          }
+          const label = String(item?.labelHe ?? item?.label ?? item?.value ?? '').trim();
+          if (!label) return null;
+          const value = String(item?.value ?? `opt_${index + 1}`).trim() || `opt_${index + 1}`;
+          return { value, labelHe: label };
+        })
+        .filter(Boolean) as Array<{ value: string; labelHe?: string }>;
+
+      out.push({
+        id: String(raw?.id ?? stableHash(textHe.toLowerCase())),
+        textHe,
+        type: normalizeQaQuestionType(raw?.type),
+        options,
+        blockingLevel: 'blocker',
+      });
+    }
+  }
+
+  return out;
+}
+
 const STAGE_ORDER = ['intake', 'planning', 'costing', 'quote', 'review', 'execution'] as const;
 type StageKey = (typeof STAGE_ORDER)[number];
 
@@ -238,6 +299,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   'quote.generate': 'Generate client-facing quote from accounting data. USE THIS after budget is built.',
   'runbook.installation': 'Generate install-day runbook. USE THIS when planning installation day operations.',
   'ops.daily_plan': 'Generate daily execution plan. USE THIS for day-to-day work scheduling.',
+  'finalize.build_structured_package': 'Build final structured package from current project context and QA assumptions.',
   'admin.set_labor_rates': 'Set labor rates for work types. USE THIS when updating pricing configuration.',
   'admin.confirm_measurements': 'Confirm/update element measurements. USE THIS when measurements are verified.',
 };
@@ -395,7 +457,8 @@ export const runNext = action({
     const sdkApi = (api as any)['sdk/api'] ?? (api as any).sdk?.api;
     const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
     const sdkChangeset = (api as any)['sdk/changeset'] ?? (api as any).sdk?.changeset;
-    if (!sdkApi || !sdkKnowledge || !sdkChangeset) {
+    const sdkFinalize = (api as any)['sdk/finalize'] ?? (api as any).sdk?.finalize;
+    if (!sdkApi || !sdkKnowledge || !sdkChangeset || !sdkFinalize) {
       throw new Error('SDK API modules not available. Run Convex codegen and restart the server.');
     }
 
@@ -502,6 +565,21 @@ export const runNext = action({
         });
       }
 
+      const vnextQuestions = extractVNextQuestionsFromBlocks(result.blocks);
+      let qaBridge: { created: number; updated: number; reusedResolved: number; total: number } | null = null;
+      if (vnextQuestions.length > 0) {
+        qaBridge = await ctx.runMutation(internal['sdk/questions'].upsertVNextQuestionsBridge, {
+          projectId: args.projectId,
+          stageKey: String(result.stageKey ?? 'brief'),
+          questions: vnextQuestions,
+        });
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'vnext_questions_seeded_qapairs',
+          payload: qaBridge,
+        });
+      }
+
       await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
         conversationId: args.conversationId,
         role: 'assistant',
@@ -512,7 +590,7 @@ export const runNext = action({
       await ctx.runMutation(internal.sdk.telemetry.logEvent, {
         runId: args.runId,
         type: 'vnext_stage_result',
-        payload: result,
+        payload: { ...result, qaBridge },
       });
       await ctx.runMutation(internal.sdk.telemetry.logEvent, {
         runId: args.runId,
@@ -852,6 +930,12 @@ export const runNext = action({
           approvalToken: input?.approvalToken ?? '',
         });
       },
+      'finalize.build_structured_package': async (input: any) =>
+        ctx.runAction(sdkFinalize.buildStructuredPackage, {
+          projectId: args.projectId,
+          runId: args.runId,
+          includeAssumptions: input?.includeAssumptions,
+        }),
       web_search: async (input: any) => {
         const q = String(input?.query ?? '');
         if (!q) {

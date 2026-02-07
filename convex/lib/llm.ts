@@ -142,10 +142,10 @@ export async function completionWithTracing(
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(`LLM_TIMEOUT_${timeoutMs}ms`), timeoutMs);
             try {
-                return await client.chat.completions.create({
-                    ...(openAIOptions as any),
-                    signal: controller.signal,
-                } as any);
+                return await client.chat.completions.create(
+                    openAIOptions as any,
+                    { signal: controller.signal } as any
+                );
             } finally {
                 clearTimeout(timer);
             }

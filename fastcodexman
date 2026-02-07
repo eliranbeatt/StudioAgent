@@ -1,0 +1,457 @@
+FASTCODEXMAN - UPDATED IMPLEMENTATION PLAN (REPO-GROUNDED)
+Date: 2026-02-07
+
+Scope:
+- Update the remaining plan from `fastcodex.txt` against actual current code.
+- Integrate the manual "Generate new set" regeneration spec into SDK vNext flow.
+- Focus on what is LEFT to build, with concrete file-level instructions.
+
+============================================================
+A) CURRENT IMPLEMENTATION SNAPSHOT (VERIFIED)
+============================================================
+
+Implemented baseline:
+1. Data contract extended:
+- `convex/schema.ts`
+  - `qaPairs` now has fast fields: `status`, `questionType`, `options`, `answer`, `answerText`, `scopeType`, `scopeKey`, `sectionPath`, `blockingLevel`, `orderKey`, `createdFrom`, `followUp`, `triggeredBy`, `dedupeKey`, `version`.
+  - indexes added for `qaPairs`: `by_project_status`, `by_project_blockingLevel`, `by_project_orderKey`, `by_project_scopeKey`, `by_project_dedupeKey`.
+  - `sdkRuns` has `runMode`, `lastServedOrderKey`, `lastServedAt`.
+
+2. Deterministic QA service exists:
+- `convex/sdk/questions.ts`
+  - `peekNextSet`, `nextSet`, `submitAnswers` implemented.
+  - ordering logic currently: global blockers -> element blockers -> fallback.
+  - answer submit schedules async rebase.
+
+3. Draft+seed exists:
+- `convex/sdk/planner.ts`
+  - `draftPlanAndQuestions` action (LLM).
+  - `upsertPlanAndSeed` persists `PROJECT_CONTEXT` and seeds `qaPairs`.
+- `convex/sdk/api.ts`
+  - `bootstrapFastPlan` called when starting vNext runs.
+
+4. Async rebase exists:
+- `convex/sdk/rebase.ts`
+  - appends latest answers and increments PlanDoc version.
+  - dedupes open questions by `questionKey`.
+
+5. Finalize foundation exists:
+- `convex/sdk/finalize.ts` present.
+- finalize tool wired in registry/dispatch/runner.
+- deterministic compile path exists in `convex/sdk/changeset.ts`.
+
+6. UI deterministic question lane exists:
+- `src/app/projects/[id]/sdk-agent/page.tsx`
+  - uses `api.sdk.questions.peekNextSet` and `submitAnswers`.
+  - question panel shown from persisted backlog.
+
+7. vNext -> qaPairs bridging partially added:
+- `convex/sdk/dispatch.ts`
+  - extracts `QuestionsBlock` from vNext stage output and upserts into `qaPairs`.
+
+
+============================================================
+B) WHAT IS LEFT (PHASE-BY-PHASE)
+============================================================
+
+------------------------------------------------------------
+Phase 1 (Data contract hardening) - Remaining
+------------------------------------------------------------
+Status: Mostly done
+
+Left:
+1. Add explicit regen/manual flow state fields to `sdkRuns` (or dedicated table):
+- `dirtyAnswersCount: number`
+- `regenStatus: 'idle' | 'running' | 'failed'`
+- `regenRunId?: string`
+- `regenRequestedAt?: number`
+- `regenCompletedAt?: number`
+- `planDocVersion?: number` (mirror/cache)
+- `lastRegenPlanDocVersion?: number`
+
+2. Add regen-specific events typing convention in `sdkRunEvents` payload docs.
+
+3. Normalize question type vocabulary mismatch:
+- current schema supports: `text|number|date|single|multi|toggle`
+- manual regen spec proposes: `choice|shortText|longText|fileRef`.
+- decision: keep DB enum as-is; map model outputs deterministically in code.
+
+File updates:
+- `convex/schema.ts`
+- `convex/sdk/telemetry.ts` (create/update defaults)
+- optional docs: `fastcodex.txt` successor notes
+
+
+------------------------------------------------------------
+Phase 2 (Deterministic question service) - Remaining
+------------------------------------------------------------
+Status: Partial
+
+Left:
+1. Cursor policy is not fully enforced yet:
+- keep cursor semantics using `lastServedOrderKey`.
+- enforce override in `nextSet`: project/global blockers preempt cursor.
+
+2. Deterministic service currently does not track explicit “already served set boundaries” robustly for regen jumps.
+- add stable ordering + cursor comparisons using `orderKey` and optional served watermark.
+
+3. vNext internals still emit question blocks; deterministic lane is primary in UI, but backend dependency is still mixed.
+
+File updates:
+- `convex/sdk/questions.ts`
+- `convex/sdk/vnext/pipeline.ts` (reduce question-block dependence over time)
+
+
+------------------------------------------------------------
+Phase 3 (Draft + seed single pass) - Remaining
+------------------------------------------------------------
+Status: Largely done
+
+Left:
+1. Tighten seed dedupe policy:
+- currently mostly by `questionKey`.
+- should also guard with `dedupeKey + scope` and answered history awareness.
+
+2. Ensure seed orderKey buckets match long-term ordering strategy (PB/EB/PH/EH/PO/EO style).
+
+File updates:
+- `convex/sdk/planner.ts`
+
+
+------------------------------------------------------------
+Phase 4 (Async rebase) - Remaining
+------------------------------------------------------------
+Status: Partial
+
+Left:
+1. Current rebase appends answers and basic dedupe; missing robust patch semantics:
+- no reopen rules are implicit, not fully formalized.
+- follow-up insertion policy not comprehensive.
+- churn caps not enforced.
+- blocker promotions not policy-guarded.
+
+2. CAS behavior:
+- currently records mismatch but still patches; needs stricter CAS semantics for selected flows.
+
+File updates:
+- `convex/sdk/rebase.ts`
+- `convex/sdk/questions.ts`
+
+
+------------------------------------------------------------
+Phase 5 (Finalize + deterministic compile/apply) - Remaining
+------------------------------------------------------------
+Status: Partial
+
+Left:
+1. Fully enforce deterministic finalize pipeline as default in planning-flow mode.
+2. Keep LLM review advisory only; code gates remain authority.
+3. Close remaining mixed paths in dispatch/orchestration.
+
+File updates:
+- `convex/sdk/dispatch.ts`
+- `convex/sdk/changeset.ts`
+- `convex/sdk/finalize.ts`
+
+
+------------------------------------------------------------
+Phase 6 (Post-Quote chat edit mode) - Remaining
+------------------------------------------------------------
+Status: Foundation only
+
+Left:
+1. parse user edit requests -> clarification if needed -> deterministic compile/apply.
+2. high-impact guardrails (deletes/large deltas).
+3. mode-aware UX flow in SDK page.
+
+File updates:
+- `convex/sdk/changeRequests.ts` (new)
+- `convex/sdk/dispatch.ts`
+- `src/app/projects/[id]/sdk-agent/page.tsx`
+
+
+============================================================
+C) NEW MANUAL REGEN MECHANISM (INTEGRATED SPEC)
+============================================================
+
+Goal:
+- User explicitly clicks "Generate new set".
+- System regenerates PlanDoc + question backlog synchronously.
+- Cursor remains unchanged.
+- New global blockers can jump ahead in serving.
+
+------------------------------------------------------------
+C1) UX CONTRACT (SDK PAGE)
+------------------------------------------------------------
+
+Implement in `src/app/projects/[id]/sdk-agent/page.tsx`:
+
+1. Add button near deterministic question panel:
+- label: `Generate new set`
+
+2. Add status pill bound to run state:
+- `Up to date` when `dirtyAnswersCount === 0`
+- `Not refreshed (X answers)` when `dirtyAnswersCount > 0`
+- show running/failed states from `regenStatus`.
+
+3. Click behavior:
+- if `regenStatus === 'running'`: ignore click, show "already running" message.
+- disable answer submit and continue actions while regen is running.
+- show blocking loader: `Generating updated plan + questions...`
+
+4. Success behavior:
+- toast with counts: `+A new, D dismissed, P promoted`.
+- do not reset cursor or navigate away.
+
+5. Failure behavior:
+- toast `Regeneration failed` + Retry button.
+- question loop continues from existing backlog.
+
+
+------------------------------------------------------------
+C2) FLOW STATE CONTRACT (SDK RUN)
+------------------------------------------------------------
+
+Add/ensure fields on `sdkRuns`:
+- `dirtyAnswersCount`
+- `regenStatus`
+- `regenRunId`
+- `regenRequestedAt`
+- `regenCompletedAt`
+- `planDocVersion`
+- `lastRegenPlanDocVersion`
+
+Behavior:
+- increment `dirtyAnswersCount` in `sdk.questions.submitAnswers` by applied answer count.
+- on successful manual regen: set `dirtyAnswersCount = 0`, update regen timestamps/status.
+- single-flight lock: only one regen per run at a time.
+
+Files:
+- `convex/schema.ts`
+- `convex/sdk/questions.ts`
+- `convex/sdk/telemetry.ts`
+
+
+------------------------------------------------------------
+C3) BACKEND API SURFACE
+------------------------------------------------------------
+
+Add action:
+- `sdk.rebase.regenerateQuestionsManual`
+  - args: `{ projectId, runId, conversationId? }`
+
+Flow:
+1. Acquire lock (atomic run patch):
+- if running -> return `already_running`.
+- set running fields + `regenRunId`.
+
+2. Gather inputs:
+- `PROJECT_CONTEXT` doc + version + markdown.
+- stable element index (stableKey/order). Current schema lacks explicit `stableKey`; compute deterministic key from `_id` for now, keep open for future stable-key column.
+- current `qaPairs` snapshot (or compact representation).
+- optional latest file summary docs.
+
+3. Call model sync (`gpt-5-mini`) with strict JSON output.
+
+4. Apply patch via deterministic internal mutation transaction.
+
+5. Complete lock state:
+- success -> idle + counts + dirty reset.
+- failure -> failed + lastError event.
+
+Files:
+- `convex/sdk/rebase.ts` (extend)
+- `convex/sdk/api.ts` (expose action wrapper)
+
+
+------------------------------------------------------------
+C4) MODEL OUTPUT CONTRACT (NORMALIZED TO CURRENT SCHEMA)
+------------------------------------------------------------
+
+Model response (JSON) should be validated in code and mapped:
+- input types accepted from model: `choice|number|date|shortText|longText|fileRef`
+- mapped to DB enum:
+  - `choice -> single` (or `multi` if flagged)
+  - `shortText/longText/fileRef -> text`
+
+Keep op groups:
+- `add[]`
+- `dismiss[]`
+- `promote[]`
+- `dedupe[]`
+- `summary`
+
+Validation:
+- strict parser with reject-on-extra-critical-shape errors.
+
+Files:
+- `convex/sdk/schemas.ts` (add regenerate output schema)
+- `convex/sdk/prompts.ts` (manual regen prompt)
+
+
+------------------------------------------------------------
+C5) DETERMINISTIC PATCH APPLIER RULES (NON-NEGOTIABLE)
+------------------------------------------------------------
+
+Implement in new internal mutation:
+- `internal['sdk/rebase'].applyRegenerationPatch`
+
+Rules:
+1. PlanDoc CAS:
+- apply only if `expectedPlanVersion === currentPlanVersion`.
+- mismatch => fail apply; keep backlog unchanged.
+
+2. qapairs mutation safety:
+- never delete rows.
+- dismiss by `status='dismissed'` only.
+- never reopen `answered|assumed|resolved|skipped|dismissed`.
+- follow-up needs new row with `followUp=true`, `createdFrom='rebase'` (or add `'regen'` enum if desired).
+
+3. Dedupe:
+- open same-scope same-dedupeKey => skip insert.
+- answered same-scope same-dedupeKey => skip unless explicit follow-up with valid reason.
+
+4. Caps:
+- `maxAddsPerRegen = 40`
+- `maxNewBlockersPerRegen = 10`
+- truncate overflow and include note in summary.
+
+5. Order key computation (in code, not model):
+- bucket map:
+  - project/global blocker -> `PB`
+  - element blocker -> `EB`
+  - project/global helpful -> `PH`
+  - element helpful -> `EH`
+  - project/global optional -> `PO`
+  - element optional -> `EO`
+- `orderKey = <bucket>/<elementOrderOr000>/<sectionPath>/<ordinal>`
+- add per-project monotonic ordinal source (see C6).
+
+6. Cursor:
+- do not modify `lastServedOrderKey` inside regen.
+
+Files:
+- `convex/sdk/rebase.ts`
+- `convex/sdk/questions.ts`
+
+
+------------------------------------------------------------
+C6) ORDINAL SOURCE FOR DETERMINISTIC ORDERKEY
+------------------------------------------------------------
+
+Current schema has no global ordinal counter for qapairs.
+Recommended options:
+1. Preferred: add small table `sdkProjectState` with `nextQuestionOrdinal`.
+2. Simpler: derive ordinal from current count + timestamp fallback (less strict under races).
+
+Use option 1 for deterministic ordering under concurrency.
+
+Files:
+- `convex/schema.ts` (new table)
+- `convex/sdk/rebase.ts` and `convex/sdk/planner.ts` (allocation)
+
+
+------------------------------------------------------------
+C7) OBSERVABILITY
+------------------------------------------------------------
+
+Log per regen run in `sdkRunEvents`:
+- `regenRunId`
+- durationMs
+- added/dismissed/promoted counts
+- open blocker count after apply
+- truncation count
+- model token usage if available
+- error details on failure
+
+Event types:
+- `sdk_regen_requested`
+- `sdk_regen_model_result`
+- `sdk_regen_applied`
+- `sdk_regen_failed`
+
+Files:
+- `convex/sdk/rebase.ts`
+- `convex/sdk/api.ts`
+
+
+============================================================
+D) UPDATED PATCH SEQUENCE (IMPLEMENT WHAT'S LEFT)
+============================================================
+
+Patch M1 - Schema + run-state fields
+- add regen fields to `sdkRuns`.
+- optional `sdkProjectState` table for ordinals.
+
+Patch M2 - Dirty counter plumbing
+- increment dirty count in `sdk.questions.submitAnswers`.
+- keep existing rebase enqueue behavior.
+
+Patch M3 - Manual regen action (sync)
+- add `sdk.rebase.regenerateQuestionsManual` action.
+- lock acquisition/single-flight.
+- call `gpt-5-mini` with strict contract.
+
+Patch M4 - Deterministic applier
+- add `applyRegenerationPatch` mutation with CAS, caps, dedupe, computed orderKey.
+
+Patch M5 - nextSet cursor + blocker preemption
+- keep cursor.
+- preempt with project/global blockers regardless of cursor position.
+
+Patch M6 - SDK UI wiring
+- add button, status pill, loader, retry, disable inputs while running.
+- success/failure toasts.
+
+Patch M7 - Hardening pass
+- tests for CAS mismatch, no reopen, cap truncation, blocker preemption.
+
+
+============================================================
+E) ACCEPTANCE CRITERIA FOR MANUAL REGEN
+============================================================
+
+1. After answer submit:
+- `dirtyAnswersCount` increases.
+- pill shows `Not refreshed (X answers)`.
+
+2. During regen click:
+- only one run allowed.
+- answer inputs disabled.
+
+3. On successful regen:
+- PlanDoc version increments.
+- summary counts returned.
+- dirty resets to 0.
+- cursor unchanged.
+
+4. On next fetch:
+- if global blockers exist, they are served first even if cursor is later.
+
+5. On CAS mismatch:
+- regen fails safely; no partial patch.
+
+
+============================================================
+F) OPEN DECISIONS (SMALL, REQUIRED)
+============================================================
+
+1. `createdFrom` enum for manual regen rows:
+- use existing `rebase`, or add explicit `regen` value.
+
+2. element stable key source:
+- use element `_id` now, or add explicit immutable `stableKey` in elements.
+
+3. file summary inclusion in manual regen input:
+- include now or keep disabled until ingestion summaries are normalized.
+
+
+============================================================
+G) OUT-OF-SCOPE FOR THIS MANUAL REGEN PATCH
+============================================================
+
+1. Full replacement of vNext pipeline question-block emissions.
+2. Full chat-edit mode implementation.
+3. Finalize auto-apply policy closure.
+
+These remain in broader FASTCODEX phases and should be implemented after manual regen is stable.
