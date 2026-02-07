@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import {
@@ -13,10 +13,11 @@ import {
   MessageSquare,
   ArrowRight,
   Filter,
-  RefreshCw
+  RefreshCw,
+  ChevronDown
 } from "lucide-react";
 import { Id } from "../../../../convex/_generated/dataModel";
-import { MODEL_PRICING, calculateTraceCost, formatUsd, resolvePricing } from "../../../lib/llmPricing";
+import { MODEL_PRICING, calculateTraceCost, formatCents, resolvePricing } from "../../../lib/llmPricing";
 
 // --- Helpers ---
 
@@ -35,19 +36,67 @@ const timeAgo = (timestamp: number) => {
   return new Date(timestamp).toLocaleDateString();
 };
 
+// --- Types ---
+type TraceItem = {
+  _id: Id<"llmTraces">;
+  _creationTime: number;
+  projectId?: Id<"projects"> | null;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  status: "success" | "failed";
+  error?: string;
+  runId?: string;
+  cost?: number;
+};
+
 // --- Components ---
 
 export default function TracingPage() {
   const [filterProject, setFilterProject] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterRunId, setFilterRunId] = useState<string>("all");
+  const [limit, setLimit] = useState<number>(50);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [allTraces, setAllTraces] = useState<TraceItem[]>([]);
 
   const projects = useQuery(api.projects.list);
+  const runIds = useQuery(api.tracing.listRunIds, { limit: 100 });
 
-  const traces = useQuery(api.tracing.list, {
-    limit: 50,
+  const tracesResult = useQuery(api.tracing.list, {
+    limit,
     projectId: filterProject !== "all" ? (filterProject as Id<"projects">) : undefined,
-    status: filterStatus !== "all" ? (filterStatus as "success" | "failed") : undefined
+    status: filterStatus !== "all" ? (filterStatus as "success" | "failed") : undefined,
+    runId: filterRunId !== "all" ? filterRunId : undefined,
+    cursor: cursor ?? undefined,
   });
+
+  // Build project name lookup
+  const projectNameById = useMemo(() => {
+    if (!projects) return new Map<string, string>();
+    return new Map(projects.map(p => [p._id, p.name]));
+  }, [projects]);
+
+  // Accumulate traces when loading more
+  useEffect(() => {
+    if (tracesResult?.traces) {
+      if (cursor === null) {
+        // Fresh load - reset traces
+        setAllTraces(tracesResult.traces as TraceItem[]);
+      } else {
+        // Appending more traces
+        setAllTraces(prev => [...prev, ...(tracesResult.traces as TraceItem[])]);
+      }
+    }
+  }, [tracesResult?.traces, cursor]);
+
+  // Reset cursor when filters change
+  useEffect(() => {
+    setCursor(null);
+    setAllTraces([]);
+  }, [filterProject, filterStatus, filterRunId, limit]);
 
   const [selectedTraceId, setSelectedTraceId] = useState<Id<"llmTraces"> | null>(null);
 
@@ -59,21 +108,29 @@ export default function TracingPage() {
   const activePricing = selectedTrace ? resolvePricing(selectedTrace.model) : null
   const totalCost = selectedTrace
     ? calculateTraceCost({
-        model: selectedTrace.model,
-        inputTokens: resolvedInputTokens,
-        outputTokens: resolvedOutputTokens,
-        cachedInputTokens
-      })
+      model: selectedTrace.model,
+      inputTokens: resolvedInputTokens,
+      outputTokens: resolvedOutputTokens,
+      cachedInputTokens
+    })
     : null
 
   // Auto-select first if none selected and traces loaded
-  if (!selectedTraceId && traces && traces.length > 0) {
-    setSelectedTraceId(traces[0]._id);
-  }
+  useEffect(() => {
+    if (!selectedTraceId && allTraces.length > 0) {
+      setSelectedTraceId(allTraces[0]._id);
+    }
+  }, [selectedTraceId, allTraces]);
 
   const ctxPacks = selectedTrace?.request?.traceMeta?.ctxPacks
   const promptCacheKey = selectedTrace?.request?.prompt_cache_key
   const promptCacheRetention = selectedTrace?.request?.prompt_cache_retention
+
+  const handleLoadMore = () => {
+    if (tracesResult?.continueCursor) {
+      setCursor(tracesResult.continueCursor);
+    }
+  };
 
   return (
     <div className="flex h-[calc(100vh-4rem)] border rounded-lg bg-white overflow-hidden shadow-sm">
@@ -102,26 +159,50 @@ export default function TracingPage() {
               <option value="failed">Failed</option>
             </select>
           </div>
+          <div className="flex gap-2">
+            <select
+              className="flex-1 text-xs border rounded px-2 py-1 bg-gray-50"
+              value={filterRunId}
+              onChange={(e) => setFilterRunId(e.target.value)}
+            >
+              <option value="all">All Run IDs</option>
+              {runIds?.map(r => (
+                <option key={r.runId} value={r.runId}>
+                  {r.runId.slice(0, 20)}... - {r.projectId ? projectNameById.get(r.projectId) || "Unknown" : "No Project"}
+                </option>
+              ))}
+            </select>
+            <select
+              className="w-24 text-xs border rounded px-2 py-1 bg-gray-50"
+              value={limit}
+              onChange={(e) => setLimit(Number(e.target.value))}
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={500}>500</option>
+            </select>
+          </div>
         </div>
 
         <div className="p-3 border-b bg-gray-100 sticky top-0 z-10 flex justify-between items-center">
           <h2 className="font-semibold text-sm flex items-center gap-2 text-gray-700">
             <Clock size={16} /> Recent Traces
           </h2>
-          <span className="text-xs text-gray-500">{traces?.length || 0} items</span>
+          <span className="text-xs text-gray-500">{allTraces.length} items{!tracesResult?.isDone && "+"}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {!traces ? (
+          {!tracesResult ? (
             <div className="p-4 text-center text-gray-500">Loading traces...</div>
-          ) : traces.length === 0 ? (
+          ) : allTraces.length === 0 ? (
             <div className="p-8 text-center text-gray-400 flex flex-col items-center gap-2">
               <Filter size={24} />
               <span>No traces found</span>
             </div>
           ) : (
             <div className="divide-y">
-              {traces.map((trace) => (
+              {allTraces.map((trace) => (
                 <div
                   key={trace._id}
                   onClick={() => setSelectedTraceId(trace._id)}
@@ -136,7 +217,16 @@ export default function TracingPage() {
                     <span className="text-xs text-gray-400">{timeAgo(trace._creationTime)}</span>
                   </div>
                   <div className="font-medium text-sm text-gray-900 truncate mb-1" title={trace.runId}>
-                    {trace.runId ? trace.runId : <span className="italic text-gray-400">No Run ID</span>}
+                    {trace.runId ? (
+                      <span>
+                        <span className="text-blue-600">{trace.runId.slice(0, 12)}...</span>
+                        {trace.projectId && (
+                          <span className="text-gray-500"> - {String(projectNameById.get(trace.projectId as string) || "Unknown")}</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="italic text-gray-400">No Run ID</span>
+                    )}
                   </div>
                   <div className="flex justify-between items-center text-xs text-gray-500">
                     <span className="flex items-center gap-1 bg-gray-100 px-1 rounded">
@@ -146,6 +236,18 @@ export default function TracingPage() {
                   </div>
                 </div>
               ))}
+
+              {/* Load More Button */}
+              {!tracesResult.isDone && (
+                <div className="p-4 text-center">
+                  <button
+                    onClick={handleLoadMore}
+                    className="px-4 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors flex items-center gap-2 mx-auto"
+                  >
+                    <ChevronDown size={16} /> Load More
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -164,8 +266,7 @@ export default function TracingPage() {
               <div>
                 <div className="text-xs text-gray-500 uppercase font-semibold">Cost</div>
                 <div className="text-lg font-bold text-gray-900 flex items-center gap-1">
-                  <DollarSign size={16} />
-                  {totalCost === null ? "-" : formatUsd(totalCost)}
+                  {totalCost === null ? "-" : formatCents(totalCost)}
                 </div>
                 <div className="text-[11px] text-gray-400 mt-1">
                   {activePricing

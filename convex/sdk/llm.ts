@@ -9,6 +9,7 @@ export async function runJsonCompletion(args: {
   model: string;
   temperature?: number;
   maxTokens?: number;
+  maxCompletionTokens?: number;
   projectId?: string;
   conversationId?: string;
   runId?: string;
@@ -22,8 +23,9 @@ export async function runJsonCompletion(args: {
     args.ctx,
     {
       model: args.model,
-      temperature: args.temperature ?? 0.2,
+      temperature: args.temperature,
       max_tokens: args.maxTokens,
+      max_completion_tokens: args.maxCompletionTokens,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: args.systemPrompt },

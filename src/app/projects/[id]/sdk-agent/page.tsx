@@ -2,7 +2,7 @@
 
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { useParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../../../../convex/_generated/api';
 import { Id } from '../../../../../convex/_generated/dataModel';
 import { ChatBlock } from '../agent/_components/Blocks/ChatBlock';
@@ -16,7 +16,7 @@ import { ReceiptBlock } from '../agent/_components/Blocks/ReceiptBlock';
 import { RunbookBlock } from '../agent/_components/Blocks/RunbookBlock';
 import { DailyPlanBlock } from '../agent/_components/Blocks/DailyPlanBlock';
 import ChangeSetReviewDrawer from '../agent/_components/ChangeSetReviewDrawer';
-import { Send } from 'lucide-react';
+import { Check, Pencil, Send, Sparkles, Trash2, X } from 'lucide-react';
 
 export default function SdkAgentPage() {
   const params = useParams();
@@ -27,6 +27,7 @@ export default function SdkAgentPage() {
   const featureFlags = useQuery(api.featureFlags.getAll);
   const isEnabled = featureFlags?.ff_sdk_agent_tab;
   const isBackendEnabled = featureFlags?.ff_sdk_agent_backend;
+  const isVnextUiEnabled = featureFlags?.ff_sdk_vnext_ui;
 
   const conversations = useQuery(
     api.sdk.api.listConversations,
@@ -35,65 +36,209 @@ export default function SdkAgentPage() {
   const [selectedConvId, setSelectedConvId] = useState<Id<'agentConversations'> | null>(null);
   const [reviewChangeSetId, setReviewChangeSetId] = useState<Id<'changeSets'> | null>(null);
 
-  useEffect(() => {
-    if (!selectedConvId && conversations && conversations.length > 0) {
-      setSelectedConvId(conversations[0]._id);
-    }
-  }, [conversations, selectedConvId]);
+  const effectiveConvId = selectedConvId ?? conversations?.[0]?._id ?? null;
 
   const runs = useQuery(
     api.sdk.api.listRuns,
-    selectedConvId ? { conversationId: selectedConvId } : 'skip'
+    effectiveConvId ? { conversationId: effectiveConvId } : 'skip'
   );
   const activeRun = runs && runs.length > 0 ? runs[0] : null;
 
   const messages = useQuery(
     api.sdk.api.listMessages,
-    selectedConvId ? { conversationId: selectedConvId, limit: 100 } : 'skip'
+    effectiveConvId ? { conversationId: effectiveConvId, limit: 100 } : 'skip'
   );
 
   const createConversation = useMutation(api.sdk.api.createConversation);
+  const renameConversation = useMutation(api.sdk.api.renameConversation);
+  const deleteConversation = useMutation(api.sdk.api.deleteConversation);
   const startRun = useMutation(api.sdk.api.startRun);
+  const startVnextRun = useMutation(api.sdk.api.startVnextRun);
+  const answerVnext = useMutation(api.sdk.api.answerVnext);
   const pauseRun = useMutation(api.sdk.api.pauseRun);
   const resumeRun = useMutation(api.sdk.api.resumeRun);
   const cancelRun = useMutation(api.sdk.api.cancelRun);
+  const continueVnext = useAction(api.sdk.api.continueVnext);
+  const generateConversationTitle = useAction(api.sdk.api.generateConversationTitle);
   const approveChangeSet = useAction(api.sdk.api.approveChangeSet);
   const shadowEvaluate = useAction(api.sdk.api.shadowEvaluate);
   const runNext = useAction(api.sdk.dispatch.runNext);
 
   const [input, setInput] = useState('');
-  const [isRunning, setIsRunning] = useState(false);
+  const [editingConvId, setEditingConvId] = useState<Id<'agentConversations'> | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [savingTitleId, setSavingTitleId] = useState<Id<'agentConversations'> | null>(null);
+  const [deletingConvId, setDeletingConvId] = useState<Id<'agentConversations'> | null>(null);
+  const [generatingTitleId, setGeneratingTitleId] = useState<Id<'agentConversations'> | null>(null);
+  const [nowMs, setNowMs] = useState(0);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [dispatchStartedAt, setDispatchStartedAt] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const runStatus = activeRun?.status;
+  const isRunActive = runStatus === 'running' || runStatus === 'awaiting_approval' || runStatus === 'blocked';
+  const runMessages = (messages ?? []).filter((m: any) => m.runId === activeRun?._id);
+  const lastUserIndex = [...runMessages]
+    .map((m: any, idx: number) => ({ m, idx }))
+    .filter(({ m }) => m.role === 'user')
+    .map(({ idx }) => idx)
+    .pop();
+  const hasAssistantAfterUser =
+    typeof lastUserIndex === 'number' &&
+    runMessages.slice(lastUserIndex + 1).some((m: any) => m.role === 'assistant' || m.role === 'system');
+  const pendingTurnStartedAt =
+    typeof lastUserIndex === 'number' && !hasAssistantAfterUser
+      ? runMessages[lastUserIndex]?.createdAt ?? null
+      : null;
+  const showProgress =
+    !!pendingTurnStartedAt ||
+    isDispatching ||
+    runStatus === 'awaiting_approval' ||
+    runStatus === 'blocked';
+  const timerStart = pendingTurnStartedAt ?? (isDispatching ? dispatchStartedAt : null);
+  const statusLabel = getSdkStatusLabel(activeRun);
+  const statusDetail = getSdkStatusDetail(activeRun);
+  const elapsedMs = timerStart ? Math.max(0, nowMs - timerStart) : 0;
+  const isStale = !!activeRun?.updatedAt && runStatus === 'running' && nowMs - activeRun.updatedAt > 90_000;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isRunning]);
+  }, [messages, showProgress]);
+
+  useEffect(() => {
+    if (!showProgress) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [showProgress]);
 
   const handleCreate = async () => {
     if (!projectId) return;
     const id = await createConversation({ projectId, title: 'New SDK Session' });
     setSelectedConvId(id);
-    await startRun({ projectId, conversationId: id });
+    if (isVnextUiEnabled) {
+      await startVnextRun({ projectId, conversationId: id });
+    } else {
+      await startRun({ projectId, conversationId: id });
+    }
   };
 
   const handleStartRun = async (shadowMode = false) => {
-    if (!projectId || !selectedConvId) return;
-    await startRun({ projectId, conversationId: selectedConvId, shadowMode });
+    if (!projectId || !effectiveConvId) return;
+    if (isVnextUiEnabled) {
+      await startVnextRun({ projectId, conversationId: effectiveConvId, shadowMode });
+    } else {
+      await startRun({ projectId, conversationId: effectiveConvId, shadowMode });
+    }
+  };
+
+  const handleRenameStart = (conversationId: Id<'agentConversations'>, currentTitle?: string) => {
+    setEditingConvId(conversationId);
+    setEditingTitle(currentTitle ?? '');
+  };
+
+  const handleRenameSave = async () => {
+    if (!editingConvId) return;
+    const nextTitle = editingTitle.trim();
+    if (!nextTitle) return;
+
+    setSavingTitleId(editingConvId);
+    try {
+      await renameConversation({
+        conversationId: editingConvId,
+        title: nextTitle,
+      });
+      setEditingConvId(null);
+      setEditingTitle('');
+    } finally {
+      setSavingTitleId(null);
+    }
+  };
+
+  const handleRenameCancel = () => {
+    setEditingConvId(null);
+    setEditingTitle('');
+  };
+
+  const handleDeleteConversation = async (conversationId: Id<'agentConversations'>) => {
+    const confirmed = window.confirm('Delete this conversation and all related messages/runs?');
+    if (!confirmed) return;
+
+    setDeletingConvId(conversationId);
+    try {
+      await deleteConversation({ conversationId });
+      if (selectedConvId === conversationId) {
+        setSelectedConvId(null);
+      }
+      if (editingConvId === conversationId) {
+        setEditingConvId(null);
+        setEditingTitle('');
+      }
+    } finally {
+      setDeletingConvId(null);
+    }
+  };
+
+  const handleGenerateTitle = async (conversationId: Id<'agentConversations'>) => {
+    if (!projectId) return;
+    setGeneratingTitleId(conversationId);
+    try {
+      await generateConversationTitle({ conversationId, projectId });
+      if (editingConvId === conversationId) {
+        setEditingConvId(null);
+        setEditingTitle('');
+      }
+    } finally {
+      setGeneratingTitleId(null);
+    }
   };
 
   const handleSend = async () => {
-    if (!projectId || !selectedConvId || !activeRun || !input.trim()) return;
-    setIsRunning(true);
+    if (!projectId || !effectiveConvId || !activeRun || !input.trim()) return;
+    setIsDispatching(true);
+    setDispatchStartedAt(Date.now());
     try {
       await runNext({
         projectId,
-        conversationId: selectedConvId,
+        conversationId: effectiveConvId,
         runId: activeRun._id,
         userMessage: input.trim(),
       });
       setInput('');
     } finally {
-      setIsRunning(false);
+      setIsDispatching(false);
+    }
+  };
+
+  const handleSuggestionSubmit = async (text: string, payload?: any) => {
+    if (!projectId || !effectiveConvId || !activeRun) return;
+
+    // Handle vNext continue action
+    if (payload?.action === 'sdk.vnext.continue') {
+      setIsDispatching(true);
+      setDispatchStartedAt(Date.now());
+      try {
+        await continueVnext({
+          projectId,
+          conversationId: effectiveConvId,
+          runId: activeRun._id,
+        });
+      } finally {
+        setIsDispatching(false);
+      }
+      return;
+    }
+
+    // Default: runNext with key text
+    setIsDispatching(true);
+    setDispatchStartedAt(Date.now());
+    try {
+      await runNext({
+        projectId,
+        conversationId: effectiveConvId,
+        runId: activeRun._id,
+        userMessage: text,
+      });
+    } finally {
+      setIsDispatching(false);
     }
   };
 
@@ -128,19 +273,100 @@ export default function SdkAgentPage() {
             conversations.map((c) => (
               <div
                 key={c._id}
-                className={`group flex items-center w-full rounded-md text-xs transition-colors ${
-                  selectedConvId === c._id
-                    ? 'bg-blue-50 text-blue-700 font-medium'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`group flex items-center w-full rounded-md text-xs transition-colors ${effectiveConvId === c._id
+                  ? 'bg-blue-50 text-blue-700 font-medium'
+                  : 'text-slate-600 hover:bg-slate-50'
+                  }`}
                 onClick={() => setSelectedConvId(c._id)}
               >
-                <div className="flex-1 flex justify-between items-center p-2 cursor-pointer">
-                  <div className="flex flex-col truncate">
-                    <span className="truncate">{c.title || 'Untitled'}</span>
+                <div className="flex-1 flex justify-between items-center gap-2 p-2 cursor-pointer">
+                  <div className="flex flex-col min-w-0 flex-1">
+                    {editingConvId === c._id ? (
+                      <input
+                        autoFocus
+                        value={editingTitle}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => setEditingTitle(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            handleRenameSave();
+                          }
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            handleRenameCancel();
+                          }
+                        }}
+                        className="w-full rounded border border-blue-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      />
+                    ) : (
+                      <span className="truncate">{c.title || 'Untitled'}</span>
+                    )}
                     <span className="text-[10px] text-slate-400 font-normal">
                       {new Date(c.updatedAt).toLocaleDateString()}
                     </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {editingConvId === c._id ? (
+                      <>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRenameSave();
+                          }}
+                          disabled={!editingTitle.trim() || savingTitleId === c._id}
+                          className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-50"
+                          title="Save name"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRenameCancel();
+                          }}
+                          className="p-1 rounded text-slate-500 hover:bg-slate-100"
+                          title="Cancel"
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRenameStart(c._id, c.title);
+                          }}
+                          className="p-1 rounded text-slate-500 hover:bg-slate-100"
+                          title="Edit name"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleGenerateTitle(c._id);
+                          }}
+                          disabled={generatingTitleId === c._id}
+                          className="p-1 rounded text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+                          title="Generate title"
+                        >
+                          <Sparkles size={14} />
+                        </button>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteConversation(c._id);
+                          }}
+                          disabled={deletingConvId === c._id}
+                          className="p-1 rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          title="Delete conversation"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -184,9 +410,13 @@ export default function SdkAgentPage() {
                           <SdkBlockRenderer
                             key={idx}
                             block={block}
-                            conversationId={selectedConvId}
+                            conversationId={effectiveConvId}
                             projectId={projectId}
+                            activeRunId={activeRun?._id ?? null}
                             onReviewChangeSet={(id) => setReviewChangeSetId(id)}
+                            onAnswerVnext={answerVnext}
+                            onContinueVnext={continueVnext}
+                            onSubmit={handleSuggestionSubmit}
                           />
                         );
                       })}
@@ -196,11 +426,22 @@ export default function SdkAgentPage() {
               </div>
             ))
           )}
-          {isRunning && (
+          {showProgress && (
             <div className="flex justify-start">
-              <div className="bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-2 text-slate-500">
+              <div className="bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-3 text-slate-600">
                 <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
-                <span>Thinking...</span>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <span>{statusLabel}</span>
+                    <span className="text-xs font-mono text-slate-400">{formatElapsed(elapsedMs)}</span>
+                  </div>
+                  {statusDetail && (
+                    <span className="text-xs text-slate-400">{statusDetail}</span>
+                  )}
+                  {isStale && (
+                    <span className="text-xs text-amber-600">This step is taking longer than usual</span>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -225,7 +466,7 @@ export default function SdkAgentPage() {
             />
             <button
               onClick={handleSend}
-              disabled={isRunning || !input.trim() || !isBackendEnabled}
+              disabled={runStatus !== 'running' || !input.trim() || !isBackendEnabled}
               className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={18} />
@@ -265,6 +506,21 @@ export default function SdkAgentPage() {
                 >
                   Cancel
                 </button>
+                {isVnextUiEnabled && activeRun.status === 'blocked' && (
+                  <button
+                    onClick={() =>
+                      continueVnext({
+                        projectId,
+                        conversationId: effectiveConvId!,
+                        runId: activeRun._id,
+                      })
+                    }
+                    disabled={!isBackendEnabled || !effectiveConvId}
+                    className="px-3 py-1 rounded border text-xs text-blue-700 disabled:opacity-50"
+                  >
+                    Continue Stage
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -346,6 +602,66 @@ export default function SdkAgentPage() {
   );
 }
 
+function formatElapsed(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+function getSdkStatusLabel(
+  run:
+    | {
+      status: string;
+      stageKey?: string;
+      currentAgentName?: string;
+      pendingChangeSetId?: string;
+    }
+    | null
+    | undefined
+) {
+  if (!run) return 'Waiting to start';
+  if (run.status === 'awaiting_approval') return 'Awaiting approval';
+  if (run.status === 'blocked') return 'Blocked on input';
+  if (run.status === 'paused') return 'Paused';
+  if (run.status === 'completed') return 'Completed';
+  if (run.status === 'failed') return 'Run failed';
+  if (run.status === 'cancelled') return 'Cancelled';
+  if (run.stageKey === 'brief') return 'Collecting brief';
+  if (run.stageKey === 'scope') return 'Locking scope';
+  if (run.stageKey === 'tasks') return 'Building tasks';
+  if (run.stageKey === 'budget') return 'Preparing budget';
+  if (run.stageKey === 'pricing') return 'Resolving pricing';
+  if (run.stageKey === 'ops') return 'Building ops plan';
+  if (run.stageKey === 'quote') return 'Drafting quote';
+  if (run.stageKey === 'audit') return 'Running audit';
+  if (run.stageKey === 'compile') return 'Compiling approval package';
+  if (run.stageKey === 'plan.elements') return 'Building elements';
+  if (run.stageKey === 'plan.tasks') return 'Breaking down tasks';
+  if (run.pendingChangeSetId) return 'Creating change set';
+  return 'Running SDK agent';
+}
+
+function getSdkStatusDetail(
+  run:
+    | {
+      stageKey?: string;
+      currentAgentName?: string;
+      pendingChangeSetId?: string;
+      lastError?: string;
+    }
+    | null
+    | undefined
+) {
+  if (!run) return null;
+  if (run.lastError) return run.lastError;
+  if (run.pendingChangeSetId) return `ChangeSet ${run.pendingChangeSetId.slice(-6)} pending`;
+  if (run.stageKey && run.currentAgentName) return `${run.currentAgentName} • ${run.stageKey}`;
+  if (run.stageKey) return run.stageKey;
+  if (run.currentAgentName) return run.currentAgentName;
+  return null;
+}
+
 function normalizeBlock(block: any) {
   if (!block || typeof block !== 'object') return block;
   if (!block.type) {
@@ -372,21 +688,50 @@ function SdkBlockRenderer({
   block,
   conversationId,
   projectId,
+  activeRunId,
   onReviewChangeSet,
+  onAnswerVnext,
+  onContinueVnext,
+  onSubmit,
 }: {
   block: any;
   conversationId: Id<'agentConversations'> | null;
   projectId: Id<'projects'>;
+  activeRunId: Id<'sdkRuns'> | null;
   onReviewChangeSet: (id: Id<'changeSets'>) => void;
+  onAnswerVnext: (args: {
+    runId: Id<'sdkRuns'>;
+    answersById: Record<string, string>;
+    freeText?: string;
+  }) => Promise<any>;
+  onContinueVnext: (args: {
+    projectId: Id<'projects'>;
+    conversationId: Id<'agentConversations'>;
+    runId: Id<'sdkRuns'>;
+    note?: string;
+  }) => Promise<any>;
+  onSubmit: (text: string, payload?: any) => void;
 }) {
   if (!block || !conversationId) return null;
 
   if (block.type === 'ChatBlock') return <ChatBlock block={block} />;
   if (block.type === 'QuestionsBlock') {
+    if (block.sdkVnext) {
+      return (
+        <SdkVnextQuestionsBlock
+          block={block}
+          projectId={projectId}
+          conversationId={conversationId}
+          runId={activeRunId}
+          onAnswerVnext={onAnswerVnext}
+          onContinueVnext={onContinueVnext}
+        />
+      );
+    }
     return <QuestionsBlock block={block} conversationId={conversationId} projectId={projectId} />;
   }
   if (block.type === 'SuggestionBlock' || block.type === 'SuggestionsBlock') {
-    return <SuggestionBlock block={block} onSubmit={() => null} />;
+    return <SuggestionBlock block={block} onSubmit={onSubmit} />;
   }
   if (block.type === 'ChangeSetBlock') {
     return (
@@ -409,6 +754,91 @@ function SdkBlockRenderer({
       <pre className="whitespace-pre-wrap font-mono text-gray-600">
         {JSON.stringify(block, null, 2)}
       </pre>
+    </div>
+  );
+}
+
+function SdkVnextQuestionsBlock({
+  block,
+  projectId,
+  conversationId,
+  runId,
+  onAnswerVnext,
+  onContinueVnext,
+}: {
+  block: any;
+  projectId: Id<'projects'>;
+  conversationId: Id<'agentConversations'>;
+  runId: Id<'sdkRuns'> | null;
+  onAnswerVnext: (args: {
+    runId: Id<'sdkRuns'>;
+    answersById: Record<string, string>;
+    freeText?: string;
+  }) => Promise<any>;
+  onContinueVnext: (args: {
+    projectId: Id<'projects'>;
+    conversationId: Id<'agentConversations'>;
+    runId: Id<'sdkRuns'>;
+    note?: string;
+  }) => Promise<any>;
+}) {
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [freeText, setFreeText] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const questions = Array.isArray(block.questions) ? block.questions : [];
+
+  const submit = async () => {
+    if (!runId) return;
+    setLoading(true);
+    try {
+      await onAnswerVnext({
+        runId,
+        answersById: answers,
+        freeText: freeText.trim() ? freeText.trim() : undefined,
+      });
+      await onContinueVnext({
+        projectId,
+        conversationId,
+        runId,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+      <div className="text-xs font-semibold text-slate-700 mb-3">{block.titleHe ?? 'שאלות להמשך'}</div>
+      <div className="space-y-3">
+        {questions.map((q: any, idx: number) => {
+          const id = q.id ?? `q_${idx + 1}`;
+          return (
+            <div key={id}>
+              <div className="text-xs text-slate-700 mb-1">{q.textHe ?? 'שאלה'}</div>
+              <input
+                className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                value={answers[id] ?? ''}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [id]: e.target.value }))}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <textarea
+        className="mt-3 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+        rows={2}
+        placeholder="הערות נוספות"
+        value={freeText}
+        onChange={(e) => setFreeText(e.target.value)}
+      />
+      <button
+        onClick={submit}
+        disabled={loading || !runId}
+        className="mt-3 rounded bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+      >
+        {loading ? 'Submitting...' : 'שמור והמשך'}
+      </button>
     </div>
   );
 }

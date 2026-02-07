@@ -28,6 +28,8 @@ export const DEFAULT_FLAGS: Record<string, boolean> = {
   // SDK Agent (v2)
   ff_sdk_agent_tab: true,
   ff_sdk_agent_backend: true,
+  ff_sdk_vnext_pipeline: false,
+  ff_sdk_vnext_ui: false,
 }
 
 export function normalizeFlags(raw: unknown): Record<string, boolean> {

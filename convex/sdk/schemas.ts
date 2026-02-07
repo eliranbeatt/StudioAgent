@@ -137,6 +137,10 @@ export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {
   'changeset.review': z.object({
     summaryHe: z.string().optional(),
     issues: z.array(z.any()).optional(),
+    errors: z.array(z.any()).optional(),
+    warnings: z.array(z.any()).optional(),
+    isValid: z.boolean().optional(),
+    recommendedNextHe: z.array(z.string()).optional(),
     meta: z.any().optional(),
   }).passthrough(),
 };

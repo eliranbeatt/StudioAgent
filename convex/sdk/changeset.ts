@@ -12,6 +12,8 @@ export const compile = action({
     projectId: v.id('projects'),
     intents: v.array(v.any()),
     context: v.optional(v.any()),
+    runId: v.optional(v.id('sdkRuns')),
+    conversationId: v.optional(v.id('agentConversations')),
   },
   handler: async (ctx, args) => {
     const intents = Array.isArray(args.intents) ? args.intents : [];
@@ -39,6 +41,8 @@ export const compile = action({
       temperature: 0.1,
       maxTokens: 2000,
       projectId: args.projectId,
+      conversationId: args.conversationId as any,
+      runId: args.runId as any,
       traceMeta: {
         source: 'sdk',
         toolId: 'changeset.compile',
@@ -199,6 +203,8 @@ export const review = action({
     projectId: v.id('projects'),
     changeSetId: v.optional(v.id('changeSets')),
     changeSet: v.optional(v.any()),
+    runId: v.optional(v.id('sdkRuns')),
+    conversationId: v.optional(v.id('agentConversations')),
   },
   handler: async (ctx, args) => {
     const changeSet =
@@ -214,6 +220,8 @@ export const review = action({
       temperature: 0.1,
       maxTokens: 1600,
       projectId: args.projectId,
+      conversationId: args.conversationId as any,
+      runId: args.runId as any,
       traceMeta: {
         source: 'sdk',
         toolId: 'changeset.review',
@@ -225,7 +233,22 @@ export const review = action({
     if (!validated.ok) {
       throw new Error('changeset.review failed schema validation');
     }
-    return validated.data;
+    const review = validated.data as any;
+    const errors = Array.isArray(review.errors) ? review.errors : [];
+    const warnings = Array.isArray(review.warnings) ? review.warnings : [];
+    const issues = Array.isArray(review.issues)
+      ? review.issues
+      : [...errors, ...warnings];
+    const isValid =
+      typeof review.isValid === 'boolean'
+        ? review.isValid
+        : errors.length === 0;
+
+    return {
+      ...review,
+      issues,
+      isValid,
+    };
   },
 });
 

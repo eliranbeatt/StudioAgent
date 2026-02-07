@@ -31,14 +31,44 @@ export function AgentChat({
   const messages = useQuery(api.skills.runner.listAgentMessages,
     activeConversationId ? { conversationId: activeConversationId } : "skip"
   );
+  const activeRun = useQuery(
+    api.skills.runner.getActiveConversationRun,
+    activeConversationId ? { conversationId: activeConversationId } : "skip"
+  );
   const sendMessageAndRun = useAction(api.skills.runner.sendMessageAndRun);
   const [input, setInput] = useState("");
   const [reviewChangeSetId, setReviewChangeSetId] = useState<Id<"changeSets"> | null>(null);
+  const [nowMs, setNowMs] = useState(0);
+  const [thinkingStartedAt, setThinkingStartedAt] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const isRunActive = !!activeRun && activeRun.status === "running";
+
+  const statusLabel = activeRun?.phaseLabel ?? (isThinking ? "Working..." : null);
+  const statusDetail = activeRun?.phaseDetail ?? (
+    activeRun?.skillId ? skillDetailFromSkillId(activeRun.skillId) : null
+  );
+  const timerStart = activeRun?.startedAt ?? thinkingStartedAt;
+  const elapsedMs = timerStart ? Math.max(0, nowMs - timerStart) : 0;
+  const isStale = !!activeRun?.updatedAt && nowMs - activeRun.updatedAt > 90_000;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!isThinking) {
+      setThinkingStartedAt(null);
+      return;
+    }
+    setThinkingStartedAt((prev) => prev ?? Date.now());
+  }, [isThinking]);
+
+  useEffect(() => {
+    if (!isRunActive && !isThinking) return;
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isRunActive, isThinking]);
 
   const handleSend = async () => {
     if (!input.trim() || !activeConversationId) return;
@@ -93,11 +123,22 @@ export function AgentChat({
             </div>
           ))
         )}
-        {isThinking && (
+        {(isRunActive || isThinking) && (
           <div className="flex justify-start">
-            <div className="bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-2 text-slate-500">
+            <div className="bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-3 text-slate-600">
               <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
-              <span>Thinking...</span>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <span>{statusLabel ?? "Working..."}</span>
+                  <span className="text-xs font-mono text-slate-400">{formatElapsed(elapsedMs)}</span>
+                </div>
+                {statusDetail && (
+                  <span className="text-xs text-slate-400">{statusDetail}</span>
+                )}
+                {isStale && (
+                  <span className="text-xs text-amber-600">This step is taking longer than usual</span>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -122,7 +163,7 @@ export function AgentChat({
           />
           <button
             onClick={handleSend}
-            disabled={isThinking || !input.trim()}
+            disabled={isRunActive || isThinking || !input.trim()}
             className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send size={18} />
@@ -140,6 +181,24 @@ export function AgentChat({
       )}
     </div>
   );
+}
+
+function formatElapsed(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function skillDetailFromSkillId(skillId: string) {
+  const map: Record<string, string> = {
+    ELEMENTS_BUILDER_FULL: "Building elements",
+    TASKS_BUILDER_FULL: "Breaking down tasks",
+    CONTEXT_GENERATION: "Building context and questions",
+    CONSULTANT_CHAT: "Drafting response",
+    RESEARCH_PRICING_ESTIMATES_WEB: "Collecting web pricing data",
+  };
+  return map[skillId] ?? null;
 }
 
 function normalizeBlock(block: any) {

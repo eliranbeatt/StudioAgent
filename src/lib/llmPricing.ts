@@ -50,3 +50,5 @@ export const calculateTraceCost = (params: {
 }
 
 export const formatUsd = (value: number, digits = 4) => `$${value.toFixed(digits)}`
+
+export const formatCents = (value: number, digits = 2) => `¢${(value * 100).toFixed(digits)}`

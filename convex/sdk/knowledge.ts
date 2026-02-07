@@ -13,6 +13,8 @@ export const summarizeOrUpdate = action({
     currentDoc: v.optional(v.any()),
     newFacts: v.array(v.string()),
     userText: v.optional(v.string()),
+    runId: v.optional(v.id('sdkRuns')),
+    conversationId: v.optional(v.id('agentConversations')),
   },
   handler: async (ctx, args) => {
     const payload = {
@@ -29,6 +31,8 @@ export const summarizeOrUpdate = action({
       temperature: 0.2,
       maxTokens: 1600,
       projectId: args.projectId,
+      conversationId: args.conversationId as any,
+      runId: args.runId as any,
       traceMeta: {
         source: 'sdk',
         toolId: 'knowledge.summarize_or_update',

@@ -1,0 +1,413 @@
+Below is an **execution blueprint for Option 2 (“Deterministic Full-Plan Pipeline”)**, rebuilt as a **new optimized flow** (no G1/G2 legacy), with:
+
+* **Code-first gates** (hard pass/fail, deterministic).
+* **LLM skills between gates** (creative reasoning + domain realism).
+* **User question blocks at each stage** (the flow does *not* auto-run to the end).
+* **ChangeSet compile = code** (idempotent, complete, coverage-checked).
+
+This is designed to fit your existing Console stack (projects/tasks/accounting/quotes/agents) while replacing the current orchestrator behavior that lets “2 minor ops” slip through. 
+
+---
+
+## 1) The flow you should build (new stage machine)
+
+### Stage list (keys + user-facing titles)
+
+Each stage is: **(A) deterministic gate → (B) LLM skill(s) → (C) deterministic gate → (D) user checkpoint**.
+
+| stageKey  | Title (EN)            | כותרת (HE)                 | What the user does                                            |
+| --------- | --------------------- | -------------------------- | ------------------------------------------------------------- |
+| `brief`   | Brief & Constraints   | **בריף ואילוצים**          | answers structured questions until “green”                    |
+| `scope`   | Scope Lock (Elements) | **נעילת אלמנטים**          | picks/approves the element list (incl. exact counts)          |
+| `concept` | Concepts & Directions | **קונספטים וכיוונים**      | chooses 1 direction per element (or “skip”)                   |
+| `tasks`   | Task Breakdown        | **פירוק למשימות**          | reviews tasks + resolves missing info blockers                |
+| `budget`  | Budget Binding        | **קישור תקציב למשימות**    | reviews materials/labor skeleton, fills unknowns              |
+| `pricing` | Price Evidence        | **אימות מחירים**           | confirms “estimate vs known” + optional web research triggers |
+| `ops`     | Execution & Logistics | **תכנית ביצוע ולוגיסטיקה** | approves install/transport/returns coverage                   |
+| `quote`   | Quote Draft           | **טיוטת הצעת מחיר**        | reviews quote text + assumptions/options                      |
+| `audit`   | Quality Audit         | **ביקורת איכות**           | sees LLM critic findings + resolves required fixes            |
+| `compile` | Approval Package      | **מוכן לאישור**            | sees exact ChangeSet diff & approves                          |
+
+This matches your studio lifecycle and your existing app domains (tasks/accounting/quote), but enforces gates + user checkpoints.
+
+---
+
+## 2) Core principle: “Spec + Artifacts” (code contract, not prompt contract)
+
+### What becomes deterministic
+
+**TargetPlanSpec** is the *single* canonical pipeline contract. It contains:
+
+* user constraints (including “exactly 3 elements”),
+* dedup keys,
+* stage decisions,
+* and “required coverage” rules.
+
+LLMs do **not** decide pass/fail. LLMs propose *content* that populates artifacts; **code gates** decide if it’s allowed to progress.
+
+### Files to add (vNext pipeline)
+
+Create a new folder (don’t fight legacy):
+
+```
+convex/sdk/vnext/
+  contracts.ts
+  pipeline.ts
+  gates.ts
+  specBuilder.ts
+  artifactStore.ts
+  compiler.ts
+  repairEngine.ts
+  skillBridge.ts
+  auditBridge.ts
+  validators/
+    validateBrief.ts
+    validateScope.ts
+    validateConcept.ts
+    validateTasks.ts
+    validateBudget.ts
+    validatePricing.ts
+    validateOps.ts
+    validateQuote.ts
+    validateAudit.ts
+    validateCompile.ts
+```
+
+You’ll reuse your existing tables/infra (projects/tasks/materialLines/workLines/quotes/agentRuns/conversations) rather than creating a new product. 
+
+---
+
+## 3) Deterministic data structures (you’ll thank yourself later)
+
+### `contracts.ts` (minimal but strict)
+
+```ts
+export type StageKey =
+  | "brief" | "scope" | "concept" | "tasks" | "budget"
+  | "pricing" | "ops" | "quote" | "audit" | "compile";
+
+export type TargetPlanSpec = {
+  projectId: Id<"projects">;
+
+  // user constraints (code-owned)
+  constraints: {
+    eventDate?: string;          // ISO
+    location?: string;
+    venueType?: "mall" | "studio" | "outdoor" | "other";
+    budgetCeilingNIS?: number;
+    requiredElementCount?: number; // <- exact constraint lives here
+  };
+
+  // stable keys (code-owned)
+  keys: {
+    scopeHash: string;           // derived from constraint + selected element keys
+    promptCacheKey: string;      // stable prefix caching
+  };
+
+  scope: {
+    locked: boolean;
+    elements: Array<{
+      elementKey: string;        // stable dedup key
+      nameHe: string;
+      mustInclude: boolean;      // if user said “exactly these”
+    }>;
+  };
+
+  decisions: {
+    conceptChoiceByElementKey: Record<string, string | null>;
+    acceptedAssumptionsHe: string[];
+  };
+
+  coverageRules: {
+    requireOpsLogistics: boolean;
+    requirePrintingQA: boolean;
+    requireTeardown: boolean;
+  };
+};
+
+export type StageArtifactMap = {
+  brief: { questions: QuestionBlock[]; normalizedFacts: Record<string, any> };
+  scope: { proposedElements: Array<{ nameHe: string; elementKey: string; rationaleHe: string }> };
+  concept: { directions: Array<{ elementKey: string; optionsHe: string[] }> };
+  tasks: { tasks: PlannedTask[] };
+  budget: { budgetSkeleton: BudgetDraft };
+  pricing: { pricedBudget: BudgetPriced };
+  ops: { opsPlan: OpsPlan };
+  quote: { quoteDraft: QuoteDraft };
+  audit: { findings: AuditFinding[] };
+  compile: { compiledOps: ChangeSetOp[]; diffSummaryHe: string };
+};
+```
+
+---
+
+## 4) Pipeline runtime behavior (the “deterministic boundary” you were missing)
+
+### `pipeline.ts` (the engine loop)
+
+The pipeline always runs like this:
+
+1. Load `TargetPlanSpec` + current stage artifacts (from DB).
+2. Run **pre-gate**.
+3. If gate fails: return **QuestionBlocks** to UI (no LLM call).
+4. If gate passes: run stage **LLM skill(s)** to propose artifact updates.
+5. Apply **deterministic merge** (no freeform LLM writes).
+6. Run **post-gate**.
+7. If still fails: **one repair pass max** (code repair OR LLM repair-with-schema), then stop with questions if still failing.
+8. If pass: move to next stage and present “Review & Continue”.
+
+### Hard limits (prevents runaway loops)
+
+* `maxStageAttempts = 2`
+* `maxLlmCallsPerStage = 1` (except `pricing` can be 2: “internal + web fallback”)
+* stop if `(stageKey + specHash + artifactHash)` repeats.
+
+---
+
+## 5) Gates (code-first) and what each checks
+
+Each gate returns:
+
+* `status: "pass" | "fail"`
+* `blockingQuestions: QuestionBlock[]`
+* `issues: GateIssue[]` (for telemetry)
+
+### A) `validateBrief`
+
+**Pass condition (examples):**
+
+* has at least: event date *or* “deadline unknown” explicitly accepted
+* has location/venueType *or* user accepted assumption
+* if “exact N elements” requested → `requiredElementCount` set
+
+Output if fail: questions like “מה התאריך?”, “איפה ההקמה?”, “מה רמת תקציב גסה?”
+
+(Your playbook already defines what must be clarified for realism.)
+
+### B) `validateScope`
+
+**Pass condition:**
+
+* `spec.scope.locked === true`
+* element count matches `requiredElementCount` when set
+* dedup keys unique
+* no “random extras” allowed when constraint is exact
+
+### C) `validateTasks`
+
+**Pass condition:**
+
+* every task linked to an `elementKey` (or explicit project-global)
+* no duplicates by `(elementKey + normalizedTitle)`
+* durations sane (e.g., 0.5–5h typical unless flagged)
+* must include QA tasks for visible/print-critical items (rule-driven) 
+
+### D) `validateBudget`
+
+**Pass condition:**
+
+* each element has at least one material line *or* labor line (or explicitly “rental only”)
+* every task has at least one accounting linkage placeholder (material/labor) OR is tagged “admin-only”
+* overhead/management/profit policy applied as configured (your 1.60x structure can be deterministic) 
+
+### E) `validatePricing`
+
+**Pass condition:**
+
+* no zero prices
+* every priced line has either:
+
+  * evidence (`knownPriceId`, `priceObservationId`, `purchaseId`)
+  * or `isEstimate=true` + confidence + assumption text
+* if estimate confidence low → must produce a user question or web research suggestion
+
+### F) `validateOps`
+
+**Pass condition:**
+
+* transport + install + teardown coverage exists when rules require it
+* includes “bring list / tools / consumables / meals” lines when install day exists (rule-based)
+* rentals: reserve→pickup→return tasks exist (rule-based)
+
+### G) `validateQuote`
+
+**Pass condition:**
+
+* quote sections map to scope elements
+* includes assumptions, exclusions, options if required
+* totals reconcile with priced budget snapshot
+
+### H) `validateAudit`
+
+**Pass condition:**
+
+* LLM critic has no “BLOCKER”
+* “HIGH” findings either fixed or explicitly “accepted risk” by user
+
+### I) `validateCompile`
+
+**Pass condition:**
+
+* ChangeSet ops coverage meets requirements:
+
+  * elements + tasks + accounting (+ quote if you store it)
+* ops idempotency: compile twice → same result
+* no deletes unless user explicitly requested “remove” (defaults to archive/tombstone)
+
+---
+
+## 6) ChangeSet compiler (code) — the heart of your determinism
+
+### `compiler.ts` design
+
+Input: `TargetPlanSpec + StageArtifactMap + current DB snapshot`
+
+Output: `ChangeSetOp[]` (create/patch/archive) with stable deterministic ordering.
+
+**Dedup strategy (deterministic):**
+
+* `elementKey = slug(nameHe) + "::v1"`
+* `taskKey = elementKey + "::" + slug(title)`
+* `lineKey = taskKey + "::" + kind + "::" + slug(itemName/role)`
+
+**Rules:**
+
+* If entity exists by key → `patch`
+* else → `create`
+* No delete; use `archive` mutation (or `isActive=false`) to preserve history
+
+This alone prevents the “only 2 ops” outcome: you can enforce **minimum op coverage** before the user ever sees “approval”.
+
+---
+
+## 7) LLM skills between gates (what they do, which model, and why)
+
+You already have agents for Clarification/Planning/Architect/Quote/etc. in the system. Keep the *content generation* but move *control* + *integrity* into the vNext pipeline. 
+
+### Recommended model routing (practical)
+
+* `gpt-5.2-mini`: **clarify questions**, light structuring, summarization.
+* `gpt-5.2`: **elements, tasks, ops plan, quote text** (needs reasoning).
+* `gpt-5.2-nano`: tiny transforms (dedup labeling, normalization) if needed.
+* `gpt-5.3-codex`: only if you want LLM assistance to generate *developer-facing* structured patches or code snippets (not required for runtime logic).
+
+### Skill contracts (LLM outputs must be schema)
+
+* `clarify.generate_questions` → `QuestionBlock[]` (Hebrew strings)
+* `plan.propose_elements` → list of `{nameHe, elementKey, rationaleHe}`
+* `plan.propose_tasks` → list of tasks with elementKey + duration + category
+* `cost.propose_budget_skeleton` → lines with dedup keys + linkage hints
+* `pricing.propose_price_updates` → evidence/estimate fields (no DB writes)
+* `ops.propose_execution_plan` → install steps + bring list + roles
+* `quote.write_hebrew_quote` → quoteDraft JSON
+* `audit.semantic_critic` → structured findings with severities + suggested fixes
+
+All of these are **proposals**. Your pipeline merges them deterministically and re-validates.
+
+---
+
+## 8) User interaction design (no more “auto-run to the end”)
+
+### Every stage returns one of:
+
+1. **Questions UI** (blocked): user must answer to unlock the gate.
+2. **Review UI** (proposed): user approves or edits the proposed artifact.
+3. **Continue button**: move to next stage.
+
+This is the same UX principle you already like (“question blocks”), but now it’s integrated into the deterministic stage engine rather than being a loosely-coupled skill.
+
+---
+
+## 9) Delivery plan (milestones + concrete tasks)
+
+### Phase P0 — Foundation (2–4 days)
+
+**Goal:** stage machine runs end-to-end with *fake artifacts* and real gates.
+
+* Add `convex/sdk/vnext/contracts.ts`
+* Add `specBuilder.ts`:
+
+  * parse user request + existing project metadata → TargetPlanSpec
+  * enforce `requiredElementCount` if user requested exact count
+* Add `artifactStore.ts`:
+
+  * store artifacts per runId + stageKey (can be in `agentRuns` events or a new table)
+* Add `pipeline.ts`:
+
+  * runStage(state) → {uiBlocks, nextStageKey, telemetry}
+* Implement validators: `validateBrief`, `validateScope` (minimal)
+* UI: create a new “Pipeline” page (or reuse sdk-agent page) that renders:
+
+  * stage header (Hebrew title)
+  * QuestionBlocks / Review blocks / Continue
+
+### Phase P1 — Scope → Tasks (3–6 days)
+
+**Goal:** eliminate the “6 random elements / 2 ops” failure mode.
+
+* Implement `skillBridge.ts` for:
+
+  * `plan.propose_elements`
+  * `plan.propose_tasks`
+* Implement validators:
+
+  * `validateTasks` (dedup, linkage, duration sanity)
+* Add deterministic merge logic:
+
+  * merge LLM tasks into artifacts by keys
+* Add “scope lock” UI:
+
+  * user can pin elements / rename / reorder
+  * once locked → cannot add extras without unlocking
+
+### Phase P2 — Budget binding + pricing evidence (4–8 days)
+
+**Goal:** pricing never sees “no lines in DB” because pricing reads from staged artifacts.
+
+* Implement `cost.propose_budget_skeleton`
+* Implement `validateBudget` (coverage rules)
+* Implement `pricing.propose_price_updates`
+* Implement `validatePricing`:
+
+  * ensure estimate flags + confidence
+  * ensure evidence links when available (price history / purchases)
+* Add a deterministic “pricing snapshot” builder that feeds quote + compiler
+
+(Your existing accounting/price memory tables already support this.)
+
+### Phase P3 — Ops plan + quote (4–7 days)
+
+**Goal:** logistics/returns never missing; quote is consistently structured.
+
+* Implement `ops.propose_execution_plan`
+* Implement `validateOps` (install/transport/teardown/rentals rules)
+* Implement `quote.write_hebrew_quote`
+* Implement `validateQuote` (reconcile totals, required sections)
+
+### Phase P4 — Audit + compile (3–6 days)
+
+**Goal:** final approval is impossible unless coverage is complete.
+
+* Implement `auditBridge.ts` + `audit.semantic_critic`
+* Implement `validateAudit` (blockers must be fixed/accepted)
+* Implement `compiler.ts`:
+
+  * compile ops deterministically
+  * enforce min coverage (elements+tasks+accounting)
+* UI: final “Approval Package” screen:
+
+  * diff summary in Hebrew
+  * counts: created/updated lines per domain
+  * approve → apply ChangeSet
+
+---
+
+Build the **hybrid vNext pipeline** exactly as above:
+
+* **Determinism where it matters**: gates + compiler + coverage checks.
+* **LLMs where they shine**: ideation + task decomposition + ops realism + Hebrew client quote writing.
+* **UX stays interactive**: questions per stage, explicit locks, no runaway auto-complete.
+
+It’s the best mix of **fast to deliver**, **reliable**, and **maintainable** long-term—because the “truth” is enforced in code, not in prompt vibes.
+
+-

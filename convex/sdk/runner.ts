@@ -185,18 +185,24 @@ async function buildToolHandlers(args: {
         currentDoc: input?.currentDoc,
         newFacts: input?.newFacts ?? [],
         userText: input?.userText,
+        runId: args.runId,
+        conversationId: args.conversationId,
       }),
     'changeset.compile': async (input: any) =>
       args.ctx.runAction(sdkChangeset.compile, {
         projectId: args.projectId,
         intents: input?.intents ?? [],
         context: input?.context,
+        runId: args.runId,
+        conversationId: args.conversationId,
       }),
     'changeset.review': async (input: any) =>
       args.ctx.runAction(sdkChangeset.review, {
         projectId: args.projectId,
         changeSetId: input?.changeSetId,
         changeSet: input?.changeSet,
+        runId: args.runId,
+        conversationId: args.conversationId,
       }),
     'changeset.apply': async (input: any) =>
       args.ctx.runAction(sdkChangeset.apply, {
@@ -255,6 +261,7 @@ async function runAgentInternal(args: {
         model: toolDef.model,
         temperature: toolDef.temperature,
         max_tokens: toolDef.maxTokens,
+        max_completion_tokens: toolDef.maxCompletionTokens,
         messages,
         tools,
         tool_choice: 'auto',
@@ -367,6 +374,7 @@ export async function runToolInternal(args: {
       model: toolDef.model,
       temperature: toolDef.temperature,
       maxTokens: toolDef.maxTokens,
+      maxCompletionTokens: toolDef.maxCompletionTokens,
       projectId: args.projectId,
       conversationId: args.conversationId,
       runId: args.runId,

@@ -1515,11 +1515,17 @@ export default defineSchema({
     conversationId: v.id("agentConversations"),
     skillId: v.string(),
     status: v.union(v.literal("running"), v.literal("succeeded"), v.literal("failed")),
+    phase: v.optional(v.string()),
+    phaseLabel: v.optional(v.string()),
+    phaseDetail: v.optional(v.string()),
     inputParams: v.any(),
     blocks: v.optional(v.any()),
     webPriceOps: v.optional(v.array(v.any())),
     usage: v.optional(v.any()),
     rawModelResponse: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_project", ["projectId"])
@@ -1988,4 +1994,32 @@ export default defineSchema({
   })
     .index("by_run", ["runId"])
     .index("by_run_type", ["runId", "type"]),
+
+  sdkStageArtifacts: defineTable({
+    runId: v.id("sdkRuns"),
+    projectId: v.id("projects"),
+    conversationId: v.id("agentConversations"),
+    stageKey: v.string(),
+    artifact: v.any(),
+    specHash: v.string(),
+    artifactHash: v.string(),
+    status: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_stage", ["runId", "stageKey"])
+    .index("by_project", ["projectId"]),
+
+  sdkStageDecisions: defineTable({
+    runId: v.id("sdkRuns"),
+    conversationId: v.id("agentConversations"),
+    stageKey: v.string(),
+    decisionType: v.string(),
+    payload: v.any(),
+    createdAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_stage", ["runId", "stageKey"])
+    .index("by_run_stage_type", ["runId", "stageKey", "decisionType"]),
 });

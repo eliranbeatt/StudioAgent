@@ -58,6 +58,17 @@ function buildPromptCacheOptions(args: {
   };
 }
 
+function getSkillPhaseDetail(skillId: string, skillLabel?: string) {
+  const map: Record<string, string> = {
+    ELEMENTS_BUILDER_FULL: "Building elements",
+    TASKS_BUILDER_FULL: "Breaking down tasks",
+    CONTEXT_GENERATION: "Building context and clarifications",
+    CONSULTANT_CHAT: "Drafting response",
+    RESEARCH_PRICING_ESTIMATES_WEB: "Collecting web pricing data",
+  };
+  return map[skillId] ?? `Running ${skillLabel ?? skillId}`;
+}
+
 // --- Public API (Action) ---
 
 export const runSkill = action({
@@ -125,6 +136,13 @@ export const runSkill = action({
       agentData: !!skillData.skill.config.allowedTools?.agentData,
     };
 
+    await ctx.runMutation(internal.skills.runner.setRunProgress, {
+      runId,
+      phase: "loading_context",
+      phaseLabel: "Loading project context",
+      phaseDetail: "Collecting relevant data for this skill",
+    });
+
     // 3. Build Context (Query)
     const context = !useCtxPacks
       ? await ctx.runQuery(internal.skills.runner.buildContext, { projectId, params, skillId })
@@ -152,7 +170,19 @@ export const runSkill = action({
       const systemPrompt = buildSystemPrompt(skillData.skill, promptContext);
 
       if (skillId === "HELLO_WORLD_TEST") {
+        await ctx.runMutation(internal.skills.runner.setRunProgress, {
+          runId,
+          phase: "running_model",
+          phaseLabel: "Running skill model",
+          phaseDetail: getSkillPhaseDetail(skillId, skillData.skill.labelHe),
+        });
         const blocks = await callHelloWorldAgent(systemPrompt, skillData.skill.model, skillData.skill.llmParams);
+        await ctx.runMutation(internal.skills.runner.setRunProgress, {
+          runId,
+          phase: "building_output",
+          phaseLabel: "Building response",
+          phaseDetail: "Formatting output blocks",
+        });
         const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
           runId,
           conversationId,
@@ -183,6 +213,12 @@ export const runSkill = action({
         : undefined;
 
       if (skillId === "CONTEXT_GENERATION") {
+        await ctx.runMutation(internal.skills.runner.setRunProgress, {
+          runId,
+          phase: "running_model",
+          phaseLabel: "Running skill model",
+          phaseDetail: "Generating context document",
+        });
         const docPrompt = `${systemPrompt}\n\nOUTPUT MODE: DOC_ONLY. Return JSON with blocks array containing ONLY ChatBlock.`;
         const docBlocks = await callLLM(
           ctx,
@@ -223,6 +259,12 @@ export const runSkill = action({
             clarifications: clarification,
           };
         const questionsPrompt = `${buildSystemPrompt(skillData.skill, updatedContext)}\n\nOUTPUT MODE: QUESTIONS_ONLY. Return JSON with blocks array containing ONLY QuestionsBlock. Base questions on updated currentKnowledge + qaPairs + userInput.`;
+        await ctx.runMutation(internal.skills.runner.setRunProgress, {
+          runId,
+          phase: "running_model",
+          phaseLabel: "Running skill model",
+          phaseDetail: "Generating clarification questions",
+        });
         const questionBlocks = await callLLM(
           ctx,
           questionsPrompt,
@@ -246,6 +288,13 @@ export const runSkill = action({
           ...questionBlocks.filter((b: any) => b.type === "QuestionsBlock")
         ];
 
+        await ctx.runMutation(internal.skills.runner.setRunProgress, {
+          runId,
+          phase: "building_output",
+          phaseLabel: "Building response",
+          phaseDetail: "Combining context and questions",
+        });
+
         const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
           runId,
           conversationId,
@@ -263,6 +312,12 @@ export const runSkill = action({
         return savedBlocks;
       }
 
+      await ctx.runMutation(internal.skills.runner.setRunProgress, {
+        runId,
+        phase: "running_model",
+        phaseLabel: "Running skill model",
+        phaseDetail: getSkillPhaseDetail(skillId, skillData.skill.labelHe),
+      });
       const blocks = await callLLM(
         ctx,
         systemPrompt,
@@ -280,6 +335,13 @@ export const runSkill = action({
           traceMeta,
         }
       );
+
+      await ctx.runMutation(internal.skills.runner.setRunProgress, {
+        runId,
+        phase: "building_output",
+        phaseLabel: "Building response",
+        phaseDetail: "Formatting output blocks",
+      });
 
       // 5. Save Result (Mutation)
       const savedBlocks = await ctx.runMutation(internal.skills.runner.saveRunResult, {
@@ -441,6 +503,21 @@ export const listAgentMessages = query({
   }
 });
 
+export const getActiveConversationRun = query({
+  args: { conversationId: v.id("agentConversations") },
+  handler: async (ctx, args) => {
+    const runs = await ctx.db
+      .query("skillRuns")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .filter((q) => q.eq(q.field("status"), "running"))
+      .collect();
+
+    if (runs.length === 0) return null;
+    runs.sort((a: any, b: any) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    return runs[0];
+  }
+});
+
 export const getSkillAndGateStatus = internalQuery({
   args: { projectId: v.id("projects"), conversationId: v.id("agentConversations"), skillId: v.string() },
   handler: async (ctx, args) => {
@@ -470,15 +547,38 @@ export const getSkillAndGateStatus = internalQuery({
 export const createRun = internalMutation({
   args: { projectId: v.id("projects"), conversationId: v.id("agentConversations"), skillId: v.string(), params: v.any() },
   handler: async (ctx, args) => {
+    const now = Date.now();
     return await ctx.db.insert("skillRuns", {
       projectId: args.projectId,
       conversationId: args.conversationId,
       skillId: args.skillId,
       status: "running",
+      phase: "queued",
+      phaseLabel: "Queued skill",
+      phaseDetail: "Preparing run",
       inputParams: args.params,
-      createdAt: Date.now(),
+      startedAt: now,
+      updatedAt: now,
+      createdAt: now,
     });
   }
+});
+
+export const setRunProgress = internalMutation({
+  args: {
+    runId: v.id("skillRuns"),
+    phase: v.string(),
+    phaseLabel: v.string(),
+    phaseDetail: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, {
+      phase: args.phase,
+      phaseLabel: args.phaseLabel,
+      phaseDetail: args.phaseDetail,
+      updatedAt: Date.now(),
+    });
+  },
 });
 
 export const buildContext = internalQuery({
@@ -741,6 +841,8 @@ export const saveRunResult = internalMutation({
   },
   handler: async (ctx, args) => {
     let blocks = sanitizeKeys(args.blocks);
+    const now = Date.now();
+    const hasChangeSetBlock = Array.isArray(blocks) && blocks.some((b: any) => b?.type === "ChangeSetBlock");
 
     const run = await ctx.db.get(args.runId);
     // Removed isPricingSkill logic that forced webPriceOps into the blocks.
@@ -986,6 +1088,15 @@ export const saveRunResult = internalMutation({
       });
     };
 
+    if (hasChangeSetBlock) {
+      await ctx.db.patch(args.runId, {
+        phase: "creating_changeset",
+        phaseLabel: "Creating change set",
+        phaseDetail: "Converting model output into executable ops",
+        updatedAt: Date.now(),
+      });
+    }
+
     // Post-process ChangeSets
     for (const block of blocks) {
       if (block.type === "ChangeSetBlock" && block.changeSet) {
@@ -1193,7 +1304,12 @@ export const saveRunResult = internalMutation({
 
     await ctx.db.patch(args.runId, {
       status: "succeeded",
+      phase: "finalizing",
+      phaseLabel: "Finalizing run",
+      phaseDetail: "Saving results to conversation",
       blocks: blocks,
+      updatedAt: Date.now(),
+      finishedAt: now,
     });
 
     await ctx.db.insert("agentMessages", {
@@ -1202,6 +1318,13 @@ export const saveRunResult = internalMutation({
       blocks: blocks,
       runId: args.runId,
       createdAt: Date.now(),
+    });
+
+    await ctx.db.patch(args.runId, {
+      phase: "done",
+      phaseLabel: "Done",
+      phaseDetail: "Response delivered",
+      updatedAt: Date.now(),
     });
 
     return blocks;
@@ -1213,7 +1336,12 @@ export const failRun = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.runId, {
       status: "failed",
+      phase: "failed",
+      phaseLabel: "Run failed",
+      phaseDetail: "An error interrupted this run",
       rawModelResponse: args.error,
+      updatedAt: Date.now(),
+      finishedAt: Date.now(),
     });
   }
 });

@@ -9,6 +9,8 @@ import { runToolInternal } from './runner';
 import { assertAsciiKeys } from './schemas';
 import { searchWeb } from '../lib/webSearch';
 import { completionWithTracing } from '../lib/llm';
+import { runVNextStage } from './vnext/pipeline';
+import { getNextVNextStage, normalizeVNextStage } from './vnext/stages';
 
 const MAX_TOOL_LOOPS = 6;
 
@@ -41,6 +43,152 @@ function buildReviewBlock(args: { titleHe: string; summaryHe?: string; risks?: a
     ],
     risksHe,
   };
+}
+
+function collectIntentsFromResult(result: any): any[] {
+  const out: any[] = [];
+  if (result?.intent) out.push(result.intent);
+  if (Array.isArray(result?.intents)) out.push(...result.intents);
+  if (Array.isArray(result?.fixIntents)) out.push(...result.fixIntents);
+  if (Array.isArray(result?.repairIntents)) out.push(...result.repairIntents);
+  return out.filter(Boolean);
+}
+
+function normalizeReviewIssues(review: any): any[] {
+  if (!review) return [];
+  if (Array.isArray(review.issues)) return review.issues;
+  const errors = Array.isArray(review.errors) ? review.errors : [];
+  const warnings = Array.isArray(review.warnings) ? review.warnings : [];
+  return [...errors, ...warnings];
+}
+
+function detectSeverity(item: any): 'critical' | 'high' | 'medium' | 'low' {
+  const raw = String(
+    item?.severity ??
+    item?.level ??
+    item?.risk ??
+    item?.priority ??
+    ''
+  ).toLowerCase();
+  if (raw.includes('critical')) return 'critical';
+  if (raw.includes('high')) return 'high';
+  if (raw.includes('low')) return 'low';
+  if (raw.includes('medium')) return 'medium';
+
+  const text = String(item?.messageHe ?? item?.message ?? item?.labelHe ?? '').toLowerCase();
+  if (
+    text.includes('אין כלל') ||
+    text.includes('missing') ||
+    text.includes('duplicate') ||
+    text.includes('סתירה')
+  ) {
+    return 'high';
+  }
+  return 'medium';
+}
+
+function summarizeChangeSetCoverage(changeSet: any) {
+  const ops = Array.isArray(changeSet?.ops) ? changeSet.ops : [];
+  const entities = ops.map((op: any) => String(op?.entity ?? '').toLowerCase());
+  return {
+    opCount: ops.length,
+    hasElements: entities.includes('element'),
+    hasTasks: entities.includes('task'),
+    hasAccounting:
+      entities.includes('materialline') ||
+      entities.includes('workline'),
+  };
+}
+
+function extractQuestionTexts(text: string): string[] {
+  const source = String(text ?? '').trim();
+  if (!source) return [];
+  const lines = source
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const direct = lines.filter((line) => line.includes('?'));
+  if (direct.length > 0) return direct.slice(0, 3);
+  const sentenceMatches = source.match(/[^?]+\?/g) ?? [];
+  return sentenceMatches.map((s) => s.trim()).filter(Boolean).slice(0, 3);
+}
+
+function buildFallbackSuggestionBlock(isPlanningRequest: boolean) {
+  if (isPlanningRequest) {
+    return {
+      type: 'SuggestionsBlock',
+      titleHe: 'פעולות המשך',
+      suggestions: [
+        {
+          id: 's_plan_elements',
+          labelHe: 'להפיק אלמנטים',
+          whyHe: 'מייצר רשימת אלמנטים מסודרת מהבריף',
+          payload: { action: 'plan.elements' },
+        },
+        {
+          id: 's_plan_tasks',
+          labelHe: 'להפיק משימות',
+          whyHe: 'מפרק את האלמנטים למשימות עבודה',
+          payload: { action: 'plan.tasks' },
+        },
+        {
+          id: 's_compile_changeset',
+          labelHe: 'לקמפל ChangeSet',
+          whyHe: 'מייצר סט שינויים ישים לאישור',
+          payload: { action: 'changeset.compile' },
+        },
+      ],
+      freeTextPromptHe: 'אם יש תיקון נקודתי, כתוב לי מה לשנות.',
+    };
+  }
+
+  return {
+    type: 'SuggestionsBlock',
+    titleHe: 'פעולות המשך',
+    suggestions: [
+      {
+        id: 's_continue',
+        labelHe: 'להמשיך',
+        whyHe: 'נמשיך לצעד הבא באופן ממוקד',
+      },
+    ],
+    freeTextPromptHe: 'כתוב מה תרצה שאעשה עכשיו.',
+  };
+}
+
+function ensureMinimumBlocks(args: {
+  blocks: any;
+  summaryHe?: string;
+  rawText?: string;
+  isPlanningRequest: boolean;
+}) {
+  const blocks = Array.isArray(args.blocks) ? args.blocks.filter(Boolean) : [];
+  if (blocks.length > 0) return blocks;
+
+  const sourceText = String(args.rawText ?? args.summaryHe ?? '').trim();
+  const questionTexts = extractQuestionTexts(sourceText);
+  if (questionTexts.length > 0) {
+    return [
+      {
+        type: 'QuestionsBlock',
+        titleHe: 'שאלות להמשך',
+        questions: questionTexts.map((textHe, i) => ({
+          id: `q_auto_${i + 1}`,
+          textHe,
+          type: 'text',
+        })),
+      },
+    ];
+  }
+
+  if (sourceText) {
+    return [
+      { type: 'ChatBlock', markdownHe: sourceText },
+      buildFallbackSuggestionBlock(args.isPlanningRequest),
+    ];
+  }
+
+  return [buildFallbackSuggestionBlock(args.isPlanningRequest)];
 }
 
 const STAGE_ORDER = ['intake', 'planning', 'costing', 'quote', 'review', 'execution'] as const;
@@ -239,6 +387,9 @@ export const runNext = action({
     userMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const flags = await ctx.runQuery(api.featureFlags.getAll, {});
+    const useVNextPipeline = Boolean(flags?.ff_sdk_vnext_pipeline);
+
     const sdkApi = (api as any)['sdk/api'] ?? (api as any).sdk?.api;
     const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
     const sdkChangeset = (api as any)['sdk/changeset'] ?? (api as any).sdk?.changeset;
@@ -255,7 +406,16 @@ export const runNext = action({
       return { status: run.status };
     }
 
-    if (args.userMessage) {
+    // Handle blocked state - return early to avoid infinite loops
+    if (run.status === 'blocked') {
+      return {
+        status: 'blocked',
+        lastError: run.lastError,
+        pendingChangeSetId: run.pendingChangeSetId,
+      };
+    }
+
+    if (args.userMessage && args.userMessage !== '__continue__') {
       await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
         conversationId: args.conversationId,
         role: 'user',
@@ -266,6 +426,64 @@ export const runNext = action({
 
     if (run.status === 'awaiting_approval') {
       return { status: 'awaiting_approval', pendingChangeSetId: run.pendingChangeSetId };
+    }
+
+    if (useVNextPipeline) {
+      let effectiveRun = run;
+      if (args.userMessage === '__continue__') {
+        const currentStage = normalizeVNextStage(run.stageKey);
+        const stageArtifact = await ctx.runQuery(
+          internal['sdk/vnext/artifacts'].getStageArtifactByRunStage,
+          {
+            runId: args.runId,
+            stageKey: currentStage,
+          }
+        );
+        const canAdvance = stageArtifact?.status === 'ready_for_checkpoint';
+        const nextStage = canAdvance ? getNextVNextStage(currentStage) : null;
+        if (nextStage) {
+          await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+            runId: args.runId,
+            stageKey: nextStage,
+            status: 'running',
+            currentAgentName: 'vnext_pipeline',
+          });
+          effectiveRun = { ...run, stageKey: nextStage, status: 'running' };
+        } else {
+          await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+            runId: args.runId,
+            status: 'running',
+            currentAgentName: 'vnext_pipeline',
+          });
+        }
+      }
+
+      const result = await runVNextStage({
+        ctx,
+        projectId: args.projectId,
+        conversationId: args.conversationId,
+        run: effectiveRun,
+        runId: args.runId,
+        userMessage: args.userMessage,
+      });
+
+      await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+        conversationId: args.conversationId,
+        role: 'assistant',
+        text: `vNext stage ${result.stageKey}: ${result.status}`,
+        blocks: result.blocks,
+        runId: args.runId,
+      });
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'vnext_stage_result',
+        payload: result,
+      });
+
+      return {
+        status: 'success',
+        output: result,
+      };
     }
 
     const pendingIntents: any[] = [];
@@ -284,6 +502,22 @@ export const runNext = action({
       conversationId: args.conversationId,
       limit: 50,
     });
+
+    const isPlanningRequest = (text: string): boolean => {
+      const patterns = [
+        '×ª×›× ×Ÿ', 'plan', '×”×ª×—×œ', 'start', '×¦×•×¨', 'create', '×‘× ×”', 'build',
+        '×¢×©×”', 'do', '×”×›×Ÿ', 'prepare', '×ª×¢×©×”', '×™××œ×œ×”', '×§×“×™×ž×”', 'go',
+        '××œ×ž× ×˜×™×', 'elements', '×ž×©×™×ž×•×ª', 'tasks', '×ª×§×¦×™×‘', 'budget',
+        '×”×¦×¢×ª ×ž×—×™×¨', 'quote', '×ª×ž×—×•×¨', 'pricing'
+      ];
+      const lower = (text || '').toLowerCase();
+      return patterns.some(p => lower.includes(p.toLowerCase()));
+    };
+
+    const lastUserMsg = args.userMessage ||
+      history.filter((m: any) => m.role === 'user').slice(-1)[0]?.text || '';
+    const shouldForceTools = isPlanningRequest(lastUserMsg);
+    const strictFullPlanMode = shouldForceTools;
 
     const bootstrapContext = await ctx.runQuery(sdkApi.contextGet, {
       projectId: args.projectId,
@@ -315,6 +549,8 @@ export const runNext = action({
           currentDoc: input?.currentDoc,
           newFacts: input?.newFacts ?? [],
           userText: input?.userText,
+          runId: args.runId,
+          conversationId: args.conversationId,
         }),
       'changeset.compile': async (input: any) => {
         const intents = Array.isArray(input?.intents) ? input.intents : [];
@@ -334,17 +570,70 @@ export const runNext = action({
           projectId: args.projectId,
           intents,
           context: input?.context,
+          runId: args.runId,
+          conversationId: args.conversationId,
         });
 
         if (result?.changeSetId && !run.shadowMode) {
           const blocks: any[] = [];
+          const coverage = summarizeChangeSetCoverage(result?.changeSet);
+          const coverageIssues: string[] = [];
+          if (strictFullPlanMode && !coverage.hasElements) {
+            coverageIssues.push('חסרות פעולות אלמנטים ב-ChangeSet');
+          }
+          if (strictFullPlanMode && !coverage.hasTasks) {
+            coverageIssues.push('חסרות פעולות משימות ב-ChangeSet');
+          }
+          if (strictFullPlanMode && !coverage.hasAccounting) {
+            coverageIssues.push('חסרות פעולות תמחור/הנהלת חשבונות (material/work lines) ב-ChangeSet');
+          }
+          if (coverageIssues.length > 0) {
+            await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+              runId: args.runId,
+              type: 'changeset_coverage_failed',
+              payload: {
+                changeSetId: result.changeSetId,
+                coverage,
+                issues: coverageIssues,
+              },
+            });
+            blocks.push(
+              buildReviewBlock({
+                titleHe: 'בדיקת שלמות ChangeSet',
+                summaryHe: 'ה-ChangeSet לא מכסה את כל הרכיבים הנדרשים לבקשה.',
+                risks: coverageIssues,
+              })
+            );
+            await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+              runId: args.runId,
+              status: 'blocked',
+              pendingChangeSetId: result.changeSetId,
+              approvalToken: undefined,
+              lastError: 'CHANGESET_INCOMPLETE',
+            });
+            await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+              conversationId: args.conversationId,
+              role: 'assistant',
+              text: 'ה-ChangeSet לא שלם. נדרש תיקון לפני אישור.',
+              blocks,
+              runId: args.runId,
+            });
+            return {
+              ...result,
+              error: 'CHANGESET_INCOMPLETE',
+              coverage,
+            };
+          }
           let auditResult: any = null;
           try {
             auditResult = await runToolInternal({
               ctx,
               projectId: args.projectId,
               toolId: 'audit.project',
-              input: { changeSetId: result.changeSetId },
+              input: {
+                changeSetId: result.changeSetId,
+                changeSet: result.changeSet,
+              },
               runId: args.runId,
               conversationId: args.conversationId,
             });
@@ -369,24 +658,70 @@ export const runNext = action({
                 risks: auditResult.findings,
               })
             );
+
+            const findings = Array.isArray(auditResult.findings) ? auditResult.findings : [];
+            const highOrCriticalFindings = findings.filter((item: any) => {
+              const severity = detectSeverity(item);
+              return severity === 'critical' || severity === 'high';
+            });
+            if (highOrCriticalFindings.length > 0) {
+              const fixIntents = Array.isArray(auditResult.fixIntents) ? auditResult.fixIntents : [];
+              if (!input?.autoRepairAttempt && fixIntents.length > 0) {
+                await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+                  runId: args.runId,
+                  type: 'audit_autorepair_attempt',
+                  payload: {
+                    changeSetId: result.changeSetId,
+                    findingCount: findings.length,
+                    fixIntentCount: fixIntents.length,
+                  },
+                });
+                return await toolHandlers['changeset.compile']({
+                  intents: [...intents, ...fixIntents],
+                  context: input?.context,
+                  autoRepairAttempt: true,
+                });
+              }
+
+              await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+                runId: args.runId,
+                status: 'blocked',
+                pendingChangeSetId: result.changeSetId,
+                approvalToken: undefined,
+                lastError: 'AUDIT_BLOCKED',
+              });
+              await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+                conversationId: args.conversationId,
+                role: 'assistant',
+                text: 'הביקורת מצאה כשלים מהותיים. נדרש תיקון לפני אישור.',
+                blocks,
+                runId: args.runId,
+              });
+              return {
+                ...result,
+                error: 'AUDIT_BLOCKED',
+                auditFindings: findings,
+              };
+            }
           }
 
           const review = await ctx.runAction(sdkChangeset.review, {
             projectId: args.projectId,
             changeSetId: result.changeSetId,
+            runId: args.runId,
+            conversationId: args.conversationId,
           });
 
+          const reviewIssues = normalizeReviewIssues(review);
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
             runId: args.runId,
             type: 'changeset_review',
             payload: {
               changeSetId: result.changeSetId,
-              issues: review?.issues ?? [],
+              issues: reviewIssues,
               summaryHe: review?.summaryHe,
             },
           });
-
-          const reviewIssues = Array.isArray(review?.issues) ? review.issues : [];
           blocks.push(
             buildReviewBlock({
               titleHe: 'בדיקת ChangeSet',
@@ -443,6 +778,8 @@ export const runNext = action({
           projectId: args.projectId,
           changeSetId: input?.changeSetId,
           changeSet: input?.changeSet,
+          runId: args.runId,
+          conversationId: args.conversationId,
         }),
       'changeset.apply': async (input: any) => {
         const reviewEvent = await ctx.runQuery(internal.sdk.queries.getLatestReviewForRun, {
@@ -498,24 +835,132 @@ export const runNext = action({
     const toolNameMap = new Map<string, string>();
     const tools = buildToolDefinitions(orchestrator.allowedTools ?? [], toolNameMap);
 
-    // Detect if user is asking to plan/create/build - force tool usage
-    const isPlanningRequest = (text: string): boolean => {
-      const patterns = [
-        'תכנן', 'plan', 'התחל', 'start', 'צור', 'create', 'בנה', 'build',
-        'עשה', 'do', 'הכן', 'prepare', 'תעשה', 'יאללה', 'קדימה', 'go',
-        'אלמנטים', 'elements', 'משימות', 'tasks', 'תקציב', 'budget',
-        'הצעת מחיר', 'quote', 'תמחור', 'pricing'
-      ];
-      const lower = (text || '').toLowerCase();
-      return patterns.some(p => lower.includes(p.toLowerCase()));
-    };
+    if (strictFullPlanMode) {
+      const deterministicIntents: any[] = [];
+      const planningPayload = {
+        userText: lastUserMsg,
+        context: bootstrapContext,
+      };
+      const deterministicTools = ['plan.elements', 'plan.tasks', 'cost.build_budget'];
+      for (const toolId of deterministicTools) {
+        let toolResult: any;
+        try {
+          toolResult = await runToolInternal({
+            ctx,
+            projectId: args.projectId,
+            toolId,
+            input: planningPayload,
+            runId: args.runId,
+            conversationId: args.conversationId,
+          });
+        } catch (error: any) {
+          toolResult = { error: error?.message ?? String(error) };
+        }
 
-    // Check last user message to determine if we should force tool usage
-    const lastUserMsg = args.userMessage ||
-      history.filter((m: any) => m.role === 'user').slice(-1)[0]?.text || '';
-    const shouldForceTools = isPlanningRequest(lastUserMsg);
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'deterministic_tool_result',
+          payload: {
+            toolId,
+            ok: !toolResult?.error,
+          },
+        });
+
+        if (toolResult?.error) {
+          await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+            runId: args.runId,
+            status: 'blocked',
+            approvalToken: undefined,
+            lastError: `DETERMINISTIC_TOOL_FAILED:${toolId}`,
+          });
+          const blocks = [
+            buildReviewBlock({
+              titleHe: 'כשלון בתכנון דטרמיניסטי',
+              summaryHe: `הכלי ${toolId} נכשל`,
+              risks: [String(toolResult.error)],
+            }),
+          ];
+          await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+            conversationId: args.conversationId,
+            role: 'assistant',
+            text: 'התהליך נעצר בגלל שגיאת כלי. נדרש תיקון.',
+            blocks,
+            runId: args.runId,
+          });
+          return {
+            status: 'success',
+            output: { summaryHe: 'Pipeline blocked', blocks },
+          };
+        }
+
+        const intents = collectIntentsFromResult(toolResult);
+        if (intents.length > 0) deterministicIntents.push(...intents);
+      }
+
+      if (deterministicIntents.length === 0) {
+        await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+          runId: args.runId,
+          status: 'blocked',
+          approvalToken: undefined,
+          lastError: 'NO_INTENTS_FROM_PIPELINE',
+        });
+        const blocks = [
+          buildReviewBlock({
+            titleHe: 'כשלון יצירת אינטנטים',
+            summaryHe: 'לא נוצרו אינטנטים תקינים לתכנון',
+            risks: ['NO_INTENTS_FROM_PIPELINE'],
+          }),
+        ];
+        await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+          conversationId: args.conversationId,
+          role: 'assistant',
+          text: 'לא נוצרו אינטנטים. התהליך נעצר כדי למנוע לולאות מיותרות.',
+          blocks,
+          runId: args.runId,
+        });
+        return {
+          status: 'success',
+          output: { summaryHe: 'Pipeline blocked', blocks },
+        };
+      }
+
+      const compileResult = await toolHandlers['changeset.compile']({
+        intents: deterministicIntents,
+        context: bootstrapContext,
+      });
+
+      if (compileResult?.error && !compileResult?.changeSetId) {
+        await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+          runId: args.runId,
+          status: 'blocked',
+          approvalToken: undefined,
+          lastError: 'CHANGESET_COMPILE_FAILED',
+        });
+        const blocks = [
+          buildReviewBlock({
+            titleHe: 'כשלון קומפילציית ChangeSet',
+            summaryHe: 'לא ניתן להפיק ChangeSet תקין',
+            risks: [String(compileResult.error)],
+          }),
+        ];
+        await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+          conversationId: args.conversationId,
+          role: 'assistant',
+          text: 'לא ניתן להשלים שינויי מערכת. התהליך נעצר לתיקון.',
+          blocks,
+          runId: args.runId,
+        });
+      }
+
+      return {
+        status: 'success',
+        output: compileResult,
+      };
+    }
 
     let finalContent: string | null = null;
+    let lastToolSignature: string | null = null;
+    let repeatedToolSignatureCount = 0;
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('Missing OPENAI_API_KEY');
     }
@@ -551,6 +996,38 @@ export const runNext = action({
 
       if (message.tool_calls && message.tool_calls.length > 0) {
         let toolCalledCompile = false;
+        const currentToolSignature = message.tool_calls
+          .map((call: any) => String(call?.function?.name ?? ''))
+          .sort()
+          .join('|');
+        if (currentToolSignature && currentToolSignature === lastToolSignature) {
+          repeatedToolSignatureCount += 1;
+        } else {
+          repeatedToolSignatureCount = 0;
+          lastToolSignature = currentToolSignature;
+        }
+        if (repeatedToolSignatureCount >= 2) {
+          finalContent = JSON.stringify({
+            summaryHe: 'התהליך נעצר כדי למנוע לולאה חוזרת ללא התקדמות.',
+            blocks: [
+              buildReviewBlock({
+                titleHe: 'זוהתה לולאת כלים',
+                summaryHe: 'אותו רצף כלים חזר מספר פעמים ללא התקדמות.',
+                risks: ['REPEATED_TOOL_SEQUENCE'],
+              }),
+              buildFallbackSuggestionBlock(false),
+            ],
+          });
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'loop_guard_triggered',
+            payload: {
+              signature: currentToolSignature,
+              repeatCount: repeatedToolSignatureCount,
+            },
+          });
+          break;
+        }
         messages.push({
           role: 'assistant',
           content: message.content ?? '',
@@ -583,8 +1060,9 @@ export const runNext = action({
             result = { error: error?.message ?? String(error) };
           }
 
-          if (result?.intent) {
-            pendingIntents.push(result.intent);
+          const intentsFromResult = collectIntentsFromResult(result);
+          if (intentsFromResult.length > 0) {
+            pendingIntents.push(...intentsFromResult);
           }
 
           messages.push({
@@ -765,8 +1243,10 @@ Then call changeset.compile to create the ChangeSet.`
 
       // Handle tool calls from recovery
       if (recoveryMessage?.tool_calls?.length) {
+        let recoveryCalledCompile = false;
         for (const toolCall of recoveryMessage.tool_calls) {
           const originalName = toolNameMap.get(toolCall.function.name) ?? toolCall.function.name;
+          if (originalName === 'changeset.compile') recoveryCalledCompile = true;
           let toolArgs: any = {};
           try {
             toolArgs = JSON.parse(toolCall.function.arguments || '{}');
@@ -775,6 +1255,10 @@ Then call changeset.compile to create the ChangeSet.`
           const handler = toolHandlers[originalName];
           if (handler) {
             const result = await handler(toolArgs.input ?? toolArgs);
+            const intentsFromResult = collectIntentsFromResult(result);
+            if (intentsFromResult.length > 0) {
+              pendingIntents.push(...intentsFromResult);
+            }
             messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -782,11 +1266,28 @@ Then call changeset.compile to create the ChangeSet.`
             });
 
             // If tool returned structured output, use it
-            if (result?.blocks || result?.intents) {
+            if (result?.blocks || result?.intent || result?.intents) {
               parsed = result;
               summaryHe = result.summaryHe ?? result.contentHe ?? 'תוצאה מהסוכן';
               blocks = result.blocks ?? [];
             }
+          }
+        }
+        if (!recoveryCalledCompile && pendingIntents.length > 0 && !autoCompiled) {
+          autoCompiled = true;
+          let compileResult: any;
+          try {
+            compileResult = await toolHandlers['changeset.compile']({
+              intents: pendingIntents,
+            });
+          } catch (error: any) {
+            compileResult = { error: error?.message ?? String(error) };
+          }
+
+          if (compileResult?.blocks || compileResult?.intent || compileResult?.intents) {
+            parsed = compileResult;
+            summaryHe = compileResult.summaryHe ?? compileResult.contentHe ?? 'תוצאה מהסוכן';
+            blocks = compileResult.blocks ?? blocks;
           }
         }
       } else if (recoveryMessage?.content) {
@@ -803,6 +1304,13 @@ Then call changeset.compile to create the ChangeSet.`
         }
       }
     }
+
+    blocks = ensureMinimumBlocks({
+      blocks,
+      summaryHe,
+      rawText: finalContent ?? summaryHe,
+      isPlanningRequest: shouldForceTools,
+    });
 
     await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
       conversationId: args.conversationId,
@@ -847,3 +1355,4 @@ Then call changeset.compile to create the ChangeSet.`
     };
   },
 });
+
