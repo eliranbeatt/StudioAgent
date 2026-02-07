@@ -13,6 +13,7 @@ import { runSemanticAudit } from './auditBridge'
 import { compileDeterministicChangeSet } from './compiler'
 import { buildTargetPlanSpec } from './specBuilder'
 import { runStageSkills } from './skillBridge'
+import { computeStageProgress, MAX_NO_PROGRESS_CYCLES, shouldTriggerNoProgressGuard } from './progress'
 import { getNextVNextStage, normalizeVNextStage, VNEXT_STAGE_META } from './stages'
 import { validateAudit } from './validators/validateAudit'
 import { validateBrief } from './validators/validateBrief'
@@ -24,8 +25,6 @@ import { validatePricing } from './validators/validatePricing'
 import { validateQuote } from './validators/validateQuote'
 import { validateScope } from './validators/validateScope'
 import { validateTasks } from './validators/validateTasks'
-
-const MAX_STAGE_ATTEMPTS = 2
 
 function stableHash(input: string) {
   let h = 2166136261
@@ -87,6 +86,163 @@ function buildSuggestionsBlock(nextStageKey: VNextStageKey | null) {
   }
 }
 
+function isHardBlockingStage(stageKey: VNextStageKey) {
+  return stageKey === 'compile' || stageKey === 'audit'
+}
+
+function buildNoProgressQuestions(stageKey: VNextStageKey, noProgressCount: number) {
+  return [
+    {
+      id: 'no_progress_guard',
+      textHe: `לא זוהתה התקדמות בשלב ${stageKey} במשך ${noProgressCount} סבבים. מה חסר כדי להמשיך?`,
+      type: 'text',
+    },
+  ]
+}
+
+type PricingQueueStatus = 'pending' | 'priced' | 'estimated' | 'failed'
+
+type PricingQueueItem = {
+  itemKey: string
+  lineKey: string
+  lineId?: string
+  lineTempOrId?: string
+  titleHe: string
+  itemName: string
+  qty: number
+  status: PricingQueueStatus
+  attempts: number
+  unitPrice?: number
+  currency?: 'ILS' | 'USD' | 'EUR'
+  confidence?: 'high' | 'medium' | 'low'
+  assumptionHe?: string
+  sourceType?: 'catalog' | 'logged' | 'web' | 'fallback'
+  reasonHe?: string
+  updatedAt?: number
+}
+
+function toLineKey(line: any, index: number) {
+  return String(
+    line?.lineKey ??
+    line?._id ??
+    line?.lineId ??
+    line?.id ??
+    line?.lineTempOrId ??
+    `line_${index + 1}`
+  )
+}
+
+function adaptivePricingBatchSize(totalItems: number) {
+  if (totalItems <= 3) return totalItems
+  if (totalItems <= 10) return 3
+  if (totalItems <= 25) return 6
+  return 10
+}
+
+function normalizePricingQueue(currentArtifact: any, artifacts: StageArtifactMap): PricingQueueItem[] {
+  const existingQueue = Array.isArray(currentArtifact?.workQueue) ? currentArtifact.workQueue : null
+  if (existingQueue && existingQueue.length > 0) {
+    return existingQueue.map((item: any, index: number) => ({
+      itemKey: String(item?.itemKey ?? item?.lineKey ?? `item_${index + 1}`),
+      lineKey: String(item?.lineKey ?? item?.itemKey ?? `line_${index + 1}`),
+      lineId: item?.lineId ? String(item.lineId) : undefined,
+      lineTempOrId: item?.lineTempOrId ? String(item.lineTempOrId) : undefined,
+      titleHe: String(item?.titleHe ?? item?.itemName ?? `line ${index + 1}`),
+      itemName: String(item?.itemName ?? item?.titleHe ?? `line ${index + 1}`),
+      qty: Number(item?.qty ?? 1) > 0 ? Number(item?.qty ?? 1) : 1,
+      status: ['pending', 'priced', 'estimated', 'failed'].includes(String(item?.status))
+        ? item.status
+        : 'pending',
+      attempts: Number(item?.attempts ?? 0),
+      unitPrice: typeof item?.unitPrice === 'number' ? item.unitPrice : undefined,
+      currency: item?.currency,
+      confidence: item?.confidence,
+      assumptionHe: item?.assumptionHe,
+      sourceType: item?.sourceType,
+      reasonHe: item?.reasonHe,
+      updatedAt: item?.updatedAt,
+    }))
+  }
+
+  const budgetMaterial = Array.isArray((artifacts.budget as any)?.materialLines)
+    ? (artifacts.budget as any).materialLines
+    : []
+  const budgetWork = Array.isArray((artifacts.budget as any)?.workLines)
+    ? (artifacts.budget as any).workLines
+    : []
+  const budgetLines = [...budgetMaterial, ...budgetWork]
+  return budgetLines.map((line: any, index: number) => {
+    const lineKey = toLineKey(line, index)
+    return {
+      itemKey: lineKey,
+      lineKey,
+      lineId: line?._id ? String(line._id) : undefined,
+      lineTempOrId: line?.lineTempOrId ? String(line.lineTempOrId) : undefined,
+      titleHe: String(line?.titleHe ?? line?.itemName ?? line?.name ?? `line ${index + 1}`),
+      itemName: String(line?.itemName ?? line?.titleHe ?? line?.name ?? `line ${index + 1}`),
+      qty: Number(line?.qty ?? line?.quantity ?? 1) > 0 ? Number(line?.qty ?? line?.quantity ?? 1) : 1,
+      status: 'pending',
+      attempts: 0,
+    } satisfies PricingQueueItem
+  })
+}
+
+function mapRecommendationToQueueItem(item: PricingQueueItem, recommendation: any): PricingQueueItem {
+  const recommendedUnitPrice = Number(
+    recommendation?.recommended?.unitPrice ??
+    recommendation?.unitPrice ??
+    0
+  )
+  const currency = String(
+    recommendation?.recommended?.currency ??
+    recommendation?.currency ??
+    'ILS'
+  ).toUpperCase() as 'ILS' | 'USD' | 'EUR'
+  const confidence = String(recommendation?.confidence ?? '').toLowerCase()
+  const normalizedConfidence: 'high' | 'medium' | 'low' =
+    confidence === 'high' || confidence === 'medium' ? confidence : 'low'
+  const candidates = Array.isArray(recommendation?.candidates) ? recommendation.candidates : []
+  const sourceType = String(candidates[0]?.sourceType ?? '').toLowerCase()
+  const assumptions = Array.isArray(recommendation?.assumptionsHe)
+    ? recommendation.assumptionsHe
+    : []
+  const assumptionHe = assumptions.length > 0
+    ? String(assumptions[0])
+    : String(recommendation?.recommended?.priceBasisHe ?? 'Estimated pricing assumption')
+  const hasPrice = Number.isFinite(recommendedUnitPrice) && recommendedUnitPrice > 0
+  const isEstimated =
+    normalizedConfidence === 'low' ||
+    sourceType === 'fallback' ||
+    sourceType.length === 0
+
+  if (!hasPrice) {
+    return {
+      ...item,
+      attempts: item.attempts + 1,
+      status: item.attempts + 1 >= 2 ? 'failed' : 'pending',
+      reasonHe: item.attempts + 1 >= 2
+        ? 'Pricing response returned without a usable unit price'
+        : item.reasonHe,
+      updatedAt: Date.now(),
+    }
+  }
+
+  return {
+    ...item,
+    attempts: item.attempts + 1,
+    unitPrice: recommendedUnitPrice,
+    currency: currency === 'USD' || currency === 'EUR' ? currency : 'ILS',
+    confidence: normalizedConfidence,
+    sourceType: sourceType === 'catalog' || sourceType === 'logged' || sourceType === 'web' || sourceType === 'fallback'
+      ? sourceType
+      : undefined,
+    status: isEstimated ? 'estimated' : 'priced',
+    assumptionHe,
+    reasonHe: isEstimated ? assumptionHe : undefined,
+    updatedAt: Date.now(),
+  }
+}
+
 function validateByStage(args: {
   stageKey: VNextStageKey
   spec: TargetPlanSpec
@@ -123,7 +279,10 @@ function validateByStage(args: {
     })
   }
   if (args.stageKey === 'audit') {
-    return validateAudit({ findings: args.artifact?.findings })
+    return validateAudit({
+      findings: args.artifact?.findings,
+      acceptedRiskNote: args.artifact?.acceptedRiskNote,
+    })
   }
   return { status: 'pass', issues: [], blockingQuestions: [] } as const
 }
@@ -221,68 +380,77 @@ function mergeArtifact(
   }
   if (stageKey === 'pricing') {
     const raw = skillOutputs['pricing.resolve_lines'] ?? {}
-    next.recommendations = Array.isArray(raw?.recommendations) ? raw.recommendations : []
-    next.pricedLines = Array.isArray(raw?.pricedLines) ? raw.pricedLines : next.recommendations
-    if (!Array.isArray(next.pricedLines) || next.pricedLines.length === 0) {
-      const budgetMaterial = Array.isArray((artifacts.budget as any)?.materialLines)
-        ? (artifacts.budget as any).materialLines
-        : []
-      const budgetWork = Array.isArray((artifacts.budget as any)?.workLines)
-        ? (artifacts.budget as any).workLines
-        : []
-      const budgetLines = [...budgetMaterial, ...budgetWork]
-      next.pricedLines = budgetLines.map((line: any, index: number) => {
-        const quantity = Number(line?.qty ?? line?.quantity ?? 1)
-        const totalCost = Number(line?.totalCost ?? line?.cost ?? 0)
-        const directUnitPrice = Number(
-          line?.unitPrice ??
-          line?.plannedUnitCost ??
-          line?.unitCost ??
-          line?.price ??
-          0
-        )
-        const fallbackUnitPrice =
-          totalCost > 0 && quantity > 0 ? totalCost / quantity : 100
-        const unitPrice =
-          Number.isFinite(directUnitPrice) && directUnitPrice > 0
-            ? directUnitPrice
-            : fallbackUnitPrice
-
-        return {
-          lineKey: String(line?.lineKey ?? `priced_line_${index + 1}`),
-          titleHe: String(line?.titleHe ?? line?.itemName ?? line?.name ?? `line ${index + 1}`),
-          itemName: String(line?.itemName ?? line?.titleHe ?? line?.name ?? `line ${index + 1}`),
-          qty: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
-          unitPrice: unitPrice > 0 ? unitPrice : 1,
-          isEstimate: true,
-          assumptionHe: String(line?.assumptionHe ?? 'Auto estimate from budget skeleton'),
-          knownPriceId: line?.knownPriceId,
-          priceObservationId: line?.priceObservationId,
-          purchaseId: line?.purchaseId,
-        }
-      })
-    }
-    next.pricedLines = (Array.isArray(next.pricedLines) ? next.pricedLines : []).map((line: any, index: number) => {
-      const qty = Number(line?.qty ?? line?.quantity ?? 1)
-      const baseUnit = Number(line?.unitPrice ?? line?.plannedUnitCost ?? line?.price ?? 0)
-      const unitPrice = Number.isFinite(baseUnit) && baseUnit > 0 ? baseUnit : 100
-      const hasEvidence = Boolean(line?.knownPriceId || line?.priceObservationId || line?.purchaseId)
-      const isEstimate = hasEvidence ? Boolean(line?.isEstimate) : true
-      const assumptionHe = String(
-        line?.assumptionHe ??
-        (isEstimate ? 'Auto estimate from pricing normalization' : '')
-      )
-      return {
-        ...line,
-        lineKey: String(line?.lineKey ?? `priced_line_${index + 1}`),
-        titleHe: String(line?.titleHe ?? line?.itemName ?? line?.name ?? `line ${index + 1}`),
-        itemName: String(line?.itemName ?? line?.titleHe ?? line?.name ?? `line ${index + 1}`),
-        qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
-        unitPrice,
-        isEstimate,
-        assumptionHe,
+    const recommendations = Array.isArray(raw?.recommendations) ? raw.recommendations : []
+    const currentQueue = normalizePricingQueue(current, artifacts)
+    const recommendationByKey = new Map<string, any>()
+    for (const rec of recommendations) {
+      const lineRef = rec?.lineRef ?? {}
+      const keys = [
+        lineRef?.lineId ? String(lineRef.lineId) : '',
+        lineRef?.lineTempOrId ? String(lineRef.lineTempOrId) : '',
+        rec?.lineKey ? String(rec.lineKey) : '',
+      ].filter(Boolean)
+      for (const key of keys) {
+        recommendationByKey.set(key, rec)
       }
+    }
+
+    const batchKeys = Array.isArray(current?.activeBatchKeys)
+      ? current.activeBatchKeys.map((key: any) => String(key))
+      : []
+    const batchKeySet = new Set(batchKeys)
+    const updatedQueue = currentQueue.map((item) => {
+      const matched = recommendationByKey.get(item.lineId ?? '') ??
+        recommendationByKey.get(item.lineTempOrId ?? '') ??
+        recommendationByKey.get(item.lineKey)
+      if (matched) return mapRecommendationToQueueItem(item, matched)
+      if (batchKeySet.has(item.itemKey) && item.status === 'pending') {
+        const attempts = item.attempts + 1
+        return {
+          ...item,
+          attempts,
+          status: attempts >= 2 ? 'failed' : 'pending',
+          reasonHe: attempts >= 2 ? 'No pricing recommendation was returned for this line' : item.reasonHe,
+          updatedAt: Date.now(),
+        }
+      }
+      return item
     })
+
+    const resolvedLines = updatedQueue
+      .filter((item) => item.status === 'priced' || item.status === 'estimated')
+      .map((item) => ({
+        lineKey: item.lineKey,
+        titleHe: item.titleHe,
+        itemName: item.itemName,
+        qty: item.qty,
+        unitPrice: Number(item.unitPrice ?? 0),
+        currency: item.currency ?? 'ILS',
+        isEstimate: item.status === 'estimated',
+        assumptionHe: String(item.assumptionHe ?? item.reasonHe ?? ''),
+        confidence: item.confidence ?? 'low',
+      }))
+
+    next.recommendations = recommendations
+    next.workQueue = updatedQueue
+    next.pricedLines = resolvedLines
+    next.unresolvedLines = updatedQueue
+      .filter((item) => item.status === 'failed' || item.status === 'pending')
+      .map((item) => ({
+        lineKey: item.lineKey,
+        itemName: item.itemName,
+        status: item.status,
+        reasonHe: item.reasonHe ?? (item.status === 'pending' ? 'Pricing in progress' : 'Missing reason'),
+      }))
+    next.queueSummary = {
+      total: updatedQueue.length,
+      pending: updatedQueue.filter((item) => item.status === 'pending').length,
+      priced: updatedQueue.filter((item) => item.status === 'priced').length,
+      estimated: updatedQueue.filter((item) => item.status === 'estimated').length,
+      failed: updatedQueue.filter((item) => item.status === 'failed').length,
+      activeBatchSize: batchKeys.length,
+    }
+    next.activeBatchKeys = []
     return next
   }
   if (stageKey === 'ops') {
@@ -369,8 +537,13 @@ function buildStageSummary(stageKey: VNextStageKey, artifact: any) {
     return `נבנו ${m} שורות חומרים ו-${w} שורות עבודה`
   }
   if (stageKey === 'pricing') {
-    const count = Array.isArray(artifact?.pricedLines) ? artifact.pricedLines.length : 0
-    return `עודכנו ${count} שורות תמחור`
+    const summary = artifact?.queueSummary ?? {}
+    const total = Number(summary?.total ?? 0)
+    const priced = Number(summary?.priced ?? 0)
+    const estimated = Number(summary?.estimated ?? 0)
+    const pending = Number(summary?.pending ?? 0)
+    const failed = Number(summary?.failed ?? 0)
+    return `Pricing progress ${priced + estimated}/${total} (pending ${pending}, failed ${failed})`
   }
   if (stageKey === 'ops') {
     const count = Array.isArray(artifact?.steps) ? artifact.steps.length : 0
@@ -403,9 +576,16 @@ export async function runVNextStage(args: {
   run: any
   runId: any
   userMessage?: string
+  options?: {
+    softGates?: boolean
+    pricingQueue?: boolean
+    stageBudgets?: boolean
+  }
 }): Promise<VNextStageRunOutput> {
   const stageKey = normalizeVNextStage(args.run.stageKey)
   const stageTitle = VNEXT_STAGE_META[stageKey].titleHe
+  const useSoftGates = args.options?.softGates !== false
+  const usePricingQueue = args.options?.pricingQueue !== false
 
   const projectContext = await args.ctx.runQuery(api.sdk.api.contextGet, {
     projectId: args.projectId,
@@ -426,18 +606,19 @@ export async function runVNextStage(args: {
   for (const row of artifactsRows) {
     ;(artifacts as any)[row.stageKey] = row.artifact
   }
+  const existingStageArtifactRow = artifactsRows.find((row: any) => row.stageKey === stageKey) ?? null
 
   const dependency = missingDependency(stageKey, artifacts)
   if (dependency) {
     await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
       runId: args.runId,
-      status: 'blocked',
+      status: 'needs_input',
       stageKey,
       lastError: `VNEXT_DEPENDENCY_MISSING:${dependency}`,
     })
     return {
       stageKey,
-      status: 'blocked',
+      status: 'needs_input',
       blocks: [
         buildQuestionsBlock(stageKey, stageTitle, [
           {
@@ -472,36 +653,62 @@ export async function runVNextStage(args: {
   if (preGate.status === 'fail') {
     await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
       runId: args.runId,
-      status: 'blocked',
+      status: 'needs_input',
       stageKey,
       lastError: `VNEXT_PRE_GATE_FAIL:${stageKey}`,
     })
     return {
       stageKey,
-      status: 'blocked',
+      status: 'needs_input',
       blocks: [buildQuestionsBlock(stageKey, stageTitle, preGate.blockingQuestions)],
       telemetry: { preGateIssues: preGate.issues.length },
     }
   }
 
-  const attemptsForStage = artifactsRows.filter((row: any) => row.stageKey === stageKey).length
-  if (attemptsForStage >= MAX_STAGE_ATTEMPTS) {
-    await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
-      runId: args.runId,
-      status: 'blocked',
-      stageKey,
-      lastError: `VNEXT_MAX_ATTEMPTS:${stageKey}`,
-    })
-    return {
-      stageKey,
-      status: 'blocked',
-      blocks: [
-        buildQuestionsBlock(stageKey, stageTitle, [
-          { id: 'manual_review', textHe: 'נדרשת התערבות ידנית להמשך השלב', type: 'text' },
-        ]),
-      ],
+  const stageInput: any = {
+    userMessage: args.userMessage,
+    spec,
+    artifact: currentArtifact,
+    artifacts,
+    context: projectContext,
+  }
+  if (stageKey === 'pricing') {
+    const pricingQueue = normalizePricingQueue(currentArtifact, artifacts)
+    const pendingItems = pricingQueue.filter((item) => item.status === 'pending')
+    const batchSize = usePricingQueue
+      ? adaptivePricingBatchSize(pricingQueue.length)
+      : Math.max(1, pendingItems.length)
+    const activeBatch = pendingItems.slice(0, batchSize)
+    stageInput.pricingWorkQueue = pricingQueue
+    stageInput.pricingBatch = activeBatch
+    stageInput.pricingBatchSize = batchSize
+    stageInput.queueSummary = {
+      total: pricingQueue.length,
+      pending: pendingItems.length,
+      resolved: pricingQueue.length - pendingItems.length,
+    }
+    stageInput.artifact = {
+      ...currentArtifact,
+      activeBatchKeys: activeBatch.map((item) => item.itemKey),
+      queueSummary: {
+        total: pricingQueue.length,
+        pending: pendingItems.length,
+        priced: pricingQueue.filter((item) => item.status === 'priced').length,
+        estimated: pricingQueue.filter((item) => item.status === 'estimated').length,
+        failed: pricingQueue.filter((item) => item.status === 'failed').length,
+        activeBatchSize: activeBatch.length,
+      },
     }
   }
+  await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+    runId: args.runId,
+    type: 'vnext_stage_enter',
+    payload: {
+      stageKey,
+      hasArtifact: Boolean(currentArtifact && Object.keys(currentArtifact).length > 0),
+      queueSummary: stageKey === 'pricing' ? stageInput.queueSummary ?? null : null,
+    },
+  })
 
   const skillOutputs = await runStageSkills({
     ctx: args.ctx,
@@ -509,42 +716,38 @@ export async function runVNextStage(args: {
     conversationId: args.conversationId,
     runId: args.runId,
     stageKey,
-    input: {
-      userMessage: args.userMessage,
-      spec,
-      artifact: currentArtifact,
-      artifacts,
-      context: projectContext,
-    },
+    input: stageInput,
+    stageBudgetsEnabled: args.options?.stageBudgets,
   })
 
   const mergedArtifact = stageKey === 'compile'
     ? currentArtifact
-    : mergeArtifact(stageKey, currentArtifact, skillOutputs, artifacts)
+    : mergeArtifact(stageKey, stageInput.artifact ?? currentArtifact, skillOutputs, artifacts)
+  if (stageKey === 'pricing') {
+    await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+      runId: args.runId,
+      type: 'pricing_queue_snapshot',
+      payload: {
+        queueSummary: mergedArtifact?.queueSummary ?? null,
+        unresolvedLines: Array.isArray(mergedArtifact?.unresolvedLines)
+          ? mergedArtifact.unresolvedLines.slice(0, 20)
+          : [],
+      },
+    })
+  }
   const artifactHash = stableHash(JSON.stringify(mergedArtifact))
   const specHash = stableHash(JSON.stringify(spec))
-  const dedupeSignature = `${stageKey}:${specHash}:${artifactHash}`
-  const isDuplicate = artifactsRows.some((row: any) => {
-    const previous = `${row.stageKey}:${row.specHash}:${row.artifactHash}`
-    return previous === dedupeSignature
+  const { madeProgress, progressMeta } = computeStageProgress({
+    stageKey,
+    specHash,
+    artifactHash,
+    runStageKey: args.run.stageKey,
+    runProgressCount: args.run.progressCount,
+    runNoProgressCount: args.run.noProgressCount,
+    runProgressKey: args.run.progressKey,
+    fallbackProgressKey: existingStageArtifactRow?.progress?.progressKey,
+    lastProgressAt: args.run.lastProgressAt,
   })
-  if (isDuplicate && stageKey !== 'compile') {
-    await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
-      runId: args.runId,
-      status: 'blocked',
-      stageKey,
-      lastError: `VNEXT_DEDUPE_GUARD:${stageKey}`,
-    })
-    return {
-      stageKey,
-      status: 'blocked',
-      blocks: [
-        buildQuestionsBlock(stageKey, stageTitle, [
-          { id: 'dedupe_guard', textHe: 'הפלט חזר על עצמו. נדרש קלט נוסף כדי להמשיך.', type: 'text' },
-        ]),
-      ],
-    }
-  }
 
   const postSpec = stageKey === 'scope'
     ? {
@@ -568,18 +771,92 @@ export async function runVNextStage(args: {
     artifacts,
   })
   if (postGate.status === 'fail') {
+    const noProgressLimitReached = shouldTriggerNoProgressGuard({
+      madeProgress,
+      noProgressCount: progressMeta.noProgressCount,
+      threshold: MAX_NO_PROGRESS_CYCLES,
+    })
+    const fallbackQuestions = noProgressLimitReached
+      ? buildNoProgressQuestions(stageKey, progressMeta.noProgressCount)
+      : []
+    const blockingQuestions = postGate.blockingQuestions.length > 0
+      ? postGate.blockingQuestions
+      : fallbackQuestions
+
+    if (!isHardBlockingStage(stageKey) && useSoftGates) {
+      const needsInput = noProgressLimitReached || blockingQuestions.length > 0
+      const runStatus = needsInput ? 'needs_input' : 'running'
+      const artifactStatus = needsInput ? 'needs_input' : 'partial_progress'
+      if (noProgressLimitReached) {
+        await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'vnext_no_progress_guard',
+          payload: {
+            stageKey,
+            progress: progressMeta,
+          },
+        })
+      }
+
+      await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+        runId: args.runId,
+        status: runStatus,
+        stageKey,
+        lastError: needsInput
+          ? (noProgressLimitReached
+            ? `VNEXT_NO_PROGRESS_GUARD:${stageKey}`
+            : `VNEXT_POST_GATE_NEEDS_INPUT:${stageKey}`)
+          : `VNEXT_PARTIAL_PROGRESS:${stageKey}`,
+        progressKey: progressMeta.progressKey,
+        progressCount: progressMeta.progressCount,
+        noProgressCount: progressMeta.noProgressCount,
+        lastProgressAt: progressMeta.lastProgressAt,
+      })
+      await args.ctx.runMutation(internal['sdk/vnext/artifacts'].upsertStageArtifact, {
+        runId: args.runId,
+        projectId: args.projectId,
+        conversationId: args.conversationId,
+        stageKey,
+        artifact: mergedArtifact,
+        artifactHash,
+        specHash,
+        status: artifactStatus,
+        progress: progressMeta,
+      })
+
+      return {
+        stageKey,
+        status: needsInput ? 'needs_input' : 'partial_progress',
+        blocks: blockingQuestions.length > 0
+          ? [buildQuestionsBlock(stageKey, stageTitle, blockingQuestions)]
+          : [buildSuggestionsBlock(stageKey)],
+        telemetry: {
+          postGateIssues: postGate.issues.length,
+          progress: progressMeta,
+          noProgressLimitReached,
+        },
+      }
+    }
+
     await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
       runId: args.runId,
-      status: 'blocked',
+      status: 'failed',
       stageKey,
       lastError: `VNEXT_POST_GATE_FAIL:${stageKey}`,
+      progressKey: progressMeta.progressKey,
+      progressCount: progressMeta.progressCount,
+      noProgressCount: progressMeta.noProgressCount,
+      lastProgressAt: progressMeta.lastProgressAt,
     })
-    return {
-      stageKey,
-      status: 'blocked',
-      blocks: [buildQuestionsBlock(stageKey, stageTitle, postGate.blockingQuestions)],
-      telemetry: { postGateIssues: postGate.issues.length },
-    }
+      return {
+        stageKey,
+        status: 'blocked_error',
+        blocks: [buildQuestionsBlock(stageKey, stageTitle, postGate.blockingQuestions)],
+        telemetry: {
+          postGateIssues: postGate.issues.length,
+          progress: progressMeta,
+        },
+      }
   }
 
   if (stageKey !== 'compile') {
@@ -592,6 +869,7 @@ export async function runVNextStage(args: {
       artifactHash,
       specHash,
       status: 'ready_for_checkpoint',
+      progress: progressMeta,
     })
   }
 
@@ -612,13 +890,17 @@ export async function runVNextStage(args: {
     if (compileGate.status === 'fail') {
       await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
         runId: args.runId,
-        status: 'blocked',
+        status: 'failed',
         stageKey,
         lastError: 'VNEXT_COMPILE_GATE_FAIL',
+        progressKey: progressMeta.progressKey,
+        progressCount: progressMeta.progressCount,
+        noProgressCount: progressMeta.noProgressCount,
+        lastProgressAt: progressMeta.lastProgressAt,
       })
       return {
         stageKey,
-        status: 'blocked',
+        status: 'blocked_error',
         blocks: [buildQuestionsBlock(stageKey, stageTitle, compileGate.blockingQuestions)],
       }
     }
@@ -640,13 +922,17 @@ export async function runVNextStage(args: {
     if (auditGate.status === 'fail') {
       await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
         runId: args.runId,
-        status: 'blocked',
+        status: 'failed',
         stageKey,
         lastError: 'VNEXT_AUDIT_GATE_FAIL',
+        progressKey: progressMeta.progressKey,
+        progressCount: progressMeta.progressCount,
+        noProgressCount: progressMeta.noProgressCount,
+        lastProgressAt: progressMeta.lastProgressAt,
       })
       return {
         stageKey,
-        status: 'blocked',
+        status: 'blocked_error',
         blocks: [buildQuestionsBlock(stageKey, stageTitle, auditGate.blockingQuestions)],
       }
     }
@@ -676,13 +962,17 @@ export async function runVNextStage(args: {
     if (reviewIssues.length > 0) {
       await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
         runId: args.runId,
-        status: 'blocked',
+        status: 'failed',
         stageKey,
         lastError: 'VNEXT_REVIEW_ISSUES',
+        progressKey: progressMeta.progressKey,
+        progressCount: progressMeta.progressCount,
+        noProgressCount: progressMeta.noProgressCount,
+        lastProgressAt: progressMeta.lastProgressAt,
       })
       return {
         stageKey,
-        status: 'blocked',
+        status: 'blocked_error',
         blocks: [
           buildReviewBlock(stageKey, stageTitle, 'נמצאו בעיות ב-ChangeSet review, נדרש תיקון לפני אישור'),
           buildQuestionsBlock(stageKey, stageTitle, [
@@ -700,6 +990,10 @@ export async function runVNextStage(args: {
       pendingChangeSetId: changeSetId,
       approvalToken,
       currentAgentName: 'vnext_pipeline',
+      progressKey: progressMeta.progressKey,
+      progressCount: progressMeta.progressCount,
+      noProgressCount: progressMeta.noProgressCount,
+      lastProgressAt: progressMeta.lastProgressAt,
     })
     await args.ctx.runMutation(internal['sdk/vnext/artifacts'].upsertStageArtifact, {
       runId: args.runId,
@@ -715,11 +1009,12 @@ export async function runVNextStage(args: {
       artifactHash: stableHash(JSON.stringify(compileOutput.ops)),
       specHash,
       status: 'awaiting_approval',
+      progress: progressMeta,
     })
 
     return {
       stageKey,
-      status: 'ready_for_checkpoint',
+      status: 'done',
       blocks: [
         buildReviewBlock(stageKey, stageTitle, compileOutput.summaryHe),
         {
@@ -737,13 +1032,18 @@ export async function runVNextStage(args: {
   const nextStageKey = getNextVNextStage(stageKey)
   await args.ctx.runMutation(internal.sdk.telemetry.updateRunState, {
     runId: args.runId,
-    status: 'blocked',
+    status: nextStageKey ? 'running' : 'completed',
     stageKey,
     currentAgentName: 'vnext_pipeline',
+    progressKey: progressMeta.progressKey,
+    progressCount: progressMeta.progressCount,
+    noProgressCount: progressMeta.noProgressCount,
+    lastProgressAt: progressMeta.lastProgressAt,
+    lastError: undefined,
   })
   return {
     stageKey,
-    status: nextStageKey ? 'ready_for_checkpoint' : 'completed',
+    status: nextStageKey ? 'done' : 'completed',
     blocks: [
       buildReviewBlock(stageKey, stageTitle, buildStageSummary(stageKey, mergedArtifact)),
       buildSuggestionsBlock(nextStageKey),

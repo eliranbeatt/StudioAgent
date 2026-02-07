@@ -1,7 +1,40 @@
-import { GateIssue, GateResult } from '../contracts'
+import type { GateIssue, GateResult } from '../contracts'
 
 export function validatePricing(args: { pricingArtifact?: any; budgetArtifact?: any }): GateResult {
   const issues: GateIssue[] = []
+  const queue = Array.isArray(args.pricingArtifact?.workQueue) ? args.pricingArtifact.workQueue : []
+  const pendingQueue = queue.filter((item: any) => item?.status === 'pending')
+  const failedQueue = queue.filter((item: any) => item?.status === 'failed')
+  const estimatedQueue = queue.filter((item: any) => item?.status === 'estimated')
+
+  if (queue.length > 0 && pendingQueue.length > 0) {
+    issues.push({
+      code: 'pricing.queue_pending',
+      messageHe: `Pricing queue still has ${pendingQueue.length} pending items`,
+      severity: 'medium',
+    })
+  }
+
+  for (const item of failedQueue) {
+    if (!String(item?.reasonHe ?? '').trim()) {
+      issues.push({
+        code: 'pricing.failed_without_reason',
+        messageHe: `Failed item missing reason: ${item?.titleHe ?? item?.itemName ?? 'line'}`,
+        severity: 'high',
+      })
+    }
+  }
+
+  for (const item of estimatedQueue) {
+    if (!String(item?.assumptionHe ?? item?.reasonHe ?? '').trim()) {
+      issues.push({
+        code: 'pricing.estimated_without_reason',
+        messageHe: `Estimated item missing assumption: ${item?.titleHe ?? item?.itemName ?? 'line'}`,
+        severity: 'high',
+      })
+    }
+  }
+
   const lines = Array.isArray(args.pricingArtifact?.pricedLines)
     ? args.pricingArtifact.pricedLines
     : Array.isArray(args.pricingArtifact?.pricedBudget?.lines)
@@ -10,16 +43,16 @@ export function validatePricing(args: { pricingArtifact?: any; budgetArtifact?: 
         ? args.pricingArtifact.recommendations
         : []
 
-  if (lines.length === 0) {
+  if (lines.length === 0 && queue.length === 0) {
     issues.push({
       code: 'pricing.empty',
-      messageHe: 'לא נמצאו שורות מתומחרות',
+      messageHe: 'No priced lines were produced',
       severity: 'high',
       question: {
         id: 'pricing_rebuild',
-        textHe: 'לא נוצר תמחור. להפיק תמחור מחדש?',
+        textHe: 'No pricing output was produced. Re-run pricing?',
         type: 'select',
-        optionsHe: ['כן', 'לא'],
+        optionsHe: ['Yes', 'No'],
       },
     })
   }
@@ -29,7 +62,7 @@ export function validatePricing(args: { pricingArtifact?: any; budgetArtifact?: 
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
       issues.push({
         code: 'pricing.zero_or_missing',
-        messageHe: `שורה ללא מחיר תקין: ${line?.titleHe ?? line?.itemName ?? 'ללא שם'}`,
+        messageHe: `Invalid unit price: ${line?.titleHe ?? line?.itemName ?? 'line'}`,
         severity: 'high',
       })
     }
@@ -38,21 +71,23 @@ export function validatePricing(args: { pricingArtifact?: any; budgetArtifact?: 
     if (!hasEvidence && !isEstimate) {
       issues.push({
         code: 'pricing.missing_evidence_or_estimate',
-        messageHe: `חסר מקור מחיר או סימון estimate: ${line?.titleHe ?? line?.itemName ?? 'ללא שם'}`,
+        messageHe: `Missing evidence or estimate marker: ${line?.titleHe ?? line?.itemName ?? 'line'}`,
         severity: 'medium',
       })
     }
     if (isEstimate && !line?.assumptionHe) {
       issues.push({
         code: 'pricing.estimate_without_assumption',
-        messageHe: `estimate ללא הנחה מילולית: ${line?.titleHe ?? line?.itemName ?? 'ללא שם'}`,
+        messageHe: `Estimate without assumption: ${line?.titleHe ?? line?.itemName ?? 'line'}`,
         severity: 'medium',
       })
     }
   }
 
+  const hasHardFailures = issues.some((issue) => issue.severity === 'high' || issue.severity === 'critical')
+
   return {
-    status: issues.length > 0 ? 'fail' : 'pass',
+    status: hasHardFailures || pendingQueue.length > 0 ? 'fail' : 'pass',
     issues,
     blockingQuestions: issues.map((issue) => issue.question).filter(Boolean) as any[],
   }

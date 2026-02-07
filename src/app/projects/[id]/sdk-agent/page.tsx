@@ -48,6 +48,14 @@ export default function SdkAgentPage() {
     api.sdk.api.listMessages,
     effectiveConvId ? { conversationId: effectiveConvId, limit: 100 } : 'skip'
   );
+  const pricingSnapshots = useQuery(
+    api.sdk.api.listRunEvents,
+    activeRun?._id ? { runId: activeRun._id, type: 'pricing_queue_snapshot', limit: 1 } : 'skip'
+  );
+  const latestRunEvents = useQuery(
+    api.sdk.api.listRunEvents,
+    activeRun?._id ? { runId: activeRun._id, limit: 4 } : 'skip'
+  );
 
   const createConversation = useMutation(api.sdk.api.createConversation);
   const renameConversation = useMutation(api.sdk.api.renameConversation);
@@ -75,7 +83,11 @@ export default function SdkAgentPage() {
   const [dispatchStartedAt, setDispatchStartedAt] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const runStatus = activeRun?.status;
-  const isRunActive = runStatus === 'running' || runStatus === 'awaiting_approval' || runStatus === 'blocked';
+  const isRunActive =
+    runStatus === 'running' ||
+    runStatus === 'awaiting_approval' ||
+    runStatus === 'blocked' ||
+    runStatus === 'needs_input';
   const runMessages = (messages ?? []).filter((m: any) => m.runId === activeRun?._id);
   const lastUserIndex = [...runMessages]
     .map((m: any, idx: number) => ({ m, idx }))
@@ -93,10 +105,13 @@ export default function SdkAgentPage() {
     !!pendingTurnStartedAt ||
     isDispatching ||
     runStatus === 'awaiting_approval' ||
-    runStatus === 'blocked';
+    runStatus === 'blocked' ||
+    runStatus === 'needs_input';
   const timerStart = pendingTurnStartedAt ?? (isDispatching ? dispatchStartedAt : null);
   const statusLabel = getSdkStatusLabel(activeRun);
-  const statusDetail = getSdkStatusDetail(activeRun);
+  const latestPricingSnapshot = pricingSnapshots?.[0]?.payload?.queueSummary ?? null;
+  const latestEvent = latestRunEvents?.[0] ?? null;
+  const statusDetail = getSdkStatusDetail(activeRun, latestPricingSnapshot, latestEvent);
   const elapsedMs = timerStart ? Math.max(0, nowMs - timerStart) : 0;
   const isStale = !!activeRun?.updatedAt && runStatus === 'running' && nowMs - activeRun.updatedAt > 90_000;
 
@@ -439,7 +454,7 @@ export default function SdkAgentPage() {
                     <span className="text-xs text-slate-400">{statusDetail}</span>
                   )}
                   {isStale && (
-                    <span className="text-xs text-amber-600">This step is taking longer than usual</span>
+                    <span className="text-xs text-amber-600">No new progress detected yet. Continue stage or add input.</span>
                   )}
                 </div>
               </div>
@@ -506,7 +521,7 @@ export default function SdkAgentPage() {
                 >
                   Cancel
                 </button>
-                {isVnextUiEnabled && activeRun.status === 'blocked' && (
+                {isVnextUiEnabled && (activeRun.status === 'blocked' || activeRun.status === 'needs_input') && (
                   <button
                     onClick={() =>
                       continueVnext({
@@ -622,6 +637,7 @@ function getSdkStatusLabel(
 ) {
   if (!run) return 'Waiting to start';
   if (run.status === 'awaiting_approval') return 'Awaiting approval';
+  if (run.status === 'needs_input') return 'Needs input';
   if (run.status === 'blocked') return 'Blocked on input';
   if (run.status === 'paused') return 'Paused';
   if (run.status === 'completed') return 'Completed';
@@ -649,12 +665,48 @@ function getSdkStatusDetail(
       currentAgentName?: string;
       pendingChangeSetId?: string;
       lastError?: string;
+      progressCount?: number;
+      noProgressCount?: number;
+      lastProgressAt?: number;
     }
     | null
     | undefined
+  ,
+  pricingSummary?: {
+    total?: number;
+    priced?: number;
+    estimated?: number;
+    pending?: number;
+    failed?: number;
+  } | null,
+  latestEvent?: {
+    type?: string;
+    payload?: any;
+    createdAt?: number;
+  } | null
 ) {
   if (!run) return null;
+  if (run.stageKey === 'pricing' && pricingSummary) {
+    const resolved = Number(pricingSummary.priced ?? 0) + Number(pricingSummary.estimated ?? 0);
+    return `pricing ${resolved}/${Number(pricingSummary.total ?? 0)} • pending ${Number(pricingSummary.pending ?? 0)} • failed ${Number(pricingSummary.failed ?? 0)}`;
+  }
   if (run.lastError) return run.lastError;
+  if (latestEvent?.type === 'vnext_stage_budget_checkpoint') {
+    const stage = String(latestEvent?.payload?.stageKey ?? run.stageKey ?? 'stage');
+    return `${stage} checkpointed due to cycle budget; continue to resume`;
+  }
+  if (latestEvent?.type === 'vnext_no_progress_guard') {
+    const stage = String(latestEvent?.payload?.stageKey ?? run.stageKey ?? 'stage');
+    return `${stage} is waiting for user input after repeated no-progress cycles`;
+  }
+  if (latestEvent?.type === 'vnext_stage_transition') {
+    const from = String(latestEvent?.payload?.fromStage ?? '');
+    const to = String(latestEvent?.payload?.toStage ?? run.stageKey ?? '');
+    return `advanced from ${from || 'previous'} to ${to || 'next'} stage`;
+  }
+  if (typeof run.progressCount === 'number' || typeof run.noProgressCount === 'number') {
+    return `progress ${run.progressCount ?? 0} • no-progress ${run.noProgressCount ?? 0}`;
+  }
   if (run.pendingChangeSetId) return `ChangeSet ${run.pendingChangeSetId.slice(-6)} pending`;
   if (run.stageKey && run.currentAgentName) return `${run.currentAgentName} • ${run.stageKey}`;
   if (run.stageKey) return run.stageKey;

@@ -145,6 +145,29 @@ export const listRuns = query({
   },
 });
 
+export const listRunEvents = query({
+  args: {
+    runId: v.id('sdkRuns'),
+    limit: v.optional(v.number()),
+    type: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 40;
+    if (args.type) {
+      return await ctx.db
+        .query('sdkRunEvents')
+        .withIndex('by_run_type', (q) => q.eq('runId', args.runId).eq('type', args.type!))
+        .order('desc')
+        .take(limit);
+    }
+    return await ctx.db
+      .query('sdkRunEvents')
+      .withIndex('by_run', (q) => q.eq('runId', args.runId))
+      .order('desc')
+      .take(limit);
+  },
+});
+
 export const generateConversationTitle = action({
   args: {
     conversationId: v.id('agentConversations'),
@@ -332,6 +355,9 @@ export const continueVnext = action({
   handler: async (ctx, args) => {
     const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
     if (!run) throw new Error('Run not found')
+    if (run.status === 'completed' || run.status === 'cancelled' || run.status === 'failed') {
+      throw new Error('Run is terminal. Start a new run to continue.')
+    }
 
     await ctx.runMutation(internal['sdk/vnext/artifacts'].appendStageDecision, {
       runId: args.runId,
@@ -441,16 +467,17 @@ export const approveChangeSet = action({
       throw new Error('Audit has unresolved high-severity findings');
     }
 
-    await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
-      runId: args.runId,
-      status: 'running',
-      currentAgentName: run.currentAgentName ?? 'orchestrator',
+    await ctx.runMutation(api.changeSets.applyChangeSet, {
+      changeSetId: run.pendingChangeSetId,
     });
     await ctx.runMutation(internal.sdk.telemetry.clearPendingChangeSet, {
       runId: args.runId,
     });
-    await ctx.runMutation(api.changeSets.applyChangeSet, {
-      changeSetId: run.pendingChangeSetId,
+    await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+      runId: args.runId,
+      status: 'completed',
+      currentAgentName: run.currentAgentName ?? 'orchestrator',
+      lastError: undefined,
     });
 
     return { ok: true, applied: run.pendingChangeSetId };

@@ -20,6 +20,8 @@ export const createRun = internalMutation({
       engine: 'sdk',
       currentAgentName: args.currentAgent || 'orchestrator',
       stageKey: 'intake',
+      progressCount: 0,
+      noProgressCount: 0,
       shadowMode: args.shadowMode ?? false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -34,6 +36,7 @@ export const updateRunState = internalMutation({
       v.literal("running"),
       v.literal("paused"),
       v.literal("blocked"),
+      v.literal("needs_input"),
       v.literal("awaiting_approval"),
       v.literal("completed"),
       v.literal("failed"),
@@ -44,6 +47,10 @@ export const updateRunState = internalMutation({
     pendingChangeSetId: v.optional(v.id('changeSets')),
     approvalToken: v.optional(v.string()),
     lastError: v.optional(v.string()),
+    progressKey: v.optional(v.string()),
+    progressCount: v.optional(v.number()),
+    noProgressCount: v.optional(v.number()),
+    lastProgressAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const patch: any = { updatedAt: Date.now() };
@@ -53,6 +60,20 @@ export const updateRunState = internalMutation({
     if (args.pendingChangeSetId !== undefined) patch.pendingChangeSetId = args.pendingChangeSetId;
     if (args.approvalToken !== undefined) patch.approvalToken = args.approvalToken;
     if (args.lastError !== undefined) patch.lastError = args.lastError;
+    if (args.progressKey !== undefined) patch.progressKey = args.progressKey;
+    if (args.progressCount !== undefined) patch.progressCount = args.progressCount;
+    if (args.noProgressCount !== undefined) patch.noProgressCount = args.noProgressCount;
+    if (args.lastProgressAt !== undefined) patch.lastProgressAt = args.lastProgressAt;
+    if (
+      args.status === 'completed' ||
+      args.status === 'failed' ||
+      args.status === 'cancelled'
+    ) {
+      patch.finishedAt = Date.now();
+    }
+    if (args.status === 'running') {
+      patch.finishedAt = undefined;
+    }
     
     await ctx.db.patch(args.runId, patch);
   },
@@ -65,6 +86,10 @@ export const clearPendingChangeSet = internalMutation({
       pendingChangeSetId: undefined,
       approvalToken: undefined,
       updatedAt: Date.now(),
+      progressKey: undefined,
+      progressCount: 0,
+      noProgressCount: 0,
+      lastProgressAt: undefined,
     });
   },
 });

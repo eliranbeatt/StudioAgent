@@ -1,11 +1,15 @@
 import { GateResult } from '../contracts'
 
-export function validateAudit(args?: { findings?: any[] }): GateResult {
+export function validateAudit(args?: { findings?: any[]; acceptedRiskNote?: string }): GateResult {
   const findings = Array.isArray(args?.findings) ? args?.findings : []
   const blockers = findings.filter((item) => {
     const severity = String(item?.severity ?? '').toLowerCase()
     return severity === 'critical' || severity === 'high' || severity === 'blocker'
   })
+  const acceptedRiskNote = String(args?.acceptedRiskNote ?? '').trim()
+  if (blockers.length > 0 && acceptedRiskNote) {
+    return { status: 'pass', issues: [], blockingQuestions: [] }
+  }
   if (blockers.length > 0) {
     return {
       status: 'fail',
@@ -25,4 +29,3 @@ export function validateAudit(args?: { findings?: any[] }): GateResult {
   }
   return { status: 'pass', issues: [], blockingQuestions: [] }
 }
-

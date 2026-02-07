@@ -92,6 +92,9 @@ export async function completionWithTracing(
     }
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const timeoutMs = Number(process.env.SDK_LLM_TIMEOUT_MS ?? 120000);
+    const retryCount = Number(process.env.SDK_LLM_RETRY_COUNT ?? 1);
+    const retryBackoffMs = Number(process.env.SDK_LLM_RETRY_BACKOFF_MS ?? 800);
 
     // Prepare request payload for logging
     const logVal = (v: any) => v;
@@ -135,7 +138,41 @@ export async function completionWithTracing(
             }
         }
 
-        const response = await client.chat.completions.create(openAIOptions as any);
+        const createWithTimeout = async () => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(`LLM_TIMEOUT_${timeoutMs}ms`), timeoutMs);
+            try {
+                return await client.chat.completions.create({
+                    ...(openAIOptions as any),
+                    signal: controller.signal,
+                } as any);
+            } finally {
+                clearTimeout(timer);
+            }
+        };
+
+        let response: any;
+        let lastError: any = null;
+        for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+            try {
+                response = await createWithTimeout();
+                lastError = null;
+                break;
+            } catch (error: any) {
+                lastError = error;
+                const msg = String(error?.message ?? error ?? '');
+                const retryable =
+                    msg.includes('LLM_TIMEOUT_') ||
+                    msg.toLowerCase().includes('abort') ||
+                    msg.includes('429') ||
+                    msg.toLowerCase().includes('rate limit') ||
+                    msg.toLowerCase().includes('temporarily');
+                if (!retryable || attempt >= retryCount) break;
+                const delayMs = retryBackoffMs * Math.max(1, attempt + 1);
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+        }
+        if (lastError) throw lastError;
 
         if (params.stream) {
             const stream = response as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;

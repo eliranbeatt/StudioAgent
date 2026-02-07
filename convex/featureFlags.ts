@@ -30,6 +30,9 @@ export const DEFAULT_FLAGS: Record<string, boolean> = {
   ff_sdk_agent_backend: true,
   ff_sdk_vnext_pipeline: false,
   ff_sdk_vnext_ui: false,
+  ff_sdk_vnext_soft_gates: true,
+  ff_sdk_vnext_pricing_queue: true,
+  ff_sdk_vnext_stage_budgets: true,
 }
 
 export function normalizeFlags(raw: unknown): Record<string, boolean> {

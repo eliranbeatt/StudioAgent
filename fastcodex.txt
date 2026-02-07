@@ -1,0 +1,328 @@
+# FASTCODEX IMPLEMENTATION PLAN (Repo-Aligned)
+Date: 2026-02-07
+
+This plan is based on:
+- `Specs/sdk/fast.txt`
+- Current code in `convex/`, `src/app/projects/[id]/*`, and current schema/flags.
+
+The goal is to implement the "fast progressive elaboration" flow without rebuilding what already exists.
+
+------------------------------------------------------------
+1) What Exists Today (Verified)
+------------------------------------------------------------
+
+A) Product surfaces
+- Legacy Agent tab: `src/app/projects/[id]/agent/page.tsx`
+- Flow Agent tab: `src/app/projects/[id]/flow-agent/page.tsx`
+- SDK Agent tab: `src/app/projects/[id]/sdk-agent/page.tsx`
+- Navigation already includes all 3 tabs in `src/app/projects/[id]/layout.tsx`
+
+B) Active backend stacks
+- Legacy skills stack: `convex/skills/*` (runner, registry, prompts, recommender)
+- Flow stack (v1/v2/v3): `convex/flow/*` + `convex/flowAnswers.ts`
+- SDK stack: `convex/sdk/*` (api, dispatch, registry, prompts, runner, schemas, context, changeset, vnext)
+
+C) Core tables already present
+- `qaPairs`, `memoryDocs`, `changeSets`, `agentConversations`, `agentMessages`
+- Flow-specific: `flowRuns`, `flowQuestionSets`, `flowQuestionSetResponses`
+- SDK-specific: `sdkRuns`, `sdkRunEvents`, `sdkStageArtifacts`, `sdkStageDecisions`
+
+D) SDK v2/vNext already implemented (partially enabled)
+- Tool registry exists: `convex/sdk/registry.ts`
+- Prompt set exists: `convex/sdk/prompts.ts`
+- Runtime dispatch exists: `convex/sdk/dispatch.ts`
+- Stage pipeline exists: `convex/sdk/vnext/pipeline.ts`
+- Deterministic compile exists (vNext path): `convex/sdk/vnext/compiler.ts`
+- Flags exist: `ff_sdk_vnext_pipeline`, `ff_sdk_vnext_ui`, soft-gate/pricing queue/stage budgets in `convex/featureFlags.ts`
+
+E) Current QA/question handling
+- `qaPairs` currently stores simple Q/A rows (`question_he`, `questionKey`, `answer_he`)
+- Deterministic question-set serving currently exists only in Flow (`flowQuestionSets` + `flowQuestionSetResponses`)
+- SDK vNext questions are rendered via blocks/messages, not a dedicated persisted SDK question-set table
+
+------------------------------------------------------------
+2) Skills/Agents Inventory (Current)
+------------------------------------------------------------
+
+A) SDK registry IDs (`convex/sdk/registry.ts`)
+- `orchestrator`
+- `clarify.next_questions`
+- `chat.free`
+- `pricing.resolve_lines`
+- `procurement.shopping_plan`
+- `finance.ingest_receipt`
+- `audit.project`
+- `qa.print_files`
+- `maint.sync_and_repair`
+- `intake.parse_brief`
+- `plan.elements`
+- `plan.tasks`
+- `plan.execution_phases`
+- `cost.build_budget`
+- `quote.generate`
+- `runbook.installation`
+- `ops.daily_plan`
+- `changeset.compile`
+- `changeset.review`
+- `knowledge.summarize_or_update`
+- `admin.set_labor_rates`
+- `admin.confirm_measurements`
+
+B) Legacy skill catalog IDs (`convex/skills/registry.ts`)
+- `knowledge`, `HELLO_WORLD_TEST`, `CLARIFICATIONS_GATE`, `CONTEXT_GENERATION`, `CHANGESET_REVIEWER`
+- `PROJECT_BRIEF_BUILDER`, `ELEMENTS_BUILDER_FULL`, `TASKS_BUILDER_FULL`, `ACCOUNTING_BUILDER_FULL`, `QUOTE_WRITER_FULL`
+- `ELEMENTS_TO_TASKS_SYNC`, `TASKS_CRITICAL_PATH_POLISH`, `TASK_ACCOUNTING_MAPPING_REPAIR`
+- `GAP_AUDIT`, `RISK_REVIEW`, `COST_VARIANCE_ANALYZER`, `DAILY_EXECUTION_PLANNER`, `INSTALL_RUNBOOK_BUILDER`
+- `SHOPPING_PLANNER_WEB`, `BUYING_ASSISTANT_WEB`, `RESEARCH_INSPIRATION_WEB`, `RESEARCH_PRICING_ESTIMATES_WEB`
+- `PRINT_QA`, `RECEIPT_PARSE_AND_MAP`, `BOM_DUPLICATE_ANALYZER`, `BUILD_PLANNER`
+- `TASKS_SYNC_FROM_LABOR_LINES`, `PRICING_LOOKUP_CATALOG_BATCH`, `PRICING_RESEARCH_WEB_BATCH`, `PRICING_ESTIMATE_FALLBACK_BATCH`
+- `TASKS_ENRICH_FROM_ACCOUNTING_BATCH`, `OVERHEAD_AND_LOGISTICS_COMPLETER`, `QUOTE_BUILD_OR_FIX`, `FINAL_AUDIT_FIXER`
+- `setLaborRates`, `confirmMeasurements`
+- V3 flow skills: `V3_Q_A_INTAKE`, `V3_Q_B_PLAN`, `V3_Q_C_COST`, `V3_Q_D_POLISH_APPROVALS`, `V3_Q_E_QUOTE`, `V3_BUILD_A_MEMORYDOCS`, `V3_BUILD_B_PLAN`, `V3_BUILD_C_ACCOUNTING`, `V3_BUILD_D_POLISH`, `V3_BUILD_E_QUOTE`
+
+------------------------------------------------------------
+3) Gap Map: fast.txt vs Current Code
+------------------------------------------------------------
+
+1. Progressive Q backlog in `qaPairs`:
+- Missing fields from fast contract: status/scope/blocking/order/version/follow-up metadata.
+- Current `qaPairs` is too minimal for blocker-first deterministic progression and rebase-safe patching.
+
+2. SDK deterministic question serving from persisted backlog:
+- Exists for Flow (`flowQuestionSets`), not for SDK.
+- SDK currently depends on emitted question blocks and message flow timing.
+
+3. PlanDoc lifecycle and CAS:
+- `memoryDocs` exists, but no canonical `planDoc.current + version + CAS retry` contract.
+
+4. Async rebase loop:
+- No `plan.rebase_from_answers_async` job that patches PlanDoc and question backlog on each submit.
+
+5. Finalize package:
+- SDK has planning/budget/quote tools and vNext compile, but no explicit "finalize.build_structured_package" contract aligned to fast.txt.
+
+6. Deterministic compile/review/apply:
+- vNext has deterministic compile (`convex/sdk/vnext/compiler.ts`), but SDK `changeset.compile/review` still run LLM in `convex/sdk/changeset.ts`.
+- Needs stricter deterministic path for final apply safety.
+
+7. Mode split (Planning Flow vs Chat Edit):
+- Not implemented as explicit project/run mode contract yet.
+
+------------------------------------------------------------
+4) Recommended Architecture (Most Efficient for THIS Repo)
+------------------------------------------------------------
+
+Primary target: extend SDK vNext, do not build a fourth orchestration stack.
+
+Reason:
+- `sdkRuns` + stage artifacts + stage decisions + existing vNext validators already solve 60-70% of the workflow.
+- Fastest path is hardening SDK vNext with qa backlog + rebase + deterministic finalization.
+- Keep legacy and Flow tabs as fallback until rollout completion.
+
+------------------------------------------------------------
+5) Implementation Plan (Phased)
+------------------------------------------------------------
+
+Phase 1: Data contract hardening (no behavior change)
+Files:
+- `convex/schema.ts`
+- `convex/agentData.ts`
+- `convex/sdk/context.ts`
+- `convex/sdk/schemas.ts`
+
+Tasks:
+1. Extend `qaPairs` with fast-flow fields:
+   - `status`, `questionType`, `options`, `answer`, `answerText`, `scopeType`, `scopeKey`, `sectionPath`, `blockingLevel`, `orderKey`, `createdFrom`, `followUp`, `triggeredBy`, `dedupeKey`, `version`.
+2. Keep legacy fields (`question_he`, `answer_he`) for compatibility.
+3. Update normalizers/selectors in `agentData` and `sdk/context` to expose both legacy and new fields.
+4. Add indexes needed for deterministic serving:
+   - by project+status
+   - by project+blockingLevel
+   - by project+orderKey
+   - by project+scopeKey
+
+Definition of done:
+- Existing tabs still work unchanged.
+- New fields can be written/read without breaking old records.
+
+Phase 2: SDK Question Backlog service (deterministic persisted serving)
+Files:
+- New `convex/sdk/questions.ts`
+- `convex/sdk/api.ts`
+- `convex/sdk/vnext/pipeline.ts`
+- `src/app/projects/[id]/sdk-agent/page.tsx`
+
+Tasks:
+1. Add SDK question APIs:
+   - `sdk.questions.nextSet(runId|projectId)`
+   - `sdk.questions.submitAnswers(runId, questionIds/answers, intent)`
+2. Serve blocker-first deterministic sets directly from persisted `qaPairs` (not from transient model output).
+3. Enforce ordering policy:
+   - global blockers first
+   - then element blockers grouped by element order
+   - each set may include blocker + helpful/optional questions/suggestions for that active scope
+4. Add SDK cursor state (run-level or project-level) using:
+   - `lastServedOrderKey`
+   - `lastServedAt`
+5. Update SDK UI to load/submit current set via these APIs.
+6. Keep compatibility fallback to block-based questions while migrating.
+
+Definition of done:
+- SDK Question lane always recovers from refresh and never depends on in-flight tool calls.
+
+Phase 3: Draft + seed (single heavy call aligned to fast.txt)
+Files:
+- `convex/sdk/prompts.ts`
+- `convex/sdk/registry.ts`
+- New `convex/sdk/planner.ts` (or `convex/sdk/vnext/planner.ts`)
+- `convex/sdk/vnext/stages.ts`
+- `convex/sdk/vnext/skillBridge.ts`
+
+Tasks:
+1. Add tool: `draft.plan_and_questions` (gpt-5.2, fast/no reasoning).
+2. Output:
+   - `PlanDoc v1` markdown
+   - seed question backlog with blocker/helpful/optional metadata
+3. Persist `PlanDoc v1` to canonical memory doc kind `PROJECT_CONTEXT` (typed payload/versioned body).
+4. Insert seed questions to `qaPairs` with deterministic `orderKey`.
+5. Initial planning is single-pass and auto-approved in agent mode (no validation gate in this stage).
+
+Definition of done:
+- New project can go from context to persisted plan+question backlog in one run.
+
+Phase 4: Async rebase after each answer submit
+Files:
+- New `convex/sdk/rebase.ts`
+- `convex/sdk/questions.ts`
+- `convex/sdk/vnext/pipeline.ts`
+- `convex/sdk/telemetry.ts`
+
+Tasks:
+1. On answer submit, enqueue async rebase job:
+   - input: current PlanDoc/version + newly answered rows + open backlog snapshot
+2. Rebase output contract:
+   - `planDocPatch` (or full markdown)
+   - `questionsPatch` (`add`, `resolve`, `promote`, `dedupe`)
+3. Enforce patch rules in code:
+   - never reopen answered
+   - add follow-ups instead
+   - churn cap (max new questions per submit)
+   - blocker promotion only when truly blocking
+4. CAS/version safety:
+   - apply only if PlanDoc version matches; otherwise reload+retry once.
+
+Definition of done:
+- User sees next question instantly.
+- Plan/backlog rebases asynchronously without race corruption.
+
+Phase 5: Finalize package + deterministic compile/apply
+Files:
+- New `convex/sdk/finalize.ts`
+- `convex/sdk/vnext/compiler.ts`
+- `convex/sdk/changeset.ts`
+- `convex/sdk/vnext/validators/*`
+- `convex/sdk/dispatch.ts`
+
+Tasks:
+1. Add `finalize.build_structured_package` tool:
+   - consumes PlanDoc + answered/assumed qaPairs + context.
+2. Finalize is always available (including with open questions), using assumptions on unanswered items.
+3. Pricing order in finalize:
+   - internal price memory -> web/logged research -> estimate with confidence+assumptions.
+4. Move compile path to deterministic code-first for finalize (reuse and harden `compileDeterministicChangeSet`).
+5. Keep LLM review optional/advisory; hard validation remains code gates.
+6. Apply policy:
+   - planning-flow mode auto-applies (no approval step in this mode).
+
+Definition of done:
+- Finalize emits complete elements/tasks/accounting/quote package and safe changeset apply path.
+
+Phase 6: Post-Quote Chat Edit mode
+Files:
+- `convex/sdk/vnext/contracts.ts`
+- `convex/sdk/vnext/pipeline.ts`
+- New `convex/sdk/changeRequests.ts`
+- `src/app/projects/[id]/sdk-agent/page.tsx`
+
+Tasks:
+1. Add explicit mode:
+   - `PLANNING_FLOW`
+   - `CHAT_EDIT`
+2. Parse chat change requests -> required clarifications -> deterministic changeset compile/apply.
+3. Guardrails for high-impact deletes/cost deltas (manual confirm).
+
+Definition of done:
+- After first quote, user can request edits conversationally with controlled changesets.
+
+------------------------------------------------------------
+6) Testing Plan
+------------------------------------------------------------
+
+A) Unit tests (add under `convex/sdk/vnext/__tests__`)
+- question ordering/bucketing and cursor jump rules
+- rebase patch applier rules (no reopen, follow-up, churn cap)
+- deterministic compile idempotency (same input -> same op order)
+- finalize validation gates
+
+B) Integration tests
+- context -> draft -> question loop -> finalize -> apply
+- answer triggers new follow-up questions for already-covered scope
+- assume-mode finalize with open questions
+- post-quote chat edit to changeset
+
+C) Existing commands
+- `npm run test:vnext`
+- `npm run lint`
+
+------------------------------------------------------------
+7) Rollout Strategy
+------------------------------------------------------------
+
+1. Keep existing systems active:
+- Legacy Agent tab unchanged
+- Flow Agent unchanged
+- SDK vNext rollout behind flags
+
+2. Enable in sequence:
+- `ff_sdk_vnext_pipeline`
+- then `ff_sdk_vnext_ui`
+- then optional auto-apply flag for pilot projects
+
+3. Shadow period:
+- run SDK vNext on pilot projects, compare outputs and apply safety.
+
+------------------------------------------------------------
+8) Locked Decisions (Confirmed)
+------------------------------------------------------------
+
+1. Question source of truth:
+- SDK serves questions directly from `qaPairs`.
+
+2. Ordering policy:
+- global blockers first
+- then element blockers by element order
+- each set includes blockers plus helpful/optional questions/suggestions for the same active scope.
+
+3. Finalize availability:
+- always available; can proceed with assumptions.
+
+4. Initial planning and apply behavior:
+- initial planning is single-pass with no validation gate
+- planning-flow mode is auto-approved/auto-apply.
+
+5. Canonical PlanDoc kind:
+- use `memoryDocs.kind = PROJECT_CONTEXT`.
+
+------------------------------------------------------------
+9) Immediate Build Order (Best Efficiency)
+------------------------------------------------------------
+
+1. Phase 1 (schema + compatibility)  
+2. Phase 3 (draft+seed heavy call)  
+3. Phase 2 (SDK deterministic question service)  
+4. Phase 4 (async rebase loop)  
+5. Phase 5 (finalize + deterministic compile/apply)  
+6. Phase 6 (chat edit mode)  
+
+Reason for this order:
+- It establishes canonical plan/backlog first, then deterministic serving/rebase/finalize on top.

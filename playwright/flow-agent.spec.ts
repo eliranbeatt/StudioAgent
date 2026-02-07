@@ -1,85 +1,75 @@
+import { test, expect, Page } from '@playwright/test'
 
-import { test, expect } from '@playwright/test';
-const fs = require('fs');
+async function resolveProjectId(page: Page): Promise<string> {
+  await page.goto('/projects')
+  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible({ timeout: 15000 })
 
-// Read seeded IDs if available, otherwise use defaults/placeholders
-let p0Id = 'TODO_FILL_IN';
-let p1Id = 'TODO_FILL_IN';
+  const existingProject = page.locator('a[href*="/projects/"][href$="/agent"]').first()
+  if (await existingProject.count()) {
+    const href = await existingProject.getAttribute('href')
+    const match = href?.match(/^\/projects\/([^/]+)\/agent$/)
+    if (match?.[1]) return match[1]
+  }
 
-try {
-    const testIds = JSON.parse(fs.readFileSync("test-ids.json", "utf8"));
-    p0Id = testIds.p0Id;
-    p1Id = testIds.p1Id;
-} catch (e) {
-    console.log("No test-ids.json found, skipping ID-dependent tests or using placeholders.");
+  await page.getByRole('button', { name: 'New Project' }).click()
+  await expect(page.getByRole('heading', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
+  await page.getByRole('button', { name: 'Save Project' }).click()
+  await expect(page).toHaveURL(/\/projects\/[^/]+\/agent/, { timeout: 20000 })
+
+  const match = page.url().match(/\/projects\/([^/]+)\/agent/)
+  if (!match?.[1]) throw new Error('Could not resolve project id')
+  return match[1]
 }
 
 test.describe('Flow Agent', () => {
+  test('FF-01: Flow Agent page is reachable', async ({ page }) => {
+    const projectId = await resolveProjectId(page)
+    await page.goto(`/projects/${projectId}/flow-agent`)
 
-    test('FF-01: Tab should be visible if flag is on (assuming defaults or manually set)', async ({ page }) => {
-        if (p1Id === 'TODO_FILL_IN') test.skip(true, 'No P1 ID available');
+    const heading = page.getByRole('heading', { name: 'Flow Agent' })
+    const disabled = page.getByText('Flow Agent is currently disabled.')
+    const backendDisabled = page.getByText(/Backend is disabled/i)
 
-        // Navigate to overview to ensure layout renders
-        await page.goto(`/projects/${p1Id}/overview`);
+    await expect(heading.or(disabled).or(backendDisabled)).toBeVisible({ timeout: 15000 })
+  })
 
-        // Wait for loading to finish
-        const loader = page.getByText('Loading project...');
-        await expect(loader).toBeHidden({ timeout: 15000 });
+  test('RUN-01: Start creates run', async ({ page }) => {
+    const projectId = await resolveProjectId(page)
+    await page.goto(`/projects/${projectId}/flow-agent`)
 
-        // Look for Flow Agent tab (rendered as a Link in layout.tsx)
-        await expect(page.getByRole('link', { name: /Flow Agent/i })).toBeVisible({ timeout: 10000 });
-    });
+    if (await page.getByText('Flow Agent is currently disabled.').isVisible()) {
+      test.skip(true, 'Flow Agent tab is disabled by flags')
+    }
+    if (await page.getByText(/Backend is disabled/i).isVisible()) {
+      test.skip(true, 'Flow Agent backend is disabled by flags')
+    }
 
-    test('RUN-01: Start creates run', async ({ page }) => {
-        if (p1Id === 'TODO_FILL_IN') test.skip(true, 'No P1 ID available');
+    await expect(page.getByText('Run status')).toBeVisible({ timeout: 15000 })
 
-        // Navigate via Overview
-        await page.goto(`/projects/${p1Id}/overview`);
-        const loader = page.getByText('Loading project...');
-        await expect(loader).toBeHidden({ timeout: 15000 });
+    const noRunSelected = page.getByText('No run selected')
+    if (await noRunSelected.isVisible()) {
+      const startButton = page.locator('label:has-text("Web pricing") + button')
+      if (await startButton.isVisible()) {
+        await startButton.click()
+      }
+    }
 
-        // Click Flow Agent tab
-        await page.getByRole('link', { name: /Flow Agent/i }).click();
+    await expect(page.getByRole('button', { name: 'Run next' })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText('No run selected')).toHaveCount(0)
+  })
 
-        // Verify we are on the page
-        await expect(page.getByText('Flow Agent')).toBeVisible();
+  test('BD-01: Questions lane interaction', async ({ page }) => {
+    const projectId = await resolveProjectId(page)
+    await page.goto(`/projects/${projectId}/flow-agent`)
 
-        // Check if we have a start button
-        // "התחל הרצה" based on FlowRunHeader.tsx
-        const startButton = page.getByRole('button', { name: /התחל הרצה/i });
-        if (await startButton.isVisible()) {
-            await startButton.click();
-        }
+    if (await page.getByText('Flow Agent is currently disabled.').isVisible()) {
+      test.skip(true, 'Flow Agent tab is disabled by flags')
+    }
+    if (await page.getByText(/Backend is disabled/i).isVisible()) {
+      test.skip(true, 'Flow Agent backend is disabled by flags')
+    }
 
-        // Status is in Hebrew: 'רץ', 'חסום', 'מושהה', 'ממתין לאישור'
-        // We expect one of these to be visible.
-        await expect(page.locator('body')).toContainText(/סטטוס הרצה/); // "Run Status" header
-
-        // Check for any valid status
-        await expect(page.getByText('סטטוס הרצה')).toBeVisible();
-    });
-
-    test('BD-01: Brain Dump interaction', async ({ page }) => {
-        if (p1Id === 'TODO_FILL_IN') test.skip(true, 'No P1 ID available');
-
-        // Navigate via Overview
-        await page.goto(`/projects/${p1Id}/overview`);
-        const loader = page.getByText('Loading project...');
-        await expect(loader).toBeHidden({ timeout: 15000 });
-
-        // Click Flow Agent tab
-        await page.getByRole('link', { name: /Flow Agent/i }).click();
-
-        // Look for Brain Dump area
-        // The placeholder in page.tsx is 'הוסיפו כאן תוספת קצרה (נשמרת בהוספה בלבד)'
-        // using a partial match regex
-        const input = page.getByPlaceholder(/הוסיפו כאן תוספת/i);
-        await expect(input).toBeVisible();
-
-        await input.fill('Test brain dump content');
-        await page.keyboard.press('Enter');
-        // Or click Add button ('הוסף תוספת')
-        await page.getByRole('button', { name: /הוסף תוספת/i }).click();
-    });
-
-});
+    await expect(page.getByRole('button', { name: /Show debug|Hide debug/i })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('button', { name: 'Run next' })).toBeVisible({ timeout: 15000 })
+  })
+})

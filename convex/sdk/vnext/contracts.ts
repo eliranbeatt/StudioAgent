@@ -89,9 +89,15 @@ export type StageArtifactMap = {
 
 export type VNextStageRunOutput = {
   stageKey: VNextStageKey
-  status: 'blocked' | 'ready_for_checkpoint' | 'advanced' | 'completed'
+  status: 'done' | 'needs_input' | 'partial_progress' | 'blocked_error' | 'completed'
   blocks: any[]
   nextStageKey?: VNextStageKey
   telemetry?: Record<string, any>
 }
 
+export type VNextStageProgressMeta = {
+  progressKey: string
+  progressCount: number
+  noProgressCount: number
+  lastProgressAt?: number
+}

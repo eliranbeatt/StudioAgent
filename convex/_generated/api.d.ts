@@ -107,6 +107,7 @@ import type * as sdk_vnext_auditBridge from "../sdk/vnext/auditBridge.js";
 import type * as sdk_vnext_compiler from "../sdk/vnext/compiler.js";
 import type * as sdk_vnext_contracts from "../sdk/vnext/contracts.js";
 import type * as sdk_vnext_pipeline from "../sdk/vnext/pipeline.js";
+import type * as sdk_vnext_progress from "../sdk/vnext/progress.js";
 import type * as sdk_vnext_skillBridge from "../sdk/vnext/skillBridge.js";
 import type * as sdk_vnext_specBuilder from "../sdk/vnext/specBuilder.js";
 import type * as sdk_vnext_stages from "../sdk/vnext/stages.js";
@@ -243,6 +244,7 @@ declare const fullApi: ApiFromModules<{
   "sdk/vnext/compiler": typeof sdk_vnext_compiler;
   "sdk/vnext/contracts": typeof sdk_vnext_contracts;
   "sdk/vnext/pipeline": typeof sdk_vnext_pipeline;
+  "sdk/vnext/progress": typeof sdk_vnext_progress;
   "sdk/vnext/skillBridge": typeof sdk_vnext_skillBridge;
   "sdk/vnext/specBuilder": typeof sdk_vnext_specBuilder;
   "sdk/vnext/stages": typeof sdk_vnext_stages;

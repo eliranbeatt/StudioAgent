@@ -387,6 +387,8 @@ export const runNext = action({
     userMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const cycleStartedAt = Date.now();
+    const cycleBudgetMs = Number(process.env.SDK_DISPATCH_CYCLE_BUDGET_MS ?? 120000);
     const flags = await ctx.runQuery(api.featureFlags.getAll, {});
     const useVNextPipeline = Boolean(flags?.ff_sdk_vnext_pipeline);
 
@@ -402,14 +404,19 @@ export const runNext = action({
     });
     if (!run) throw new Error('Run not found');
 
-    if (run.status === 'paused' || run.status === 'cancelled' || run.status === 'completed') {
+    if (
+      run.status === 'paused' ||
+      run.status === 'cancelled' ||
+      run.status === 'completed' ||
+      run.status === 'failed'
+    ) {
       return { status: run.status };
     }
 
-    // Handle blocked state - return early to avoid infinite loops
-    if (run.status === 'blocked') {
+    // Handle waiting states - return early to avoid silent loops.
+    if (run.status === 'blocked' || run.status === 'needs_input') {
       return {
-        status: 'blocked',
+        status: run.status,
         lastError: run.lastError,
         pendingChangeSetId: run.pendingChangeSetId,
       };
@@ -447,6 +454,17 @@ export const runNext = action({
             stageKey: nextStage,
             status: 'running',
             currentAgentName: 'vnext_pipeline',
+            progressKey: `${nextStage}:init`,
+            progressCount: 0,
+            noProgressCount: 0,
+          });
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'vnext_stage_transition',
+            payload: {
+              fromStage: currentStage,
+              toStage: nextStage,
+            },
           });
           effectiveRun = { ...run, stageKey: nextStage, status: 'running' };
         } else {
@@ -465,7 +483,24 @@ export const runNext = action({
         run: effectiveRun,
         runId: args.runId,
         userMessage: args.userMessage,
+        options: {
+          softGates: Boolean(flags?.ff_sdk_vnext_soft_gates ?? true),
+          pricingQueue: Boolean(flags?.ff_sdk_vnext_pricing_queue ?? true),
+          stageBudgets: Boolean(flags?.ff_sdk_vnext_stage_budgets ?? true),
+        },
       });
+      const cycleElapsedMs = Date.now() - cycleStartedAt;
+      if (cycleElapsedMs > cycleBudgetMs) {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'dispatch_cycle_budget_warn',
+          payload: {
+            cycleElapsedMs,
+            cycleBudgetMs,
+            stageKey: result.stageKey,
+          },
+        });
+      }
 
       await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
         conversationId: args.conversationId,
@@ -478,6 +513,15 @@ export const runNext = action({
         runId: args.runId,
         type: 'vnext_stage_result',
         payload: result,
+      });
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'vnext_stage_exit',
+        payload: {
+          stageKey: result.stageKey,
+          status: result.status,
+          nextStageKey: result.nextStageKey ?? null,
+        },
       });
 
       return {
@@ -1355,4 +1399,3 @@ Then call changeset.compile to create the ChangeSet.`
     };
   },
 });
-

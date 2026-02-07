@@ -631,6 +631,7 @@ PROCESS (ITERATIVE)
    - any known unit/qty
    - project timeline (install date)
    - catalog + logged research
+   - if input.pricingBatch exists, process that batch only and return lineRef for every batch item
 2) For each line:
    A) Try catalog match:
       - exact name/SKU match > fuzzy match
@@ -653,6 +654,9 @@ PROCESS (ITERATIVE)
    - recommended unit price + currency (ILS default; allow USD if ordering global; include conversion assumption if needed)
    - assumptions in Hebrew
    - source notes (links if available)
+5) Completion behavior:
+   - do not silently drop lines from input.pricingBatch
+   - if a line cannot be priced, still return a fallback estimate or low-confidence candidate
 
 OUTPUT JSON SHAPE
 Return exactly one JSON object:

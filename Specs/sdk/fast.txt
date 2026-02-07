@@ -1,0 +1,852 @@
+
+You’re very close to an **ideal “progressive elaboration” flow**: get messy context → generate a *text* plan + a *structured* question backlog → run a tight question loop → continuously rebase plan/questions → only at the end do the “DB-grade” structured build (elements/tasks/accounting/quote). That aligns perfectly with your StudioOps lifecycle and your “Projects → Elements → Tasks → Accounting → Quote” backbone.  
+
+Below is the **optimized end-to-end flow** using **OpenAI Agents SDK for orchestration**, your existing **Convex agents/pages**, and a **gate-runner** style stage system.
+
+---
+
+## The best flow (high accuracy + minimal user friction)
+
+### Phase 0 — Context creation (user-driven + assisted)
+
+**Goal:** maximize signal before any planning.
+
+**Inputs (any order):**
+
+1. Project description form (fast structured facts)
+2. File uploads (your existing ingestion pipeline → RAG corpus) 
+3. Optional “free chat: tell me what you know” (agent nudges user to dump details)
+
+**Agent behavior (strict):**
+
+* Only asks for **high-value missing context** (date/location/access/budget comfort range/brand constraints) — your playbook’s “non-obvious realities”. 
+
+**Persistence:**
+
+* Files → ingestionJobs/knowledgeDocs/knowledgeChunks (existing) 
+* Chat → conversations (existing) 
+* Working summary → one “Project Working Knowledge” doc (knowledgeDocs) 
+
+**Gate 0 (code):** “Enough context to draft?”
+Pass if: has install date or deadline window **and** venue/city **and** at least a rough deliverables description.
+
+---
+
+### Phase 1 — Draft Plan + Question Backlog (single heavy call)
+
+**Model:** GPT-5.2 (or your “best reasoning” tier)
+
+**Output is split into 2 artifacts (exactly like you described):**
+
+1. **Draft Plan Doc (text/markdown)**
+
+   * Project overview
+   * Proposed elements (with “build/buy/rent” approach suggestions)
+   * Milestones/phases
+   * Task clusters (still text)
+   * Early cost drivers (still text; no numbers required yet)
+2. **Open Questions Backlog (structured)**
+
+   * Questions grouped by: Project → Element → Tasking/Accounting/Print/Install
+   * Each question has: type (choice/number/date/text), why it matters, dependencies, and “if unknown: safe default”
+
+**Persistence:**
+
+* Plan Doc → knowledgeDocs (type: `draft_plan_v1`)
+* Questions Backlog → your “qapairs/questions doc” mechanism (or knowledgeDocs type `open_questions_v1`)
+* Agent run trace → agentRuns (existing) 
+
+**Gate 1 (code):** ensure backlog is *actionable*
+
+* Every question has `scopeKey` (project or element) and `blockingLevel` (blocker / helpful / optional)
+* Backlog has at least N “blockers” before deep questions appear.
+
+---
+
+### Phase 2 — Question loop (UI shows 1 set at a time)
+
+**UI behavior (exactly your design intent):**
+
+* Main lane shows **only the current QuestionSet**
+* Sidebar shows “plan snapshot / elements status / costs status”
+* QuestionSet is loaded **from the saved backlog doc**, so UI never depends on the background updater timing.
+
+**Flow:**
+
+1. UI loads next QuestionSet (e.g., “Element A — measurements + mounting + finish”)
+2. User answers + submits
+3. You immediately:
+
+   * write answers (mark qapairs rows answered)
+   * advance pointer to next QuestionSet (deterministic)
+4. In parallel you enqueue a “mini update job” (see Phase 3)
+
+**Gate 2 (code):** prevent user fatigue
+
+* Cap QuestionSet size (e.g., 5–8 questions)
+* Always include “I don’t know / decide for me” option (then you mark it as an assumption explicitly in the plan doc)
+
+This matches your goal: **only necessary user interactions**, and always “unblocking” before deep dives. 
+
+---
+
+### Phase 3 — Async rebasing (mini model updates docs)
+
+This is your key optimization and it’s totally sane.
+
+**Mechanics:**
+
+* On every submit, enqueue `plan.update_from_answers`:
+
+  * Inputs: (a) current plan doc, (b) current backlog doc, (c) new answers, (d) any newly ingested files since last update
+  * Outputs: updated plan doc + updated backlog doc + “diff summary” (what changed)
+
+**How to implement async robustly:**
+
+* Use OpenAI **background mode** for the update call (or run it via Convex scheduler). Background responses are a first-class pattern for long tasks and can be streamed/resumed. ([OpenAI Platform][1])
+* Add **versioning + CAS**:
+
+  * backlog has `version`
+  * updater writes only if version matches; otherwise it re-reads and retries once (prevents race conditions)
+
+**Important rule:** updater **never reorders** already-queued QuestionSets that the user hasn’t seen yet unless it’s necessary; it can:
+
+* mark some questions “resolved by answer”
+* add new questions at the end (or right after the relevant section)
+* raise a blocker to higher priority only if it truly blocks downstream
+
+---
+
+### Phase 4 — Final “DB-grade” synthesis (structured outputs + pricing)
+
+Triggered when:
+
+* user clicks “Finalize”, or
+* all “blocker” questions are answered (auto-suggest finalize, but don’t auto-run)
+
+**Steps:**
+
+1. **Generate full structured proposal**:
+
+   * Elements (final specs)
+   * Tasks (atomic, categorized)
+   * Accounting lines (materials + labor)
+   * Quote draft (Hebrew client-facing)
+     (This follows your playbooks: task granularity, accounting structure, quote hygiene.)  
+2. **Pricing completio:es.getBestEstimate (your price memory / Management hub) 
+
+   * **2nd:** online research / buying sugsearch/buying flows) 
+   * **3rd:** estimate with confidence + a pretend exact) 
+3. **Validation gates (code):**
+
+   * every tone element (or explicit project-wide) 
+   * accounting totals consistent
+   * prie QA/proof steps (your print QA guidance) 
+4. **User approval**
+5. **Apply ChangeSet** er in code)
+
+---
+
+## Where the Agents SDK fits (cleanly)
+
+Use the Agents SDK for the **orchestrator + traceability + handoffs**, not for DB writes.
+
+* The orchestrator agent:
+
+  * decides which phase you’re in
+  * calls tools (Convex actions) for: ingest, draft, enqueue update, finalize, apply
+  * can pause for human-in-the-loop approvals (supported pattern) ([OpenAI Platform][2])
+  * produces a trace of “what happened” (good for debugging) ([OpenAI Platform][2])
+
+This maps well to your existing architecture (agents pages, Convex actions, agentRuns). 
+
+---
+
+## The 6 core “skills/tools” you need (minimal set)
+
+1. `context.collect` (form + chat + latest docs pointers)
+2. `draft.plan_and_questions` (Phase 1 heavy call)
+3. `questions.next_setction from backlog)
+4. `questions.submit_answers` (persist + advance pointer + enqueue update)
+5. `plan.rebase_from_answers_async` (Phase 3 mini updater)
+6. `finalize.generate_entities_and_quote` (Phase 4 synthesis + pricing fill)
+7. `changeset.compile_apply` (code)
+
+(You can keep your existing Clarification/Planning/Architect/Accounting/Quote agents internally, but wrap them behind these stable “flow tools”.) 
+
+---
+
+## The only places you *must* make hard design choices
+
+I can’t finalize the exact wiring without these specifics (no guessing):
+
+1. **Where exactly is your “qapairs component” stored  name + fields (does it support “unanswered rows” + grouping + ordering?)
+2. **How do you want QuestionSets ordered?**
+
+   * strictly by element order? blockers-first globally? (recommended: blockers-first globally, then element-by-element)
+3. **When should finalize become available?**
+
+   * only when all blockers are answered, or always (with “assumptions mode”)?
+
+Reply with those 3 answers and I’ll translate this into a concrete stage graph + gate definitions + exact tool contracts that match your current Convex tables/actions.
+
+[1]: https://platform.openai.com/docs/guides/background?utm_source=chatgpt.com "Background mode | OpenAI API"
+[2]: https://platform.openai.com/docs/guides/agents-sdk?utm_source=chatgpt.com "Agents SDK | OpenAI API"
+
+
+
+Below is the **full detailed refactor plan** (architecture + data + tools + gates + model routing + UI + background jobs + post-quote chat mode + dev task breakdown). It’s written so you can hand it to yourself/your devs and implement phase-by-phase.
+
+I’m going to **treat your existing skills/agents as “black boxes”** (keep them as-is) and wrap them with a new **orchestrated flow** that uses:
+
+* **qapairs** as the live questions/answers store
+* a **PlanDoc** as the living text plan
+* a **mini async updater** that can **regenerate questions at every submit**
+* a **finalizer** that produces structured entities + pricing
+* a **ChangeSet compiler in code** (deterministic) and:
+
+  * **auto-apply** in the *first full planning flow*
+  * **chat-edit mode** later (change requests → changesets)
+
+---
+
+# 0) Goals & invariants
+
+## Goals
+
+1. **Max efficacy / accuracy** by:
+
+   * draft plan fast
+   * ask blockers first
+   * continuously rebase plan + regenerate questions
+   * only do heavy structured synthesis once
+2. **Min user interaction friction**
+
+   * user always sees one QuestionSet
+   * “assume mode” always allows progress
+3. **Deterministic DB writes**
+
+   * LLMs produce text/proposals
+   * **code compiles + validates + applies** DB ops
+4. Two modes:
+
+   * **Planning Flow Mode (auto-apply changesets)**: no user approvals
+   * **Post-Quote Chat Edit Mode**: conversational changes → changesets
+
+## Invariants
+
+* UI question sets are **always served from persisted qapairs** (never from “in-flight” model output).
+* Background updates may lag; the flow must still work.
+* Questions may be regenerated at any time, including for “already completed” elements (as follow-ups).
+* Finalize is always available (assumptions mode).
+
+---
+
+# 1) End-to-end flow (runtime)
+
+## Phase A — Context Capture
+
+**User inputs** (any order):
+
+* project description form
+* file uploads
+* optional free chat (“tell me everything you know about the project”)
+
+**Persist**
+
+* files → ingestion system (existing)
+* free chat → conversation log (existing)
+* “Working Knowledge Summary” (optional doc)
+
+**Gate A (code):** can we draft a plan?
+
+* If **no**: seed **project blockers** questions into qapairs; go directly to Question Loop.
+* If **yes**: proceed.
+
+---
+
+## Phase B — Draft Plan + Seed Questions (fast)
+
+**Tool:** `draft.plan_and_seed_questions`
+
+* **Model:** `gpt-5.2` with **no reasoning** (fast)
+
+**Outputs**
+
+1. **PlanDoc v1** (text/markdown): overview + elements list + rough approach + risks
+2. **Seed questions** inserted into qapairs:
+
+   * project blockers
+   * element blockers (per element)
+   * helpful/optional (per element)
+
+**Persist**
+
+* PlanDoc → knowledge tab (PlanDoc)
+* qapairs → all seed questions as `status="open"`
+
+**Gate B (code):** validate draft output has:
+
+* stable `elementStableKey` list + ordering
+* at least the minimum blocker set exists (or marked as “assume ok”)
+
+---
+
+## Phase C — Question Loop (UI)
+
+**Tool:** `questions.next_set` (code)
+
+* deterministic selection order:
+
+  1. project blockers
+  2. element blockers (element-by-element)
+  3. project helpful/optional
+  4. element helpful/optional (element-by-element)
+
+**User submits answers**
+**Tool:** `questions.submit_answers` (code)
+
+* updates qapairs rows
+* immediately returns next QuestionSet (from persisted qapairs)
+
+**In parallel**
+**Tool:** `plan.rebase_and_regenerate_questions_async`
+
+* **Model:** `gpt-5-mini`
+* updates PlanDoc + regenerates question backlog (details in section 4)
+
+Loop continues until user decides to finalize (or backlog is mostly resolved).
+
+---
+
+## Phase D — Finalize (structured build)
+
+**Tool:** `finalize.build_structured_package`
+
+* **Model:** `gpt-5.2` with **medium reasoning**
+* Uses:
+
+  * latest PlanDoc
+  * qapairs answers + assumptions
+  * knowledge/files context
+
+**Outputs: FinalizePackage**
+
+* structured elements/tasks/accounting
+* pricing evidence placeholders (db/web/estimate)
+* assumptions list (explicit)
+* missing critical list (rare; should be near-empty because “assume mode”)
+
+Then run pricing enrichment (if needed), then compile changeset.
+
+---
+
+## Phase E — ChangeSet compile + apply
+
+**Tool:** `changeset.compile` (code deterministic)
+**Tool:** `changeset.validate` (code gates)
+**Tool:** `changeset.apply` (code)
+
+### Your rule:
+
+✅ **In the initial full planning flow: auto-approve + auto-apply**
+
+* No user approval step.
+* But we still:
+
+  * validate hard
+  * record an audit log
+  * create rollback support
+
+---
+
+# 2) Data & state model (what to add / enforce)
+
+You already have qapairs infra. We’ll add minimal fields needed for deterministic behavior + regeneration.
+
+## 2.1 qapairs fields (target contract)
+
+You likely have some already; add what’s missing.
+
+**Core**
+
+* `id`
+* `projectId`
+* `status`: `"open" | "answered" | "assumed" | "dismissed"`
+* `questionText`
+* `questionType`: `"choice" | "number" | "date" | "shortText" | "longText" | "fileRef"`
+* `options` (if choice)
+* `answer` (JSON)
+* `answerText` (normalized string for LLM context)
+
+**Scoping**
+
+* `scopeType`: `"project" | "element"`
+* `scopeKey`: `"project"` or `"element:<elementStableKey>"`
+* `sectionPath`: e.g. `"elements/<stableKey>/dimensions"`
+* `blockingLevel`: `"blocker" | "helpful" | "optional"`
+
+**Ordering / regeneration control**
+
+* `orderKey`: deterministic sort key (explained below)
+* `createdFrom`: `"seed" | "rebase" | "manual"`
+* `followUp`: boolean (true when added after an element was “done”)
+* `triggeredBy`: `string[]` (questionIds that caused follow-up)
+* `dedupeKey`: semantic cluster id (optional but helpful)
+
+## 2.2 PlanDoc storage
+
+Create/standardize one canonical doc per project:
+
+* `planDoc.current` (markdown)
+* store `planDoc.version` (increment on each accepted update)
+* store `planDoc.elementIndex[]` inside the doc header (or separately) with:
+
+  * `elementStableKey`
+  * `elementNameHe`
+  * `orderIndex`
+
+## 2.3 Flow state
+
+Add a `flowState` record (or attach to project):
+
+* `mode`: `"PLANNING_FLOW" | "CHAT_EDIT"`
+* `cursor` (see section 3.3)
+* `lastRebaseJobId` + `lastRebaseAppliedVersion`
+* `hasFirstQuote`: boolean
+* `autoApplyEnabled`: boolean (true in initial flow)
+
+---
+
+# 3) Deterministic question serving (code)
+
+## 3.1 Ordering strategy: blockers → element-by-element
+
+Implement `questions.next_set(projectId)` purely in code.
+
+### Bucket order
+
+1. `project blocker`
+2. `element blocker`
+3. `project helpful`
+4. `element helpful`
+5. `project optional`
+6. `element optional`
+
+### Element order
+
+Use PlanDoc’s element index ordering (`orderIndex`).
+
+### Set size
+
+* default N = 6–8
+
+## 3.2 orderKey format
+
+Make ordering stable across regenerations:
+
+`orderKey = "<bucketCode>/<elementOrderOr000>/<sectionPath>/<createdOrdinal>"`
+
+* `bucketCode`: `PB EB PH EH PO EO`
+* `elementOrderOr000`: `000` for project scope
+* `sectionPath`: stable grouping
+* `createdOrdinal`: monotonic integer per project (assigned in DB on insert)
+
+## 3.3 Cursor design (important)
+
+**Do not** store “next question id”.
+Store:
+
+* `lastServedOrderKey` (string) **and** timestamp
+
+When selecting next set:
+
+* find first open question with `orderKey > lastServedOrderKey`
+* BUT if new **project blockers** appear, allow jump “back” (because blockers always win)
+
+This is what makes regeneration safe.
+
+---
+
+# 4) Async rebase + full question regeneration (mini model)
+
+This is the heart of your design.
+
+## 4.1 Trigger
+
+Every time user submits answers:
+
+* persist answers immediately
+* enqueue async job `plan.rebase_and_regenerate_questions_async`
+
+## 4.2 Inputs to the updater (minimal but sufficient)
+
+* `projectId`
+* `planDoc.current`
+* `planDoc.version`
+* `elementIndex` (stable keys + order)
+* `deltaAnswers`: the newly submitted qapairs (ids + Q + A)
+* `qapairsSnapshotSummary`: list of open/answered counts per scopeKey + recent open questions
+* new ingested files since last update (optional)
+
+## 4.3 Outputs
+
+Updater returns a **patch**:
+
+1. `planDocPatch` (or full new markdown)
+2. `questionsPatch` with operations:
+
+   * `add[]` new questions (with scopeKey, sectionPath, blockingLevel, questionType)
+   * `resolve[]` questionIds to mark as answered/dismissed because they’re now redundant
+   * `promote[]` questionIds to change blockingLevel (rare)
+   * `dedupe[]` mapping from newQ → existingQ
+
+## 4.4 Regeneration rules (to avoid chaos)
+
+Hard rules enforced in code when applying patch:
+
+1. **Never rewrite history**
+
+* existing answered/assumed questions remain
+* never delete; only `dismissed`
+
+2. **Never “reopen” answered**
+
+* if new info requires more detail, create **followUp** question(s)
+* set `followUp=true` and `triggeredBy=[...]`
+
+3. **Churn limit**
+
+* cap new questions per submit, e.g. `<= 10`
+* if more, put overflow into helpful/optional at the end
+
+4. **Blocker discipline**
+
+* only promote to blocker if it truly blocks production/quote correctness
+
+5. **Semantic dedupe**
+
+* if dedupeKey matches, don’t add
+* if the model adds something similar, merge into existing open question
+
+## 4.5 Concurrency safety (CAS)
+
+When applying updater output:
+
+* require `planDoc.version` match
+* if mismatch:
+
+  * re-read latest and re-run updater once (or drop patch and enqueue again)
+
+---
+
+# 5) Model routing & skill usage (exact mapping)
+
+## 5.1 Planner (first pass)
+
+* `draft.plan_and_seed_questions`
+* **model:** `gpt-5.2` with `reasoning: none`
+* output: PlanDoc v1 + seed qapairs
+
+## 5.2 Updater (plan + questions)
+
+* `plan.rebase_and_regenerate_questions_async`
+* **model:** `gpt-5-mini`
+* output: PlanDoc patch + qapairs patch ops
+
+## 5.3 Finalizer (structured build)
+
+* `finalize.build_structured_package`
+* **model:** `gpt-5.2` with `reasoning: medium`
+
+## 5.4 “Other skills/agents as in code now”
+
+Keep your current ones and call them where they fit:
+
+* Clarification agent (optional early; or replaced by question loop)
+* Ideation agent (optional “suggestions” stage)
+* Planning agent (phases)
+* Architect agent (tasks)
+* Accounting Generator
+* Quote Writer
+* Buying Assistant
+* Print QA, Suggestions UI
+
+**Important:** In this new flow, those agents are called:
+
+* either by the finalizer internally, OR
+* as separate steps that write back into PlanDoc/FinalizePackage,
+  but **never** directly mutate DB.
+
+---
+
+# 6) Finalize pipeline (full detail)
+
+## 6.1 Build FinalizePackage
+
+Inputs:
+
+* latest PlanDoc
+* all qapairs answered + assumed
+* your knowledge/files context
+
+Outputs:
+
+* `elements[]` (structured)
+* `tasks[]` (structured)
+* `accounting.materialLines[]`
+* `accounting.laborLines[]`
+* `quoteDraftHe`
+* `assumptions[]` (explicit)
+* `pricingRequests[]` (lines missing price)
+
+## 6.2 Pricing enrichment order (your rule)
+
+For each material line:
+
+1. **DB price** (past prices / catalog)
+2. **Web research** (Buying Assistant)
+3. **Estimate** (marked as estimate + confidence)
+
+Persist “pricing evidence” per line:
+
+* source: `db | web | estimate`
+* confidence
+* notes
+
+## 6.3 Compile + validate changeset (code)
+
+* deterministic op ordering
+* stable `opId`
+* Hebrew `opSummaryHe`
+
+**Validation gates**
+
+* tasks link to element (or project-wide)
+* accounting totals non-negative
+* quote totals match accounting snapshot
+* safety-critical flags require human check task
+* print parts require QA tasks if present
+
+## 6.4 Auto-apply (initial flow)
+
+Because you want no approvals:
+
+* If validate PASS → apply immediately
+* If validate FAIL → do **not apply**
+
+  * generate blocker questions automatically into qapairs
+  * return user to question loop
+
+## 6.5 Rollback
+
+Always create:
+
+* `applyBatchId`
+* reverse ops or snapshot reference
+  So you can “Undo initial apply” if needed.
+
+---
+
+# 7) New mode: Post-Quote Chat Edit Mode (conversational changesets)
+
+Once `hasFirstQuote=true`:
+
+* switch `flowState.mode = "CHAT_EDIT"`
+
+## 7.1 UX
+
+User chats freely:
+
+* “split production into two weeks”
+* “make element 3 cheaper”
+* “remove the vinyl print, replace with foamboard”
+* “add a QA task for print proofs”
+
+## 7.2 Chat Edit pipeline
+
+1. `change_request.parse` (light, can be mini)
+
+   * output: intent + targets + required clarifications
+2. If clarifications needed:
+
+   * create qapairs follow-ups and ask them (still consistent UI)
+3. `change_request.propose` (text plan of changes)
+4. `changeset.compile` (code) from proposal + current DB snapshot
+5. `changeset.validate`
+6. apply (auto-apply by default, but you can add policy-based preview later)
+
+## 7.3 Safety policy for chat edits (recommended)
+
+Auto-apply unless:
+
+* deletes many entities
+* cost delta > threshold
+* schedule compression risky
+  Then require a quick “Confirm” click (not full approval UI, just a guard).
+
+---
+
+# 8) Implementation plan (phase-by-phase dev tasks)
+
+## Phase 1 — Foundations (FlowState + PlanDoc + qapairs extensions)
+
+**Tasks**
+
+1. Add/standardize `flowState` record (project-scoped)
+2. Add PlanDoc storage + versioning (or standardize existing knowledge doc)
+3. Extend qapairs schema with:
+
+   * scopeType/scopeKey/sectionPath/blockingLevel/orderKey/createdFrom/followUp/triggeredBy
+4. Implement `orderKey` + `createdOrdinal` generation
+
+**Done when**
+
+* You can create/open a project and see:
+
+  * PlanDoc exists (even empty)
+  * qapairs can store open + answered + assumed with stable ordering
+
+---
+
+## Phase 2 — Deterministic QuestionSet serving (UI + code)
+
+**Tasks**
+
+1. Implement `questions.next_set(projectId)` deterministic selection
+2. Implement cursor: `lastServedOrderKey`
+3. Implement `questions.submit_answers`
+4. UI: Question-only main lane loads next set from server
+
+**Done when**
+
+* You can seed questions manually and the UI walks them:
+
+  * blockers first
+  * then element-by-element
+  * answers persist
+  * next set appears instantly
+
+---
+
+## Phase 3 — Draft planner (fast) + seeding qapairs
+
+**Tasks**
+
+1. Implement tool `draft.plan_and_seed_questions`
+2. Wire orchestrator stage:
+
+   * if no PlanDoc → run draft planner
+3. Persist PlanDoc + insert seed questions into qapairs
+4. Gate B validator (has elementStableKeys + minimal questions)
+
+**Done when**
+
+* New project → draft plan appears + question loop starts automatically
+
+---
+
+## Phase 4 — Async rebase + regeneration (mini model)
+
+**Tasks**
+
+1. Create background job runner:
+
+   * Convex scheduler or OpenAI background response
+2. Implement `plan.rebase_and_regenerate_questions_async`
+3. Implement patch applier (code):
+
+   * apply PlanDoc patch with CAS
+   * apply qapairs patch with rules (no reopen, follow-ups, churn cap)
+4. Add observability:
+
+   * job status
+   * last applied version
+   * diff summary stored
+
+**Done when**
+
+* Submit answers → next questions show immediately
+* Within seconds, PlanDoc updates + new questions may appear (including follow-ups)
+
+---
+
+## Phase 5 — Finalize (structured package) + pricing enrichment
+
+**Tasks**
+
+1. Implement `finalize.build_structured_package` (gpt-5.2 medium reasoning)
+2. Implement pricing enrichment pipeline:
+
+   * db lookup
+   * web/buying assistant
+   * estimate fallback
+3. Implement “Assumptions Mode”:
+
+   * convert open questions → assumed answers in finalize context
+   * generate explicit assumptions list
+
+**Done when**
+
+* Click Finalize anytime → you get full structured elements/tasks/accounting/quote draft
+
+---
+
+## Phase 6 — ChangeSet compile/validate/apply + auto-apply initial flow
+
+**Tasks**
+
+1. Deterministic `changeset.compile` (stable opId + opSummaryHe)
+2. Strong validation gates
+3. Apply batch + rollback support
+4. Configure initial planning flow as `autoApplyEnabled=true`
+5. If validate fails: inject blocker qapairs and return to loop
+
+**Done when**
+
+* Finalize → auto-applies entities without user approval safely
+* You can undo the batch
+
+---
+
+## Phase 7 — Post-Quote Chat Edit Mode
+
+**Tasks**
+
+1. Add mode switch when first quote exists
+2. Implement `change_request.parse` + clarify loop via qapairs follow-ups
+3. Implement `change_request.propose` → changeset compile/apply
+4. Add guardrails for destructive/high-impact changes
+
+**Done when**
+
+* User can chat modifications and the system updates tasks/accounting/quote via changesets
+
+---
+
+# 9) Testing & evaluation (must-have)
+
+## Unit tests (code)
+
+* question ordering (bucket + element order)
+* cursor behavior with new blockers inserted
+* patch applier rules (no reopen, follow-up creation, churn cap)
+* changeset determinism (same input → same ops order + ids)
+* validation gates
+
+## Integration tests
+
+* “happy path”: context → draft → Q loop → finalize → auto-apply
+* “regen follow-up”: answer triggers new questions for old element
+* “assume mode finalize”: lots open, still finalizes and applies
+* “chat edit”: modify after quote, compile/apply ok
+
+## Metrics (basic)
+
+* # questions answered vs assumed
+* time to first quote
+* # follow-up questions added
+* validation failure rate (should be low)
+* rollback usage
+
+

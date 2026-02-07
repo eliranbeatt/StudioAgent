@@ -36,6 +36,12 @@ export const upsertStageArtifact = internalMutation({
     specHash: v.string(),
     artifactHash: v.string(),
     status: v.optional(v.string()),
+    progress: v.optional(v.object({
+      progressKey: v.string(),
+      progressCount: v.number(),
+      noProgressCount: v.number(),
+      lastProgressAt: v.optional(v.number()),
+    })),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -48,6 +54,7 @@ export const upsertStageArtifact = internalMutation({
       specHash: args.specHash,
       artifactHash: args.artifactHash,
       status: args.status ?? 'ready',
+      progress: args.progress,
       updatedAt: Date.now(),
     }
 
@@ -61,6 +68,7 @@ export const upsertStageArtifact = internalMutation({
         specHash: args.specHash,
         artifactHash: args.artifactHash,
         status: args.status ?? 'ready',
+        progress: args.progress,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       })
