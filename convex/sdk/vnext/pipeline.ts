@@ -46,6 +46,9 @@ function buildQuestionsBlock(stageKey: VNextStageKey, titleHe: string, questions
       textHe: q.textHe ?? 'יש להשלים מידע',
       type: q.type ?? 'text',
       optionsHe: q.optionsHe,
+      options: q.options,
+      suggestedAnswers: q.suggestedAnswers,
+      allowDontKnow: q.allowDontKnow ?? true,
     })),
     continueAction: {
       labelHe: 'שמור תשובות והמשך',
@@ -638,12 +641,30 @@ export async function runVNextStage(args: {
   const scopeSeed = Array.isArray((artifacts.scope as any)?.proposedElements)
     ? (artifacts.scope as any).proposedElements
     : []
+
+  // Fetch answered vNext qaPairs as fallback for spec builder
+  const vnextQaPairs = await args.ctx.runQuery(internal['sdk/vnext/artifacts'].listAnsweredVnextQaPairs, {
+    projectId: args.projectId,
+  })
+  const qaPairAnswers: Record<string, string> = {}
+  for (const qa of vnextQaPairs) {
+    if (!qa.questionKey || !qa.questionKey.startsWith('vnext.')) continue
+    const parts = qa.questionKey.split('.')
+    if (parts.length < 3) continue
+    const semanticId = parts.slice(2).join('.')
+    const answer = String(qa.answerText ?? qa.answer_he ?? qa.answer ?? '').trim()
+    if (answer && !qaPairAnswers[semanticId]) {
+      qaPairAnswers[semanticId] = answer
+    }
+  }
+
   const spec: TargetPlanSpec = buildTargetPlanSpec({
     projectId: args.projectId,
     project: projectContext?.project ?? {},
     recentUserTexts,
     stageDecisions,
     existingScopeElements: scopeSeed,
+    qaPairAnswers,
   })
 
   const currentArtifact = (artifacts as any)[stageKey] ?? {}

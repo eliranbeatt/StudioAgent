@@ -393,6 +393,37 @@ export const submitAnswers = mutation({
         answeredQaPairIds: applied.map((item) => item.qaPairId),
         expectedPlanVersion: typeof planDoc?.schemaVersion === 'number' ? planDoc.schemaVersion : undefined,
       })
+
+      // ── vNext bridge: propagate answers to sdkStageDecisions ──
+      // Collect answered qaPairs whose questionKey starts with "vnext."
+      // and append as stage decisions so the pipeline gate can see them.
+      const vnextAnswersByStage: Record<string, Record<string, string>> = {}
+      for (const item of applied) {
+        if (item.status !== 'answered' && item.status !== 'skipped') continue
+        const qa = await ctx.db.get(item.qaPairId)
+        if (!qa?.questionKey || !qa.questionKey.startsWith('vnext.')) continue
+        // questionKey format: vnext.<stageKey>.<semanticId>
+        const parts = qa.questionKey.split('.')
+        if (parts.length < 3) continue
+        const stageKey = parts[1]
+        const semanticId = parts.slice(2).join('.')
+        const answerValue = item.status === 'skipped'
+          ? '__dont_know__'
+          : String(qa.answerText ?? qa.answer_he ?? qa.answer ?? '').trim() || '__dont_know__'
+        if (!vnextAnswersByStage[stageKey]) vnextAnswersByStage[stageKey] = {}
+        vnextAnswersByStage[stageKey][semanticId] = answerValue
+      }
+
+      for (const [stageKey, answersById] of Object.entries(vnextAnswersByStage)) {
+        if (Object.keys(answersById).length === 0) continue
+        await ctx.runMutation(internal['sdk/vnext/artifacts'].appendStageDecision, {
+          runId: args.runId,
+          conversationId: run.conversationId,
+          stageKey,
+          decisionType: 'answers',
+          payload: { answersById },
+        })
+      }
     }
 
     return {

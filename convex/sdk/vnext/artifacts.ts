@@ -111,3 +111,20 @@ export const listStageDecisionsByRun = internalQuery({
       .take(200)
   },
 })
+
+export const listAnsweredVnextQaPairs = internalQuery({
+  args: {
+    projectId: v.id('projects'),
+  },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query('qaPairs')
+      .withIndex('by_project_status', (q) =>
+        q.eq('projectId', args.projectId).eq('status', 'answered')
+      )
+      .take(200)
+    return rows.filter(
+      (qa) => qa.questionKey && qa.questionKey.startsWith('vnext.')
+    )
+  },
+})

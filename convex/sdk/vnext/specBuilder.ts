@@ -27,12 +27,19 @@ function normalizeText(value: unknown) {
 function isUnknownAnswer(value: unknown) {
   const normalized = normalizeText(value)
   if (!normalized) return false
+  // Canonical marker from UI chips
+  if (normalized === '__dont_know__') return true
   return (
     normalized.includes('unknown') ||
     normalized.includes('tbd') ||
     normalized.includes('not sure') ||
     normalized.includes('not known') ||
-    normalized.includes('n/a')
+    normalized.includes('n/a') ||
+    // Hebrew unknown terms
+    normalized.includes('לא ידוע') ||
+    normalized.includes('לא יודע') ||
+    normalized.includes('לא בטוח') ||
+    normalized.includes('טרם נקבע')
   )
 }
 
@@ -54,6 +61,24 @@ function parseNumberFromText(value: unknown) {
 function parseDateFromText(value: unknown) {
   const text = String(value ?? '').trim()
   if (!text) return undefined
+
+  // DD/MM/YYYY or DD.MM.YYYY
+  const ddmmyyyy = text.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/)
+  if (ddmmyyyy) {
+    const [, dd, mm, yyyy] = ddmmyyyy
+    const iso = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`
+    const parsed = new Date(iso)
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+
+  // YYYY-MM-DD (native support, but be explicit)
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (isoMatch) {
+    const parsed = new Date(text)
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+
+  // Fallback: native Date parsing
   const asDate = new Date(text)
   if (Number.isNaN(asDate.getTime())) return undefined
   return asDate.toISOString()
@@ -117,9 +142,34 @@ export function buildTargetPlanSpec(args: {
   recentUserTexts: string[]
   stageDecisions?: StageDecisionLike[]
   existingScopeElements?: Array<{ elementKey: string; nameHe: string; mustInclude?: boolean }>
+  qaPairAnswers?: Record<string, string>
 }): TargetPlanSpec {
   const orderedDecisions = [...(args.stageDecisions ?? [])].reverse()
   const answerInputs = collectAnswerInputs(orderedDecisions)
+
+  // Merge qaPair fallback answers for keys not already in stage decisions
+  const fallback = args.qaPairAnswers ?? {}
+  for (const [key, value] of Object.entries(fallback)) {
+    if (!answerInputs.mergedAnswers[key] && value) {
+      answerInputs.mergedAnswers[key] = value
+      // Also check for unknown answers from fallback
+      if (key === 'event_date' && isUnknownAnswer(value)) {
+        if (!answerInputs.acceptedAssumptionsHe.includes('eventDateUnknown')) {
+          answerInputs.acceptedAssumptionsHe.push('eventDateUnknown')
+        }
+      }
+      if (key === 'location' && isUnknownAnswer(value)) {
+        if (!answerInputs.acceptedAssumptionsHe.includes('locationUnknown')) {
+          answerInputs.acceptedAssumptionsHe.push('locationUnknown')
+        }
+      }
+      if (key === 'budget' && isUnknownAnswer(value)) {
+        if (!answerInputs.acceptedAssumptionsHe.includes('budgetUnknown')) {
+          answerInputs.acceptedAssumptionsHe.push('budgetUnknown')
+        }
+      }
+    }
+  }
 
   const eventDateFromAnswers =
     parseDateFromText(answerInputs.mergedAnswers.event_date) ??

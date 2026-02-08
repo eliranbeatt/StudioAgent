@@ -366,6 +366,7 @@ export const answerVnext = mutation({
     runId: v.id('sdkRuns'),
     answersById: v.record(v.string(), v.string()),
     freeText: v.optional(v.string()),
+    answerSources: v.optional(v.record(v.string(), v.string())),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId)
@@ -381,6 +382,7 @@ export const answerVnext = mutation({
       payload: {
         answersById: args.answersById,
         freeText: args.freeText,
+        answerSources: args.answerSources,
       },
     })
 

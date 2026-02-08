@@ -17,6 +17,7 @@ import { RunbookBlock } from '../agent/_components/Blocks/RunbookBlock';
 import { DailyPlanBlock } from '../agent/_components/Blocks/DailyPlanBlock';
 import ChangeSetReviewDrawer from '../agent/_components/ChangeSetReviewDrawer';
 import { Check, Pencil, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { AnswerChips, type AnswerSource } from './_components/AnswerChips';
 
 export default function SdkAgentPage() {
   const params = useParams();
@@ -904,6 +905,8 @@ function SdkDeterministicQuestionsPanel({
     questionHe?: string;
     questionText?: string;
     blockingLevel?: string;
+    options?: Array<{ value: string; labelHe?: string }>;
+    allowDontKnow?: boolean;
   }>;
   onSubmit: (answersById: Record<string, string>) => Promise<void>;
   loading: boolean;
@@ -913,15 +916,34 @@ function SdkDeterministicQuestionsPanel({
   notice: string | null;
 }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [chipSelections, setChipSelections] = useState<Record<string, string>>({});
   const isRunning = loading || regenStatus === 'running';
   const isFailed = regenStatus === 'failed';
   const pillText =
     dirtyAnswersCount > 0 ? `Not refreshed (${dirtyAnswersCount} answers)` : 'Up to date';
 
+  const handleChipSelect = (questionId: string, value: string, source: AnswerSource) => {
+    const currentSel = chipSelections[questionId];
+    if (currentSel === value) {
+      // Deselect
+      setChipSelections((prev) => ({ ...prev, [questionId]: '' }));
+      setAnswers((prev) => ({ ...prev, [questionId]: '' }));
+    } else {
+      setChipSelections((prev) => ({ ...prev, [questionId]: value }));
+      setAnswers((prev) => ({ ...prev, [questionId]: value }));
+    }
+  };
+
+  const handleTextChange = (questionId: string, text: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: text }));
+    if (text) setChipSelections((prev) => ({ ...prev, [questionId]: '' }));
+  };
+
   const submit = async () => {
     if (isRunning) return;
     await onSubmit(answers);
     setAnswers({});
+    setChipSelections({});
   };
 
   return (
@@ -963,6 +985,10 @@ function SdkDeterministicQuestionsPanel({
         )}
         {questions.map((q, idx) => {
           const id = q.id ?? `q_${idx + 1}`;
+          const chipOptions = (q.options ?? []).map((o) => ({
+            value: o.value,
+            labelHe: o.labelHe ?? o.value,
+          }));
           return (
             <div key={id} className="space-y-1">
               <div className="text-[11px] text-slate-400 uppercase">{q.blockingLevel ?? 'helpful'}</div>
@@ -971,7 +997,13 @@ function SdkDeterministicQuestionsPanel({
                 className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
                 value={answers[id] ?? ''}
                 disabled={isRunning}
-                onChange={(event) => setAnswers((prev) => ({ ...prev, [id]: event.target.value }))}
+                onChange={(event) => handleTextChange(id, event.target.value)}
+              />
+              <AnswerChips
+                options={chipOptions.length > 0 ? chipOptions : undefined}
+                allowDontKnow={q.allowDontKnow !== false}
+                selected={chipSelections[id]}
+                onSelect={(value, source) => handleChipSelect(id, value, source)}
               />
             </div>
           );
@@ -1088,6 +1120,7 @@ function SdkVnextQuestionsBlock({
     runId: Id<'sdkRuns'>;
     answersById: Record<string, string>;
     freeText?: string;
+    answerSources?: Record<string, string>;
   }) => Promise<any>;
   onContinueVnext: (args: {
     projectId: Id<'projects'>;
@@ -1097,10 +1130,34 @@ function SdkVnextQuestionsBlock({
   }) => Promise<any>;
 }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answerSources, setAnswerSources] = useState<Record<string, AnswerSource>>({});
+  const [chipSelections, setChipSelections] = useState<Record<string, string>>({});
   const [freeText, setFreeText] = useState('');
   const [loading, setLoading] = useState(false);
 
   const questions = Array.isArray(block.questions) ? block.questions : [];
+
+  const handleChipSelect = (questionId: string, value: string, source: AnswerSource) => {
+    const currentSel = chipSelections[questionId];
+    if (currentSel === value) {
+      // Deselect
+      setChipSelections((prev) => ({ ...prev, [questionId]: '' }));
+      setAnswers((prev) => ({ ...prev, [questionId]: '' }));
+      setAnswerSources((prev) => { const n = { ...prev }; delete n[questionId]; return n; });
+    } else {
+      setChipSelections((prev) => ({ ...prev, [questionId]: value }));
+      setAnswers((prev) => ({ ...prev, [questionId]: value }));
+      setAnswerSources((prev) => ({ ...prev, [questionId]: source }));
+    }
+  };
+
+  const handleTextChange = (questionId: string, text: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: text }));
+    if (text) {
+      setChipSelections((prev) => ({ ...prev, [questionId]: '' }));
+      setAnswerSources((prev) => ({ ...prev, [questionId]: 'typed' }));
+    }
+  };
 
   const submit = async () => {
     if (!runId) return;
@@ -1110,6 +1167,7 @@ function SdkVnextQuestionsBlock({
         runId,
         answersById: answers,
         freeText: freeText.trim() ? freeText.trim() : undefined,
+        answerSources: Object.keys(answerSources).length > 0 ? answerSources : undefined,
       });
       await onContinueVnext({
         projectId,
@@ -1127,13 +1185,30 @@ function SdkVnextQuestionsBlock({
       <div className="space-y-3">
         {questions.map((q: any, idx: number) => {
           const id = q.id ?? `q_${idx + 1}`;
+          const chipOptions = (q.options ?? []).map((o: any) => ({
+            value: String(o.value ?? o),
+            labelHe: String(o.labelHe ?? o.value ?? o),
+          }));
+          const chipSuggestions = (q.suggestedAnswers ?? []).map((s: any) => ({
+            value: String(s.value ?? s),
+            labelHe: String(s.labelHe ?? s.value ?? s),
+          }));
           return (
             <div key={id}>
               <div className="text-xs text-slate-700 mb-1">{q.textHe ?? 'שאלה'}</div>
               <input
                 className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                type={q.type === 'date' ? 'date' : q.type === 'number' ? 'number' : 'text'}
                 value={answers[id] ?? ''}
-                onChange={(e) => setAnswers((prev) => ({ ...prev, [id]: e.target.value }))}
+                onChange={(e) => handleTextChange(id, e.target.value)}
+              />
+              <AnswerChips
+                options={chipOptions.length > 0 ? chipOptions : undefined}
+                optionsHe={!chipOptions.length && q.optionsHe ? q.optionsHe : undefined}
+                suggestedAnswers={chipSuggestions.length > 0 ? chipSuggestions : undefined}
+                allowDontKnow={q.allowDontKnow !== false}
+                selected={chipSelections[id]}
+                onSelect={(value, source) => handleChipSelect(id, value, source)}
               />
             </div>
           );

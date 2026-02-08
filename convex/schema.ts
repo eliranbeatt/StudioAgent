@@ -1887,6 +1887,12 @@ export default defineSchema({
     }))),
     answer: v.optional(v.union(v.string(), v.number(), v.boolean(), v.array(v.string()))),
     answerText: v.optional(v.string()),
+    answerSource: v.optional(v.union(
+      v.literal('typed'),
+      v.literal('option'),
+      v.literal('suggestion'),
+      v.literal('dont_know'),
+    )),
     scopeType: v.optional(qaPairScopeType),
     scopeKey: v.optional(v.string()),
     sectionPath: v.optional(v.array(v.string())),

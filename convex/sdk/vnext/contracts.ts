@@ -15,11 +15,19 @@ export const VNEXT_STAGE_ORDER = [
 
 export type VNextStageKey = (typeof VNEXT_STAGE_ORDER)[number]
 
+export type QuestionBlockOption = {
+  value: string
+  labelHe: string
+}
+
 export type QuestionBlock = {
   id: string
   textHe: string
   type?: 'text' | 'date' | 'select' | 'number'
   optionsHe?: string[]
+  options?: QuestionBlockOption[]
+  suggestedAnswers?: QuestionBlockOption[]
+  allowDontKnow?: boolean
 }
 
 export type GateIssue = {
