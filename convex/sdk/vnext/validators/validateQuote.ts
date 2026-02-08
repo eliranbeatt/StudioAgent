@@ -18,6 +18,7 @@ export function validateQuote(args: { quoteArtifact?: any; scopeArtifact?: any; 
         textHe: 'לא נוצרה טיוטת הצעת מחיר. להפיק מחדש?',
         type: 'select',
         optionsHe: ['כן', 'לא'],
+        allowDontKnow: false,
       },
     })
   }

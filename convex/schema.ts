@@ -1887,6 +1887,7 @@ export default defineSchema({
     }))),
     answer: v.optional(v.union(v.string(), v.number(), v.boolean(), v.array(v.string()))),
     answerText: v.optional(v.string()),
+    answerValue: v.optional(v.string()),
     answerSource: v.optional(v.union(
       v.literal('typed'),
       v.literal('option'),

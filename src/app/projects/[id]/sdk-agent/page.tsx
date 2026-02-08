@@ -1075,7 +1075,7 @@ function SdkBlockRenderer({
 
   if (block.type === 'ChatBlock') return <ChatBlock block={block} />;
   if (block.type === 'QuestionsBlock') {
-    if (suppressQuestionBlocks) return null;
+    if (suppressQuestionBlocks && !block.sdkVnext) return null;
     if (block.sdkVnext) {
       return (
         <SdkVnextQuestionsBlock

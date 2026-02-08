@@ -53,6 +53,7 @@ export function validatePricing(args: { pricingArtifact?: any; budgetArtifact?: 
         textHe: 'No pricing output was produced. Re-run pricing?',
         type: 'select',
         optionsHe: ['Yes', 'No'],
+        allowDontKnow: false,
       },
     })
   }

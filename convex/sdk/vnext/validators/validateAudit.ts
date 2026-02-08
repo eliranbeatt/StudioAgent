@@ -23,6 +23,11 @@ export function validateAudit(args?: { findings?: any[]; acceptedRiskNote?: stri
           id: 'audit_fixes',
           textHe: 'נמצאו ממצאים חוסמים בביקורת. לעדכן תיקונים לפני המשך.',
           type: 'text',
+          allowDontKnow: false,
+          suggestedAnswers: blockers.slice(0, 4).map((item: any, index: number) => ({
+            value: `fix_${index + 1}`,
+            labelHe: String(item?.messageHe ?? item?.message ?? `ממצא ${index + 1}`).slice(0, 60),
+          })),
         },
       ],
     }

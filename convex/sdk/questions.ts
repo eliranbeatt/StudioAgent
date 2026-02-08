@@ -366,12 +366,16 @@ export const submitAnswers = mutation({
       const nextVersion = typeof qa.version === 'number' ? qa.version + 1 : 1
       const resolvedSource = item.answerSource
         ?? (answerText === '__dont_know__' ? 'dont_know' as const : undefined)
+      // answerValue captures the structured/raw value from a chip selection,
+      // while answerText captures the display text.
+      const resolvedAnswerValue = item.answerValue ?? (hasText ? answerText : undefined)
       await ctx.db.patch(item.qaPairId, {
         status: nextStatus,
         answerText: hasText ? answerText : qa.answerText,
         answer_he: hasText ? answerText : qa.answer_he,
         answer: hasText ? answerText : qa.answer,
         answerSource: resolvedSource,
+        answerValue: resolvedAnswerValue,
         version: nextVersion,
       })
 

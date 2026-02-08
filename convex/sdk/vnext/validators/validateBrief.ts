@@ -31,6 +31,12 @@ export function validateBrief(args: { spec: TargetPlanSpec; artifact?: any }): G
         textHe: 'איפה ההקמה/האירוע?',
         type: 'text',
         allowDontKnow: true,
+        suggestedAnswers: [
+          { value: 'קניון', labelHe: 'קניון' },
+          { value: 'סטודיו', labelHe: 'סטודיו' },
+          { value: 'חוץ', labelHe: 'אירוע חוץ' },
+          { value: 'אולם', labelHe: 'אולם אירועים' },
+        ],
       },
     })
   }

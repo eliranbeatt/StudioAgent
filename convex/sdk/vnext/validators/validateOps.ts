@@ -22,6 +22,7 @@ export function validateOps(args: { opsArtifact?: any; coverageRules?: any }): G
         textHe: 'לא נמצאה תוכנית ביצוע. להפיק מחדש?',
         type: 'select',
         optionsHe: ['כן', 'לא'],
+        allowDontKnow: false,
       },
     })
   }

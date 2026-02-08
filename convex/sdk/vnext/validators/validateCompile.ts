@@ -22,11 +22,17 @@ export function validateCompile(args: {
           textHe: 'לא נוצרו פעולות שינוי. האם להפיק מחדש?',
           type: 'select',
           optionsHe: ['כן', 'לא'],
+          allowDontKnow: false,
         },
       ],
     }
   }
   if (!args.hasElements || !args.hasTasks || !args.hasAccounting) {
+    // Build suggestedAnswers listing which coverage items are missing
+    const missingSuggestions: Array<{ value: string; labelHe: string }> = []
+    if (!args.hasElements) missingSuggestions.push({ value: 'elements', labelHe: 'אלמנטים חסרים' })
+    if (!args.hasTasks) missingSuggestions.push({ value: 'tasks', labelHe: 'משימות חסרות' })
+    if (!args.hasAccounting) missingSuggestions.push({ value: 'accounting', labelHe: 'חשבונאות חסרה' })
     return {
       status: 'fail',
       issues: [
@@ -42,6 +48,8 @@ export function validateCompile(args: {
           textHe: 'חסר כיסוי מלא בחבילת השינויים. להשלים שלבים קודמים?',
           type: 'select',
           optionsHe: ['כן', 'לא'],
+          suggestedAnswers: missingSuggestions,
+          allowDontKnow: false,
         },
       ],
     }
