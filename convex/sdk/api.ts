@@ -819,6 +819,109 @@ function enrichFinalizeContext(baseContext: any, toolResult: any): any {
   return next
 }
 
+function stableHash(input: string) {
+  let h = 2166136261
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return `h${(h >>> 0).toString(16)}`
+}
+
+function toFinalizeElementKey(value: unknown) {
+  return normalizeKeyPart(value) || 'element'
+}
+
+function stageArtifactFromFinalizeTool(
+  toolId: string,
+  result: any,
+  elementRefToKey: Map<string, string>
+) {
+  if (toolId === 'plan.elements') {
+    const elements = Array.isArray(result?.elements) ? result.elements : []
+    const proposedElements = elements.map((item: any, index: number) => {
+      const nameHe = firstNonEmpty([item?.titleHe, item?.nameHe, item?.title, item?.name, `אלמנט ${index + 1}`])
+      const elementKey = toFinalizeElementKey(firstNonEmpty([item?.tempId, item?.stableKey, item?.id, nameHe]))
+      const refs = [item?.tempId, item?.stableKey, item?.id, item?.elementId]
+      for (const ref of refs) {
+        const value = String(ref ?? '').trim()
+        if (value) elementRefToKey.set(value, elementKey)
+      }
+      return {
+        nameHe,
+        elementKey,
+        rationaleHe: firstNonEmpty([item?.descriptionHe, item?.description]) || undefined,
+      }
+    })
+    return {
+      stageKey: 'scope',
+      artifact: { proposedElements },
+    }
+  }
+
+  if (toolId === 'plan.tasks') {
+    const tasks = Array.isArray(result?.tasks) ? result.tasks : []
+    const normalizedTasks = tasks.map((item: any) => {
+      const rawElementRef = firstNonEmpty([item?.elementTempOrId, item?.elementId])
+      const mappedElementKey =
+        elementRefToKey.get(String(rawElementRef ?? '')) ??
+        toFinalizeElementKey(rawElementRef)
+      return {
+        elementKey: mappedElementKey,
+        titleHe: firstNonEmpty([item?.titleHe, item?.title, item?.descriptionHe, 'משימה']),
+        durationHours: toFiniteNumber(item?.estimateHours ?? item?.estimatedHours) ?? 1,
+        category: firstNonEmpty([item?.workType?.key, item?.workType, item?.stageKey, item?.stage]),
+      }
+    })
+    return {
+      stageKey: 'tasks',
+      artifact: { tasks: normalizedTasks },
+    }
+  }
+
+  if (toolId === 'cost.build_budget' || toolId === 'pricing.resolve_lines') {
+    const materialLinesRaw = Array.isArray(result?.materialLines) ? result.materialLines : []
+    const workLinesRaw = Array.isArray(result?.workLines) ? result.workLines : []
+    const materialLines = materialLinesRaw.map((line: any, index: number) => {
+      const rawElementRef = firstNonEmpty([line?.elementTempOrId, line?.elementId])
+      const mappedElementKey =
+        elementRefToKey.get(String(rawElementRef ?? '')) ??
+        (String(line?.elementScope ?? '').trim() === 'project' ? '' : toFinalizeElementKey(rawElementRef))
+      return {
+        elementKey: mappedElementKey,
+        titleHe: firstNonEmpty([line?.itemHe, line?.itemName, `חומר ${index + 1}`]),
+        itemName: firstNonEmpty([line?.itemName, line?.itemHe, `חומר ${index + 1}`]),
+        quantity: toFiniteNumber(line?.qty ?? line?.quantity) ?? 1,
+        unitPrice: toFiniteNumber(line?.unitPrice ?? line?.plannedUnitCost) ?? 1,
+        taskTitleHe: firstNonEmpty([line?.taskTitleHe, line?.taskTempOrId, line?.taskId]),
+      }
+    })
+    const workLines = workLinesRaw.map((line: any, index: number) => {
+      const rawElementRef = firstNonEmpty([line?.elementTempOrId, line?.elementId])
+      const mappedElementKey =
+        elementRefToKey.get(String(rawElementRef ?? '')) ??
+        (String(line?.elementScope ?? '').trim() === 'project' ? '' : toFinalizeElementKey(rawElementRef))
+      return {
+        elementKey: mappedElementKey,
+        titleHe: firstNonEmpty([line?.titleHe, line?.roleHe, `עבודה ${index + 1}`]),
+        roleHe: firstNonEmpty([line?.roleHe, line?.titleHe, `עבודה ${index + 1}`]),
+        hours: toFiniteNumber(line?.hours ?? line?.qty ?? line?.plannedQuantity) ?? 1,
+        hourlyRate: toFiniteNumber(line?.rate ?? line?.plannedUnitCost) ?? 1,
+        workTypeLabelHe: firstNonEmpty([line?.workTypeLabelHe, line?.workTypeKey, line?.workType]),
+      }
+    })
+    return {
+      stageKey: toolId === 'cost.build_budget' ? 'budget' : 'pricing',
+      artifact: {
+        materialLines,
+        workLines,
+      },
+    }
+  }
+
+  return null
+}
+
 function toFinalizeAssumptionText(qa: any, now: number): string {
   const questionType = String(qa?.questionType ?? 'text')
   if (questionType === 'single') {
@@ -837,116 +940,14 @@ export const ensureFinalizeAutofill = internalMutation({
     projectId: v.id('projects'),
     runId: v.id('sdkRuns'),
   },
-  handler: async (ctx, args) => {
-    const now = Date.now()
-    const run = await ctx.db.get(args.runId)
-    if (!run) throw new Error('Run not found')
-
-    const project = await ctx.db.get(args.projectId)
-    const projectName = firstNonEmpty([
-      project?.name,
-      (project as any)?.details?.name,
-      (project as any)?.details?.title,
-    ]) || 'Project'
-
-    const elements = await ctx.db
-      .query('elements')
-      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
-      .collect()
-
-    let createdElements = 0
-    let createdTasks = 0
-    let assumedAnswers = 0
-
-    let primaryElementId = elements[0]?._id
-    if (!primaryElementId) {
-      primaryElementId = await ctx.db.insert('elements', {
-        projectId: args.projectId,
-        title: `${projectName} - בסיס`,
-        description: 'Auto-generated baseline element for immediate finalize',
-        type: 'build',
-        status: 'drafting',
-        tags: ['auto-finalize'],
-        createdAt: now,
-        updatedAt: now,
-      })
-      createdElements += 1
-    }
-
-    const existingTasks = await ctx.db
-      .query('tasks')
-      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
-      .collect()
-    if (existingTasks.length === 0) {
-      const templates = [
-        { title: `אפיון מהיר: ${projectName}`, stage: 'clarification', workType: 'management', workTypeLabelHe: 'ניהול', estimatedMinutes: 90 },
-        { title: `רכש ראשוני: ${projectName}`, stage: 'procurement', workType: 'purchasing', workTypeLabelHe: 'רכש/קניות', estimatedMinutes: 120 },
-        { title: `ביצוע והתקנה: ${projectName}`, stage: 'install', workType: 'rigging_install', workTypeLabelHe: 'התקנה', estimatedMinutes: 240 },
-      ] as const
-
-      for (const item of templates) {
-        await ctx.db.insert('tasks', {
-          projectId: args.projectId,
-          elementId: primaryElementId,
-          title: item.title,
-          description: 'Auto-generated baseline task for immediate finalize',
-          status: 'TODO',
-          stage: item.stage,
-          workType: item.workType,
-          workTypeLabelHe: item.workTypeLabelHe,
-          estimatedMinutes: item.estimatedMinutes,
-          estimatedHours: Math.round((item.estimatedMinutes / 60) * 10) / 10,
-          createdBy: 'agent',
-          createdByRunId: String(args.runId),
-          dedupKey: `auto-finalize:${item.stage}`,
-          createdAt: now,
-          updatedAt: now,
-        })
-        createdTasks += 1
-      }
-    }
-
-    const openQaPairs = await ctx.db
-      .query('qaPairs')
-      .withIndex('by_project_status', (q) => q.eq('projectId', args.projectId).eq('status', 'open'))
-      .collect()
-
-    for (const qa of openQaPairs) {
-      const assumption = toFinalizeAssumptionText(qa, now)
-      await ctx.db.patch(qa._id, {
-        status: 'assumed',
-        answerText: assumption,
-        answer_he: assumption,
-        answer: assumption,
-        version: typeof qa.version === 'number' ? qa.version + 1 : 1,
-      })
-      assumedAnswers += 1
-    }
-
-    if (run.status === 'needs_input' || run.status === 'blocked') {
-      await ctx.db.patch(run._id, {
-        status: 'running',
-        currentAgentName: run.currentAgentName ?? 'finalize.auto',
-        lastError: undefined,
-        updatedAt: now,
-      })
-    }
-
-    await ctx.db.insert('sdkRunEvents', {
-      runId: args.runId,
-      type: 'sdk_finalize_autofill',
-      payload: {
-        createdElements,
-        createdTasks,
-        assumedAnswers,
-      },
-      createdAt: now,
-    })
-
+  handler: async () => {
+    // Autofill is intentionally disabled to prevent mock baseline entities.
     return {
-      createdElements,
-      createdTasks,
-      assumedAnswers,
+      createdElements: 0,
+      createdTasks: 0,
+      assumedAnswers: 0,
+      skipped: true,
+      reason: 'disabled',
     }
   },
 })
@@ -1099,7 +1100,45 @@ export const finalizeNow = action({
       const intents: any[] = []
       const toolOutputs: Record<string, any> = {}
       let workingContext: any = liveBefore
+      const elementRefToKey = new Map<string, string>()
+      const startedAt = Date.now()
+      let budgetToolFailed = false
       for (const toolId of toolSequence) {
+        const elapsedMs = Date.now() - startedAt
+        if (toolId === 'pricing.resolve_lines' && budgetToolFailed) {
+          toolErrors.push({
+            toolId,
+            message: 'skipped because budget generation failed',
+          })
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'sdk_finalize_tool_skipped',
+            payload: {
+              toolId,
+              reason: 'budget_failed',
+            },
+          })
+          continue
+        }
+        if (
+          (toolId === 'cost.build_budget' || toolId === 'pricing.resolve_lines') &&
+          elapsedMs > 90000
+        ) {
+          toolErrors.push({
+            toolId,
+            message: `skipped due to finalize time budget (elapsed=${elapsedMs}ms)`,
+          })
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'sdk_finalize_tool_skipped',
+            payload: {
+              toolId,
+              reason: 'time_budget',
+              elapsedMs,
+            },
+          })
+          continue
+        }
         const toolInput = {
           ...buildInputBase,
           context: workingContext,
@@ -1109,8 +1148,29 @@ export const finalizeNow = action({
           toolOutputs[toolId] = result
           intents.push(...collectIntentsFromResult(result))
           workingContext = enrichFinalizeContext(workingContext, result)
+          const stageArtifact = stageArtifactFromFinalizeTool(toolId, result, elementRefToKey)
+          if (stageArtifact) {
+            const artifactJson = JSON.stringify(stageArtifact.artifact ?? {})
+            const specJson = JSON.stringify({
+              source: 'finalize_now',
+              toolId,
+              projectId: String(args.projectId),
+              runId: String(args.runId),
+            })
+            await ctx.runMutation(internal['sdk/vnext/artifacts'].upsertStageArtifact, {
+              runId: args.runId,
+              projectId: args.projectId,
+              conversationId: args.conversationId,
+              stageKey: stageArtifact.stageKey,
+              artifact: stageArtifact.artifact,
+              artifactHash: stableHash(artifactJson),
+              specHash: stableHash(specJson),
+              status: 'ready',
+            })
+          }
         } catch (toolError: any) {
           const message = String(toolError?.message ?? 'unknown')
+          if (toolId === 'cost.build_budget') budgetToolFailed = true
           toolErrors.push({ toolId, message })
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
             runId: args.runId,
@@ -1260,21 +1320,31 @@ export const finalizeNow = action({
       JSON.stringify(digest),
     ].join('\n')
 
-    const response = await completionWithTracing(
-      ctx,
-      {
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-      },
-      {
-        projectId: args.projectId,
-        conversationId: args.conversationId,
+    let summaryMd = `Finalize summary:\n- Elements: ${elements.length}\n- Tasks: ${tasks.length}\n- Unresolved: ${unresolved}`
+    try {
+      const response = await completionWithTracing(
+        ctx,
+        {
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+        },
+        {
+          projectId: args.projectId,
+          conversationId: args.conversationId,
+          runId: args.runId,
+        }
+      )
+      const tracedSummary = String((response as any)?.choices?.[0]?.message?.content ?? '').trim()
+      if (tracedSummary) summaryMd = tracedSummary
+    } catch (error: any) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
         runId: args.runId,
-      }
-    )
-
-    const summaryMd = String((response as any)?.choices?.[0]?.message?.content ?? '').trim() ||
-      `Finalize summary:\n- Elements: ${elements.length}\n- Tasks: ${tasks.length}\n- Unresolved: ${unresolved}`
+        type: 'sdk_finalize_summary_failed',
+        payload: {
+          message: String(error?.message ?? 'unknown'),
+        },
+      })
+    }
 
     await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
       conversationId: args.conversationId,
