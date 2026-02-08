@@ -57,6 +57,10 @@ export default function SdkAgentPage() {
     api.sdk.api.listRunEvents,
     activeRun?._id ? { runId: activeRun._id, limit: 4 } : 'skip'
   );
+  const finalizeEvents = useQuery(
+    api.sdk.api.listRunEvents,
+    activeRun?._id ? { runId: activeRun._id, limit: 140 } : 'skip'
+  );
   const sdkQuestionSet = useQuery(
     api.sdk.questions.peekNextSet,
     projectId && activeRun?._id
@@ -66,6 +70,10 @@ export default function SdkAgentPage() {
   const finalizeContext = useQuery(
     api.sdk.api.contextGet,
     projectId ? { projectId, packs: ['elements', 'tasks', 'accounting'] } : 'skip'
+  );
+  const projectHealth = useQuery(
+    api.flow.ui.getElementsHealth,
+    projectId ? { projectId } : 'skip'
   );
 
   const createConversation = useMutation(api.sdk.api.createConversation);
@@ -82,6 +90,7 @@ export default function SdkAgentPage() {
   const submitSdkAnswers = useMutation(api.sdk.questions.submitAnswers);
   const regenerateQuestionsManual = useAction(api.sdk.rebaseNode.regenerateQuestionsManual);
   const finalizeNow = useAction(api.sdk.api.finalizeNow);
+  const requestFinalizeCancel = useMutation(api.sdk.api.requestFinalizeCancel);
   const generateConversationTitle = useAction(api.sdk.api.generateConversationTitle);
   const approveChangeSet = useAction(api.sdk.api.approveChangeSet);
   const shadowEvaluate = useAction(api.sdk.api.shadowEvaluate);
@@ -99,6 +108,7 @@ export default function SdkAgentPage() {
   const [manualRegenBusy, setManualRegenBusy] = useState(false);
   const [manualRegenNotice, setManualRegenNotice] = useState<string | null>(null);
   const [finalizeBusy, setFinalizeBusy] = useState(false);
+  const [finalizeCancelBusy, setFinalizeCancelBusy] = useState(false);
   const [finalizeNotice, setFinalizeNotice] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const runStatus = activeRun?.status;
@@ -140,9 +150,12 @@ export default function SdkAgentPage() {
     Number((finalizeContext as any)?.tasks?.length ?? 0) +
     Number((finalizeContext as any)?.materialLines?.length ?? 0) +
     Number((finalizeContext as any)?.workLines?.length ?? 0);
+  const finalizeProgress = getFinalizeProgress(finalizeEvents ?? []);
+  const isFinalizeInProgress = finalizeBusy || finalizeProgress.isRunning;
   const canFinalizeNow =
     Boolean(activeRun?._id) &&
-    !finalizeBusy;
+    !isFinalizeInProgress &&
+    !finalizeCancelBusy;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -360,6 +373,10 @@ export default function SdkAgentPage() {
 
   const handleFinalizeNow = async () => {
     if (!projectId || !activeRun?._id) return;
+    if (isFinalizeInProgress) {
+      setFinalizeNotice('Finalize is already running for this run.')
+      return
+    }
     setFinalizeBusy(true);
     setFinalizeNotice(null);
     try {
@@ -369,6 +386,10 @@ export default function SdkAgentPage() {
         runId: activeRun._id,
         includeAssumptions: true,
       });
+      if ((pkg as any)?.alreadyRunning) {
+        setFinalizeNotice('Finalize is already running for this run.')
+        return
+      }
       const counts = pkg?.counts ?? {
         elements: 0,
         tasks: 0,
@@ -381,6 +402,19 @@ export default function SdkAgentPage() {
       setFinalizeNotice(`Finalize failed: ${String(error?.message ?? 'unknown error')}`);
     } finally {
       setFinalizeBusy(false);
+    }
+  };
+
+  const handleFinalizeCancel = async () => {
+    if (!activeRun?._id || !isFinalizeInProgress) return;
+    setFinalizeCancelBusy(true);
+    try {
+      await requestFinalizeCancel({ runId: activeRun._id });
+      setFinalizeNotice('Finalize cancel requested. Active calls will stop at the next checkpoint.');
+    } catch (error: any) {
+      setFinalizeNotice(`Finalize cancel failed: ${String(error?.message ?? 'unknown error')}`);
+    } finally {
+      setFinalizeCancelBusy(false);
     }
   };
 
@@ -677,13 +711,22 @@ export default function SdkAgentPage() {
                 )}
               </div>
               <div className="pt-2">
-                <button
-                  onClick={handleFinalizeNow}
-                  disabled={!canFinalizeNow}
-                  className="px-3 py-1 rounded border text-xs text-emerald-700 disabled:opacity-50"
-                >
-                  {finalizeBusy ? 'Finalizing...' : 'Finalize now'}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleFinalizeNow}
+                    disabled={!canFinalizeNow}
+                    className="px-3 py-1 rounded border text-xs text-emerald-700 disabled:opacity-50"
+                  >
+                    {finalizeBusy ? 'Finalizing...' : 'Finalize now'}
+                  </button>
+                  <button
+                    onClick={handleFinalizeCancel}
+                    disabled={!isFinalizeInProgress || finalizeCancelBusy}
+                    className="px-3 py-1 rounded border text-xs text-rose-700 disabled:opacity-50"
+                  >
+                    {finalizeCancelBusy ? 'Cancelling...' : 'Cancel finalize'}
+                  </button>
+                </div>
                 <div className="mt-1 text-[11px] text-slate-500">
                   Finalize runs immediately and auto-completes missing inputs when needed.
                 </div>
@@ -691,6 +734,22 @@ export default function SdkAgentPage() {
                   <div className="mt-1 text-[11px] text-slate-600">
                     {finalizeNotice}
                   </div>
+                )}
+              </div>
+              <div className="pt-2">
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Finalize Progress</div>
+                <div className="mt-2 space-y-1">
+                  {finalizeProgress.stages.map((stage) => (
+                    <div key={stage.key} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1">
+                      <span className="text-xs text-slate-700">{stage.label}</span>
+                      <span className={`text-[11px] font-medium ${finalizeStageColor(stage.status)}`}>
+                        {stage.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {finalizeProgress.lastMessage && (
+                  <div className="mt-2 text-[11px] text-slate-500">{finalizeProgress.lastMessage}</div>
                 )}
               </div>
             </div>
@@ -714,6 +773,63 @@ export default function SdkAgentPage() {
                 </button>
               </div>
             </div>
+          )}
+        </div>
+
+        <div className="border rounded-lg p-3">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Project Health Overview</div>
+          {!projectHealth ? (
+            <div className="mt-2 text-xs text-slate-400">Loading saved data...</div>
+          ) : (
+            <>
+              <div className="mt-2 space-y-1 text-xs text-slate-600">
+                <div className="flex items-center justify-between">
+                  <span>Elements</span>
+                  <span className="font-semibold text-slate-800">{projectHealth.elements?.length ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Tasks</span>
+                  <span className="font-semibold text-slate-800">{projectHealth.totals?.tasksCount ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Materials</span>
+                  <span className="font-semibold text-slate-800">
+                    {projectHealth.totals?.materialLinesCount ?? 0} • {formatHealthCurrency(Number(projectHealth.totals?.materialCost ?? 0))}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Work</span>
+                  <span className="font-semibold text-slate-800">
+                    {projectHealth.totals?.workLinesCount ?? 0} • {formatHealthCurrency(Number(projectHealth.totals?.laborCost ?? 0))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-3 max-h-64 overflow-y-auto space-y-2 pr-1">
+                {(projectHealth.elements ?? []).map((el: any) => (
+                  <div key={el.elementId} className="rounded border border-slate-200 px-2 py-1.5">
+                    <div className="text-xs font-medium text-slate-800 truncate">{el.nameHe ?? 'Untitled Element'}</div>
+                    <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-slate-600">
+                      <div>
+                        <div className="text-slate-400">Tasks</div>
+                        <div className="font-semibold text-slate-800">{el.tasksCount ?? 0}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">Materials</div>
+                        <div className="font-semibold text-slate-800">{formatHealthCurrency(Number(el.materialCost ?? 0))}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">Work</div>
+                        <div className="font-semibold text-slate-800">{formatHealthCurrency(Number(el.laborCost ?? 0))}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {(projectHealth.elements?.length ?? 0) === 0 && (
+                  <div className="text-xs text-slate-400">No saved elements yet.</div>
+                )}
+              </div>
+            </>
           )}
         </div>
 
@@ -868,6 +984,82 @@ function getSdkStatusDetail(
   if (run.stageKey) return run.stageKey;
   if (run.currentAgentName) return run.currentAgentName;
   return null;
+}
+
+function getFinalizeProgress(events: Array<{ type?: string; payload?: any; createdAt?: number }>) {
+  const stageOrder = [
+    { key: 'elements', label: 'Elements' },
+    { key: 'tasks', label: 'Tasks' },
+    { key: 'budget', label: 'Budget' },
+    { key: 'pricing', label: 'Pricing' },
+    { key: 'audit', label: 'Audit' },
+    { key: 'repair', label: 'Repair' },
+    { key: 'package', label: 'Package' },
+  ];
+  const stageStatus = new Map<string, 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'>();
+  for (const stage of stageOrder) stageStatus.set(stage.key, 'pending');
+
+  const chronological = [...(events ?? [])].reverse();
+  let running = false;
+  let lastMessage: string | null = null;
+  for (const event of chronological) {
+    if (event.type === 'sdk_finalize_started') {
+      running = true;
+      lastMessage = 'Finalize started';
+      continue;
+    }
+    if (event.type === 'sdk_finalize_completed') {
+      running = false;
+      lastMessage = 'Finalize completed';
+      continue;
+    }
+    if (event.type === 'sdk_finalize_cancelled') {
+      running = false;
+      lastMessage = 'Finalize cancelled';
+      continue;
+    }
+    if (event.type === 'sdk_finalize_stage_update') {
+      const stage = String(event.payload?.stage ?? '');
+      const status = String(event.payload?.status ?? '').toLowerCase();
+      if (stageStatus.has(stage)) {
+        if (status === 'running' || status === 'completed' || status === 'failed' || status === 'cancelled') {
+          stageStatus.set(stage, status as any);
+        }
+      }
+      if (stage) lastMessage = `${stage}: ${status || 'updated'}`;
+    }
+  }
+
+  const stages = stageOrder.map((stage) => ({
+    ...stage,
+    status: stageStatus.get(stage.key) ?? 'pending',
+  }));
+  return {
+    isRunning: running || stages.some((stage) => stage.status === 'running'),
+    stages,
+    lastMessage,
+  };
+}
+
+function formatHealthCurrency(amount: number) {
+  if (!Number.isFinite(amount)) return '—';
+  try {
+    return new Intl.NumberFormat('he-IL', {
+      style: 'currency',
+      currency: 'ILS',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${Math.round(amount)} ₪`;
+  }
+}
+
+function finalizeStageColor(status: string) {
+  if (status === 'completed') return 'text-emerald-700';
+  if (status === 'running') return 'text-blue-700';
+  if (status === 'failed') return 'text-rose-700';
+  if (status === 'cancelled') return 'text-amber-700';
+  return 'text-slate-500';
 }
 
 function normalizeBlock(block: any) {

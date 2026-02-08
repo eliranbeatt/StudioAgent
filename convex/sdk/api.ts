@@ -2,7 +2,7 @@
 // This file contains mutations and queries only (no "use node")
 // For Node.js actions, see nodeActions.ts
 
-import { action, internalMutation, mutation, query } from '../_generated/server';
+import { action, internalAction, internalMutation, mutation, query } from '../_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from '../_generated/api';
 import { completionWithTracing } from '../lib/llm';
@@ -879,7 +879,15 @@ function stageArtifactFromFinalizeTool(
     })
     return {
       stageKey: 'scope',
-      artifact: { proposedElements },
+      artifact: {
+        proposedElements,
+        __persisted: {
+          source: 'finalize_now',
+          toolId,
+          savedAt: Date.now(),
+          toolOutput: result,
+        },
+      },
     }
   }
 
@@ -899,7 +907,15 @@ function stageArtifactFromFinalizeTool(
     })
     return {
       stageKey: 'tasks',
-      artifact: { tasks: normalizedTasks },
+      artifact: {
+        tasks: normalizedTasks,
+        __persisted: {
+          source: 'finalize_now',
+          toolId,
+          savedAt: Date.now(),
+          toolOutput: result,
+        },
+      },
     }
   }
 
@@ -939,6 +955,12 @@ function stageArtifactFromFinalizeTool(
       artifact: {
         materialLines,
         workLines,
+        __persisted: {
+          source: 'finalize_now',
+          toolId,
+          savedAt: Date.now(),
+          toolOutput: result,
+        },
       },
     }
   }
@@ -1040,6 +1062,145 @@ export const clearFinalizeAutofill = internalMutation({
   },
 })
 
+export const requestFinalizeCancel = mutation({
+  args: {
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert('sdkRunEvents', {
+      runId: args.runId,
+      type: 'sdk_finalize_cancel_requested',
+      payload: { requestedAt: Date.now() },
+      createdAt: Date.now(),
+    })
+    return { ok: true }
+  },
+})
+
+export const persistFinalizeStageCheckpoint = internalAction({
+  args: {
+    projectId: v.id('projects'),
+    conversationId: v.id('agentConversations'),
+    runId: v.id('sdkRuns'),
+    stageKey: v.string(),
+    toolOutputs: v.any(),
+    source: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const startedAt = Date.now()
+    try {
+      const liveContext = await ctx.runQuery(api.sdk.api.contextGet, {
+        projectId: args.projectId,
+        packs: ['project', 'elements', 'tasks', 'accounting', 'knowledge'],
+      })
+      const outputs = (args.toolOutputs && typeof args.toolOutputs === 'object')
+        ? args.toolOutputs
+        : {}
+      const directOps = buildFinalizeDirectOps(outputs, String(args.projectId), liveContext as any)
+      if (directOps.length === 0) {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'sdk_finalize_stage_persist_no_ops',
+          payload: {
+            stageKey: args.stageKey,
+            source: args.source ?? 'tool',
+          },
+        })
+        return { ok: true, opCount: 0 }
+      }
+
+      const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+        projectId: args.projectId,
+        stage: 'BREAKDOWN',
+        ops: directOps as any,
+        createdBy: { type: 'agent', agentName: `finalize.stage.${args.stageKey}` },
+      })
+      await ctx.runMutation(api.changeSets.applyChangeSet, { changeSetId })
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_finalize_stage_persist_applied',
+        payload: {
+          stageKey: args.stageKey,
+          source: args.source ?? 'tool',
+          changeSetId,
+          opCount: directOps.length,
+          elapsedMs: Date.now() - startedAt,
+        },
+      })
+      return { ok: true, opCount: directOps.length, changeSetId }
+    } catch (error: any) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_finalize_stage_persist_failed',
+        payload: {
+          stageKey: args.stageKey,
+          source: args.source ?? 'tool',
+          message: String(error?.message ?? 'unknown'),
+        },
+      })
+      return { ok: false, message: String(error?.message ?? 'unknown') }
+    }
+  },
+})
+
+export const persistFinalizeIntentsCheckpoint = internalAction({
+  args: {
+    projectId: v.id('projects'),
+    conversationId: v.id('agentConversations'),
+    runId: v.id('sdkRuns'),
+    stageKey: v.string(),
+    intents: v.array(v.any()),
+    source: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const intents = Array.isArray(args.intents) ? args.intents : []
+    if (intents.length === 0) return { ok: true, opCount: 0 }
+    try {
+      const compiled = await ctx.runAction(api.sdk.changeset.compile, {
+        projectId: args.projectId,
+        intents,
+        runId: args.runId,
+        conversationId: args.conversationId,
+      })
+      const changeSetId = (compiled as any)?.changeSetId
+      if (!changeSetId) {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'sdk_finalize_stage_persist_no_changeset',
+          payload: {
+            stageKey: args.stageKey,
+            source: args.source ?? 'audit',
+          },
+        })
+        return { ok: true, opCount: 0 }
+      }
+      await ctx.runMutation(api.changeSets.applyChangeSet, { changeSetId })
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_finalize_stage_persist_applied',
+        payload: {
+          stageKey: args.stageKey,
+          source: args.source ?? 'audit',
+          changeSetId,
+          intentsCount: intents.length,
+        },
+      })
+      return { ok: true, changeSetId, intentsCount: intents.length }
+    } catch (error: any) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_finalize_stage_persist_failed',
+        payload: {
+          stageKey: args.stageKey,
+          source: args.source ?? 'audit',
+          message: String(error?.message ?? 'unknown'),
+        },
+      })
+      return { ok: false, message: String(error?.message ?? 'unknown') }
+    }
+  },
+})
+
 export const finalizeNow = action({
   args: {
     projectId: v.id('projects'),
@@ -1048,8 +1209,73 @@ export const finalizeNow = action({
     includeAssumptions: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const finalizeStartedAt = Date.now()
     const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
     if (!run) throw new Error('Run not found')
+
+    const latestStarted = await ctx.runQuery(api.sdk.api.listRunEvents, {
+      runId: args.runId,
+      type: 'sdk_finalize_started',
+      limit: 1,
+    })
+    const latestCompleted = await ctx.runQuery(api.sdk.api.listRunEvents, {
+      runId: args.runId,
+      type: 'sdk_finalize_completed',
+      limit: 1,
+    })
+    const latestCancelled = await ctx.runQuery(api.sdk.api.listRunEvents, {
+      runId: args.runId,
+      type: 'sdk_finalize_cancelled',
+      limit: 1,
+    })
+    const startedAt = Number(latestStarted?.[0]?.createdAt ?? 0)
+    const completedAt = Number(latestCompleted?.[0]?.createdAt ?? 0)
+    const cancelledAt = Number(latestCancelled?.[0]?.createdAt ?? 0)
+    if (startedAt > Math.max(completedAt, cancelledAt)) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_finalize_already_running',
+        payload: {
+          startedAt,
+        },
+      })
+      return {
+        ok: false,
+        alreadyRunning: true,
+      }
+    }
+
+    const isFinalizeCancelled = async () => {
+      const latestCancel = await ctx.runQuery(api.sdk.api.listRunEvents, {
+        runId: args.runId,
+        type: 'sdk_finalize_cancel_requested',
+        limit: 1,
+      })
+      const event = latestCancel?.[0]
+      return Boolean(event && Number(event.createdAt ?? 0) >= finalizeStartedAt)
+    }
+
+    const emitFinalizeStage = async (stage: string, status: 'running' | 'completed' | 'failed' | 'cancelled', detail?: any) => {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_finalize_stage_update',
+        payload: {
+          stage,
+          status,
+          detail: detail ?? null,
+          ts: Date.now(),
+        },
+      })
+    }
+
+    await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+      runId: args.runId,
+      type: 'sdk_finalize_started',
+      payload: {
+        startedAt: finalizeStartedAt,
+        stages: ['elements', 'tasks', 'budget', 'pricing', 'audit', 'repair', 'package'],
+      },
+    })
 
     const collectIntentsFromResult = (result: any): any[] => {
       const out: any[] = []
@@ -1099,6 +1325,7 @@ export const finalizeNow = action({
     let fullBuildApplied = false
     let reviewIssuesCount = 0
     const toolErrors: Array<{ toolId: string; message: string }> = []
+    let cancelled = false
     try {
       const messages = await ctx.runQuery(api.sdk.api.listMessages, {
         conversationId: args.conversationId,
@@ -1121,48 +1348,24 @@ export const finalizeNow = action({
       }
 
       const toolSequence = ['plan.elements', 'plan.tasks', 'cost.build_budget', 'pricing.resolve_lines']
+      const stageByToolId: Record<string, string> = {
+        'plan.elements': 'elements',
+        'plan.tasks': 'tasks',
+        'cost.build_budget': 'budget',
+        'pricing.resolve_lines': 'pricing',
+      }
       const intents: any[] = []
       const toolOutputs: Record<string, any> = {}
       let workingContext: any = liveBefore
       const elementRefToKey = new Map<string, string>()
-      const startedAt = Date.now()
-      let budgetToolFailed = false
       for (const toolId of toolSequence) {
-        const elapsedMs = Date.now() - startedAt
-        if (toolId === 'pricing.resolve_lines' && budgetToolFailed) {
-          toolErrors.push({
-            toolId,
-            message: 'skipped because budget generation failed',
-          })
-          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
-            runId: args.runId,
-            type: 'sdk_finalize_tool_skipped',
-            payload: {
-              toolId,
-              reason: 'budget_failed',
-            },
-          })
-          continue
+        if (await isFinalizeCancelled()) {
+          cancelled = true
+          break
         }
-        if (
-          (toolId === 'cost.build_budget' || toolId === 'pricing.resolve_lines') &&
-          elapsedMs > 90000
-        ) {
-          toolErrors.push({
-            toolId,
-            message: `skipped due to finalize time budget (elapsed=${elapsedMs}ms)`,
-          })
-          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
-            runId: args.runId,
-            type: 'sdk_finalize_tool_skipped',
-            payload: {
-              toolId,
-              reason: 'time_budget',
-              elapsedMs,
-            },
-          })
-          continue
-        }
+
+        const stageKey = stageByToolId[toolId] ?? toolId
+        await emitFinalizeStage(stageKey, 'running')
         const toolInput = {
           ...buildInputBase,
           context: workingContext,
@@ -1192,9 +1395,141 @@ export const finalizeNow = action({
               status: 'ready',
             })
           }
+          await ctx.scheduler.runAfter(0, internal.sdk.api.persistFinalizeStageCheckpoint, {
+            projectId: args.projectId,
+            conversationId: args.conversationId,
+            runId: args.runId,
+            stageKey,
+            toolOutputs: { ...toolOutputs },
+            source: toolId,
+          })
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'sdk_finalize_stage_persist_enqueued',
+            payload: {
+              stageKey,
+              source: toolId,
+              outputCount: Object.keys(toolOutputs).length,
+            },
+          })
+          await emitFinalizeStage(stageKey, 'completed')
+
+          if (toolId === 'pricing.resolve_lines') {
+            if (await isFinalizeCancelled()) {
+              cancelled = true
+              break
+            }
+            await emitFinalizeStage('audit', 'running')
+            let auditResult: any = null
+            try {
+              auditResult = await runTool('audit.project', {
+                context: workingContext,
+                findings: [],
+                source: 'finalize_post_pricing',
+              })
+            } catch (auditError: any) {
+              const message = String(auditError?.message ?? 'unknown')
+              toolErrors.push({ toolId: 'audit.project', message })
+              await emitFinalizeStage('audit', 'failed', { message })
+            }
+
+            if (auditResult) {
+              const findings = Array.isArray(auditResult?.findings) ? auditResult.findings : []
+              const auditIntents = collectIntentsFromResult(auditResult)
+              await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+                runId: args.runId,
+                type: 'sdk_finalize_audit_result',
+                payload: {
+                  findings,
+                  findingCount: findings.length,
+                  intentsCount: auditIntents.length,
+                },
+              })
+              if (auditIntents.length > 0) {
+                await ctx.scheduler.runAfter(0, internal.sdk.api.persistFinalizeIntentsCheckpoint, {
+                  projectId: args.projectId,
+                  conversationId: args.conversationId,
+                  runId: args.runId,
+                  stageKey: 'audit',
+                  intents: auditIntents,
+                  source: 'audit.project',
+                })
+              }
+
+              const findingText = JSON.stringify(findings).toLowerCase()
+              const needsRepair =
+                findingText.includes('duplicate') ||
+                findingText.includes('missing') ||
+                findingText.includes('price') ||
+                findingText.includes('pricing') ||
+                findingText.includes('מחיר') ||
+                findingText.includes('כפול') ||
+                findingText.includes('חסר')
+
+              if (needsRepair) {
+                if (await isFinalizeCancelled()) {
+                  cancelled = true
+                  break
+                }
+                await emitFinalizeStage('repair', 'running')
+                try {
+                  const repairResult = await runTool('maint.sync_and_repair', {
+                    context: workingContext,
+                    findings,
+                    source: 'finalize_post_pricing',
+                  })
+                  const repairIntents = collectIntentsFromResult(repairResult)
+                  if (repairIntents.length > 0) {
+                    await ctx.scheduler.runAfter(0, internal.sdk.api.persistFinalizeIntentsCheckpoint, {
+                      projectId: args.projectId,
+                      conversationId: args.conversationId,
+                      runId: args.runId,
+                      stageKey: 'repair',
+                      intents: repairIntents,
+                      source: 'maint.sync_and_repair',
+                    })
+                  }
+                  // Pricing refill pass after repair signals.
+                  const pricingRetry = await runTool('pricing.resolve_lines', {
+                    ...buildInputBase,
+                    context: workingContext,
+                  })
+                  toolOutputs['pricing.resolve_lines.retry'] = pricingRetry
+                  workingContext = enrichFinalizeContext(workingContext, pricingRetry)
+                  const retryArtifact = stageArtifactFromFinalizeTool('pricing.resolve_lines', pricingRetry, elementRefToKey)
+                  if (retryArtifact) {
+                    const artifactJson = JSON.stringify(retryArtifact.artifact ?? {})
+                    await ctx.runMutation(internal['sdk/vnext/artifacts'].upsertStageArtifact, {
+                      runId: args.runId,
+                      projectId: args.projectId,
+                      conversationId: args.conversationId,
+                      stageKey: retryArtifact.stageKey,
+                      artifact: retryArtifact.artifact,
+                      artifactHash: stableHash(artifactJson),
+                      specHash: stableHash(JSON.stringify({ source: 'finalize_retry_pricing', runId: String(args.runId) })),
+                      status: 'ready',
+                    })
+                    await ctx.scheduler.runAfter(0, internal.sdk.api.persistFinalizeStageCheckpoint, {
+                      projectId: args.projectId,
+                      conversationId: args.conversationId,
+                      runId: args.runId,
+                      stageKey: 'pricing',
+                      toolOutputs: { ...toolOutputs },
+                      source: 'pricing.resolve_lines.retry',
+                    })
+                  }
+                  await emitFinalizeStage('repair', 'completed')
+                } catch (repairError: any) {
+                  const message = String(repairError?.message ?? 'unknown')
+                  toolErrors.push({ toolId: 'maint.sync_and_repair', message })
+                  await emitFinalizeStage('repair', 'failed', { message })
+                }
+              }
+              await emitFinalizeStage('audit', 'completed')
+            }
+          }
         } catch (toolError: any) {
           const message = String(toolError?.message ?? 'unknown')
-          if (toolId === 'cost.build_budget') budgetToolFailed = true
           toolErrors.push({ toolId, message })
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
             runId: args.runId,
@@ -1204,11 +1539,17 @@ export const finalizeNow = action({
               message,
             },
           })
+          await emitFinalizeStage(stageByToolId[toolId] ?? toolId, 'failed', { message })
         }
       }
 
-      const directOps = buildFinalizeDirectOps(toolOutputs, String(args.projectId), liveBefore as any)
-      if (directOps.length > 0 || intents.length > 0) {
+      if (cancelled) {
+        await emitFinalizeStage('package', 'cancelled')
+      }
+
+      if (!cancelled) {
+        const directOps = buildFinalizeDirectOps(toolOutputs, String(args.projectId), liveBefore as any)
+        if (directOps.length > 0 || intents.length > 0) {
         let changeSetId: any = null
         if (directOps.length > 0) {
           changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
@@ -1256,16 +1597,20 @@ export const finalizeNow = action({
             },
           })
         }
-      } else {
-        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
-          runId: args.runId,
-          type: 'sdk_finalize_no_ops_from_tools',
-          payload: {
-            toolErrors,
-          },
-        })
+        } else {
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'sdk_finalize_no_ops_from_tools',
+            payload: {
+              toolErrors,
+            },
+          })
+        }
       }
     } catch (error: any) {
+      if (String(error?.message ?? '').includes('FINALIZE_CANCELLED')) {
+        cancelled = true
+      }
       await ctx.runMutation(internal.sdk.telemetry.logEvent, {
         runId: args.runId,
         type: 'sdk_finalize_full_build_failed',
@@ -1274,6 +1619,41 @@ export const finalizeNow = action({
           toolErrors,
         },
       })
+    }
+
+    if (cancelled || (await isFinalizeCancelled())) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_finalize_cancelled',
+        payload: {
+          at: Date.now(),
+          toolErrors,
+        },
+      })
+      await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+        conversationId: args.conversationId,
+        role: 'assistant',
+        text: 'Finalize cancelled by user.',
+        blocks: [
+          {
+            type: 'ReviewBlock',
+            titleHe: 'Finalize Cancelled',
+            sections: [
+              {
+                sectionHe: 'Status',
+                highlightsHe: ['Finalize calls were stopped by user request.'],
+                risksHe: toolErrors.map((item) => `${item.toolId}: ${item.message}`),
+              },
+            ],
+          },
+        ],
+        runId: args.runId,
+      })
+      return {
+        ok: false,
+        cancelled: true,
+        toolErrors,
+      }
     }
 
     // Deterministic hydration fallback from vNext artifacts if full build did not apply.
@@ -1311,6 +1691,7 @@ export const finalizeNow = action({
       }
     }
 
+    await emitFinalizeStage('package', 'running')
     const pkg = await ctx.runAction(api.sdk.finalize.buildStructuredPackage, {
       projectId: args.projectId,
       runId: args.runId,
@@ -1411,6 +1792,15 @@ export const finalizeNow = action({
         workLines: workLines.length,
         unresolved,
         toolErrors,
+      },
+    })
+    await emitFinalizeStage('package', 'completed')
+    await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+      runId: args.runId,
+      type: 'sdk_finalize_completed',
+      payload: {
+        finishedAt: Date.now(),
+        isEmpty,
       },
     })
 

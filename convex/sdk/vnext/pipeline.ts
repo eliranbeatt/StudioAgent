@@ -521,6 +521,34 @@ function mergeArtifact(
   return next
 }
 
+function buildPersistedArtifact(args: {
+  stageKey: VNextStageKey
+  mergedArtifact: any
+  skillOutputs: Record<string, any>
+  specHash: string
+  artifactHash: string
+}) {
+  const base = args.mergedArtifact && typeof args.mergedArtifact === 'object'
+    ? { ...args.mergedArtifact }
+    : {}
+  const previousMeta =
+    base.__persisted && typeof base.__persisted === 'object'
+      ? base.__persisted
+      : {}
+  return {
+    ...base,
+    __persisted: {
+      ...previousMeta,
+      source: 'vnext_pipeline',
+      stageKey: args.stageKey,
+      savedAt: Date.now(),
+      specHash: args.specHash,
+      artifactHash: args.artifactHash,
+      toolOutputs: args.skillOutputs,
+    },
+  }
+}
+
 function buildStageSummary(stageKey: VNextStageKey, artifact: any) {
   if (stageKey === 'brief') {
     const facts = Object.keys(artifact?.normalizedFacts ?? {}).length
@@ -758,6 +786,15 @@ export async function runVNextStage(args: {
   }
   const artifactHash = stableHash(JSON.stringify(mergedArtifact))
   const specHash = stableHash(JSON.stringify(spec))
+  const persistedArtifact = stageKey === 'compile'
+    ? mergedArtifact
+    : buildPersistedArtifact({
+      stageKey,
+      mergedArtifact,
+      skillOutputs,
+      specHash,
+      artifactHash,
+    })
   const { madeProgress, progressMeta } = computeStageProgress({
     stageKey,
     specHash,
@@ -838,7 +875,7 @@ export async function runVNextStage(args: {
         projectId: args.projectId,
         conversationId: args.conversationId,
         stageKey,
-        artifact: mergedArtifact,
+        artifact: persistedArtifact,
         artifactHash,
         specHash,
         status: artifactStatus,
@@ -881,12 +918,68 @@ export async function runVNextStage(args: {
   }
 
   if (stageKey !== 'compile') {
+    let artifactForCheckpoint = persistedArtifact
+    try {
+      const snapshot = compileDeterministicChangeSet({
+        spec: postSpec as TargetPlanSpec,
+        artifacts: {
+          ...artifacts,
+          [stageKey]: mergedArtifact,
+        } as StageArtifactMap,
+      })
+      const snapshotOps = Array.isArray(snapshot?.ops) ? snapshot.ops : []
+      if (snapshotOps.length > 0) {
+        const snapshotOpsHash = stableHash(JSON.stringify(snapshotOps))
+        const previousSnapshotHash = String(
+          (existingStageArtifactRow as any)?.artifact?.__persisted?.snapshotOpsHash ?? ''
+        )
+        let snapshotChangeSetId: any = (existingStageArtifactRow as any)?.artifact?.__persisted?.snapshotChangeSetId
+        if (!snapshotChangeSetId || snapshotOpsHash !== previousSnapshotHash) {
+          snapshotChangeSetId = await args.ctx.runMutation(api.changeSets.createChangeSet, {
+            projectId: args.projectId,
+            stage: 'BREAKDOWN',
+            ops: snapshotOps,
+            createdBy: { type: 'agent', agentName: `sdk.vnext.snapshot.${stageKey}` },
+          })
+        }
+        artifactForCheckpoint = {
+          ...persistedArtifact,
+          __persisted: {
+            ...((persistedArtifact as any)?.__persisted ?? {}),
+            snapshotOpsHash,
+            snapshotOpsCount: snapshotOps.length,
+            snapshotChangeSetId: snapshotChangeSetId ? String(snapshotChangeSetId) : undefined,
+            snapshotSummaryHe: String(snapshot?.summaryHe ?? ''),
+          },
+        }
+        await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'vnext_stage_snapshot_changeset',
+          payload: {
+            stageKey,
+            snapshotChangeSetId: snapshotChangeSetId ? String(snapshotChangeSetId) : null,
+            snapshotOpsCount: snapshotOps.length,
+            snapshotOpsHash,
+          },
+        })
+      }
+    } catch (snapshotError: any) {
+      await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'vnext_stage_snapshot_changeset_failed',
+        payload: {
+          stageKey,
+          message: String(snapshotError?.message ?? 'unknown'),
+        },
+      })
+    }
+
     await args.ctx.runMutation(internal['sdk/vnext/artifacts'].upsertStageArtifact, {
       runId: args.runId,
       projectId: args.projectId,
       conversationId: args.conversationId,
       stageKey,
-      artifact: mergedArtifact,
+      artifact: artifactForCheckpoint,
       artifactHash,
       specHash,
       status: 'ready_for_checkpoint',
