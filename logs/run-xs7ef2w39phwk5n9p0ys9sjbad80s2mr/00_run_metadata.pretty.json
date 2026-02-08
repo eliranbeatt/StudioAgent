@@ -1,0 +1,21 @@
+﻿{
+  "_creationTime": 1770543858837.2092,
+  "_id": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+  "conversationId": "ss7esr8mk9661s8mv9zqjaky3n80rby5",
+  "createdAt": 1770543858841,
+  "currentAgentName": "vnext_pipeline",
+  "dirtyAnswersCount": 32,
+  "engine": "sdk",
+  "lastServedAt": 1770544241081,
+  "lastServedOrderKey": "EB/999/______3.__________/000009",
+  "noProgressCount": 0,
+  "planDocVersion": 13,
+  "progressCount": 0,
+  "projectId": "nn75yxd89gnga6qrqwn42f1h7s80rdh0",
+  "regenStatus": "idle",
+  "runMode": "PLANNING_FLOW",
+  "shadowMode": false,
+  "stageKey": "brief",
+  "status": "running",
+  "updatedAt": 1770544657585
+}

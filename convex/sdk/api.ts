@@ -513,54 +513,181 @@ function normalizeElementTypeForChangeSet(value: unknown): string {
   return 'build'
 }
 
-function buildFinalizeDirectOps(outputs: Record<string, any>, projectId: string): Array<{ kind: string; payload: any }> {
+function normalizeKeyPart(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_/\\|:]+/g, '-')
+    .replace(/[^a-z0-9\u0590-\u05ff-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function buildFinalizeDirectOps(
+  outputs: Record<string, any>,
+  projectId: string,
+  liveContext?: Record<string, any>
+): Array<{ kind: string; payload: any }> {
   const ops: Array<{ kind: string; payload: any }> = []
   const elements = Array.isArray(outputs['plan.elements']?.elements) ? outputs['plan.elements'].elements : []
   const tasks = Array.isArray(outputs['plan.tasks']?.tasks) ? outputs['plan.tasks'].tasks : []
   const budget = outputs['cost.build_budget'] ?? {}
   const materialLines = Array.isArray(budget?.materialLines) ? budget.materialLines : []
   const workLines = Array.isArray(budget?.workLines) ? budget.workLines : []
+  const liveElements = Array.isArray(liveContext?.elements) ? liveContext.elements : []
+  const liveTasks = Array.isArray(liveContext?.tasks) ? liveContext.tasks : []
+
+  const elementByTitleType = new Map<string, any>()
+  const elementByTitle = new Map<string, any>()
+  for (const element of liveElements) {
+    const titleKey = normalizeKeyPart(element?.title)
+    if (!titleKey) continue
+    const type = normalizeElementTypeForChangeSet(element?.type)
+    if (!elementByTitleType.has(`${titleKey}::${type}`)) elementByTitleType.set(`${titleKey}::${type}`, element)
+    if (!elementByTitle.has(titleKey)) elementByTitle.set(titleKey, element)
+  }
+
+  const taskByDedup = new Map<string, any>()
+  const taskByElementAndTitle = new Map<string, any>()
+  for (const task of liveTasks) {
+    const dedup = String(task?.dedupKey ?? '').trim()
+    if (dedup && !taskByDedup.has(dedup)) taskByDedup.set(dedup, task)
+    const titleKey = normalizeKeyPart(task?.title)
+    const elementId = String(task?.elementId ?? '')
+    if (!titleKey) continue
+    const key = `${elementId}::${titleKey}`
+    if (!taskByElementAndTitle.has(key)) taskByElementAndTitle.set(key, task)
+  }
+
+  const elementRefMap = new Map<string, string>()
+  const elementKeyByRef = new Map<string, string>()
+  const taskRefMap = new Map<string, string>()
+  const taskKeyByRef = new Map<string, string>()
+  const createdTaskDedup = new Set<string>()
+
+  const rememberElementRef = (ref: unknown, resolved: string, elementKey: string) => {
+    const value = String(ref ?? '').trim()
+    if (!value) return
+    elementRefMap.set(value, resolved)
+    elementKeyByRef.set(value, elementKey)
+  }
+
+  const rememberTaskRef = (ref: unknown, resolved: string, taskKey: string) => {
+    const value = String(ref ?? '').trim()
+    if (!value) return
+    taskRefMap.set(value, resolved)
+    taskKeyByRef.set(value, taskKey)
+  }
 
   for (let i = 0; i < elements.length; i += 1) {
     const item = elements[i] ?? {}
-    const tempId = firstNonEmpty([item.tempId, `final_elem_${i + 1}`])
     const title = firstNonEmpty([item.title, item.titleHe, item.name, item.nameHe, `Element ${i + 1}`])
     const type = normalizeElementTypeForChangeSet(firstNonEmpty([item.type, item.buildStrategy]))
-    ops.push({
-      kind: 'element.create',
-      payload: {
-        tempId,
-        element: {
-          projectId,
-          title,
-          type,
+    const rawElementKey = firstNonEmpty([item.stableKey, item.elementKey, item.tempId, title, `element-${i + 1}`])
+    const elementKey = normalizeKeyPart(rawElementKey) || `element-${i + 1}`
+    const titleKey = normalizeKeyPart(title)
+    const existing =
+      elementByTitleType.get(`${titleKey}::${type}`) ??
+      elementByTitle.get(titleKey) ??
+      null
+    const resolvedElementRef = existing ? String(existing.id) : `final_elem_${elementKey}`
+
+    if (existing) {
+      ops.push({
+        kind: 'element.patch',
+        payload: {
+          elementId: existing.id,
+          patch: {
+            title,
+            type,
+            description: firstNonEmpty([item.description, item.descriptionHe]) || undefined,
+          },
         },
-      },
-    })
+      })
+    } else {
+      ops.push({
+        kind: 'element.create',
+        payload: {
+          tempId: resolvedElementRef,
+          element: {
+            projectId,
+            title,
+            type,
+            description: firstNonEmpty([item.description, item.descriptionHe]) || undefined,
+          },
+        },
+      })
+    }
+
+    rememberElementRef(item.tempId, resolvedElementRef, elementKey)
+    rememberElementRef(item.id, resolvedElementRef, elementKey)
+    rememberElementRef(item.elementId, resolvedElementRef, elementKey)
+    rememberElementRef(String(i), resolvedElementRef, elementKey)
   }
 
   for (let i = 0; i < tasks.length; i += 1) {
     const item = tasks[i] ?? {}
-    const tempId = firstNonEmpty([item.tempId, `final_task_${i + 1}`])
     const title = firstNonEmpty([item.title, item.titleHe, item.name, item.descriptionHe, `Task ${i + 1}`])
     const description = firstNonEmpty([item.description, item.descriptionHe])
     const estimatedHours = toFiniteNumber(item.estimatedHours ?? item.estimateHours)
     const stage = firstNonEmpty([item.stage, item.stageKey])
     const workType = firstNonEmpty([item.workType?.key, item.workType])
     const workTypeLabelHe = firstNonEmpty([item.workTypeLabelHe, item.workType?.labelHe])
-    const elementTempOrId = firstNonEmpty([item.elementTempOrId, item.elementId])
+    const inputElementRef = firstNonEmpty([item.elementTempOrId, item.elementId])
+    const resolvedElementRef = elementRefMap.get(inputElementRef) ?? inputElementRef
+    const resolvedElementKey = elementKeyByRef.get(inputElementRef) ?? normalizeKeyPart(inputElementRef) ?? 'project'
+    const taskIdentitySeed = firstNonEmpty([
+      item.dedupKey,
+      `${stage || 'stage'}:${workType || 'work'}:${title}`,
+      title,
+      item.tempId,
+      `task-${i + 1}`,
+    ])
+    const normalizedTaskIdentity = normalizeKeyPart(taskIdentitySeed) || `task-${i + 1}`
+    const dedupKey = firstNonEmpty([item.dedupKey, `finalize:task:${resolvedElementKey}:${normalizedTaskIdentity}`])
+    const tempId = firstNonEmpty([item.tempId, `final_task_${normalizedTaskIdentity}`])
     const dependencyRaw = item?.dependencies?.afterTaskTempIds
     const dependencies = Array.isArray(dependencyRaw)
       ? dependencyRaw.map((value: any) => String(value)).filter(Boolean)
       : typeof dependencyRaw === 'string'
         ? dependencyRaw.split(',').map((value: string) => value.trim()).filter(Boolean)
         : []
+    const normalizedDependencies = dependencies.map((dep) => taskRefMap.get(dep) ?? dep)
+
+    const existingByDedup = dedupKey ? taskByDedup.get(dedupKey) : null
+    const existingByTitle = taskByElementAndTitle.get(`${String(resolvedElementRef ?? '')}::${normalizeKeyPart(title)}`)
+    const existingTask = existingByDedup ?? existingByTitle ?? null
+
+    if (existingTask) {
+      ops.push({
+        kind: 'task.patch',
+        payload: {
+          taskId: existingTask.id,
+          fields: {
+            title,
+            description: description || undefined,
+            estimatedHours,
+            stage: stage || undefined,
+            workType: workType || undefined,
+            workTypeLabelHe: workTypeLabelHe || undefined,
+            dependencies: normalizedDependencies.length > 0 ? normalizedDependencies : undefined,
+            dedupKey: dedupKey || undefined,
+          },
+        },
+      })
+      rememberTaskRef(item.tempId, String(existingTask.id), dedupKey)
+      rememberTaskRef(item.taskId, String(existingTask.id), dedupKey)
+      rememberTaskRef(item.id, String(existingTask.id), dedupKey)
+      continue
+    }
+
+    if (createdTaskDedup.has(dedupKey)) continue
 
     ops.push({
       kind: 'task.create',
       payload: {
         tempId,
-        elementTempOrId: elementTempOrId || undefined,
+        elementTempOrId: resolvedElementRef || undefined,
         fields: {
           title,
           description: description || undefined,
@@ -568,11 +695,15 @@ function buildFinalizeDirectOps(outputs: Record<string, any>, projectId: string)
           stage: stage || undefined,
           workType: workType || undefined,
           workTypeLabelHe: workTypeLabelHe || undefined,
-          dependencies: dependencies.length > 0 ? dependencies : undefined,
-          dedupKey: firstNonEmpty([item.dedupKey]) || undefined,
+          dependencies: normalizedDependencies.length > 0 ? normalizedDependencies : undefined,
+          dedupKey: dedupKey || undefined,
         },
       },
     })
+    createdTaskDedup.add(dedupKey)
+    rememberTaskRef(item.tempId, tempId, dedupKey)
+    rememberTaskRef(item.taskId, tempId, dedupKey)
+    rememberTaskRef(item.id, tempId, dedupKey)
   }
 
   for (let i = 0; i < materialLines.length; i += 1) {
@@ -584,13 +715,25 @@ function buildFinalizeDirectOps(outputs: Record<string, any>, projectId: string)
     )
     const itemName = firstNonEmpty([item.itemName, item.itemHe, item.title, item.titleHe, `Material ${i + 1}`])
     const unitCode = firstNonEmpty([item.uomCode, item.unitCode])
-    const elementTempOrId = firstNonEmpty([item.elementTempOrId, item.elementId])
-    const taskTempOrId = firstNonEmpty([item.taskTempOrId, item.taskId])
+    const inputElementRef = firstNonEmpty([item.elementTempOrId, item.elementId])
+    const inputTaskRef = firstNonEmpty([item.taskTempOrId, item.taskId])
+    const elementTempOrId = elementRefMap.get(inputElementRef) ?? inputElementRef
+    const taskTempOrId = taskRefMap.get(inputTaskRef) ?? inputTaskRef
+    const elementKey =
+      elementKeyByRef.get(inputElementRef) ??
+      normalizeKeyPart(inputElementRef) ??
+      (String(item?.elementScope ?? '').trim() === 'project' ? 'project' : 'unknown')
+    const taskKey = taskKeyByRef.get(inputTaskRef) ?? normalizeKeyPart(inputTaskRef) ?? 'project'
+    const materialSignature = normalizeKeyPart(firstNonEmpty([itemName, item.sectionKey, `material-${i + 1}`]))
+    const stableMaterialDedup = firstNonEmpty([
+      item.dedupKey,
+      `finalize:material:${elementKey}:${taskKey}:${normalizeKeyPart(item.sectionKey)}:${materialSignature}`,
+    ])
 
     ops.push({
       kind: 'materialLine.create',
       payload: {
-        tempId: firstNonEmpty([item.tempId]) || undefined,
+        tempId: firstNonEmpty([item.tempId, `final_mat_${materialSignature}`]) || undefined,
         elementTempOrId: elementTempOrId || undefined,
         taskTempOrId: taskTempOrId || undefined,
         elementScope: firstNonEmpty([item.elementScope]) || undefined,
@@ -602,7 +745,7 @@ function buildFinalizeDirectOps(outputs: Record<string, any>, projectId: string)
           plannedTotalCost,
           sectionKey: firstNonEmpty([item.sectionKey]) || undefined,
           notes: firstNonEmpty([item.notes, item.notesHe]) || undefined,
-          dedupKey: firstNonEmpty([item.dedupKey]) || undefined,
+          dedupKey: stableMaterialDedup || undefined,
         },
       },
     })
@@ -615,15 +758,27 @@ function buildFinalizeDirectOps(outputs: Record<string, any>, projectId: string)
     const plannedTotalCost = toFiniteNumber(item.plannedTotalCost) ?? (
       plannedUnitCost !== undefined ? plannedUnitCost * plannedQuantity : undefined
     )
-    const roleHe = firstNonEmpty([item.roleHe, item.workTypeLabelHe, item.workTypeKey, item.titleHe, `עבודה ${i + 1}`])
-    const elementTempOrId = firstNonEmpty([item.elementTempOrId, item.elementId])
-    const taskTempOrId = firstNonEmpty([item.taskTempOrId, item.taskId])
+    const roleHe = firstNonEmpty([item.roleHe, item.workTypeLabelHe, item.workTypeKey, item.titleHe, `Work ${i + 1}`])
+    const inputElementRef = firstNonEmpty([item.elementTempOrId, item.elementId])
+    const inputTaskRef = firstNonEmpty([item.taskTempOrId, item.taskId])
+    const elementTempOrId = elementRefMap.get(inputElementRef) ?? inputElementRef
+    const taskTempOrId = taskRefMap.get(inputTaskRef) ?? inputTaskRef
     const workType = firstNonEmpty([item.workType, item.workTypeKey])
+    const elementKey =
+      elementKeyByRef.get(inputElementRef) ??
+      normalizeKeyPart(inputElementRef) ??
+      (String(item?.elementScope ?? '').trim() === 'project' ? 'project' : 'unknown')
+    const taskKey = taskKeyByRef.get(inputTaskRef) ?? normalizeKeyPart(inputTaskRef) ?? 'project'
+    const workSignature = normalizeKeyPart(firstNonEmpty([roleHe, workType, item.sectionKey, `work-${i + 1}`]))
+    const stableWorkDedup = firstNonEmpty([
+      item.dedupKey,
+      `finalize:work:${elementKey}:${taskKey}:${normalizeKeyPart(item.sectionKey)}:${workSignature}`,
+    ])
 
     ops.push({
       kind: 'workLine.create',
       payload: {
-        tempId: firstNonEmpty([item.tempId]) || undefined,
+        tempId: firstNonEmpty([item.tempId, `final_work_${workSignature}`]) || undefined,
         elementTempOrId: elementTempOrId || undefined,
         taskTempOrId: taskTempOrId || undefined,
         elementScope: firstNonEmpty([item.elementScope]) || undefined,
@@ -636,13 +791,32 @@ function buildFinalizeDirectOps(outputs: Record<string, any>, projectId: string)
           workType: workType || undefined,
           sectionKey: firstNonEmpty([item.sectionKey]) || undefined,
           notes: firstNonEmpty([item.notes, item.notesHe]) || undefined,
-          dedupKey: firstNonEmpty([item.dedupKey]) || undefined,
+          dedupKey: stableWorkDedup || undefined,
         },
       },
     })
   }
 
   return ops
+}
+
+function enrichFinalizeContext(baseContext: any, toolResult: any): any {
+  const next = { ...(baseContext ?? {}) }
+  if (Array.isArray(toolResult?.elements) && toolResult.elements.length > 0) {
+    next.elements = toolResult.elements
+  }
+  if (Array.isArray(toolResult?.tasks) && toolResult.tasks.length > 0) {
+    next.tasks = toolResult.tasks
+  }
+  const materialLines = Array.isArray(toolResult?.materialLines) ? toolResult.materialLines : undefined
+  const workLines = Array.isArray(toolResult?.workLines) ? toolResult.workLines : undefined
+  if (materialLines || workLines) {
+    const accounting = { ...((next as any)?.accounting ?? {}) }
+    if (materialLines) accounting.materialLines = materialLines
+    if (workLines) accounting.workLines = workLines
+    next.accounting = accounting
+  }
+  return next
 }
 
 function toFinalizeAssumptionText(qa: any, now: number): string {
@@ -899,6 +1073,7 @@ export const finalizeNow = action({
 
     let fullBuildApplied = false
     let reviewIssuesCount = 0
+    const toolErrors: Array<{ toolId: string; message: string }> = []
     try {
       const messages = await ctx.runQuery(api.sdk.api.listMessages, {
         conversationId: args.conversationId,
@@ -910,9 +1085,8 @@ export const finalizeNow = action({
           .reverse()
           .find((m: any) => m?.role === 'user' && String(m?.text ?? '').trim())?.text ?? ''
 
-      const buildInput = {
+      const buildInputBase = {
         userText: String(latestUserText ?? ''),
-        context: liveBefore,
         finalizePolicy: {
           mode: 'force_full_finalize',
           assumeMissing: true,
@@ -924,13 +1098,32 @@ export const finalizeNow = action({
       const toolSequence = ['plan.elements', 'plan.tasks', 'cost.build_budget', 'pricing.resolve_lines']
       const intents: any[] = []
       const toolOutputs: Record<string, any> = {}
+      let workingContext: any = liveBefore
       for (const toolId of toolSequence) {
-        const result = await runTool(toolId, buildInput)
-        toolOutputs[toolId] = result
-        intents.push(...collectIntentsFromResult(result))
+        const toolInput = {
+          ...buildInputBase,
+          context: workingContext,
+        }
+        try {
+          const result = await runTool(toolId, toolInput)
+          toolOutputs[toolId] = result
+          intents.push(...collectIntentsFromResult(result))
+          workingContext = enrichFinalizeContext(workingContext, result)
+        } catch (toolError: any) {
+          const message = String(toolError?.message ?? 'unknown')
+          toolErrors.push({ toolId, message })
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'sdk_finalize_tool_failed',
+            payload: {
+              toolId,
+              message,
+            },
+          })
+        }
       }
 
-      const directOps = buildFinalizeDirectOps(toolOutputs, String(args.projectId))
+      const directOps = buildFinalizeDirectOps(toolOutputs, String(args.projectId), liveBefore as any)
       if (directOps.length > 0 || intents.length > 0) {
         let changeSetId: any = null
         if (directOps.length > 0) {
@@ -944,7 +1137,7 @@ export const finalizeNow = action({
           const compileResult = await ctx.runAction(api.sdk.changeset.compile, {
             projectId: args.projectId,
             intents,
-            context: liveBefore,
+            context: workingContext,
             runId: args.runId,
             conversationId: args.conversationId,
           })
@@ -975,9 +1168,18 @@ export const finalizeNow = action({
               intentsCount: intents.length,
               directOpsCount: directOps.length,
               reviewIssuesCount,
+              toolErrorsCount: toolErrors.length,
             },
           })
         }
+      } else {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'sdk_finalize_no_ops_from_tools',
+          payload: {
+            toolErrors,
+          },
+        })
       }
     } catch (error: any) {
       await ctx.runMutation(internal.sdk.telemetry.logEvent, {
@@ -985,6 +1187,7 @@ export const finalizeNow = action({
         type: 'sdk_finalize_full_build_failed',
         payload: {
           message: String(error?.message ?? 'unknown'),
+          toolErrors,
         },
       })
     }
@@ -1023,23 +1226,6 @@ export const finalizeNow = action({
         })
       }
     }
-
-    // Last-resort fallback: auto-create baseline entities and assume open questions.
-    const liveAfterBuild = await ctx.runQuery(api.sdk.api.contextGet, {
-      projectId: args.projectId,
-      packs: ['elements', 'tasks', 'accounting'],
-    })
-    const hasEntitiesAfterBuild =
-      Number((liveAfterBuild as any)?.elements?.length ?? 0) > 0 ||
-      Number((liveAfterBuild as any)?.tasks?.length ?? 0) > 0 ||
-      Number((liveAfterBuild as any)?.materialLines?.length ?? 0) > 0 ||
-      Number((liveAfterBuild as any)?.workLines?.length ?? 0) > 0
-    const autofill = hasEntitiesAfterBuild
-      ? { createdElements: 0, createdTasks: 0, assumedAnswers: 0, skipped: true }
-      : await ctx.runMutation(internal.sdk.api.ensureFinalizeAutofill, {
-          projectId: args.projectId,
-          runId: args.runId,
-        })
 
     const pkg = await ctx.runAction(api.sdk.finalize.buildStructuredPackage, {
       projectId: args.projectId,
@@ -1109,12 +1295,12 @@ export const finalizeNow = action({
                 `Work lines: ${workLines.length}`,
                 `Unresolved questions: ${unresolved}`,
                 `Full build applied: ${fullBuildApplied ? 'yes' : 'no'} (review issues: ${reviewIssuesCount})`,
-                `Autofill: +${Number((autofill as any)?.createdElements ?? 0)} elements, +${Number((autofill as any)?.createdTasks ?? 0)} tasks, ${Number((autofill as any)?.assumedAnswers ?? 0)} assumptions`,
+                `Tool failures: ${toolErrors.length}`,
               ],
-              risksHe: isEmpty ? ['No generated entities found yet'] : [],
+              risksHe: isEmpty ? ['No generated entities found yet'] : toolErrors.map((item) => `${item.toolId}: ${item.message}`),
             },
           ],
-          risksHe: isEmpty ? ['No generated entities found yet'] : [],
+          risksHe: isEmpty ? ['No generated entities found yet'] : toolErrors.map((item) => `${item.toolId}: ${item.message}`),
         },
       ],
       runId: args.runId,
@@ -1130,7 +1316,7 @@ export const finalizeNow = action({
         materialLines: materialLines.length,
         workLines: workLines.length,
         unresolved,
-        autofill,
+        toolErrors,
       },
     })
 
@@ -1145,7 +1331,7 @@ export const finalizeNow = action({
         workLines: workLines.length,
         unresolved,
       },
-      autofill,
+      toolErrors,
     }
   },
 })
@@ -1315,6 +1501,7 @@ function extractMessageText(message: any) {
 
   return `${text} ${blockText}`.trim();
 }
+
 
 
 

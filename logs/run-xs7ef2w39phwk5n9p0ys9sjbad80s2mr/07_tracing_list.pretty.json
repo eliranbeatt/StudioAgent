@@ -1,0 +1,71 @@
+﻿{
+  "continueCursor": "0745b1187ff2c0a48334cb843db67aa18253dd32c4d5965eb691875ea5d2a54a3c853ce693c2c767aec2b654024c900dc5bb0b96e031268b26562e1153422e179389a7122779f7894f2e47d56eb21c86e1c147cde45e7bcb8849cfb39b7698c3066e172fd626850cdc71cabf80f87141a7d19e622734e63c",
+  "isDone": false,
+  "traces": [
+    {
+      "_creationTime": 1770544659205.158,
+      "_id": "td71v6sqmyxk6c8zd1258xn0q180r7rj",
+      "cost": 0.00008054999999999999,
+      "inputTokens": 93,
+      "latencyMs": 1428,
+      "model": "gpt-4o-mini",
+      "outputTokens": 111,
+      "projectId": "nn75yxd89gnga6qrqwn42f1h7s80rdh0",
+      "provider": "openai",
+      "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+      "status": "success"
+    },
+    {
+      "_creationTime": 1770544657074.5808,
+      "_id": "td705t9cxpc59qf5rvn9320rm980schx",
+      "error": "Request was aborted.",
+      "inputTokens": 0,
+      "latencyMs": 240805,
+      "model": "gpt-5-mini",
+      "outputTokens": 0,
+      "projectId": "nn75yxd89gnga6qrqwn42f1h7s80rdh0",
+      "provider": "openai",
+      "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+      "status": "failed"
+    },
+    {
+      "_creationTime": 1770544415984.3289,
+      "_id": "td78d74xsrc67974fkdhp3pbb580sc89",
+      "cost": 0.022715,
+      "inputTokens": 23916,
+      "latencyMs": 106102,
+      "model": "gpt-5-mini",
+      "outputTokens": 8368,
+      "projectId": "nn75yxd89gnga6qrqwn42f1h7s80rdh0",
+      "provider": "openai",
+      "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+      "status": "success"
+    },
+    {
+      "_creationTime": 1770544309674.4468,
+      "_id": "td752cdxdskrkaxyq87qv05x1980r42q",
+      "cost": 0.0165785,
+      "inputTokens": 23842,
+      "latencyMs": 64215,
+      "model": "gpt-5-mini",
+      "outputTokens": 5309,
+      "projectId": "nn75yxd89gnga6qrqwn42f1h7s80rdh0",
+      "provider": "openai",
+      "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+      "status": "success"
+    },
+    {
+      "_creationTime": 1770543930401.6694,
+      "_id": "td76dnx02dxx0hd7fzvsn41yed80sx8v",
+      "cost": 0.06986525,
+      "inputTokens": 1027,
+      "latencyMs": 70933,
+      "model": "gpt-5.2",
+      "outputTokens": 4862,
+      "projectId": "nn75yxd89gnga6qrqwn42f1h7s80rdh0",
+      "provider": "openai",
+      "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+      "status": "success"
+    }
+  ]
+}

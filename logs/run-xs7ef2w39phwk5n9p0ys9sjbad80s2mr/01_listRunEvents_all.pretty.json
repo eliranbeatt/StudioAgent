@@ -1,0 +1,1896 @@
+﻿[
+  {
+    "_creationTime": 1770544659265.3396,
+    "_id": "xn73ahvz4k0cy69n84hfwcvb4980sd3t",
+    "createdAt": 1770544659265,
+    "payload": {
+      "autofill": {
+        "assumedAnswers": 0,
+        "createdElements": 1,
+        "createdTasks": 3
+      },
+      "elements": 1,
+      "isEmpty": false,
+      "materialLines": 0,
+      "tasks": 3,
+      "unresolved": 0,
+      "workLines": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_finalize_now"
+  },
+  {
+    "_creationTime": 1770544657738.3818,
+    "_id": "xn71zfn8neh55wc7m164929myh80r561",
+    "createdAt": 1770544657738,
+    "payload": {
+      "elements": 1,
+      "materialLines": 0,
+      "tasks": 3,
+      "unresolvedQuestionCount": 0,
+      "workLines": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "finalize_structured_package"
+  },
+  {
+    "_creationTime": 1770544657585.5947,
+    "_id": "xn7131j0dg47nz7d9ahzttfyex80r3aj",
+    "createdAt": 1770544657585,
+    "payload": {
+      "assumedAnswers": 0,
+      "createdElements": 1,
+      "createdTasks": 3
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_finalize_autofill"
+  },
+  {
+    "_creationTime": 1770544657543.4004,
+    "_id": "xn71xzbnha9rm30f5kvxeew9r580rt19",
+    "createdAt": 1770544657543,
+    "payload": {
+      "message": "Uncaught Error: deterministic compile produced zero ops\n"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_finalize_hydrate_failed"
+  },
+  {
+    "_creationTime": 1770544657378.4617,
+    "_id": "xn7ds4sd43nw46ntpfkv8bg5xd80rg5v",
+    "createdAt": 1770544657378,
+    "payload": {
+      "message": "Uncaught Error: Request was aborted.\n"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_finalize_full_build_failed"
+  },
+  {
+    "_creationTime": 1770544416099.82,
+    "_id": "xn784hkapf1w8dq8skc5sh57ws80rwg7",
+    "createdAt": 1770544416101,
+    "payload": {
+      "output": {
+        "intent": {
+          "payload": {
+            "projectId": "nn75yxd89gnga6qrqwn42f1h7s80rdh0",
+            "summaryHe": "רשימת משימות מפורטת לייצור, בדיקה, אריזה והקמה לאלמנטים: קיר קשתות, פסל לב ותאורה לקניון גבעתיים (יעד 28.02.2026). כל משימה מקושרת לאלמנט ייחודי וכוללת צ'קליסט אטומטי ותנאי סיום."
+          },
+          "type": "plan.tasks_intent"
+        },
+        "meta": {
+          "hasProjectLevelTasks": false,
+          "taskCount": 17
+        },
+        "tasks": [
+          {
+            "checklistHe": [
+              "לבדוק ולהאשר מידות סופיות (גובה 2.5 מ׳ × רוחב 3 מ׳) לפי PlanDoc",
+              "לסמן חלוקת מודולים (אורך לכל מודול) להתאמה למעלית משא",
+              "לאשר נקודות חיבור וחומרי חיזוק ברישום",
+              "לייצא קבצי חיתוך (PDF/DXF) ולשמור בגירסת ייצור"
+            ],
+            "dedupKey": "task::elem:arch_wall::prep::management::approve-dwg",
+            "dependencies": {
+              "afterTaskTempIds": []
+            },
+            "descriptionHe": "סקירת שרטוטי ייצור, אישור חלוקת מודולים (למעלית/משאית) והוצאת קבצי חיתוך CNC/קווי חיבור לייצור בסטודיו.",
+            "doneCriteriaHe": "יש שרטוט ייצור מאושר + קבצי חיתוך זמינים בגירסת ייצור.",
+            "elementTempOrId": "elem:arch_wall",
+            "estimateHours": 2,
+            "stageKey": "prep",
+            "tempId": "t-arch-01",
+            "titleHe": "אישור שרטוט ייצור וקבצי חיתוך לקיר הקשתות",
+            "workType": {
+              "key": "management",
+              "labelHe": "ניהול"
+            }
+          },
+          {
+            "checklistHe": [
+              "לחתוך את כל חלקי השלד לפי קבצי CNC/מדידות",
+              "להרכיב כל מודול שלד עם ברגים וזוויות חיזוק",
+              "להתקין מגני פינות וקצוות מעוגלים בכל מודול",
+              "למדוד ולוודא התאמה בין מודולים (חיבורים וסימונים)"
+            ],
+            "dedupKey": "task::elem:arch_wall::build::carpentry::frame-modules",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-arch-01"
+              ]
+            },
+            "descriptionHe": "חיתוך חלקי השלד לפי קבצי הייצור והרכבת מודולים שלד עם חיזוקים פנימיים ומגני פינות.",
+            "doneCriteriaHe": "כל מודולי השלד מרוכבים, מסומנים ועמידים לנשיאה, בהתאם לשרטוט המאושר.",
+            "elementTempOrId": "elem:arch_wall",
+            "estimateHours": 5,
+            "stageKey": "build",
+            "tempId": "t-arch-02",
+            "titleHe": "חיתוך וריתוך שלד עץ — מודולים לקיר הקשתות",
+            "workType": {
+              "key": "carpentry",
+              "labelHe": "נגרות"
+            }
+          },
+          {
+            "checklistHe": [
+              "לחתוך את הפאנלים לפי המידות של כל מודול",
+              "להדביק/להבריג את הפאנלים לשלד בהתאם לפרופיל החיבור",
+              "לשייף ולהעגל קצוות חשופים",
+              "למדוד ולסמן במדויק את אזור הלוח למיתוג (גימור והחרטום)"
+            ],
+            "dedupKey": "task::elem:arch_wall::build::carpentry::apply-panels",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-arch-02"
+              ]
+            },
+            "descriptionHe": "חיתוך והדבקה/ברגה של פאנלים (PVC/דיקט/קאפה), שיוף קצוות והכנת לוח למיתוג/הדפסה.",
+            "doneCriteriaHe": "פאנלים מחוברים לשלד, קצוות מעוגלים, ואזור מיתוג מסומן ומוכן לקבלת פאנל מודפס.",
+            "elementTempOrId": "elem:arch_wall",
+            "estimateHours": 3,
+            "stageKey": "build",
+            "tempId": "t-arch-03",
+            "titleHe": "חיבור חיפוי קשיח והכנת אזור מיתוג לקיר הקשתות",
+            "workType": {
+              "key": "carpentry",
+              "labelHe": "נגרות"
+            }
+          },
+          {
+            "checklistHe": [
+              "למלא תפרים ולשייף עד למשטח חלק",
+              "לרסס/ליישם פריימר על כל הפאנלים ולתת לייבוש",
+              "ליישם שתי שכבות צבע מבריק לפי גווני המותג",
+              "לבצע תיקוני דז'מבר ולחכות לייבוש סופי"
+            ],
+            "dedupKey": "task::elem:arch_wall::finish::paint_finish::paint-gloss",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-arch-03"
+              ]
+            },
+            "descriptionHe": "מילוי תפרים, שיוף, מריחת פריימר, וטיפול בצבע מבריק לפי פלטת המותג (ירוק/תכלת/ורוד) על כל השכבות.",
+            "doneCriteriaHe": "כל משטח צבוע בגוון מבריק אחיד, ללא טיפות/קילופים, מוכן לאריזה והובלה.",
+            "elementTempOrId": "elem:arch_wall",
+            "estimateHours": 4,
+            "stageKey": "finish",
+            "tempId": "t-arch-04",
+            "titleHe": "הכנה והצביעה — פריימר ושכבות צבע מבריק לקיר הקשתות",
+            "workType": {
+              "key": "paint_finish",
+              "labelHe": "צביעה"
+            }
+          },
+          {
+            "checklistHe": [
+              "להכין קובץ הדפסה במידות המדויקות של אזור המיתוג (PDF/AI)",
+              "לשלוח קובץ לספק הדפסה מקומי ולבקש הוכחת צבע",
+              "לאשר הוכחת צבע/חומר (PVC קשיח) עם הלקוח",
+              "לקבוע מועד אספקה לפני ההובלה"
+            ],
+            "dedupKey": "task::elem:arch_wall::prep::printing_graphics::order-printed-panel",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-arch-01"
+              ]
+            },
+            "descriptionHe": "הזמנה של פאנל מודפס (Printed panel) למיקום המיתוג — שליחת קבצים, אישור הוכחת צבע/מידות ואישור לייצור.",
+            "doneCriteriaHe": "הספק אישר הזמנה + הוכחת צבע מאושרת וסטטוס אספקה עם ETA.",
+            "elementTempOrId": "elem:arch_wall",
+            "estimateHours": 1.5,
+            "stageKey": "prep",
+            "tempId": "t-arch-05",
+            "titleHe": "הזמנה והסקת אישור הוכחת הדפסה לפאנל הממותג",
+            "workType": {
+              "key": "printing_graphics",
+              "labelHe": "גרפיקה"
+            }
+          },
+          {
+            "checklistHe": [
+              "להניח ריפוד קצף על כל משטח רגיש",
+              "לכרוך כל מודול בניילון בועות ולהדביק תווית תוכן",
+              "לארוז ערכת ברגים וחיבורים בתיק מסודר עם תוויות",
+              "להפיק מדבקת תוכן/רשימת תוכן לכל ארגז ולצלם לשליחה"
+            ],
+            "dedupKey": "task::elem:arch_wall::pack::transport_logistics::pack-modules",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-arch-04",
+                "t-arch-05"
+              ]
+            },
+            "descriptionHe": "הגנה על מודולים לצורך הובלה: קצף, מעטפת בועות, תיוג כל מודול והכנת תיקיית בורגי חיבור + מדריך הרכבה (תמונות).",
+            "doneCriteriaHe": "כל מודולים מורדים, מוגנים ומסומנים; ערכת חיבורים וצילומים ערוכה בארגזים למשלוח.",
+            "elementTempOrId": "elem:arch_wall",
+            "estimateHours": 1.5,
+            "stageKey": "pack",
+            "tempId": "t-arch-06",
+            "titleHe": "אריזה והכנה למשלוח — מודולי קיר וקיט הרכבה",
+            "workType": {
+              "key": "transport_logistics",
+              "labelHe": "הובלה"
+            }
+          },
+          {
+            "checklistHe": [
+              "לפרוק מודולים מנמל או משאית ולמקם לפי סכמת פריסת אתר",
+              "להרכיב מודולים לפי מדריך ולהבריג חיבורים בהתאם לסימון",
+              "להתקין את לוח המיתוג המודפס ולהבטיח התאמה",
+              "לבצע בדיקת יציבות (דחיפה קלה) ולצלם את התוצאה"
+            ],
+            "dedupKey": "task::elem:arch_wall::install::rigging_install::install-on-site",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-arch-06"
+              ]
+            },
+            "descriptionHe": "פריקה מקונטיינר, הרכבת מודולים לפי מדריך, בדיקת יציבות, והתקנת הפאנל המודפס/מיתוג במקום.",
+            "doneCriteriaHe": "הקיר מורכב ויציב באתר, לוח המיתוג מותקן, ותמונות מסירה נמסרו ללקוח.",
+            "elementTempOrId": "elem:arch_wall",
+            "estimateHours": 3,
+            "stageKey": "install",
+            "tempId": "t-arch-07",
+            "titleHe": "הקמה באתר — הרכבת קיר הקשתות והתקנת לוח המיתוג",
+            "workType": {
+              "key": "rigging_install",
+              "labelHe": "הקמה"
+            }
+          },
+          {
+            "checklistHe": [
+              "לחתוך ולרכיב מסגרת פנימית לפי תבנית הגובה 150 ס׳מ",
+              "להכין בסיס עם צאצאות לחיבור משקולות פנימיות",
+              "להתקין נקודות עיגון נסתרות וחיבורים להובלה",
+              "להתאים את המידות לרוחב המקסימלי (90 ס׳מ) ולסמן נקודות החיבור"
+            ],
+            "dedupKey": "task::elem:heart_sculpt::build::carpentry::frame-and-base",
+            "dependencies": {
+              "afterTaskTempIds": []
+            },
+            "descriptionHe": "ייצור שלד קל־משקל עם חיזוקי בסיס לשקילה פנימית ולנשיאה (להתאים להובלה ולשטח 90×?), כולל נקודות עיגון נסתרות.",
+            "doneCriteriaHe": "שלד ובסיס מרוכבים, נקודות עיגון מוכנות והבסיס מותאם להובלה במעלית/משאית.",
+            "elementTempOrId": "elem:heart_sculpt",
+            "estimateHours": 4,
+            "stageKey": "build",
+            "tempId": "t-heart-01",
+            "titleHe": "בניית שלד פנימי ובסיס לפסל הלב",
+            "workType": {
+              "key": "carpentry",
+              "labelHe": "נגרות"
+            }
+          },
+          {
+            "checklistHe": [
+              "לגזור ולעצב כל עלה לפי תבנית",
+              "להדביק/להבריג את העלים לשלד עם חיזוקים מאחורי כל חיבור",
+              "למלא תפרים ושקעים עם שפכטל ולשייף",
+              "לאשר מראה כללי מול השרטוט ולעדכן סימוני הרכבה"
+            ],
+            "dedupKey": "task::elem:heart_sculpt::build::props_sculpt::attach-petals",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-heart-01"
+              ]
+            },
+            "descriptionHe": "יצירת עלי כותרת תלת־ממדיים חצי-קלקר/פיבר, חיבורם לשלד והכנת משטחים עדינים לפני צביעה.",
+            "doneCriteriaHe": "כל עלי הכותרת מחוברים ושלמות, משולבים לשלד ללא רופפים, מוכנים לצביעה.",
+            "elementTempOrId": "elem:heart_sculpt",
+            "estimateHours": 4,
+            "stageKey": "build",
+            "tempId": "t-heart-02",
+            "titleHe": "עיצוב והתקנת עלי כותרת/פרחים על פסל הלב",
+            "workType": {
+              "key": "props_sculpt",
+              "labelHe": "אביזרים"
+            }
+          },
+          {
+            "checklistHe": [
+              "להרכיב פריימר על כל משטח ולתת לייבוש",
+              "ליישם צבע עלי כותרת/פנים לפי הוראות צבע",
+              "ליישם שכבת לכה/סילר עמידה לניקוי",
+              "לבדוק משטח למגע ולטפל ב'פגמים' לפני אריזה"
+            ],
+            "dedupKey": "task::elem:heart_sculpt::finish::paint_finish::paint-protect",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-heart-02"
+              ]
+            },
+            "descriptionHe": "מריחת פריימר, צבעי מותג (אם נדרש) ושכבת הגנה עמידה שאינה דורשת תחזוקה תדירה (למשך חודש).",
+            "doneCriteriaHe": "הפסל צבוע ומוגן, משטח חלק וללא שריטות, מוכן לבדיקה סטטית ואריזה.",
+            "elementTempOrId": "elem:heart_sculpt",
+            "estimateHours": 3,
+            "stageKey": "finish",
+            "tempId": "t-heart-03",
+            "titleHe": "צביעה והגנה — שכבת צבע וסילר לפסל הלב",
+            "workType": {
+              "key": "paint_finish",
+              "labelHe": "צביעה"
+            }
+          },
+          {
+            "checklistHe": [
+              "להציב את הפסל על בסיס מדידה מישורית ולבדוק פלס",
+              "לבצע בדיקת דחיפה קלה מכל צדדים ולמדוד תזוזה",
+              "להוסיף משקולות פנימיות במידת הצורך ולאשר חיבורן",
+              "לתעד את מצב היציבות בתמונות ולרשום משקל נוסף"
+            ],
+            "dedupKey": "task::elem:heart_sculpt::qa::management::stability-test",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-heart-03"
+              ]
+            },
+            "descriptionHe": "ביצוע בדיקות יציבות סטנדרטיות: דחיפה קלה, הוספת משקל פנימי אם צריך ותיעוד תמונתי.",
+            "doneCriteriaHe": "הפסל יציב תחת דחיפה קלה; משקל פנימי נוסף מותקן אם נדרש ותמונות בדיקה זמינות.",
+            "elementTempOrId": "elem:heart_sculpt",
+            "estimateHours": 1,
+            "stageKey": "qa",
+            "tempId": "t-heart-04",
+            "titleHe": "בדיקת יציבות ושקילה פנימית של פסל הלב",
+            "workType": {
+              "key": "management",
+              "labelHe": "ניהול"
+            }
+          },
+          {
+            "checklistHe": [
+              "להרכיב ריפוד ספוג על כל אזורי עלים/פרחים",
+              "לפרק חלקים ניתנים להסרה ולתייגם באופן ברור",
+              "להכין תיק חיבורים ומדריך הרכבה מצולם",
+              "לסגור ולתייג ארגזים עם רשימת תוכן ותמונות פנימיות"
+            ],
+            "dedupKey": "task::elem:heart_sculpt::pack::transport_logistics::pack-sculpture",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-heart-04"
+              ]
+            },
+            "descriptionHe": "הגנה מפני חבטות לשולחנות/עלי כותרת: פירוק חלקי במידת הצורך, ריפוד, תיוג וחיבור מדריך פירוק/הרכבה.",
+            "doneCriteriaHe": "הפסל ארוז בבטחה בארגזים מתוייגים; ערכת החיבורים ומדריך הרכבה כלולים.",
+            "elementTempOrId": "elem:heart_sculpt",
+            "estimateHours": 1.5,
+            "stageKey": "pack",
+            "tempId": "t-heart-05",
+            "titleHe": "אריזה להובלה — פסל הלב וערכת חיבור",
+            "workType": {
+              "key": "transport_logistics",
+              "labelHe": "הובלה"
+            }
+          },
+          {
+            "checklistHe": [
+              "לפרוק את הארגזים ולמקם את הבסיס במיקום המיועד",
+              "לחבר חלקים פירוקים לפי מדריך ולהבריג היטב",
+              "לבדוק פלס ויציבות ולתקן במידת הצורך",
+              "לצלם פריים סופי ולהגיש אישור מסירה"
+            ],
+            "dedupKey": "task::elem:heart_sculpt::install::rigging_install::install-sculpt",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-heart-05"
+              ]
+            },
+            "descriptionHe": "פריקה והצבה במקום המיועד, יישור בסיס, אבטחת תשתית ובדיקת מיצג לצילום סופי.",
+            "doneCriteriaHe": "הפסל מוצב במקומו, יציב ומסומן; תמונות מסירה נמסרו ללקוח.",
+            "elementTempOrId": "elem:heart_sculpt",
+            "estimateHours": 2.5,
+            "stageKey": "install",
+            "tempId": "t-heart-06",
+            "titleHe": "הקמה באתר — הצבת פסל הלב ובדיקות סופיות",
+            "workType": {
+              "key": "rigging_install",
+              "labelHe": "הקמה"
+            }
+          },
+          {
+            "checklistHe": [
+              "לבחון 2־3 דגמי LED גדולים זמינים מספק מקומי",
+              "לבקש והשוות הצעות מחיר עם זמן אספקה",
+              "להנפיק הזמנה לספק עם דרישת אספקה עד שבוע לפני ההקמה",
+              "לקבל אישור הזמנה ומספר מעקב למשלוח"
+            ],
+            "dedupKey": "task::elem:lighting::prep::purchasing::order-led",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-arch-01"
+              ]
+            },
+            "descriptionHe": "בחירת דגם LED גדול בהתאם להעדפת צוות (LED גדול), קבלת הצעת מחיר מספק מקומי והנפקת הזמנה עם אספקה עד T-7 ימים.",
+            "doneCriteriaHe": "הזמנת תאורה בוצעה והספק אישר אספקה עד התאריך המבוקש עם מס׳ מעקב.",
+            "elementTempOrId": "elem:lighting",
+            "estimateHours": 1,
+            "stageKey": "prep",
+            "tempId": "t-light-01",
+            "titleHe": "הזמנה ורכישה של תאורת LED גדולה (סט יחידה)",
+            "workType": {
+              "key": "purchasing",
+              "labelHe": "רכש"
+            }
+          },
+          {
+            "checklistHe": [
+              "לפתוח ולבדוק נזק חיצוני לחבילה ולתעד",
+              "לחבר את התאורה, לבדוק הפעלה ועוצמת אור ודימר",
+              "לבדוק אורך כבלים והתאמת מתאמי חשמל",
+              "לרשום פרטי ספק/דגם ומספר סידורי לתיק הפרויקט"
+            ],
+            "dedupKey": "task::elem:lighting::qa::rigging_install::receive-test",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-light-01"
+              ]
+            },
+            "descriptionHe": "קבלת החבילה, בדיקת פיזיות, בדיקת פעולה (הדלקה/דימר) והתאמת סטנדים/כבלים לפני הובלה לאתר.",
+            "doneCriteriaHe": "התאורה עובדת תקין, דימר פועל, וכל האביזרים נבדקו ונרשמו.",
+            "elementTempOrId": "elem:lighting",
+            "estimateHours": 1,
+            "stageKey": "qa",
+            "tempId": "t-light-02",
+            "titleHe": "קבלה ובדיקת תקינות תאורת LED בסטודיו",
+            "workType": {
+              "key": "rigging_install",
+              "labelHe": "הקמה"
+            }
+          },
+          {
+            "checklistHe": [
+              "להכניס תאורה למארז היצרן או road-case להובלה",
+              "להוסיף ערכת ניהול כבלים (קלטות, תעלת כבלים קטנה, מפצלים)",
+              "לתייג את המארז עם יעד וקוד פרויקט",
+              "לצלם ולהוסיף צילום לאבני הדרך במשלוח"
+            ],
+            "dedupKey": "task::elem:lighting::pack::transport_logistics::pack-light",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-light-02"
+              ]
+            },
+            "descriptionHe": "הכנת תאורה להובלה: אריזה חוזרת במארזי הובלה, הוספת חבילת 'כבלים/מפצלים/מדבקות' לניהול כבלים באתר.",
+            "doneCriteriaHe": "הציוד ארוז, ערכת ניהול כבלים מצורפת והמארז מתויג למשלוח.",
+            "elementTempOrId": "elem:lighting",
+            "estimateHours": 0.5,
+            "stageKey": "pack",
+            "tempId": "t-light-03",
+            "titleHe": "אריזה להכנה למשלוח לאתר כולל ערכת ניהול כבלים",
+            "workType": {
+              "key": "transport_logistics",
+              "labelHe": "הובלה"
+            }
+          },
+          {
+            "checklistHe": [
+              "להציב סטנדים במיקומי התאורה שנקבעו ביחס לקיר",
+              "לחבר כבלי חשמל לשקע ע״פ ההנחיות ולבדוק עמידות",
+              "להדביק ניהול כבלים לרצפה/לבצע תעלת כבלים לפי החלטת השטח",
+              "לבחון פריים צילום ולעשות כיוון אור אחרון"
+            ],
+            "dedupKey": "task::elem:lighting::install::rigging_install::install-on-site",
+            "dependencies": {
+              "afterTaskTempIds": [
+                "t-arch-07",
+                "t-light-03"
+              ]
+            },
+            "descriptionHe": "התקנת התאורה ביחס לקיר הקשתות: מיקום סטנדים, חיבור לחשמל באתר, והסדרת כבלי חשמל בעזרת הדבקה/תעלות כפי שאושר.",
+            "doneCriteriaHe": "התאורה מותקנת ופועלת באתר, כבלים מאורגנים לפי הנחיות והפריים מתאים לצילום.",
+            "elementTempOrId": "elem:lighting",
+            "estimateHours": 1.5,
+            "stageKey": "install",
+            "tempId": "t-light-04",
+            "titleHe": "התקנה באתר — מיקום התאורה וניהול כבלים ביחס לקיר",
+            "workType": {
+              "key": "rigging_install",
+              "labelHe": "הקמה"
+            }
+          }
+        ]
+      },
+      "toolId": "plan.tasks"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "tool_result"
+  },
+  {
+    "_creationTime": 1770544309749.2708,
+    "_id": "xn7f7qeas3phv3639qnyv9b6c580srz0",
+    "createdAt": 1770544309751,
+    "payload": {
+      "output": {
+        "elements": [
+          {
+            "buildStrategy": "build",
+            "categoryHe": "מבנה רקע / סטנד צילום",
+            "constructionMethodHe": "ייצור בסטודיו: בניית שלד עץ מודולרי, שיוף וחיפוי פאנלים, הדפסת פאנל מיתוג, חיבור מודולים עם אביזרי חיבור מהירים. חיבורים יאפשרו פירוק לשניים-שלושה חלקים לכל קשת.",
+            "dependenciesHe": [
+              "קבלת קבצי מיתוג סופיים (AI / PDF / SVG / PNG) והגדרת אזור מיתוג",
+              "אישור הקניון לשימוש בהדבקה/עיגון לרצפה (אם יידרש)",
+              "אימות מידת מעלית/דלתות לפריטים בפירוק (הלקוח ציין שעובד במעלית משא)",
+              "גישה ונקודות חשמל נדרשות לתאורה המשולבת"
+            ],
+            "descriptionHe": "קיר צילום עצמאי בעל 3 קשתות בשכבות ליצירת עומק; שלד עץ מודולרי עם פאנלים מודפסים למיתוג במרכז. עומד עצמאי, מתפרק למודולים לנשיאה והובלה במעלית משא.",
+            "dimensions": {
+              "dCm": 60,
+              "hCm": 250,
+              "notesHe": "3 שכבות (שכבה קדמית/אמצע/אחורית). עומק משוער 60 ס״מ כולל מרווח בין השכבות; ניתן לפרק כל קשת לשני חלקים לצורך הובלה במעלית.",
+              "wCm": 300
+            },
+            "finishHe": "צביעה גימור מבריק לפי צבעי המותג (ירוק/תכלת/ורוד). אזור מיתוג מודפס על פאנל נפרד.",
+            "installMethodHe": "עומד עצמאי והרכבה בשטח: חיבור מודולים זה לזה, הכנסת משקולות בסיס, בדיקת זווית ויישור. אין עיגון לקיר/רצפה מבחינת ברירה; עיגון לרצפה רק אם הקניון מאשר בכתב.",
+            "materialsHe": [
+              "שלד עץ (timber frame) רב־שכבה",
+              "חיפוי פאנלים — MDF/חומר קשיח למחצה (אפשר PVC/קאפה קשיחה כחלופה)",
+              "פאנלים מודפסים (הדפסה על לוח) לאזור מיתוג",
+              "ברגים וחיבורים מהירים (cam locks / bolts)",
+              "משקולות פנימיות בבסיס (פח/בטון קל) להיציבות"
+            ],
+            "modularityHe": "מחולק ל-3 קשתות; כל קשת מפוצלת לשני חלקים (למעבר במעלית). פאנל מיתוג מודפס נפרד ניתן להחלפה מהירה.",
+            "openQuestionsHe": [
+              "אישור סופי של קבצי המיתוג ורזולוציה להדפסה — מתי נשלחים?",
+              "האם הקניון מאשר הדבקה לפאנלים/עיגון זמני לרצפה אם יש צורך ביציבות נוספת (צריך אישור בכתב)?",
+              "אימות מידות מעלית/פתחי מעבר ספציפיים (גובה/רוחב עומק דלת) — נדרש מדידה מדויקת לפני ייצור סופי.",
+              "האם מועד ההקמה בשעות שהוסכמו (23:00–09:00) מאפשר ביצוע חיבורים כבדים בשטח?"
+            ],
+            "priority": "hero",
+            "safetyNotesHe": [
+              "קצוות מעוגלים ומכוסות (PVC edge banding) — אין ברגים חיצוניים חשופים.",
+              "בסיס משוקל דומיננטי למניעת התהפכות; יש לוודא משקל מספק בהתאם לנדרש.",
+              "שכבות החומר וציפוי יהיו בדרגת כיבוי דליקה מינימלית (להמלצה: חומרי Flame-retardant כאשר אפשר).",
+              "חייב להישמר רצועת מעבר/נתיבי מילוט פנויים; לא לחסום יציאות חירום."
+            ],
+            "tempId": "el1_archwall",
+            "titleHe": "קיר רקע — \"קשתות שכבות\""
+          },
+          {
+            "buildStrategy": "build",
+            "categoryHe": "פסל/פרופ",
+            "constructionMethodHe": "הברשה/חיתוך קלקר לבלתי־ממדים, חיבור עלי כותרת מודולרים, חיזוק פנימי לבסיס עם תא למשקולות נסתרות. ציפוי והזנה לצביעה בגימור מבריק.",
+            "dependenciesHe": [
+              "אישור מיקום סופי וגבולות חבלול מסופק על ידי הקניון",
+              "אישור חומרי ציפוי/צבע לפי דרישות כיבוי אש אם יתבקש",
+              "הגדרת נוהל ערכת המגע (מאחורי חבלול — אין מגע) ותמרור בשטח"
+            ],
+            "descriptionHe": "פסל לב בגובה אדם (קירוב 150 ס״מ) עם עלי כותרת/פרחים תלת־ממדיים בולטים. מיועד להיות מוצב מול הקיר כאלמנט צילום מרכזי. אינו מיועד למגע — יימוקם מאחורי חבלול הקניון.",
+            "dimensions": {
+              "dCm": 40,
+              "hCm": 150,
+              "notesHe": "ממדים יעד; בסיס רחב יציב ~40–50 ס״מ עומק; מיועד לעמידה מלפנים (לא העמדה בתוך הלב).",
+              "wCm": 90
+            },
+            "finishHe": "צביעה צבעי מותג גימור מבריק; שכבת הגנה נגד שריטות וצהיבה לתקופת חודש.",
+            "installMethodHe": "מוצב על בסיס משוקל עם אפשרות לעיגון פנימי (ברגים פנימיים לבסיס); מונח בעמדה ומחובר לבסיס באמצעות חיבורים מהירים. ימוקם מאחורי חבלול הקניון (אין מגע), אין צורך בעיגון רצפה אלא אם ייחרש.",
+            "materialsHe": [
+              "ליבת קלקר צפוף/foam core עם ציפוי (קלקר מצופה)",
+              "חיזוק פנימי מעץ קל/זוויות פלדה דקיקות",
+              "ציפוי חיצוני מחומר קשיח (גבס לבן דק/שרף) או שכבת פיבר להקשחה",
+              "צביעה עמידה למגע + שכבת הגנה (לכה אנטי־סקראץ')"
+            ],
+            "modularityHe": "גוף הלב והעלי כותרת יהיו מודולריים — עלי כותרת מחוברים בבולטים לכדי יחידות להובלה נוחה; בסיס בנוי כיחידה משולבת לשקילה.",
+            "openQuestionsHe": [
+              "האם יש דרישה ספציפית לחומר חיצוני (פיבר מול קלקר מצופה) בהתחשב בדרישות אש/בטיחות של הקניון?",
+              "האם נדרש להשאיר חיבורי עיגון בבסיס אם הקניון ישנה את תנאי ההצבה?",
+              "האם רוצים לצרף טקסט תלת־ממדי על הלב בנוסף לפרחים (כיום הכיוון: עלי כותרת בלבד)?"
+            ],
+            "priority": "hero",
+            "safetyNotesHe": [
+              "הפסל לא מיועד לטיפוס — יש להוסיף תוית/הנחיה ולהציב מאחורי חבלול.",
+              "בסיס משוקל פנימי להגנה מפני התהפכות; יש לאפשר גישה להוספת משקולות במקרה של רוח/המולה.",
+              "שימוש בחומרים עם דרגת דליקות מבוקרת (יש להעדיף חומרים שאינם דליקים במהירות).",
+              "קצוות חלקים ומושחזים; אין ברגים חיצוניים חשופים."
+            ],
+            "tempId": "el2_heartsculpt",
+            "titleHe": "פסל מרכזי — \"לב פרחים\" (תלת־ממדי)"
+          },
+          {
+            "buildStrategy": "buy",
+            "categoryHe": "ציוד חשמלי / תאורה",
+            "constructionMethodHe": "רכישה מספק מקומי עם בדיקת תקינות בסטודיו לפני משלוח; הארכה/הארכת כבלים לפי הצורך; אספקה עם מדריך מהיר והרכבה פשוטה.",
+            "dependenciesHe": [
+              "אימות מיקום נקודת חשמל מדויק (כמה שקעים ומה המרחק)",
+              "דדליין להזמנה מספק מקומי — העדפה: הגעה לפחות 7 ימים לפני הקמה",
+              "אישור קווי כבלים / סוג כיסוי לרצפה מהקניון במידת הצורך"
+            ],
+            "descriptionHe": "אלמנט תאורה קנוי: פאנל LED גדול על סטנד מתכוונן (single large LED panel) לרמת תאורה אחידה וחמה בצילום. רכש מספק מקומי עם משלוח והתקנה בשטח.",
+            "dimensions": {
+              "dCm": 60,
+              "hCm": 180,
+              "notesHe": "פאנל משוער 60×60 ס״מ על סטנד מתכוונן עד כ-180 ס״מ; ניתן לפרק ולהכניס למנשא נשיאה.",
+              "wCm": 60
+            },
+            "finishHe": "גימור מוצרי יצרן סטנדרטי; כבלים עם תו תקן ונקודות חיבור מוגנות.",
+            "installMethodHe": "הצבת הסטנד מאחורי/מאוויר את אזור הצילום, כיוונון גובה וזווית פאנל; חיבור לחשמל בקווי הקניון. ניהול כבלים על פי הנחיות הקניון — הדבקה/כיסוי לכדי כיסוי מקצועי.",
+            "materialsHe": [
+              "פאנל LED מקצועי (LED panel / softbox alternativ)",
+              "סטנד מתכוונן למצלמה/תאורה (foldable aluminum stand)",
+              "ספק כוח ודרייבר, כבלי חשמל תקניים, דימר",
+              "תיק נשיאה/ארגז לשינוע"
+            ],
+            "modularityHe": "הסטנד ופאנל מתקפלים וכניסים לתיק נשיאה; סט רכישה סטנדרטי. ניתן להוסיף בוסטרים/רפלקטורים לפי צורך.",
+            "openQuestionsHe": [
+              "תוכלו לאשר מרחק מדויק לנקודת החשמל והכמות הנדרשת של שקעים (נדרש לטעינה/הזנה של הלד + גיבוי)?",
+              "האם הקניון דורש סוג מסוים של כיסוי כבלים (תעלה/הדבקה בפרקט/חומר מסוים)?",
+              "האם מעדיפים חשמל קווי בלבד או נדרשת אופציה לבטריה/UPS למצב חירום?"
+            ],
+            "priority": "support",
+            "safetyNotesHe": [
+              "ניהול כבלים חובה — כיסוי/הדבקה לרצפה לפי דרישת הקניון; שימוש במגן כבלים (cable ramp) אם נדרש.",
+              "חיבור לחשמל בתקע קרוב; יש להשתמש ב-RCD ומפסק בטיחות.",
+              "אין להשאיר את התאורה ללא השגחה במצב פעיל; יש לוודא מנורת לא תחמם חלקי פלסטיק רגישים."
+            ],
+            "tempId": "el3_lighting",
+            "titleHe": "תאורה — פאנל LED גדול על סטנד (סט קנוי)"
+          },
+          {
+            "buildStrategy": "build",
+            "categoryHe": "ערכת תמיכה / אביזרים",
+            "constructionMethodHe": "הרכבה בסטודיו/אריזה של פריטים נקנים לרשימת 'ערכת הקמה' עם תכולת ספייר מוגדרת.",
+            "dependenciesHe": [
+              "ספקת פריטי ספייר לפי רשימת BOM שיוגדר לפני ייצור סופי",
+              "החלטה על צבעי טאצ'‑אפ מדויקים לאחר קבלת קבצי המיתוג הסופיים"
+            ],
+            "descriptionHe": "ערכת כלים וחומרים לתמיכה בהקמה, תחזוקה וטאצ'‑אפ במהלך ההצבה: כלי עבודה, ברגים/מפסקים/חיבורים ספייר, תעלות כבלים ניידות, צבע תיקוני מבריק, דבקים, סרט הדבקה מקצועי.",
+            "dimensions": {
+              "dCm": null,
+              "hCm": null,
+              "notesHe": "קופסה/תיק נשיאה קומפקטי — מידות ישונעו בהתאם לפריטים הסופיים; לא קריטי לעובר במעלית.",
+              "wCm": null
+            },
+            "finishHe": "פריטים פונקציונליים בלבד; צבעי טאצ'‑אפ תואמי גימור מבריק מותג.",
+            "installMethodHe": "מסופק בעת הובלה באתר; צוות ההקמה ישתמש בערכה לתיקונים בשטח ופירוק/אריזה בסיום.",
+            "materialsHe": [
+              "תיק נשיאה עם כלי יד: מברגים, מפתחות, כלי ריתוך/דבק חם",
+              "סל ספיירים: ברגים, דיבלים, חיבורים מהירים",
+              "ערכת צבע טרטור מבריק בצבעי מותג לטאצ'‑אפ",
+              "כיסוי כבלים נייד (rubber cable ramp) ו/או סרט הדבקה תעשייתי",
+              "רצועות קשירה, פסי Velcro, מדבקות סימון"
+            ],
+            "modularityHe": "כל הפריטים מאורגנים בתיק/ארגז מודולרי לפי קטגוריות (כלים / צבע / חיבורים / כבלים).",
+            "openQuestionsHe": [
+              "האם הסטודיו צריך לכלול ערכת כובעי בטיחות/אביזרי סימון מיוחדים לבקשת הקניון?",
+              "האם יש מוצרים שאסור להביא לאתר (לדוגמה חומרים מסוימים בגלל מדיניות הקניון)?"
+            ],
+            "priority": "optional",
+            "safetyNotesHe": [
+              "כלים חדים נשמרים בארגז נעול במהלך הצבת המיצג במרחב הציבורי.",
+              "חומרים כימיים (דבקים, צבעים) מאוחסנים לפי תקן והוראות בטיחות (labels, MSDS)."
+            ],
+            "tempId": "el4_setupKit",
+            "titleHe": "ערכת הקמה ותיק תחזוקה (Tool + Touch‑up kit)"
+          }
+        ],
+        "intent": {
+          "payload": {
+            "noteHe": "יצירת אלמנטים לפירוט הצעה/רכש/ייצור — 2 אלמנטים לבנייה בסטודיו, 1 אלמנט קנוי (תאורה), וערכת תמיכה. נשארו שאלות קריטיות (אישורי עיגון/הדבקה, מידות מדויקות למעבר/מעלית, פרטי חשמל סופיים, אישורי מיתוג סופי) שיש לסגור לפני תחילת ייצור.",
+            "planVersion": 13,
+            "projectId": "nn75yxd89gnga6qrqwn42f1h7s80rdh0"
+          },
+          "type": "plan.elements_intent"
+        },
+        "meta": {
+          "elementCount": 4,
+          "hasUnknownCriticalSpecs": true
+        }
+      },
+      "toolId": "plan.elements"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "tool_result"
+  },
+  {
+    "_creationTime": 1770544241739.5334,
+    "_id": "xn7bnaj5wvxzahj0a0enve0ejx80sgz3",
+    "createdAt": 1770544241739,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544241696.1956,
+    "_id": "xn7fw7w3615rhzc5yryznaeqx180rmaj",
+    "createdAt": 1770544241696,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544241631.82,
+    "_id": "xn77p5344hznc9mj2x759g06rn80rzz9",
+    "createdAt": 1770544241631,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544241141.8552,
+    "_id": "xn7feeb3rd2nk18qg2ppa3cxt580rd7d",
+    "createdAt": 1770544241144,
+    "payload": {
+      "answeredCount": 2,
+      "nextPlanVersion": 13,
+      "previousPlanVersion": 12,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544241079.6274,
+    "_id": "xn75nkhhhb35x1bt32549f32zx80s803",
+    "createdAt": 1770544241081,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps7bpnv42f9atsbf8a2epxzy9n80sbty",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps728hd48zsb9rhht91yy5v7y180sqr3",
+          "status": "answered"
+        }
+      ],
+      "count": 2,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544219061.8362,
+    "_id": "xn70p8zytpf0v8cma8ycgwq17180rpdn",
+    "createdAt": 1770544219062,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544219034.561,
+    "_id": "xn7976d9bgwhgzmnfcfxbgjej980rfes",
+    "createdAt": 1770544219034,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544218972.6636,
+    "_id": "xn7anv7jvajbg0hd4bbjpp78mh80s35y",
+    "createdAt": 1770544218972,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544218285.185,
+    "_id": "xn74gctf17pkmb8jbg8bn8fkqh80rhmq",
+    "createdAt": 1770544218287,
+    "payload": {
+      "answeredCount": 1,
+      "nextPlanVersion": 12,
+      "previousPlanVersion": 11,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544218231.2292,
+    "_id": "xn75fgp08v398sqg3aharrv3hs80r8pv",
+    "createdAt": 1770544218233,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps76yp2mevdk6bnfxtvjrrjzrd80rcf4",
+          "status": "answered"
+        }
+      ],
+      "count": 1,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544206596.49,
+    "_id": "xn7cy0ebb4x1bd2vznc7s6pnss80sxzm",
+    "createdAt": 1770544206596,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544206564.7322,
+    "_id": "xn77gseawp465a6nzamg7c5bks80radp",
+    "createdAt": 1770544206564,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544206504.958,
+    "_id": "xn7cdja93d5xrahzqztkewpsps80r1mg",
+    "createdAt": 1770544206505,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544205996.1736,
+    "_id": "xn7at4yz6epy7fqzta1q7em56h80swd3",
+    "createdAt": 1770544205998,
+    "payload": {
+      "answeredCount": 1,
+      "nextPlanVersion": 11,
+      "previousPlanVersion": 10,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544205944.5015,
+    "_id": "xn765p176ptvfvcgqtd41ey14h80rkm7",
+    "createdAt": 1770544205946,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps71my1vrnh61g9abrhw93pd2n80rn7v",
+          "status": "answered"
+        }
+      ],
+      "count": 1,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544188563.3828,
+    "_id": "xn78kvbw2sqhw7wcp0w0r9css180rma2",
+    "createdAt": 1770544188563,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544188532.1401,
+    "_id": "xn70bnb45vs32djxppcah9z9kd80spb9",
+    "createdAt": 1770544188532,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544188469.039,
+    "_id": "xn7fpmef6ea0ypv4he8rd07v8d80s9sb",
+    "createdAt": 1770544188469,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544187931.124,
+    "_id": "xn71y8b6twc8f7ey489ectq8b180swkb",
+    "createdAt": 1770544187933,
+    "payload": {
+      "answeredCount": 2,
+      "nextPlanVersion": 10,
+      "previousPlanVersion": 9,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544187869.5515,
+    "_id": "xn767s4cs6tc4a1ypwsmqprn7n80rwd2",
+    "createdAt": 1770544187871,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps7ag885n97haytjp8yj8d3jhh80rkpb",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps71xt73zxn63mshv2gfn2ds3x80stkz",
+          "status": "answered"
+        }
+      ],
+      "count": 2,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544166836.6985,
+    "_id": "xn74psx7vwewchcs2a7fb2yrjx80r7xf",
+    "createdAt": 1770544166836,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544166796.9001,
+    "_id": "xn77q8q82756x6jz4nsstx1f5n80srte",
+    "createdAt": 1770544166797,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544166728.3098,
+    "_id": "xn70tzkndvskg6djgaxv60ghw980sr0d",
+    "createdAt": 1770544166728,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544166209.2456,
+    "_id": "xn72e4fkzp2rfsza76jxjzgm7180r79e",
+    "createdAt": 1770544166211,
+    "payload": {
+      "answeredCount": 2,
+      "nextPlanVersion": 9,
+      "previousPlanVersion": 8,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544166146.696,
+    "_id": "xn75ybt1rpeqqxf5fjhwmk0ws580rdv0",
+    "createdAt": 1770544166148,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps70z2gh8cn77sw90rmt4e0jgd80sy65",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps71jqccr7k9jfdkfe06q265g580shhz",
+          "status": "answered"
+        }
+      ],
+      "count": 2,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544138144.5002,
+    "_id": "xn7dw2h1grg5yhr0wzcdh1qn0d80r0cw",
+    "createdAt": 1770544138144,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544138116.4253,
+    "_id": "xn71me082n4ws64j5b55zzkp7180rh5n",
+    "createdAt": 1770544138116,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544138044.2144,
+    "_id": "xn76pva6g7myhgxhzzghb5fg6d80ra4j",
+    "createdAt": 1770544138044,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544137553.893,
+    "_id": "xn793r2as1y52azc2h22t9na5n80s054",
+    "createdAt": 1770544137556,
+    "payload": {
+      "answeredCount": 2,
+      "nextPlanVersion": 8,
+      "previousPlanVersion": 7,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544137494.2468,
+    "_id": "xn78g5kper8md1ta6gvyqf7zrx80r88e",
+    "createdAt": 1770544137496,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps7e8q45ezj3a1pkzph28enw3180rqy1",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7ayxfe6npaj6yrc2b5mgj39580skc6",
+          "status": "answered"
+        }
+      ],
+      "count": 2,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544105407.0156,
+    "_id": "xn736ca5mk7fmtaarz4p9vzq8n80rzhc",
+    "createdAt": 1770544105407,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544105370.7021,
+    "_id": "xn7dtrsndgq0502xqwkkmhq8qh80s3wx",
+    "createdAt": 1770544105370,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544105299.5796,
+    "_id": "xn7em4d2vr5f1f4gw48gb5bqex80smhw",
+    "createdAt": 1770544105299,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544104804.0576,
+    "_id": "xn7f22zvttkt3bkbwj68dzje0x80r3kt",
+    "createdAt": 1770544104806,
+    "payload": {
+      "answeredCount": 2,
+      "nextPlanVersion": 7,
+      "previousPlanVersion": 6,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544104745.89,
+    "_id": "xn797sf5dzgqpfw2fc8s82s01580sn5y",
+    "createdAt": 1770544104748,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps7de2543ap430gqvwkj8jd3gd80r77s",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7at2f3rs4180r7tbgcdykbsn80sktq",
+          "status": "answered"
+        }
+      ],
+      "count": 2,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544090826.16,
+    "_id": "xn7azpj8ebd22dc5qtjn9sx9ed80rja1",
+    "createdAt": 1770544090826,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544090787.215,
+    "_id": "xn73vy3djvsnyq94cm3mqtnpfx80ry6h",
+    "createdAt": 1770544090787,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544090720.343,
+    "_id": "xn73s5gsy352qrtfpena8mcqtn80rnrr",
+    "createdAt": 1770544090720,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544090190.1199,
+    "_id": "xn7fp2hhw79kv87w5dhkg4hwqn80rav2",
+    "createdAt": 1770544090192,
+    "payload": {
+      "answeredCount": 1,
+      "nextPlanVersion": 6,
+      "previousPlanVersion": 5,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544090135.1472,
+    "_id": "xn70bywhpvc5kpj82g236gvw6180rtvh",
+    "createdAt": 1770544090137,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps78mvdm2yhb1ahp6pdzccf28n80rwjk",
+          "status": "answered"
+        }
+      ],
+      "count": 1,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544070694.4421,
+    "_id": "xn7aaeq9y6et0tpreggv5pg22980r130",
+    "createdAt": 1770544070694,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544070649.0652,
+    "_id": "xn75a4jc51q9smcnfhmh68jn6d80s10x",
+    "createdAt": 1770544070649,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544070574.8237,
+    "_id": "xn712z9r7m5z27aa7knr0t40md80rbz9",
+    "createdAt": 1770544070574,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544070025.8757,
+    "_id": "xn77yz6g28ab136r2d9eqym3b580sgq3",
+    "createdAt": 1770544070028,
+    "payload": {
+      "answeredCount": 3,
+      "nextPlanVersion": 5,
+      "previousPlanVersion": 4,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544069943.966,
+    "_id": "xn717hrfez1zt6shjywdj5vv8x80r10e",
+    "createdAt": 1770544069946,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps72hh7jkr580z3kkqwdtq94y180re6e",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps72v2vgncavt6xc3k2tpy4h5x80s40d",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7d39a3rkr8wncz3kc15w19hd80sybb",
+          "status": "answered"
+        }
+      ],
+      "count": 3,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770544017451.242,
+    "_id": "xn71j9qcqe5j8smemfkw3dbtjd80rber",
+    "createdAt": 1770544017451,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770544017419.0034,
+    "_id": "xn72bh2aadnbxy4cyw9fchr8fn80s525",
+    "createdAt": 1770544017419,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 0,
+        "reusedResolved": 2,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770544017346.5933,
+    "_id": "xn70cksgxxvbf2yvnf9qsd0hxs80rjv5",
+    "createdAt": 1770544017346,
+    "payload": {
+      "created": 0,
+      "reusedResolved": 2,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770544016819.0083,
+    "_id": "xn7e8g3cp4twkqxttq0a82809980sywk",
+    "createdAt": 1770544016821,
+    "payload": {
+      "answeredCount": 6,
+      "nextPlanVersion": 4,
+      "previousPlanVersion": 3,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770544016735.6326,
+    "_id": "xn7cy2kg7vrxkwev79h9jt92kx80r4wj",
+    "createdAt": 1770544016737,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps7fxaze3rnwygd71fa65rb75180sa2g",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps79135zae6r9tecgh1vfwzwes80rdv1",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7epkbgt86snsj8d5mkhagn5h80s902",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7232dbxkz4qh78hwn811jtps80rsea",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7fdmwcyfegk1yrkyat3atx4n80svra",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps79j8vkc3hma841x5v6vpb7rn80s289",
+          "status": "answered"
+        }
+      ],
+      "count": 6,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  },
+  {
+    "_creationTime": 1770543982354.6003,
+    "_id": "xn70a627gkq5cn4vzj489ygbq980ryak",
+    "createdAt": 1770543982354,
+    "payload": {
+      "nextStageKey": null,
+      "stageKey": "brief",
+      "status": "needs_input"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_exit"
+  },
+  {
+    "_creationTime": 1770543982312.9673,
+    "_id": "xn756bb321rdphydst2jha0e9d80rscs",
+    "createdAt": 1770543982313,
+    "payload": {
+      "blocks": [
+        {
+          "continueAction": {
+            "labelHe": "שמור תשובות והמשך",
+            "payload": {
+              "action": "sdk.vnext.continue"
+            }
+          },
+          "questions": [
+            {
+              "id": "location",
+              "textHe": "איפה ההקמה/האירוע?",
+              "type": "text"
+            },
+            {
+              "id": "budget",
+              "textHe": "מה מסגרת התקציב המשוערת?",
+              "type": "number"
+            }
+          ],
+          "sdkVnext": true,
+          "stageKey": "brief",
+          "titleHe": "בריף ואילוצים - נדרש מידע",
+          "type": "QuestionsBlock"
+        }
+      ],
+      "qaBridge": {
+        "created": 2,
+        "reusedResolved": 0,
+        "total": 2,
+        "updated": 0
+      },
+      "stageKey": "brief",
+      "status": "needs_input",
+      "telemetry": {
+        "preGateIssues": 2
+      }
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_stage_result"
+  },
+  {
+    "_creationTime": 1770543982237.7043,
+    "_id": "xn7bjrf403n857tbw8nwjykwj980rjcx",
+    "createdAt": 1770543982237,
+    "payload": {
+      "created": 2,
+      "reusedResolved": 0,
+      "total": 2,
+      "updated": 0
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "vnext_questions_seeded_qapairs"
+  },
+  {
+    "_creationTime": 1770543981464.6648,
+    "_id": "xn729qr75krh2a9qpw3qr9fr8h80sjhs",
+    "createdAt": 1770543981467,
+    "payload": {
+      "answeredCount": 10,
+      "nextPlanVersion": 3,
+      "previousPlanVersion": 2,
+      "versionMismatch": false
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_rebase_from_answers"
+  },
+  {
+    "_creationTime": 1770543981366.3801,
+    "_id": "xn7ep6g159bkyqqbk8z1szre8s80sveh",
+    "createdAt": 1770543981366,
+    "payload": {
+      "applied": [
+        {
+          "qaPairId": "ps7440rcjmy4sq85qxjdp3f0d580r171",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps75vcg7n4ecvyaqen243yxg5d80ra7n",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7ag0tm015fatgtv9dcr5897s80rzjd",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps74a8sj7wa29eb7n53480dncd80sq8k",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7bwxg5392r2a0478cjf50x9180r60w",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps776s96927c3e6hh0a39pd51h80sp7j",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7ezmkjs80hs1pp0ve5jh1rch80sw8e",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7263pg0jeg3e9prq8jfv8qdn80r86g",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps7ec58gp8224jhk30xzzq2sb580s84j",
+          "status": "answered"
+        },
+        {
+          "qaPairId": "ps75jwcjs8taffgkastypynxgx80s9gq",
+          "status": "answered"
+        }
+      ],
+      "count": 10,
+      "intent": "answer"
+    },
+    "runId": "xs7ef2w39phwk5n9p0ys9sjbad80s2mr",
+    "type": "sdk_questions_answer_submit"
+  }
+]
