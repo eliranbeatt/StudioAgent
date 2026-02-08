@@ -300,11 +300,12 @@ export default function SdkAgentPage() {
     }
   };
 
-  const handleSubmitSdkQuestionSet = async (answersById: Record<string, string>) => {
+  const handleSubmitSdkQuestionSet = async (answersById: Record<string, string>, answerSources?: Record<string, AnswerSource>) => {
     if (!activeRun?._id || isRegenRunning) return;
     const answers = Object.entries(answersById).map(([qaPairId, answer]) => ({
       qaPairId: qaPairId as Id<'qaPairs'>,
       answer,
+      answerSource: answerSources?.[qaPairId] as any,
     }));
     if (answers.length === 0) return;
 
@@ -906,9 +907,10 @@ function SdkDeterministicQuestionsPanel({
     questionText?: string;
     blockingLevel?: string;
     options?: Array<{ value: string; labelHe?: string }>;
+    suggestedAnswers?: Array<{ value: string; labelHe?: string }>;
     allowDontKnow?: boolean;
   }>;
-  onSubmit: (answersById: Record<string, string>) => Promise<void>;
+  onSubmit: (answersById: Record<string, string>, answerSources?: Record<string, AnswerSource>) => Promise<void>;
   loading: boolean;
   regenStatus: 'idle' | 'running' | 'failed' | string;
   dirtyAnswersCount: number;
@@ -916,6 +918,7 @@ function SdkDeterministicQuestionsPanel({
   notice: string | null;
 }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answerSources, setAnswerSources] = useState<Record<string, AnswerSource>>({});
   const [chipSelections, setChipSelections] = useState<Record<string, string>>({});
   const isRunning = loading || regenStatus === 'running';
   const isFailed = regenStatus === 'failed';
@@ -928,22 +931,28 @@ function SdkDeterministicQuestionsPanel({
       // Deselect
       setChipSelections((prev) => ({ ...prev, [questionId]: '' }));
       setAnswers((prev) => ({ ...prev, [questionId]: '' }));
+      setAnswerSources((prev) => { const n = { ...prev }; delete n[questionId]; return n; });
     } else {
       setChipSelections((prev) => ({ ...prev, [questionId]: value }));
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
+      setAnswerSources((prev) => ({ ...prev, [questionId]: source }));
     }
   };
 
   const handleTextChange = (questionId: string, text: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: text }));
-    if (text) setChipSelections((prev) => ({ ...prev, [questionId]: '' }));
+    if (text) {
+      setChipSelections((prev) => ({ ...prev, [questionId]: '' }));
+      setAnswerSources((prev) => ({ ...prev, [questionId]: 'typed' }));
+    }
   };
 
   const submit = async () => {
     if (isRunning) return;
-    await onSubmit(answers);
+    await onSubmit(answers, Object.keys(answerSources).length > 0 ? answerSources : undefined);
     setAnswers({});
     setChipSelections({});
+    setAnswerSources({});
   };
 
   return (
@@ -989,6 +998,10 @@ function SdkDeterministicQuestionsPanel({
             value: o.value,
             labelHe: o.labelHe ?? o.value,
           }));
+          const chipSuggestions = (q.suggestedAnswers ?? []).map((s) => ({
+            value: String(s.value ?? s),
+            labelHe: String(s.labelHe ?? s.value ?? s),
+          }));
           return (
             <div key={id} className="space-y-1">
               <div className="text-[11px] text-slate-400 uppercase">{q.blockingLevel ?? 'helpful'}</div>
@@ -1001,6 +1014,7 @@ function SdkDeterministicQuestionsPanel({
               />
               <AnswerChips
                 options={chipOptions.length > 0 ? chipOptions : undefined}
+                suggestedAnswers={chipSuggestions.length > 0 ? chipSuggestions : undefined}
                 allowDontKnow={q.allowDontKnow !== false}
                 selected={chipSelections[id]}
                 onSelect={(value, source) => handleChipSelect(id, value, source)}

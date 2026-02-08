@@ -155,6 +155,8 @@ function toQuestionDto(qa: QaPairDoc) {
     questionKey: qa.questionKey ?? null,
     questionType: qa.questionType ?? 'text',
     options: qa.options ?? [],
+    suggestedAnswers: (qa as any).suggestedAnswers ?? [],
+    allowDontKnow: (qa as any).allowDontKnow ?? true,
     blockingLevel: normalizeBlockingLevel(qa.blockingLevel),
     scopeType: qa.scopeType ?? null,
     scopeKey: qa.scopeKey ?? (qa.elementId ? String(qa.elementId) : null),
@@ -311,6 +313,13 @@ export const submitAnswers = mutation({
     answers: v.array(v.object({
       qaPairId: v.id('qaPairs'),
       answer: v.optional(v.string()),
+      answerSource: v.optional(v.union(
+        v.literal('typed'),
+        v.literal('option'),
+        v.literal('suggestion'),
+        v.literal('dont_know'),
+      )),
+      answerValue: v.optional(v.string()),
     })),
     intent: v.optional(v.union(v.literal('answer'), v.literal('ask_more'), v.literal('skip'))),
   },
@@ -355,18 +364,21 @@ export const submitAnswers = mutation({
               : 'skipped'
 
       const nextVersion = typeof qa.version === 'number' ? qa.version + 1 : 1
+      const resolvedSource = item.answerSource
+        ?? (answerText === '__dont_know__' ? 'dont_know' as const : undefined)
       await ctx.db.patch(item.qaPairId, {
         status: nextStatus,
         answerText: hasText ? answerText : qa.answerText,
         answer_he: hasText ? answerText : qa.answer_he,
         answer: hasText ? answerText : qa.answer,
+        answerSource: resolvedSource,
         version: nextVersion,
       })
 
       if (qa.orderKey && (!maxOrderKey || qa.orderKey.localeCompare(maxOrderKey) > 0)) {
         maxOrderKey = qa.orderKey
       }
-      applied.push({ qaPairId: item.qaPairId, status: nextStatus })
+      applied.push({ qaPairId: item.qaPairId, status: nextStatus, answerSource: resolvedSource })
     }
 
     await ctx.db.patch(args.runId, {
@@ -376,6 +388,13 @@ export const submitAnswers = mutation({
       updatedAt: now,
     })
 
+    // Source-mode telemetry breakdown
+    const sourceCounts: Record<string, number> = { typed: 0, option: 0, suggestion: 0, dont_know: 0 }
+    for (const item of applied) {
+      const src = item.answerSource ?? 'typed'
+      sourceCounts[src] = (sourceCounts[src] ?? 0) + 1
+    }
+
     await ctx.db.insert('sdkRunEvents', {
       runId: args.runId,
       type: 'sdk_questions_answer_submit',
@@ -383,6 +402,7 @@ export const submitAnswers = mutation({
         intent: args.intent ?? 'answer',
         count: applied.length,
         applied,
+        sourceCounts,
       },
       createdAt: now,
     })
@@ -454,6 +474,11 @@ export const upsertVNextQuestionsBridge = mutation({
         value: v.string(),
         labelHe: v.optional(v.string()),
       })),
+      suggestedAnswers: v.optional(v.array(v.object({
+        value: v.string(),
+        labelHe: v.optional(v.string()),
+      }))),
+      allowDontKnow: v.optional(v.boolean()),
       blockingLevel: v.union(v.literal('blocker'), v.literal('helpful'), v.literal('optional')),
     })),
   },
@@ -484,6 +509,8 @@ export const upsertVNextQuestionsBridge = mutation({
           questionKey: existing.questionKey ?? `vnext.${args.stageKey}.${question.id}`,
           questionType: question.type,
           options: question.options,
+          suggestedAnswers: question.suggestedAnswers,
+          allowDontKnow: question.allowDontKnow,
           status: existing.status ?? 'open',
           scopeType: 'global',
           scopeKey: '__global__',
@@ -507,6 +534,8 @@ export const upsertVNextQuestionsBridge = mutation({
         status: 'open',
         questionType: question.type,
         options: question.options,
+        suggestedAnswers: question.suggestedAnswers,
+        allowDontKnow: question.allowDontKnow,
         scopeType: 'global',
         scopeKey: '__global__',
         sectionPath: ['vnext', args.stageKey],

@@ -30,6 +30,7 @@ export function validateBudget(args: { tasksArtifact?: any; budgetArtifact?: any
         textHe: 'לא נוצרו שורות תקציב. להפיק תקציב מחדש?',
         type: 'select',
         optionsHe: ['כן', 'לא'],
+        allowDontKnow: false,
       },
     })
   }

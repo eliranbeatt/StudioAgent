@@ -10,7 +10,13 @@ export function validateScope(args: { spec: TargetPlanSpec; artifact?: any }): G
       code: 'scope.not_locked',
       messageHe: 'רשימת האלמנטים לא נעולה',
       severity: 'high',
-      question: { id: 'scope_lock', textHe: 'לאשר נעילת רשימת האלמנטים?', type: 'select', optionsHe: ['כן', 'לא'] },
+      question: {
+        id: 'scope_lock',
+        textHe: 'לאשר נעילת רשימת האלמנטים?',
+        type: 'select',
+        optionsHe: ['כן', 'לא'],
+        allowDontKnow: false,
+      },
     })
   }
 
@@ -36,6 +42,11 @@ export function validateScope(args: { spec: TargetPlanSpec; artifact?: any }): G
 
   const required = args.spec.constraints.requiredElementCount
   if (required !== undefined && elements.length !== required) {
+    // Generate suggestedAnswers from existing element names
+    const elementSuggestions = elements.slice(0, 6).map((el: any) => ({
+      value: String(el?.elementKey ?? el?.nameHe ?? ''),
+      labelHe: String(el?.nameHe ?? el?.elementKey ?? ''),
+    }))
     issues.push({
       code: 'scope.required_count_mismatch',
       messageHe: `נדרשים בדיוק ${required} אלמנטים, כרגע יש ${elements.length}`,
@@ -45,6 +56,8 @@ export function validateScope(args: { spec: TargetPlanSpec; artifact?: any }): G
         textHe: `נדרשים בדיוק ${required} אלמנטים. לעדכן את הרשימה?`,
         type: 'select',
         optionsHe: ['כן', 'לא'],
+        suggestedAnswers: elementSuggestions,
+        allowDontKnow: true,
       },
     })
   }

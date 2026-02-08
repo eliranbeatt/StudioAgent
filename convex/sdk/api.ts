@@ -392,6 +392,28 @@ export const answerVnext = mutation({
       freeText: args.freeText,
     })
 
+    // Telemetry: source-mode breakdown for vNext answers
+    const sourceCounts: Record<string, number> = { typed: 0, option: 0, suggestion: 0, dont_know: 0 }
+    if (args.answerSources) {
+      for (const src of Object.values(args.answerSources)) {
+        sourceCounts[src] = (sourceCounts[src] ?? 0) + 1
+      }
+    } else {
+      // No source metadata — count all as typed
+      sourceCounts.typed = Object.keys(args.answersById).length
+    }
+    await ctx.db.insert('sdkRunEvents', {
+      runId: args.runId,
+      type: 'sdk_vnext_answer_submit',
+      payload: {
+        stageKey,
+        answerCount: Object.keys(args.answersById).length,
+        hasFreeText: Boolean(args.freeText),
+        sourceCounts,
+      },
+      createdAt: Date.now(),
+    })
+
     await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
       conversationId: run.conversationId,
       role: 'user',

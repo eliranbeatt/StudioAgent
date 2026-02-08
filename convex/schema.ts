@@ -1893,6 +1893,11 @@ export default defineSchema({
       v.literal('suggestion'),
       v.literal('dont_know'),
     )),
+    suggestedAnswers: v.optional(v.array(v.object({
+      value: v.string(),
+      labelHe: v.optional(v.string()),
+    }))),
+    allowDontKnow: v.optional(v.boolean()),
     scopeType: v.optional(qaPairScopeType),
     scopeKey: v.optional(v.string()),
     sectionPath: v.optional(v.array(v.string())),

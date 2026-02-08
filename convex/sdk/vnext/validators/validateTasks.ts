@@ -59,7 +59,13 @@ export function validateTasks(args: { artifact?: any }): GateResult {
       code: 'tasks.empty',
       messageHe: 'אין משימות מאושרות בשלב פירוק המשימות',
       severity: 'high',
-      question: { id: 'tasks_missing', textHe: 'להפיק עכשיו פירוק למשימות?', type: 'select', optionsHe: ['כן', 'לא'] },
+      question: {
+        id: 'tasks_missing',
+        textHe: 'להפיק עכשיו פירוק למשימות?',
+        type: 'select',
+        optionsHe: ['כן', 'לא'],
+        allowDontKnow: false,
+      },
     })
   }
 
