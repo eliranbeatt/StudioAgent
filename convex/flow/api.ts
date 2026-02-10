@@ -143,7 +143,7 @@ export const startProjectFlow = mutation({
       approvalMode: "auto",
       approvalModeDefault: "auto",
       approvalModeOverride: false,
-      toggles: { autoRun: true, autoApprove: true, useWebSearch },
+      toggles: { autoRun: true, autoApprove: true, useWebSearch, planningMode: "separated" },
       conversationId
     });
 

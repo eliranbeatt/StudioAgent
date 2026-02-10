@@ -153,6 +153,7 @@ export default function FlowAgentPage() {
           statusLabelHe={statusLabelHe}
           webPricingEnabled={webPricingEnabled}
           defaultUseWebSearch={webPricingEnabled}
+          defaultPlanningMode='separated'
         />
 
         <div className='bg-white border rounded-xl p-4'>
@@ -215,6 +216,25 @@ export default function FlowAgentPage() {
               </label>
 
               <label className='inline-flex items-center gap-2'>
+                <span>Planning mode</span>
+                <select
+                  className='border rounded-md px-2 py-1 text-xs bg-white'
+                  value={selectedRun.toggles?.planningMode === 'combined' ? 'combined' : 'separated'}
+                  onChange={async (e) => {
+                    await setToggles({
+                      flowRunId: selectedRun._id,
+                      toggles: {
+                        planningMode: e.target.value as 'separated' | 'combined',
+                      },
+                    })
+                  }}
+                >
+                  <option value='separated'>Separated</option>
+                  <option value='combined'>Combined B+C</option>
+                </select>
+              </label>
+
+              <label className='inline-flex items-center gap-2'>
                 <input
                   type='checkbox'
                   className='h-4 w-4'
@@ -227,6 +247,7 @@ export default function FlowAgentPage() {
                         autoRun: e.target.checked,
                         autoApprove: !!selectedRun.toggles?.autoApprove,
                         useWebSearch: !!selectedRun.toggles?.useWebSearch,
+                        planningMode: selectedRun.toggles?.planningMode === 'combined' ? 'combined' : 'separated',
                       },
                     })
                   }}
@@ -247,6 +268,7 @@ export default function FlowAgentPage() {
                         autoRun: !!selectedRun.toggles?.autoRun,
                         autoApprove: !!selectedRun.toggles?.autoApprove,
                         useWebSearch: e.target.checked,
+                        planningMode: selectedRun.toggles?.planningMode === 'combined' ? 'combined' : 'separated',
                       },
                     })
                   }}
@@ -274,7 +296,11 @@ export default function FlowAgentPage() {
                 className='px-3 py-2 rounded-lg bg-white border text-sm text-gray-900'
                 onClick={async () => {
                   await cancelRun({ flowRunId: activeRun._id })
-                  await startRun({ projectId: projectId as any, useWebSearch: !!activeRun.toggles?.useWebSearch })
+                  await startRun({
+                    projectId: projectId as any,
+                    useWebSearch: !!activeRun.toggles?.useWebSearch,
+                    planningMode: activeRun.toggles?.planningMode === 'combined' ? 'combined' : 'separated',
+                  })
                 }}
               >
                 Restart flow

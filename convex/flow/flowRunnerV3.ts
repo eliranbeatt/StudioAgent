@@ -28,6 +28,24 @@ const V3_BUILDER_SKILLS: Record<V3StageKey, string> = {
     E: 'V3_BUILD_E_QUOTE',
 }
 
+function getPlanningMode(run: any): 'separated' | 'combined' {
+    return run?.toggles?.planningMode === 'combined' ? 'combined' : 'separated'
+}
+
+function getBuilderSkillForStage(stageKey: V3StageKey, run: any): string {
+    const planningMode = getPlanningMode(run)
+    if (stageKey === 'B' && planningMode === 'combined') return 'V3_BUILD_BC_COMBINED_PLAN_ACCOUNTING'
+    return V3_BUILDER_SKILLS[stageKey]
+}
+
+function getNextStageForRun(current: V3StageKey, run: any): V3StageKey | undefined {
+    const planningMode = getPlanningMode(run)
+    const nextStage = getNextStage(current)
+    if (planningMode === 'combined' && current === 'B') return 'D'
+    if (planningMode === 'combined' && current === 'C') return 'D'
+    return nextStage
+}
+
 async function loadFlags(ctx: any): Promise<Record<string, boolean>> {
     if (ctx.db && typeof ctx.db.query === 'function') {
         try {
@@ -313,6 +331,19 @@ export const tickV3 = internalAction({
 
         console.log('[flowRunnerV3.tickV3] current state', { flowRunId, stageKey, mode })
 
+        if (getPlanningMode(run) === 'combined' && stageKey === 'C') {
+            console.log('[flowRunnerV3.tickV3] skipping stage C in combined mode', { flowRunId, mode })
+            await ctx.runMutation(internal.flow.flowRunnerV3.updateV3Stage, {
+                flowRunId,
+                stageKey: 'D',
+                mode,
+            })
+            if (run.toggles?.autoRun) {
+                await ctx.scheduler.runAfter(0, internal.flow.flowRunnerV3.tickV3, { flowRunId })
+            }
+            return
+        }
+
         // Ensure conversation exists
         const conversationId = await ctx.runMutation(internal.flowRuns.ensureConversation, { flowRunId })
 
@@ -375,7 +406,7 @@ export const tickV3 = internalAction({
 
         if (mode === 'build') {
             // Run builder skill
-            const skillId = V3_BUILDER_SKILLS[stageKey]
+            const skillId = getBuilderSkillForStage(stageKey, run)
             console.log('[flowRunnerV3.tickV3] running builder skill', { skillId, stageKey })
             await ctx.runMutation(internal.flow.flowRunnerV3.logV3TimelineEvent, {
                 flowRunId,
@@ -489,7 +520,7 @@ export const tickV3 = internalAction({
             }
 
             // Advance to next stage
-            const nextStage = getNextStage(stageKey)
+            const nextStage = getNextStageForRun(stageKey, run)
             if (!nextStage) {
                 // Flow completed
                 console.log('[flowRunnerV3.tickV3] flow completed', { flowRunId })

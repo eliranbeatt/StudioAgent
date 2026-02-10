@@ -8,7 +8,7 @@ type Props = {
   runs: any[] | null | undefined
   selectedRunId: string | null
   setSelectedRunId: Dispatch<SetStateAction<string | null>>
-  onStart: (args: { projectId: any; useWebSearch?: boolean }) => Promise<any>
+  onStart: (args: { projectId: any; useWebSearch?: boolean; planningMode?: 'separated' | 'combined' }) => Promise<any>
   onPause: (args: { flowRunId: any }) => Promise<any>
   onResume: (args: { flowRunId: any }) => Promise<any>
   onCancel: (args: { flowRunId: any }) => Promise<any>
@@ -16,6 +16,7 @@ type Props = {
   statusLabelHe: (status: string) => string
   webPricingEnabled: boolean
   defaultUseWebSearch: boolean
+  defaultPlanningMode?: 'separated' | 'combined'
 }
 
 export function FlowRunHeader({
@@ -32,8 +33,10 @@ export function FlowRunHeader({
   statusLabelHe,
   webPricingEnabled,
   defaultUseWebSearch,
+  defaultPlanningMode = 'separated',
 }: Props) {
   const [useWebSearch, setUseWebSearch] = useState(defaultUseWebSearch && webPricingEnabled)
+  const [planningMode, setPlanningMode] = useState<'separated' | 'combined'>(defaultPlanningMode)
 
   return (
     <>
@@ -56,10 +59,21 @@ export function FlowRunHeader({
                 />
                 Web pricing
               </label>
+              <label className='inline-flex items-center gap-2 text-xs text-gray-600'>
+                <span>Planning</span>
+                <select
+                  className='border rounded-md px-2 py-1 text-xs bg-white'
+                  value={planningMode}
+                  onChange={(e) => setPlanningMode(e.target.value as 'separated' | 'combined')}
+                >
+                  <option value='separated'>Separated</option>
+                  <option value='combined'>Combined B+C</option>
+                </select>
+              </label>
               <button
                 className='px-3 py-2 rounded-lg bg-black text-white text-sm disabled:opacity-60'
                 onClick={async () => {
-                  await onStart({ projectId: projectId as any, useWebSearch })
+                  await onStart({ projectId: projectId as any, useWebSearch, planningMode })
                 }}
               >
                 התחל הרצה

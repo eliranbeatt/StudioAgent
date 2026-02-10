@@ -244,12 +244,14 @@ export const backfillFlowRunToggles = mutation({
         autoRun: typeof toggles.autoRun === 'boolean' ? toggles.autoRun : true,
         autoApprove: typeof toggles.autoApprove === 'boolean' ? toggles.autoApprove : true,
         useWebSearch: typeof toggles.useWebSearch === 'boolean' ? toggles.useWebSearch : false,
+        planningMode: toggles.planningMode === 'combined' ? 'combined' : 'separated',
       };
 
       const changed =
         toggles.autoRun !== nextToggles.autoRun ||
         toggles.autoApprove !== nextToggles.autoApprove ||
-        toggles.useWebSearch !== nextToggles.useWebSearch;
+        toggles.useWebSearch !== nextToggles.useWebSearch ||
+        toggles.planningMode !== nextToggles.planningMode;
 
       if (!changed) continue;
 

@@ -1579,6 +1579,7 @@ export default defineSchema({
       autoRun: v.optional(v.boolean()),
       autoApprove: v.optional(v.boolean()),
       useWebSearch: v.optional(v.boolean()),
+      planningMode: v.optional(v.union(v.literal("separated"), v.literal("combined"))),
     })),
     currentArtifactRevisionId: v.optional(v.id("flowArtifactRevisions")),
     answerVersionAtStart: v.optional(v.number()),

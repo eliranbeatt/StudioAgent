@@ -869,6 +869,24 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     llmParams: { max_completion_tokens: 25000 },
   },
   {
+    skillId: "V3_BUILD_BC_COMBINED_PLAN_ACCOUNTING",
+    labelHe: "V3 ×‘× ×™×™×” ×ž××•×—×“×ª B+C",
+    descriptionHe: "×™×¦×™×¨×ª ××œ×ž× ×˜×™× ×ž×©×™×ž×•×ª ×•×ª×§×¦×™×‘ ×‘×¨×™×¦×” ××—×ª",
+    category: "planning",
+    flow: "planning",
+    config: {
+      requiresClarifications: false,
+      allowedTools: { webSearch: false, ragSearch: false, fileInspect: false, agentData: true },
+      outputContract: "changeset",
+    },
+    prompts: {
+      systemHeaderRef: SYSTEM_HEADER_REF,
+      promptAddon: SKILL_SYSTEM_ADDONS.V3_BUILD_BC_COMBINED_PLAN_ACCOUNTING,
+    },
+    model: "gpt-5.2",
+    llmParams: { reasoning_effort: "medium", max_completion_tokens: 25000 },
+  },
+  {
     skillId: "V3_BUILD_C_ACCOUNTING",
     labelHe: "V3 בנייה שלב C",
     descriptionHe: "יצירת BOM ותקציב",

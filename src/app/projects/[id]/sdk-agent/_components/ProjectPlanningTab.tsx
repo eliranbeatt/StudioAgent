@@ -63,11 +63,11 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     runId ? { runId } : 'skip'
   );
   const rerunPhase = useAction(api.sdk.projectPlanning.rerunPhase);
+  const cancelFinalizePhase = useAction(api.sdk.projectPlanning.cancelFinalizePhase);
   const restartPlanning = useAction(api.sdk.projectPlanning.restartPlanning);
 
   // Restore existing session on mount
   useEffect(() => {
-    if (sessionRestored) return;
     if (existingSession === undefined) return;
     if (existingSession) {
       setConversationId(existingSession.conversationId);
@@ -75,7 +75,9 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       setCurrentStep(existingSession.currentStep);
       setQuestionSetIndex(existingSession.questionSetIndex);
     }
-    setSessionRestored(true);
+    if (!sessionRestored) {
+      setSessionRestored(true);
+    }
   }, [existingSession, sessionRestored]);
 
   useEffect(() => {
@@ -323,6 +325,19 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
         });
       }
       // Report will be updated via phase results query
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCancelPhase = async (phase: string) => {
+    if (!runId) return;
+    setIsProcessing(true);
+    try {
+      await cancelFinalizePhase({
+        runId,
+        phase,
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -612,6 +627,13 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
 
   if (currentStep === 'finalizing' || currentStep === 'report') {
     const phases = phaseResults ?? [];
+    const elementCount = ((checkContextQuery as any)?.elements?.length ?? 0) as number;
+    const taskCount = ((checkContextQuery as any)?.tasks?.length ?? 0) as number;
+    const canRerunPhase = (phaseName: string) => {
+      if (phaseName === 'elements') return elementCount > 0;
+      if (phaseName === 'tasks') return taskCount > 0;
+      return phaseName === 'budget' || phaseName === 'pricing' || phaseName === 'audit';
+    };
     const getPhaseStatus = (phaseName: string) => {
       const phase = phases.find(p => p.phase === phaseName);
       if (!phase) {
@@ -664,35 +686,50 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
                   label="Planning Elements"
                   phase="elements"
                   status={getPhaseStatus('elements')}
+                  wasCancelled={Boolean(phases.find(p => p.phase === 'elements' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
                   onRerun={() => handleRerunPhase('elements', getPhaseStatus('elements'))}
+                  onCancel={() => handleCancelPhase('elements')}
+                  showRerun={canRerunPhase('elements')}
                   disabled={isProcessing}
                 />
                 <FinalizePhaseRow
                   label="Breaking Down Tasks"
                   phase="tasks"
                   status={getPhaseStatus('tasks')}
+                  wasCancelled={Boolean(phases.find(p => p.phase === 'tasks' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
                   onRerun={() => handleRerunPhase('tasks', getPhaseStatus('tasks'))}
+                  onCancel={() => handleCancelPhase('tasks')}
+                  showRerun={canRerunPhase('tasks')}
                   disabled={isProcessing}
                 />
                 <FinalizePhaseRow
                   label="Building Budget"
                   phase="budget"
                   status={getPhaseStatus('budget')}
+                  wasCancelled={Boolean(phases.find(p => p.phase === 'budget' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
                   onRerun={() => handleRerunPhase('budget', getPhaseStatus('budget'))}
+                  onCancel={() => handleCancelPhase('budget')}
+                  showRerun={canRerunPhase('budget')}
                   disabled={isProcessing}
                 />
                 <FinalizePhaseRow
                   label="Resolving Pricing"
                   phase="pricing"
                   status={getPhaseStatus('pricing')}
+                  wasCancelled={Boolean(phases.find(p => p.phase === 'pricing' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
                   onRerun={() => handleRerunPhase('pricing', getPhaseStatus('pricing'))}
+                  onCancel={() => handleCancelPhase('pricing')}
+                  showRerun={canRerunPhase('pricing')}
                   disabled={isProcessing}
                 />
                 <FinalizePhaseRow
                   label="Auditing & Validation"
                   phase="audit"
                   status={getPhaseStatus('audit')}
+                  wasCancelled={Boolean(phases.find(p => p.phase === 'audit' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
                   onRerun={() => handleRerunPhase('audit', getPhaseStatus('audit'))}
+                  onCancel={() => handleCancelPhase('audit')}
+                  showRerun={canRerunPhase('audit')}
                   disabled={isProcessing}
                 />
               </div>
@@ -795,13 +832,19 @@ function FinalizePhaseRow({
   label, 
   phase,
   status,
+  wasCancelled,
   onRerun,
+  onCancel,
+  showRerun,
   disabled 
 }: { 
   label: string; 
   phase: string;
   status: 'pending' | 'running' | 'success' | 'failed'; 
+  wasCancelled: boolean;
   onRerun: () => void;
+  onCancel: () => void;
+  showRerun: boolean;
   disabled: boolean;
 }) {
   return (
@@ -820,12 +863,12 @@ function FinalizePhaseRow({
       }`}>
         {label}
       </span>
-      {(status === 'running' || status === 'success' || status === 'failed') && (
+      {showRerun && (
         <button
-          onClick={onRerun}
+          onClick={status === 'running' ? onCancel : onRerun}
           disabled={disabled}
           className="px-3 py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >{status === 'running' ? 'Restart Run' : 'Rerun'}</button>
+        >{status === 'running' ? 'Cancel' : wasCancelled ? 'Restart' : status === 'pending' ? 'Run' : 'Rerun'}</button>
       )}
     </div>
   );

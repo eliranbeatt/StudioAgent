@@ -154,10 +154,66 @@ export const listByProject = query({
   },
 })
 
+export const compareRecentByPlanningMode = query({
+  args: {
+    projectId: v.id('projects'),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await assertBackendEnabled(ctx)
+    const limit = Math.min(Math.max(args.limit ?? 30, 1), 200)
+    const runs = await ctx.db
+      .query('flowRuns')
+      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+      .order('desc')
+      .take(limit)
+
+    const normalized = runs.map((run: any) => {
+      const planningMode = run.toggles?.planningMode === 'combined' ? 'combined' : 'separated'
+      const finishedAt = typeof run.finishedAt === 'number' ? run.finishedAt : null
+      const durationMs = finishedAt ? Math.max(0, finishedAt - run.createdAt) : null
+      return {
+        runId: run._id,
+        planningMode,
+        status: run.status,
+        createdAt: run.createdAt,
+        finishedAt,
+        durationMs,
+      }
+    })
+
+    const byMode: Record<string, { total: number; completed: number; failed: number; running: number; avgDurationMs: number | null }> = {
+      separated: { total: 0, completed: 0, failed: 0, running: 0, avgDurationMs: null },
+      combined: { total: 0, completed: 0, failed: 0, running: 0, avgDurationMs: null },
+    }
+
+    const durationBuckets: Record<string, number[]> = { separated: [], combined: [] }
+
+    for (const run of normalized) {
+      const bucket = byMode[run.planningMode]
+      bucket.total += 1
+      if (run.status === 'completed') bucket.completed += 1
+      if (run.status === 'failed') bucket.failed += 1
+      if (run.status === 'running') bucket.running += 1
+      if (typeof run.durationMs === 'number') durationBuckets[run.planningMode].push(run.durationMs)
+    }
+
+    for (const mode of ['separated', 'combined'] as const) {
+      const values = durationBuckets[mode]
+      byMode[mode].avgDurationMs = values.length > 0
+        ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+        : null
+    }
+
+    return { runs: normalized, byMode }
+  },
+})
+
 export const start = mutation({
   args: {
     projectId: v.id('projects'),
     useWebSearch: v.optional(v.boolean()),
+    planningMode: v.optional(v.union(v.literal('separated'), v.literal('combined'))),
   },
   handler: async (ctx, args) => {
     await assertBackendEnabled(ctx)
@@ -171,6 +227,7 @@ export const start = mutation({
         ? !!args.useWebSearch
         : true
       : false
+    const planningMode = args.planningMode ?? 'separated'
 
     const conversationId = await ctx.db.insert('agentConversations', {
       projectId: args.projectId,
@@ -189,7 +246,7 @@ export const start = mutation({
       approvalMode: 'auto',
       approvalModeDefault: 'auto',
       approvalModeOverride: false,
-      toggles: { autoRun: true, autoApprove: true, useWebSearch },
+      toggles: { autoRun: true, autoApprove: true, useWebSearch, planningMode },
       answerVersionAtStart: 0,
       latestAnswerVersion: 0,
       createdAt: now,
@@ -236,9 +293,10 @@ export const setToggles = mutation({
   args: {
     flowRunId: v.id('flowRuns'),
     toggles: v.object({
-      autoRun: v.boolean(),
-      autoApprove: v.boolean(),
-      useWebSearch: v.boolean(),
+      autoRun: v.optional(v.boolean()),
+      autoApprove: v.optional(v.boolean()),
+      useWebSearch: v.optional(v.boolean()),
+      planningMode: v.optional(v.union(v.literal('separated'), v.literal('combined'))),
     }),
   },
   handler: async (ctx, args) => {
@@ -250,9 +308,17 @@ export const setToggles = mutation({
     const flags = await loadFlags(ctx)
     const now = Date.now()
 
-    const useWebSearch = isEnabled(flags, 'ff_flow_web_pricing', false) ? args.toggles.useWebSearch : false
+    const nextAutoRun =
+      typeof args.toggles.autoRun === 'boolean' ? args.toggles.autoRun : !!run.toggles?.autoRun
+    const nextAutoApprove =
+      typeof args.toggles.autoApprove === 'boolean' ? args.toggles.autoApprove : !!run.toggles?.autoApprove
+    const requestedUseWebSearch =
+      typeof args.toggles.useWebSearch === 'boolean' ? args.toggles.useWebSearch : !!run.toggles?.useWebSearch
+    const useWebSearch = isEnabled(flags, 'ff_flow_web_pricing', false) ? requestedUseWebSearch : false
+    const planningMode =
+      args.toggles.planningMode ??
+      (run.toggles?.planningMode === 'combined' ? 'combined' : 'separated')
     const prevAutoApprove = !!run.toggles?.autoApprove
-    const nextAutoApprove = args.toggles.autoApprove
 
     const mode: "auto" | "manual" = nextAutoApprove ? 'auto' : 'manual'
     const currentDefault = run.approvalModeDefault as "auto" | "manual" | undefined
@@ -269,9 +335,10 @@ export const setToggles = mutation({
 
     await ctx.db.patch(args.flowRunId, {
       toggles: {
-        autoRun: args.toggles.autoRun,
-        autoApprove: args.toggles.autoApprove,
+        autoRun: nextAutoRun,
+        autoApprove: nextAutoApprove,
         useWebSearch,
+        planningMode,
       },
       ...approvalModePatch,
       updatedAt: now,
@@ -301,6 +368,7 @@ export const setApprovalMode = mutation({
         autoRun: !!run.toggles?.autoRun,
         autoApprove,
         useWebSearch: !!run.toggles?.useWebSearch,
+        planningMode: run.toggles?.planningMode === 'combined' ? 'combined' : 'separated',
       },
       updatedAt: now,
     })
@@ -328,6 +396,7 @@ export const setApprovalModeInternal = internalMutation({
         autoRun: !!run.toggles?.autoRun,
         autoApprove,
         useWebSearch: !!run.toggles?.useWebSearch,
+        planningMode: run.toggles?.planningMode === 'combined' ? 'combined' : 'separated',
       },
       updatedAt: Date.now(),
     })

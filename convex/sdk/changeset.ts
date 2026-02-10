@@ -10,6 +10,123 @@ import { compileDeterministicChangeSet } from './vnext/compiler';
 import { buildTargetPlanSpec } from './vnext/specBuilder';
 import type { StageArtifactMap } from './vnext/contracts';
 
+function extractOpsFromTruncatedCompileJson(raw: string): any[] {
+  if (!raw || typeof raw !== 'string') return [];
+  const opsKeyIndex = raw.indexOf('"ops"');
+  if (opsKeyIndex < 0) return [];
+  const arrayStart = raw.indexOf('[', opsKeyIndex);
+  if (arrayStart < 0) return [];
+
+  const ops: any[] = [];
+  let i = arrayStart + 1;
+  const len = raw.length;
+  while (i < len) {
+    const ch = raw[i];
+    if (ch === ']') break;
+    if (ch === '{') {
+      const objStart = i;
+      let depth = 1;
+      let inString = false;
+      let escaped = false;
+      i += 1;
+      while (i < len && depth > 0) {
+        const c = raw[i];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (c === '\\') {
+            escaped = true;
+          } else if (c === '"') {
+            inString = false;
+          }
+        } else {
+          if (c === '"') inString = true;
+          else if (c === '{') depth += 1;
+          else if (c === '}') depth -= 1;
+        }
+        i += 1;
+      }
+      if (depth === 0) {
+        const objText = raw.slice(objStart, i);
+        try {
+          const parsed = JSON.parse(objText);
+          if (parsed && typeof parsed === 'object') ops.push(parsed);
+        } catch {
+          // ignore malformed object fragments
+        }
+      } else {
+        break;
+      }
+      continue;
+    }
+    i += 1;
+  }
+  return ops;
+}
+
+async function compileDeterministicFromRun(ctx: any, args: {
+  projectId: Id<'projects'>
+  runId: Id<'sdkRuns'>
+}) {
+  const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId });
+  if (!run) throw new Error('Run not found');
+
+  const [projectContext, artifactsRows, stageDecisions, messages] = await Promise.all([
+    ctx.runQuery(api['sdk/api'].contextGet, {
+      projectId: args.projectId,
+      packs: ['project', 'elements', 'tasks', 'knowledge'],
+    }),
+    ctx.runQuery(internal['sdk/vnext/artifacts'].listStageArtifactsByRun, { runId: args.runId }),
+    ctx.runQuery(internal['sdk/vnext/artifacts'].listStageDecisionsByRun, { runId: args.runId }),
+    ctx.runQuery(api['sdk/api'].listMessages, {
+      conversationId: run.conversationId,
+      runId: args.runId,
+      limit: 60,
+    }),
+  ]);
+
+  const artifacts: StageArtifactMap = {} as StageArtifactMap;
+  for (const row of artifactsRows) {
+    (artifacts as any)[row.stageKey] = row.artifact;
+  }
+  const recentUserTexts = (messages ?? [])
+    .filter((item: any) => item.role === 'user' && typeof item.text === 'string')
+    .map((item: any) => item.text)
+    .slice(-10);
+  const scopeSeed = Array.isArray((artifacts.scope as any)?.proposedElements)
+    ? (artifacts.scope as any).proposedElements
+    : [];
+  const spec = buildTargetPlanSpec({
+    projectId: args.projectId,
+    project: projectContext?.project ?? {},
+    recentUserTexts,
+    stageDecisions,
+    existingScopeElements: scopeSeed,
+  });
+  const deterministic = compileDeterministicChangeSet({
+    spec,
+    artifacts,
+  });
+  if (!Array.isArray(deterministic.ops) || deterministic.ops.length === 0) {
+    throw new Error('deterministic compile produced zero ops');
+  }
+  const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+    projectId: args.projectId,
+    stage: 'BREAKDOWN',
+    ops: deterministic.ops,
+    createdBy: { type: 'agent', agentName: 'changeset.compile.deterministic' },
+  });
+  return {
+    changeSetId,
+    changeSet: { ops: deterministic.ops },
+    meta: {
+      mode: 'deterministic',
+      summaryHe: deterministic.summaryHe,
+      coverage: deterministic.coverage,
+    },
+  };
+}
+
 export const compile = action({
   args: {
     projectId: v.id('projects'),
@@ -21,63 +138,10 @@ export const compile = action({
   },
   handler: async (ctx, args) => {
     if (args.deterministic && args.runId) {
-      const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId });
-      if (!run) throw new Error('Run not found');
-
-      const [projectContext, artifactsRows, stageDecisions, messages] = await Promise.all([
-        ctx.runQuery(api['sdk/api'].contextGet, {
-          projectId: args.projectId,
-          packs: ['project', 'elements', 'tasks', 'knowledge'],
-        }),
-        ctx.runQuery(internal['sdk/vnext/artifacts'].listStageArtifactsByRun, { runId: args.runId }),
-        ctx.runQuery(internal['sdk/vnext/artifacts'].listStageDecisionsByRun, { runId: args.runId }),
-        ctx.runQuery(api['sdk/api'].listMessages, {
-          conversationId: run.conversationId,
-          runId: args.runId,
-          limit: 60,
-        }),
-      ]);
-
-      const artifacts: StageArtifactMap = {} as StageArtifactMap;
-      for (const row of artifactsRows) {
-        (artifacts as any)[row.stageKey] = row.artifact;
-      }
-      const recentUserTexts = (messages ?? [])
-        .filter((item: any) => item.role === 'user' && typeof item.text === 'string')
-        .map((item: any) => item.text)
-        .slice(-10);
-      const scopeSeed = Array.isArray((artifacts.scope as any)?.proposedElements)
-        ? (artifacts.scope as any).proposedElements
-        : [];
-      const spec = buildTargetPlanSpec({
+      return compileDeterministicFromRun(ctx, {
         projectId: args.projectId,
-        project: projectContext?.project ?? {},
-        recentUserTexts,
-        stageDecisions,
-        existingScopeElements: scopeSeed,
+        runId: args.runId,
       });
-      const deterministic = compileDeterministicChangeSet({
-        spec,
-        artifacts,
-      });
-      if (!Array.isArray(deterministic.ops) || deterministic.ops.length === 0) {
-        throw new Error('deterministic compile produced zero ops');
-      }
-      const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
-        projectId: args.projectId,
-        stage: 'BREAKDOWN',
-        ops: deterministic.ops,
-        createdBy: { type: 'agent', agentName: 'changeset.compile.deterministic' },
-      });
-      return {
-        changeSetId,
-        changeSet: { ops: deterministic.ops },
-        meta: {
-          mode: 'deterministic',
-          summaryHe: deterministic.summaryHe,
-          coverage: deterministic.coverage,
-        },
-      };
     }
 
     const intents = Array.isArray(args.intents) ? args.intents : [];
@@ -97,52 +161,123 @@ export const compile = action({
       intents,
     };
 
-    const { parsed } = await runJsonCompletion({
-      ctx,
-      systemPrompt: FULL_PROMPTS.CHANGESET_COMPILE_SYSTEM,
-      userContent: JSON.stringify(payload),
-      model: 'gpt-4o-mini',
-      temperature: 0.1,
-      maxTokens: 2000,
-      projectId: args.projectId,
-      conversationId: args.conversationId as any,
-      runId: args.runId as any,
-      traceMeta: {
-        source: 'sdk',
-        toolId: 'changeset.compile',
-      },
-    });
+    const compileAttempts = [
+      { model: 'gpt-4o-mini', maxTokens: 2600 },
+      { model: 'gpt-4o-mini', maxTokens: 4200 },
+      { model: 'gpt-4o', maxTokens: 5600 },
+    ] as const;
 
-    assertAsciiKeys(parsed);
-    const validated = validateSdkOutput('changeset.compile', parsed);
-    if (!validated.ok) {
-      throw new Error('changeset.compile failed schema validation');
+    let lastError: unknown = null;
+    let lastRawContent = '';
+    for (let i = 0; i < compileAttempts.length; i += 1) {
+      const attempt = compileAttempts[i];
+      const retryHint =
+        i === 0
+          ? ''
+          : '\n\nRETRY REQUIREMENT:\nPrevious output was invalid/truncated JSON. Return a single compact JSON object only. No markdown. No comments. No trailing text.\n';
+
+      try {
+        const { parsed } = await runJsonCompletion({
+          ctx,
+          systemPrompt: FULL_PROMPTS.CHANGESET_COMPILE_SYSTEM,
+          userContent: `${JSON.stringify(payload)}${retryHint}`,
+          model: attempt.model,
+          temperature: 0.1,
+          maxTokens: attempt.maxTokens,
+          maxCompletionTokens: attempt.maxTokens,
+          projectId: args.projectId,
+          conversationId: args.conversationId as any,
+          runId: args.runId as any,
+          traceMeta: {
+            source: 'sdk',
+            toolId: 'changeset.compile',
+            attempt: i + 1,
+          },
+        });
+
+        assertAsciiKeys(parsed);
+        const validated = validateSdkOutput('changeset.compile', parsed);
+        if (!validated.ok) {
+          throw new Error('changeset.compile failed schema validation');
+        }
+
+        const changeSet = (validated.data as any).changeSet;
+        if (!changeSet?.ops || !Array.isArray(changeSet.ops)) {
+          throw new Error('changeset.compile returned no ops');
+        }
+
+        const mappedOps = changeSet.ops
+          .map((op: any) => mapCompileOp(op))
+          .filter((op: any) => op !== null);
+        if (mappedOps.length === 0) {
+          throw new Error('changeset.compile produced zero ops');
+        }
+
+        const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+          projectId: args.projectId,
+          stage: 'BREAKDOWN',
+          ops: mappedOps,
+          createdBy: { type: 'agent', agentName: 'changeset.compile' },
+        });
+
+        return {
+          changeSetId,
+          changeSet,
+          meta: (validated.data as any).meta,
+        };
+      } catch (error) {
+        lastError = error;
+        if (error && typeof error === 'object' && typeof (error as any).rawContent === 'string') {
+          lastRawContent = (error as any).rawContent;
+        }
+      }
     }
 
-    const changeSet = (validated.data as any).changeSet;
-    if (!changeSet?.ops || !Array.isArray(changeSet.ops)) {
-      throw new Error('changeset.compile returned no ops');
+    // Recovery path #1: salvage complete ops from truncated JSON response.
+    if (lastRawContent) {
+      const recoveredOps = extractOpsFromTruncatedCompileJson(lastRawContent);
+      const mappedRecoveredOps = recoveredOps
+        .map((op: any) => mapCompileOp(op))
+        .filter((op: any) => op !== null);
+      if (mappedRecoveredOps.length > 0) {
+        const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+          projectId: args.projectId,
+          stage: 'BREAKDOWN',
+          ops: mappedRecoveredOps,
+          createdBy: { type: 'agent', agentName: 'changeset.compile.recovered' },
+        });
+        return {
+          changeSetId,
+          changeSet: { ops: recoveredOps },
+          meta: {
+            mode: 'recovered_from_truncated_json',
+            recoveredOps: mappedRecoveredOps.length,
+          },
+        };
+      }
     }
 
-    const mappedOps = changeSet.ops
-      .map((op: any) => mapCompileOp(op))
-      .filter((op: any) => op !== null);
-    if (mappedOps.length === 0) {
-      throw new Error('changeset.compile produced zero ops');
+    if (args.runId) {
+      try {
+        const fallback = await compileDeterministicFromRun(ctx, {
+          projectId: args.projectId,
+          runId: args.runId,
+        });
+        return {
+          ...fallback,
+          meta: {
+            ...(fallback as any).meta,
+            fallbackReason: 'llm_json_invalid_or_truncated',
+          },
+        };
+      } catch (deterministicError) {
+        throw new Error(
+          `changeset.compile failed after retries: ${lastError instanceof Error ? lastError.message : String(lastError)}; deterministic fallback failed: ${deterministicError instanceof Error ? deterministicError.message : String(deterministicError)}`
+        );
+      }
     }
 
-    const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
-      projectId: args.projectId,
-      stage: 'BREAKDOWN',
-      ops: mappedOps,
-      createdBy: { type: 'agent', agentName: 'changeset.compile' },
-    });
-
-    return {
-      changeSetId,
-      changeSet,
-      meta: (validated.data as any).meta,
-    };
+    throw lastError instanceof Error ? lastError : new Error('changeset.compile failed');
   },
 });
 

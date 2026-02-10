@@ -533,6 +533,51 @@ autoApprove={{autoApprove}}
 DATA TOOL CONTRACT (last):
 agent.data({ resource, projectId, filters, fields, limit, cursor })`,
 
+  "V3_BUILD_BC_COMBINED_PLAN_ACCOUNTING": `SYSTEM (V3_BUILD_BC_COMBINED_PLAN_ACCOUNTING)
+${V3_SHARED_BUILD_PREFIX}
+
+Goal:
+- In ONE run, create/patch canonical elements + tasks + accounting lines.
+- Keep element/task/accounting linkage consistent: every line should map to task and element when applicable.
+- Produce a coherent first-pass plan that is internally consistent and quote-ready for pricing stage D.
+
+Fetch plan:
+1) memoryDocs(kind="PROJECT_CONTEXT"/"RUNNING_MEMORY"/"QA_DIGEST")
+2) qaPairs dateFrom=runStartedAtISO
+3) project summary fields
+4) elements full (limit 200; paginate)
+5) tasks full (limit 200; paginate)
+6) materialLines full (limit 200; paginate)
+7) workLines full (limit 200; paginate)
+
+Output:
+ChangeSetBlock ONLY using:
+- element.create / element.patch
+- task.create / task.patch
+- materialLine.create / materialLine.patch
+- workLine.create / workLine.patch
+- taskAccountingLink.create when needed
+
+Rules:
+- No destructive deletes.
+- If missing project-level logistics tasks are needed for valid accounting linkage, create/patch them.
+- Include dedupKey for new tasks and lines whenever possible for idempotent reruns.
+- Run an internal consistency pass before final output:
+  - task element links valid
+  - accounting links valid
+  - totals plausible and non-zero when pricing exists
+
+RUNTIME VARIABLES:
+projectId={{projectId}}
+runId={{runId}}
+stageKey=B
+runStartedAtISO={{runStartedAtISO}}
+answerVersion={{answerVersion}}
+autoApprove={{autoApprove}}
+
+DATA TOOL CONTRACT (last):
+agent.data({ resource, projectId, filters, fields, limit, cursor })`,
+
   "V3_BUILD_C_ACCOUNTING": `SYSTEM (V3_BUILD_C_ACCOUNTING)
 ${V3_SHARED_BUILD_PREFIX}
 

@@ -189,6 +189,7 @@ export const getPlanningSession = query({
       .filter((q) =>
         q.or(
           q.eq(q.field('runMode'), 'PLANNING_FLOW'),
+          q.eq(q.field('planningCurrentStep'), 'start'),
           q.eq(q.field('planningCurrentStep'), 'braindump'),
           q.eq(q.field('planningCurrentStep'), 'questions'),
           q.eq(q.field('planningCurrentStep'), 'finalizing'),
@@ -202,10 +203,18 @@ export const getPlanningSession = query({
       return null;
     }
 
+    const inferredStep =
+      existingRun.planningCurrentStep ??
+      (((existingRun as any).planningFinalizeCheckpoint || (existingRun.planningFinalizationPhases?.length ?? 0) > 0)
+        ? 'finalizing'
+        : (existingRun.runMode === 'PLANNING_FLOW' || typeof existingRun.planningQuestionSetIndex === 'number')
+          ? 'questions'
+          : 'start');
+
     return {
       runId: existingRun._id,
       conversationId: existingRun.conversationId,
-      currentStep: existingRun.planningCurrentStep ?? 'start',
+      currentStep: inferredStep,
       questionSetIndex: existingRun.planningQuestionSetIndex ?? 0,
       finalizationPhases: existingRun.planningFinalizationPhases ?? [],
     };
@@ -720,6 +729,9 @@ export const runFinalizePhase = internalAction({
     if (!run) return { ok: false, error: 'Run not found' }
 
     const rawCheckpoint = (run as any).planningFinalizeCheckpoint ?? {}
+    if (String(rawCheckpoint?.status ?? '') === 'cancelled') {
+      return { ok: false, cancelled: true, error: 'Finalization cancelled by user' }
+    }
     const checkpoint: any = {
       version: 1,
       status: 'running',
@@ -798,6 +810,16 @@ export const runFinalizePhase = internalAction({
       }
 
       if (phase === 'elements' || phase === 'tasks' || phase === 'budget' || phase === 'pricing') {
+        const runBeforeTool = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
+        if (String((runBeforeTool as any)?.planningFinalizeCheckpoint?.status ?? '') === 'cancelled') {
+          await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+            runId: args.runId,
+            phase,
+            status: 'failed',
+            error: 'Cancelled by user',
+          })
+          return { ok: false, cancelled: true, phase }
+        }
         const toolId = TOOL_BY_PHASE[phase]
         const result = await runTool(toolId, {
           ...baseInput,
@@ -905,10 +927,12 @@ export const runFinalizePhase = internalAction({
       }
 
       const nextPhase = nextFinalizePhase(phase)
+      const runBeforeContinue = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
+      const wasCancelled = String((runBeforeContinue as any)?.planningFinalizeCheckpoint?.status ?? '') === 'cancelled'
       checkpoint.lastCompletedPhase = phase
       checkpoint.nextPhase = nextPhase
       checkpoint.updatedAt = Date.now()
-      checkpoint.status = nextPhase ? 'running' : 'completed'
+      checkpoint.status = wasCancelled ? 'cancelled' : nextPhase ? 'running' : 'completed'
       await ctx.runMutation(internal.sdk.projectPlanning.setFinalizeCheckpoint, {
         runId: args.runId,
         checkpoint,
@@ -921,7 +945,17 @@ export const runFinalizePhase = internalAction({
       })
       await emitStage('completed')
 
-      if (!nextPhase) {
+      if (!nextPhase || wasCancelled) {
+        if (wasCancelled) {
+          await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+            runId: args.runId,
+            phase,
+            status: 'failed',
+            error: 'Cancelled by user',
+          })
+          await emitStage('failed')
+          return { ok: false, cancelled: true, phase }
+        }
         await ctx.runMutation(internal.sdk.telemetry.logEvent, {
           runId: args.runId,
           type: 'project_planning_finalize_completed',
@@ -1091,6 +1125,50 @@ export const rerunPhase = action({
     return { success: true, runId: targetRunId, restartedFromPhase: args.phase }
   },
 });
+
+export const cancelFinalizePhase = action({
+  args: {
+    runId: v.id('sdkRuns'),
+    phase: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
+    if (!run) throw new Error('Run not found')
+
+    const checkpoint = {
+      ...(((run as any).planningFinalizeCheckpoint && typeof (run as any).planningFinalizeCheckpoint === 'object')
+        ? (run as any).planningFinalizeCheckpoint
+        : {}),
+      status: 'cancelled',
+      updatedAt: Date.now(),
+      cancelledAt: Date.now(),
+      cancelledPhase: args.phase,
+    }
+
+    await ctx.runMutation(internal.sdk.projectPlanning.setFinalizeCheckpoint, {
+      runId: args.runId,
+      checkpoint,
+    })
+    await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+      runId: args.runId,
+      phase: args.phase,
+      status: 'failed',
+      error: 'Cancelled by user',
+    })
+    await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+      runId: args.runId,
+      type: 'sdk_finalize_stage_update',
+      payload: {
+        stage: args.phase,
+        status: 'failed',
+        cancelled: true,
+        ts: Date.now(),
+      },
+    })
+
+    return { ok: true, cancelled: true }
+  },
+})
 
 export const getFinalReport = query({
   args: {
