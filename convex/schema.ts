@@ -2078,6 +2078,21 @@ export default defineSchema({
     planDocVersion: v.optional(v.number()),
     lastRegenPlanDocVersion: v.optional(v.number()),
     shadowMode: v.optional(v.boolean()),
+    // Project Planning state persistence
+    planningCurrentStep: v.optional(v.union(
+      v.literal("start"),
+      v.literal("braindump"),
+      v.literal("questions"),
+      v.literal("finalizing"),
+      v.literal("report")
+    )),
+    planningQuestionSetIndex: v.optional(v.number()),
+    planningFinalizationPhases: v.optional(v.array(v.object({
+      phase: v.string(),
+      status: v.union(v.literal("pending"), v.literal("running"), v.literal("success"), v.literal("failed")),
+      error: v.optional(v.string()),
+      completedAt: v.optional(v.number()),
+    }))),
     createdAt: v.number(),
     updatedAt: v.number(),
     finishedAt: v.optional(v.number()),

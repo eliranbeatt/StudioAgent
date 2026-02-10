@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { action, mutation, query } from '../_generated/server';
+import { action, internalMutation, mutation, query } from '../_generated/server';
 import { api, internal } from '../_generated/api';
 import { Id } from '../_generated/dataModel';
 
@@ -7,6 +7,94 @@ import { Id } from '../_generated/dataModel';
  * PROJECT PLANNING FLOW
  * Structured, deterministic planning flow from context to complete project plan
  */
+
+// Get or create planning session (for state persistence)
+export const getPlanningSession = query({
+  args: {
+    projectId: v.id('projects'),
+  },
+  handler: async (ctx, args) => {
+    // Look for most recent planning run for this project
+    const existingRun = await ctx.db
+      .query('sdkRuns')
+      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+      .filter((q) => q.eq(q.field('runMode'), 'PLANNING_FLOW'))
+      .order('desc')
+      .first();
+
+    if (!existingRun) {
+      return null;
+    }
+
+    return {
+      runId: existingRun._id,
+      conversationId: existingRun.conversationId,
+      currentStep: existingRun.planningCurrentStep ?? 'start',
+      questionSetIndex: existingRun.planningQuestionSetIndex ?? 0,
+      finalizationPhases: existingRun.planningFinalizationPhases ?? [],
+    };
+  },
+});
+
+// Save current planning step state
+export const savePlanningState = mutation({
+  args: {
+    runId: v.id('sdkRuns'),
+    currentStep: v.union(
+      v.literal('start'),
+      v.literal('braindump'),
+      v.literal('questions'),
+      v.literal('finalizing'),
+      v.literal('report')
+    ),
+    questionSetIndex: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, {
+      planningCurrentStep: args.currentStep,
+      planningQuestionSetIndex: args.questionSetIndex,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update finalization phase status
+export const updatePhaseStatus = mutation({
+  args: {
+    runId: v.id('sdkRuns'),
+    phase: v.string(),
+    status: v.union(v.literal('pending'), v.literal('running'), v.literal('success'), v.literal('failed')),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) return;
+
+    const phases = run.planningFinalizationPhases ?? [];
+    const existingIndex = phases.findIndex(p => p.phase === args.phase);
+
+    if (existingIndex >= 0) {
+      phases[existingIndex] = {
+        phase: args.phase,
+        status: args.status,
+        error: args.error,
+        completedAt: args.status === 'success' || args.status === 'failed' ? Date.now() : undefined,
+      };
+    } else {
+      phases.push({
+        phase: args.phase,
+        status: args.status,
+        error: args.error,
+        completedAt: args.status === 'success' || args.status === 'failed' ? Date.now() : undefined,
+      });
+    }
+
+    await ctx.db.patch(args.runId, {
+      planningFinalizationPhases: phases,
+      updatedAt: Date.now(),
+    });
+  },
+});
 
 // Submit brain dump when no context exists
 export const submitBrainDump = mutation({
@@ -21,10 +109,16 @@ export const submitBrainDump = mutation({
       title: 'Project Planning Session',
     });
 
-    // Create run
+    // Create run with PLANNING_FLOW mode
     const { runId } = await ctx.runMutation(api.sdk.api.startRun, {
       projectId: args.projectId,
       conversationId,
+    });
+
+    // Set run mode to PLANNING_FLOW
+    await ctx.db.patch(runId, {
+      runMode: 'PLANNING_FLOW',
+      planningCurrentStep: 'braindump',
     });
 
     // Store brain dump as initial message and context
@@ -70,6 +164,16 @@ export const initiatePlanning = action({
       conversationId,
     });
     runId = result.runId;
+
+    // Set run mode to PLANNING_FLOW and save state
+    await ctx.runMutation(api.sdk.projectPlanning.savePlanningState, {
+      runId,
+      currentStep: 'questions',
+      questionSetIndex: 0,
+    });
+    await ctx.runMutation(internal.sdk.projectPlanning.setRunMode, {
+      runId,
+    });
 
     // Get comprehensive context for LLM
     const projectContext = await ctx.runQuery(api.sdk.api.contextGet, {
@@ -394,5 +498,119 @@ export const getFinalizationProgress = query({
     }
 
     return { stage: 'elements', percent: 10 };
+  },
+});
+
+// Get phase results with status
+export const getPhaseResults = query({
+  args: {
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) return [];
+
+    return run.planningFinalizationPhases ?? [];
+  },
+});
+
+// Rerun a specific phase
+export const rerunPhase = action({
+  args: {
+    projectId: v.id('projects'),
+    runId: v.id('sdkRuns'),
+    conversationId: v.id('agentConversations'),
+    phase: v.string(), // 'elements', 'tasks', 'budget', 'pricing'
+  },
+  handler: async (ctx, args) => {
+    // Mark phase as running
+    await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+      runId: args.runId,
+      phase: args.phase,
+      status: 'running',
+    });
+
+    try {
+      // For now, rerun the full finalize flow
+      // TODO: In future, can optimize to run only specific phase
+      const result = await ctx.runAction(api.sdk.api.finalizeNow, {
+        projectId: args.projectId,
+        conversationId: args.conversationId,
+        runId: args.runId,
+        includeAssumptions: true,
+      });
+
+      // Mark as success
+      await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+        runId: args.runId,
+        phase: args.phase,
+        status: 'success',
+      });
+
+      return { success: true, result };
+    } catch (error: any) {
+      // Mark as failed
+      await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+        runId: args.runId,
+        phase: args.phase,
+        status: 'failed',
+        error: error?.message ?? 'Unknown error',
+      });
+
+      return { success: false, error: error?.message };
+    }
+  },
+});
+
+// Restart planning - go back to questions without deleting context
+export const restartPlanning = action({
+  args: {
+    projectId: v.id('projects'),
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    // Reset step to questions
+    await ctx.runMutation(api.sdk.projectPlanning.savePlanningState, {
+      runId: args.runId,
+      currentStep: 'questions',
+      questionSetIndex: 0,
+    });
+
+    // Clear finalization phases
+    await ctx.runMutation(internal.sdk.projectPlanning.clearPhases, {
+      runId: args.runId,
+    });
+
+    // Regenerate questions based on current context
+    await ctx.runAction(api.sdk.projectPlanning.regenerateQuestions, {
+      projectId: args.projectId,
+      runId: args.runId,
+    });
+
+    return { success: true };
+  },
+});
+
+// Internal helper to set run mode
+export const setRunMode = internalMutation({
+  args: {
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, {
+      runMode: 'PLANNING_FLOW',
+    });
+  },
+});
+
+// Internal helper to clear phases
+export const clearPhases = internalMutation({
+  args: {
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, {
+      planningFinalizationPhases: [],
+    });
   },
 });
