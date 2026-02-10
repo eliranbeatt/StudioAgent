@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { action, internalMutation, mutation, query } from '../_generated/server';
+import { action, internalAction, internalMutation, mutation, query } from '../_generated/server';
 import { api, internal } from '../_generated/api';
 import { Id } from '../_generated/dataModel';
 
@@ -8,17 +8,193 @@ import { Id } from '../_generated/dataModel';
  * Structured, deterministic planning flow from context to complete project plan
  */
 
+const FINALIZE_PHASES = ['elements', 'tasks', 'budget', 'pricing', 'audit', 'repair', 'package'] as const
+type FinalizePhase = typeof FINALIZE_PHASES[number]
+
+const TOOL_BY_PHASE: Record<Exclude<FinalizePhase, 'audit' | 'repair' | 'package'>, string> = {
+  elements: 'plan.elements',
+  tasks: 'plan.tasks',
+  budget: 'cost.build_budget',
+  pricing: 'pricing.resolve_lines',
+}
+
+function nextFinalizePhase(phase: FinalizePhase | null | undefined): FinalizePhase | null {
+  if (!phase) return FINALIZE_PHASES[0]
+  const index = FINALIZE_PHASES.indexOf(phase)
+  if (index < 0 || index >= FINALIZE_PHASES.length - 1) return null
+  return FINALIZE_PHASES[index + 1]
+}
+
+function defaultFinalizePolicy() {
+  return {
+    mode: 'force_full_finalize',
+    assumeMissing: true,
+    pricingOrder: ['catalog', 'web', 'estimate'],
+    requireAll: ['elements', 'tasks', 'accounting'],
+  }
+}
+
+function collectIntentsFromResult(result: any): any[] {
+  const out: any[] = []
+  if (result?.intent) out.push(result.intent)
+  if (Array.isArray(result?.intents)) out.push(...result.intents)
+  if (Array.isArray(result?.fixIntents)) out.push(...result.fixIntents)
+  if (Array.isArray(result?.repairIntents)) out.push(...result.repairIntents)
+  return out.filter(Boolean)
+}
+
+
+function normalizeQuestionGroups(result: any): Array<{ key: string; labelHe: string; questions: any[] }> {
+  const grouped = Array.isArray(result?.questionGroups) ? result.questionGroups : []
+  if (grouped.length > 0) {
+    return grouped.map((group: any) => ({
+      key: String(group?.key ?? group?.phase ?? 'general'),
+      labelHe: String(group?.labelHe ?? group?.key ?? group?.phase ?? 'general'),
+      questions: Array.isArray(group?.questions)
+        ? group.questions.map((q: any) => ({
+          questionKey: q?.questionKey,
+          textHe: q?.textHe ?? q?.questionHe ?? '',
+          questionHe: q?.questionHe ?? q?.textHe ?? '',
+          questionType: q?.questionType ?? q?.type ?? 'text',
+          sectionPath: Array.isArray(q?.sectionPath) ? q.sectionPath : [],
+          blockingLevel: q?.blockingLevel ?? 'helpful',
+          scopeType: q?.scopeType,
+          scopeKey: q?.scopeKey,
+          orderKey: q?.orderKey,
+          followUp: q?.followUp,
+          options: q?.options,
+          suggestedAnswers: q?.suggestedAnswers,
+          allowDontKnow: q?.allowDontKnow,
+          allowFreeText: q?.allowFreeText,
+        }))
+        : [],
+    }))
+  }
+
+  const flat = Array.isArray(result?.questions) ? result.questions : []
+  if (flat.length === 0) return []
+
+  const labelByKey: Record<string, string> = {
+    blockers: 'Blockers',
+    project_level: 'Project Level',
+    per_element: 'Per Element',
+    suggestions: 'Suggestions',
+    general: 'General',
+  }
+
+  const order: string[] = []
+  const buckets = new Map<string, any[]>()
+
+  for (const q of flat) {
+    const sectionPath = Array.isArray(q?.sectionPath) ? q.sectionPath : []
+    const level1 = String(sectionPath[0] ?? '')
+    const level2 = String(sectionPath[1] ?? '')
+    const key =
+      level1 === 'per_element'
+        ? String(q?.groupKey ?? `element:${level2 || q?.scopeKey || 'general'}`)
+        : String(q?.groupKey ?? level1 ?? 'general')
+    if (!buckets.has(key)) {
+      buckets.set(key, [])
+      order.push(key)
+    }
+    buckets.get(key)!.push({
+      questionKey: q?.questionKey,
+      textHe: q?.textHe ?? q?.questionHe ?? '',
+      questionHe: q?.questionHe ?? q?.textHe ?? '',
+      questionType: q?.questionType ?? q?.type ?? 'text',
+      sectionPath,
+      blockingLevel: q?.blockingLevel ?? 'helpful',
+      scopeType: q?.scopeType,
+      scopeKey: q?.scopeKey,
+      orderKey: q?.orderKey,
+      followUp: q?.followUp,
+      options: q?.options,
+      suggestedAnswers: q?.suggestedAnswers,
+      allowDontKnow: q?.allowDontKnow,
+      allowFreeText: q?.allowFreeText,
+    })
+  }
+
+  return order.map((key) => ({
+    key,
+    labelHe: labelByKey[key] ?? key,
+    questions: buckets.get(key) ?? [],
+  }))
+}
+
+function validateGeneratedQuestionGroups(
+  groups: Array<{ key: string; questions: any[] }>,
+  options?: { minQuestions?: number; requireGroups?: boolean }
+): { ok: boolean; reason?: string; questionsCount: number } {
+  const minQuestions = Math.max(1, Number(options?.minQuestions ?? 4))
+  const requireGroups = options?.requireGroups !== false
+  if (requireGroups && groups.length === 0) {
+    return { ok: false, reason: 'no_groups', questionsCount: 0 }
+  }
+  const questionsCount = groups.reduce((sum, g) => sum + (Array.isArray(g.questions) ? g.questions.length : 0), 0)
+  if (questionsCount < minQuestions) {
+    return { ok: false, reason: 'too_few_questions', questionsCount }
+  }
+  return { ok: true, questionsCount }
+}
+
+async function insertQuestionGroups(args: {
+  ctx: any
+  projectId: Id<'projects'>
+  runId: Id<'sdkRuns'>
+  groups: Array<{ key: string; labelHe: string; questions: any[] }>
+}) {
+  let inserted = 0
+  for (const group of args.groups) {
+    const groupKey = group.key ?? 'general'
+    const groupLabel = group.labelHe ?? 'General'
+    const questions = Array.isArray(group.questions) ? group.questions : []
+    for (const q of questions) {
+      const questionHe = q.textHe ?? q.questionHe ?? ''
+      if (!String(questionHe).trim()) continue
+      await args.ctx.runMutation(internal.sdk.questions.createQuestion, {
+        projectId: args.projectId,
+        runId: args.runId,
+        questionHe,
+        groupKey,
+        groupLabelHe: groupLabel,
+        questionKey: typeof q?.questionKey === 'string' ? q.questionKey : undefined,
+        questionType: q.questionType ?? q.type ?? 'text',
+        sectionPath: Array.isArray(q.sectionPath) ? q.sectionPath : [groupKey],
+        blockingLevel: q.blockingLevel ?? 'helpful',
+        scopeType: q.scopeType,
+        scopeKey: q.scopeKey,
+        orderKey: q.orderKey,
+        followUp: typeof q.followUp === 'boolean' ? q.followUp : undefined,
+        options: q.options,
+        suggestedAnswers: q.suggestedAnswers,
+        allowDontKnow: typeof q.allowDontKnow === 'boolean' ? q.allowDontKnow : true,
+      })
+      inserted += 1
+    }
+  }
+  return inserted
+}
 // Get or create planning session (for state persistence)
 export const getPlanningSession = query({
   args: {
     projectId: v.id('projects'),
   },
   handler: async (ctx, args) => {
-    // Look for most recent planning run for this project
+    // Look for most recent planning-related run for this project.
+    // Some legacy runs may miss runMode, so fall back to planning step fields.
     const existingRun = await ctx.db
       .query('sdkRuns')
       .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
-      .filter((q) => q.eq(q.field('runMode'), 'PLANNING_FLOW'))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field('runMode'), 'PLANNING_FLOW'),
+          q.eq(q.field('planningCurrentStep'), 'braindump'),
+          q.eq(q.field('planningCurrentStep'), 'questions'),
+          q.eq(q.field('planningCurrentStep'), 'finalizing'),
+          q.eq(q.field('planningCurrentStep'), 'report')
+        )
+      )
       .order('desc')
       .first();
 
@@ -202,36 +378,23 @@ export const initiatePlanning = action({
         projectContext,
         pastQA,
         files: files?.map((f: any) => ({ name: f.name, contentHe: f.contentText })),
-        groupByPhase: ['blockers', 'project_level', 'per_element', 'suggestions'],
+        groupByPhase: ['blockers', 'per_element', 'project_level', 'suggestions'],
         questionsPerSet: { min: 4, max: 8 },
       },
       runId,
       conversationId,
     });
 
-    // Step 2: Extract and save questions to qaPairs with groups
-    const questionGroups = (planResult as any)?.questionGroups ?? [];
-    for (const group of questionGroups) {
-      const groupKey = group.key ?? 'general';
-      const groupLabel = group.labelHe ?? 'כללי';
-      const questions = Array.isArray(group.questions) ? group.questions : [];
-
-      for (const q of questions) {
-        await ctx.runMutation(internal.sdk.questions.createQuestion, {
-          projectId: args.projectId,
-          runId,
-          questionHe: q.textHe ?? q.questionHe ?? '',
-          groupKey,
-          groupLabelHe: groupLabel,
-          blockingLevel: q.blockingLevel ?? 'helpful',
-          options: q.options,
-          suggestedAnswers: q.suggestedAnswers,
-        });
-      }
+    // Step 2: Extract, validate, and save questions to qaPairs with groups
+    const questionGroups = normalizeQuestionGroups(planResult)
+    const validation = validateGeneratedQuestionGroups(questionGroups, { minQuestions: 4, requireGroups: true })
+    if (!validation.ok) {
+      throw new Error(`Planning questions generation failed validation: ${validation.reason ?? 'unknown'}`)
     }
+    await insertQuestionGroups({ ctx, projectId: args.projectId, runId, groups: questionGroups })
 
     // Step 3: Save plan to project context
-    const planText = (planResult as any)?.planText ?? (planResult as any)?.summary ?? '';
+    const planText = (planResult as any)?.planMd ?? (planResult as any)?.planText ?? (planResult as any)?.summary ?? '';
     if (planText) {
       await ctx.runMutation(internal.sdk.context.addKnowledge, {
         projectId: args.projectId,
@@ -256,38 +419,106 @@ export const getQuestionSets = query({
     const run = await ctx.db.get(args.runId);
     if (!run) return { currentSet: null, hasMore: false, totalSets: 0 };
 
-    // Get all questions for this project grouped
-    const allQuestions = await ctx.db
+    // Get all open questions for this project
+    const allProjectQuestions = await ctx.db
       .query('qaPairs')
       .withIndex('by_project', (q) => q.eq('projectId', run.projectId))
       .filter((q) => q.eq(q.field('status'), 'open'))
       .collect();
+    const runStartedAt = Number((run as any)?._creationTime ?? 0);
+    const allQuestions = allProjectQuestions.filter((q: any) => Number(q.createdAt ?? 0) >= runStartedAt);
 
-    // Group by groupKey
-    const grouped = new Map<string, any[]>();
+    const priorityFor = (q: any) => {
+      const sectionPath = Array.isArray(q?.sectionPath) ? q.sectionPath : [];
+      const level1 = String(sectionPath[0] ?? '');
+      const level2 = String(sectionPath[1] ?? '');
+
+      if (level1 === 'blockers' || q?.blockingLevel === 'blocker') return { key: 'blockers', order: 0 };
+      if (level1 === 'per_element') return { key: `element:${level2 || 'general'}`, order: 100 };
+      if (level1 === 'project_level') return { key: 'project_level', order: 900 };
+      if (level1 === 'suggestions' || q?.blockingLevel === 'optional') return { key: 'suggestions', order: 1000 };
+      return { key: level1 || 'general', order: 950 };
+    };
+
+    const grouped = new Map<string, { order: number; questions: any[] }>();
     for (const q of allQuestions) {
-      const key = (q as any).groupKey ?? 'general';
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push({
+      const { key, order } = priorityFor(q as any);
+      if (!grouped.has(key)) grouped.set(key, { order, questions: [] });
+      grouped.get(key)!.questions.push({
         id: q._id,
         questionHe: q.question_he ?? '',
         type: q.questionType ?? 'text',
         options: q.options,
         suggestedAnswers: (q as any).suggestedAnswers,
+        allowDontKnow: (q as any).allowDontKnow ?? true,
+        blockingLevel: q.blockingLevel ?? 'helpful',
       });
     }
 
-    const groups = Array.from(grouped.entries()).map(([key, questions]) => ({
-      groupKey: key,
-      groupLabelHe: (questions[0] as any)?.groupLabelHe ?? key,
-      questions,
-    }));
+    const groups = Array.from(grouped.entries())
+      .sort((a, b) => {
+        const orderDiff = a[1].order - b[1].order;
+        if (orderDiff !== 0) return orderDiff;
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([key, value]) => {
+        const label =
+          key === 'blockers'
+            ? 'Blockers'
+            : key === 'project_level'
+              ? 'Project Level'
+              : key === 'suggestions'
+                ? 'Suggestions'
+                : key.startsWith('element:')
+                  ? key.replace('element:', '').replace(/_/g, ' ')
+                  : key;
+        return {
+          groupKey: key,
+          groupLabelHe: label,
+          questions: value.questions,
+        };
+      });
 
-    const currentSet = groups[args.setIndex] ?? null;
+    // Keep each set between 4-8 questions when possible.
+    const sets: typeof groups = [];
+    const minPerSet = 4;
+    const maxPerSet = 8;
+    for (let i = 0; i < groups.length; i += 1) {
+      const g = groups[i];
+      let cursor = 0;
+      while (cursor < g.questions.length) {
+        const chunk = g.questions.slice(cursor, cursor + maxPerSet);
+        cursor += chunk.length;
+
+        if (chunk.length < minPerSet && cursor >= g.questions.length && i < groups.length - 1) {
+          const next = groups[i + 1];
+          const needed = minPerSet - chunk.length;
+          const borrowed = next.questions.splice(0, needed);
+          chunk.push(...borrowed);
+        }
+
+        sets.push({
+          groupKey: g.groupKey,
+          groupLabelHe: g.groupLabelHe,
+          questions: chunk,
+        });
+      }
+    }
+    if (sets.length > 1) {
+      const last = sets[sets.length - 1];
+      const prev = sets[sets.length - 2];
+      while (last.questions.length < minPerSet && prev.questions.length > minPerSet) {
+        const moved = prev.questions.pop();
+        if (!moved) break;
+        last.questions.unshift(moved);
+      }
+    }
+
+    const currentSet = sets[args.setIndex] ?? null;
     return {
       currentSet,
-      hasMore: args.setIndex < groups.length - 1,
-      totalSets: groups.length,
+      hasMore: args.setIndex < sets.length - 1,
+      totalSets: sets.length,
     };
   },
 });
@@ -302,6 +533,7 @@ export const submitAnswers = mutation({
         answer: v.string(),
       })
     ),
+    setNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     for (const { questionId, answer } of args.answers) {
@@ -309,6 +541,18 @@ export const submitAnswers = mutation({
         answerText: answer,
         status: 'resolved',
       });
+    }
+    const notes = String(args.setNotes ?? '').trim();
+    if (notes) {
+      const run = await ctx.db.get(args.runId);
+      if (run) {
+        await ctx.runMutation(internal.sdk.context.addKnowledge, {
+          projectId: run.projectId,
+          text: notes,
+          source: 'planning_set_notes',
+          priority: 7,
+        });
+      }
     }
   },
 });
@@ -336,63 +580,394 @@ export const regenerateQuestions = action({
       projectId: args.projectId,
     });
 
-    // Dismiss old questions
-    await ctx.runMutation(internal.sdk.questions.dismissAllForRun, {
-      runId: args.runId,
+    const oldOpenQuestions = await ctx.runQuery(api.sdk.questions.listOpenForProject, {
+      projectId: args.projectId,
     });
 
-    // Generate fresh questions using full context + all answers
+    // Generate fresh questions using the same structured contract as initial planning
     const regenResult = await ctx.runAction(api.sdk.runner.runTool, {
       projectId: args.projectId,
-      toolId: 'clarify.next_questions',
+      toolId: 'draft.plan_and_questions',
       input: {
-        includeGroups: true,
-        // Pass full context so LLM can generate relevant follow-up questions
-        context: {
-          project: projectContext?.project,
-          elements: projectContext?.elements ?? [],
-          tasks: projectContext?.tasks ?? [],
-          materials: projectContext?.materialLines ?? [],
-          existingQA: allQA ?? [],
-          files: files?.map((f: any) => ({
-            name: f.name,
-            content: f.contentText?.substring(0, 2000)
-          })) ?? [],
-        },
-        // Group questions into progressive sets
-        groupByPhase: ['blockers', 'project_level', 'per_element', 'suggestions'],
+        mode: 'regenerate_questions',
+        includeQuestions: true,
+        groupQuestions: true,
+        projectContext,
+        existingQA: allQA ?? [],
+        files: files?.map((f: any) => ({ name: f.name, contentHe: f.contentText })) ?? [],
+        groupByPhase: ['blockers', 'per_element', 'project_level', 'suggestions'],
         questionsPerSet: { min: 4, max: 8 },
       },
       runId: args.runId,
-      conversationId: null as any,
     });
 
-    // Save new questions
-    const questionGroups = (regenResult as any)?.questionGroups ?? [];
-    for (const group of questionGroups) {
-      const groupKey = group.key ?? 'general';
-      const groupLabel = group.labelHe ?? 'כללי';
-      const questions = Array.isArray(group.questions) ? group.questions : [];
-
-      for (const q of questions) {
-        await ctx.runMutation(internal.sdk.questions.createQuestion, {
-          projectId: args.projectId,
-          runId: args.runId,
-          questionHe: q.textHe ?? q.questionHe ?? '',
-          groupKey,
-          groupLabelHe: groupLabel,
-          blockingLevel: q.blockingLevel ?? 'helpful',
-          options: q.options,
-          suggestedAnswers: q.suggestedAnswers,
-        });
-      }
+    // Validate before mutating existing open questions
+    const questionGroups = normalizeQuestionGroups(regenResult);
+    const validation = validateGeneratedQuestionGroups(questionGroups, { minQuestions: 4, requireGroups: true })
+    if (!validation.ok) {
+      return { ok: false, groupsCount: 0, reason: validation.reason ?? 'validation_failed' };
     }
 
-    return { ok: true, groupsCount: questionGroups.length };
+    const inserted = await insertQuestionGroups({
+      ctx,
+      projectId: args.projectId,
+      runId: args.runId,
+      groups: questionGroups,
+    })
+
+    // Dismiss only previously-open questions once new questions exist
+    for (const qa of oldOpenQuestions) {
+      await ctx.runMutation(internal.sdk.questions.dismissQuestionById, {
+        qaPairId: qa.id as Id<'qaPairs'>,
+      })
+    }
+
+    return { ok: true, groupsCount: questionGroups.length, inserted };
   },
 });
 
-// Finalize project - full deterministic flow
+export const setFinalizeCheckpoint = internalMutation({
+  args: {
+    runId: v.id('sdkRuns'),
+    checkpoint: v.any(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, {
+      planningFinalizeCheckpoint: args.checkpoint,
+      updatedAt: Date.now(),
+    })
+  },
+})
+
+export const startFinalizePhases = action({
+  args: {
+    projectId: v.id('projects'),
+    runId: v.id('sdkRuns'),
+    conversationId: v.id('agentConversations'),
+    startFromPhase: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
+    if (!run) throw new Error('Run not found')
+
+    const phases = FINALIZE_PHASES.map((phase) => ({
+      phase,
+      status: 'pending' as const,
+      error: undefined,
+      completedAt: undefined,
+    }))
+    const requestedPhase = String(args.startFromPhase ?? '')
+    const startPhase = (FINALIZE_PHASES.includes(requestedPhase as FinalizePhase)
+      ? (requestedPhase as FinalizePhase)
+      : FINALIZE_PHASES[0])
+    const checkpoint = {
+      version: 1,
+      status: 'running',
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      nextPhase: startPhase,
+      lastCompletedPhase: null as string | null,
+      latestUserText: '',
+      toolOutputs: {},
+      context: null,
+      needsRepair: false,
+      auditFindings: [] as any[],
+      toolErrors: [] as Array<{ phase: string; toolId: string; message: string; at: number }>,
+      finalReport: null as any,
+    }
+
+    await ctx.runMutation(internal.sdk.projectPlanning.setFinalizeCheckpoint, {
+      runId: args.runId,
+      checkpoint,
+    })
+    await ctx.runMutation(internal.sdk.projectPlanning.clearPhases, {
+      runId: args.runId,
+    })
+    for (const phase of phases) {
+      await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+        runId: args.runId,
+        phase: phase.phase,
+        status: phase.status,
+      })
+    }
+
+    await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+      runId: args.runId,
+      type: 'project_planning_finalize_started',
+      payload: { stage: startPhase, percent: 0, mode: 'checkpointed' },
+    })
+    await ctx.scheduler.runAfter(0, internal.sdk.projectPlanning.runFinalizePhase, {
+      projectId: args.projectId,
+      runId: args.runId,
+      conversationId: args.conversationId,
+      phase: startPhase,
+    })
+
+    return { queued: true, runId: args.runId, startPhase }
+  },
+})
+
+export const runFinalizePhase = internalAction({
+  args: {
+    projectId: v.id('projects'),
+    runId: v.id('sdkRuns'),
+    conversationId: v.id('agentConversations'),
+    phase: v.optional(v.string()),
+    autoContinue: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
+    if (!run) return { ok: false, error: 'Run not found' }
+
+    const rawCheckpoint = (run as any).planningFinalizeCheckpoint ?? {}
+    const checkpoint: any = {
+      version: 1,
+      status: 'running',
+      startedAt: Number(rawCheckpoint?.startedAt ?? Date.now()),
+      updatedAt: Date.now(),
+      nextPhase: String(rawCheckpoint?.nextPhase ?? FINALIZE_PHASES[0]),
+      lastCompletedPhase: rawCheckpoint?.lastCompletedPhase ?? null,
+      latestUserText: String(rawCheckpoint?.latestUserText ?? ''),
+      toolOutputs: (rawCheckpoint?.toolOutputs && typeof rawCheckpoint.toolOutputs === 'object') ? rawCheckpoint.toolOutputs : {},
+      context: rawCheckpoint?.context ?? null,
+      needsRepair: Boolean(rawCheckpoint?.needsRepair),
+      auditFindings: Array.isArray(rawCheckpoint?.auditFindings) ? rawCheckpoint.auditFindings : [],
+      toolErrors: Array.isArray(rawCheckpoint?.toolErrors) ? rawCheckpoint.toolErrors : [],
+      finalReport: rawCheckpoint?.finalReport ?? null,
+    }
+
+    const explicitPhase = String(args.phase ?? '')
+    const phase = (FINALIZE_PHASES.includes(explicitPhase as FinalizePhase)
+      ? (explicitPhase as FinalizePhase)
+      : (checkpoint.nextPhase as FinalizePhase))
+    if (!phase || !FINALIZE_PHASES.includes(phase)) {
+      return { ok: false, error: 'Invalid phase' }
+    }
+
+    const emitStage = async (status: 'running' | 'completed' | 'failed') => {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_finalize_stage_update',
+        payload: {
+          stage: phase,
+          status,
+          ts: Date.now(),
+        },
+      })
+    }
+
+    const runTool = async (toolId: string, input: any) =>
+      ctx.runAction(api.sdk.runner.runTool, {
+        projectId: args.projectId,
+        toolId,
+        input,
+        runId: args.runId,
+        conversationId: args.conversationId,
+      })
+
+    try {
+      await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+        runId: args.runId,
+        phase,
+        status: 'running',
+      })
+      await emitStage('running')
+
+      if (!checkpoint.latestUserText) {
+        const messages = await ctx.runQuery(api.sdk.api.listMessages, {
+          conversationId: args.conversationId,
+          runId: args.runId,
+          limit: 80,
+        })
+        checkpoint.latestUserText =
+          [...(messages ?? [])]
+            .reverse()
+            .find((m: any) => m?.role === 'user' && String(m?.text ?? '').trim())?.text ?? ''
+      }
+
+      if (!checkpoint.context) {
+        checkpoint.context = await ctx.runQuery(api.sdk.api.contextGet, {
+          projectId: args.projectId,
+          packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
+        })
+      }
+
+      const baseInput = {
+        userText: String(checkpoint.latestUserText ?? ''),
+        finalizePolicy: defaultFinalizePolicy(),
+      }
+
+      if (phase === 'elements' || phase === 'tasks' || phase === 'budget' || phase === 'pricing') {
+        const toolId = TOOL_BY_PHASE[phase]
+        const result = await runTool(toolId, {
+          ...baseInput,
+          context: checkpoint.context,
+        })
+        checkpoint.toolOutputs[toolId] = result
+        await ctx.runAction(internal.sdk.api.persistFinalizeStageCheckpoint, {
+          projectId: args.projectId,
+          conversationId: args.conversationId,
+          runId: args.runId,
+          stageKey: phase,
+          toolOutputs: { ...checkpoint.toolOutputs },
+          source: toolId,
+        })
+        checkpoint.context = await ctx.runQuery(api.sdk.api.contextGet, {
+          projectId: args.projectId,
+          packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
+        })
+      } else if (phase === 'audit') {
+        const auditResult = await runTool('audit.project', {
+          context: checkpoint.context,
+          findings: [],
+          source: 'planning_finalize_checkpoint',
+        })
+        const findings = Array.isArray(auditResult?.findings) ? auditResult.findings : []
+        const auditIntents = collectIntentsFromResult(auditResult)
+        checkpoint.auditFindings = findings
+        checkpoint.needsRepair = JSON.stringify(findings).toLowerCase().includes('duplicate')
+          || JSON.stringify(findings).toLowerCase().includes('missing')
+          || JSON.stringify(findings).toLowerCase().includes('price')
+          || JSON.stringify(findings).toLowerCase().includes('pricing')
+        if (auditIntents.length > 0) {
+          await ctx.runAction(internal.sdk.api.persistFinalizeIntentsCheckpoint, {
+            projectId: args.projectId,
+            conversationId: args.conversationId,
+            runId: args.runId,
+            stageKey: 'audit',
+            intents: auditIntents,
+            source: 'audit.project',
+          })
+        }
+        checkpoint.context = await ctx.runQuery(api.sdk.api.contextGet, {
+          projectId: args.projectId,
+          packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
+        })
+      } else if (phase === 'repair') {
+        if (checkpoint.needsRepair) {
+          const repairResult = await runTool('maint.sync_and_repair', {
+            context: checkpoint.context,
+            findings: checkpoint.auditFindings ?? [],
+            source: 'planning_finalize_checkpoint',
+          })
+          const repairIntents = collectIntentsFromResult(repairResult)
+          if (repairIntents.length > 0) {
+            await ctx.runAction(internal.sdk.api.persistFinalizeIntentsCheckpoint, {
+              projectId: args.projectId,
+              conversationId: args.conversationId,
+              runId: args.runId,
+              stageKey: 'repair',
+              intents: repairIntents,
+              source: 'maint.sync_and_repair',
+            })
+          }
+          const pricingRetry = await runTool('pricing.resolve_lines', {
+            ...baseInput,
+            context: checkpoint.context,
+          })
+          checkpoint.toolOutputs['pricing.resolve_lines.retry'] = pricingRetry
+          await ctx.runAction(internal.sdk.api.persistFinalizeStageCheckpoint, {
+            projectId: args.projectId,
+            conversationId: args.conversationId,
+            runId: args.runId,
+            stageKey: 'pricing',
+            toolOutputs: { ...checkpoint.toolOutputs },
+            source: 'pricing.resolve_lines.retry',
+          })
+        }
+        checkpoint.context = await ctx.runQuery(api.sdk.api.contextGet, {
+          projectId: args.projectId,
+          packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
+        })
+      } else if (phase === 'package') {
+        const pkg = await ctx.runAction(api.sdk.finalize.buildStructuredPackage, {
+          projectId: args.projectId,
+          runId: args.runId,
+          includeAssumptions: true,
+        })
+        const counts = (pkg as any)?.counts ?? {}
+        const elementsHealth = await ctx.runQuery(api.flow.ui.getElementsHealth, {
+          projectId: args.projectId,
+        })
+        checkpoint.finalReport = {
+          counts: {
+            elements: counts.elements ?? 0,
+            tasks: counts.tasks ?? 0,
+            materialLines: counts.materialLines ?? 0,
+            workLines: counts.workLines ?? 0,
+            totalPrice: (elementsHealth as any)?.totals?.totalCost ?? 0,
+          },
+          summary: (pkg as any)?.summary ?? 'Project plan generated successfully',
+          elements: (elementsHealth as any)?.elements ?? [],
+          issues: checkpoint.auditFindings ?? [],
+          checkpointed: true,
+        }
+      }
+
+      const nextPhase = nextFinalizePhase(phase)
+      checkpoint.lastCompletedPhase = phase
+      checkpoint.nextPhase = nextPhase
+      checkpoint.updatedAt = Date.now()
+      checkpoint.status = nextPhase ? 'running' : 'completed'
+      await ctx.runMutation(internal.sdk.projectPlanning.setFinalizeCheckpoint, {
+        runId: args.runId,
+        checkpoint,
+      })
+
+      await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+        runId: args.runId,
+        phase,
+        status: 'success',
+      })
+      await emitStage('completed')
+
+      if (!nextPhase) {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'project_planning_finalize_completed',
+          payload: { stage: 'completed', percent: 100, mode: 'checkpointed' },
+        })
+        return { ok: true, phase, completed: true }
+      }
+
+      if (args.autoContinue !== false) {
+        await ctx.scheduler.runAfter(0, internal.sdk.projectPlanning.runFinalizePhase, {
+          projectId: args.projectId,
+          runId: args.runId,
+          conversationId: args.conversationId,
+          phase: nextPhase,
+        })
+      }
+      return { ok: true, phase, nextPhase }
+    } catch (error: any) {
+      checkpoint.status = 'failed'
+      checkpoint.updatedAt = Date.now()
+      checkpoint.toolErrors = [
+        ...(Array.isArray(checkpoint.toolErrors) ? checkpoint.toolErrors : []),
+        {
+          phase,
+          toolId: phase,
+          message: String(error?.message ?? 'Unknown error'),
+          at: Date.now(),
+        },
+      ]
+      await ctx.runMutation(internal.sdk.projectPlanning.setFinalizeCheckpoint, {
+        runId: args.runId,
+        checkpoint,
+      })
+      await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+        runId: args.runId,
+        phase,
+        status: 'failed',
+        error: String(error?.message ?? 'Unknown error'),
+      })
+      await emitStage('failed')
+      return { ok: false, phase, error: String(error?.message ?? 'Unknown error') }
+    }
+  },
+})
+
+// Finalize project - checkpointed multi-action flow
 export const finalizeProject = action({
   args: {
     projectId: v.id('projects'),
@@ -400,51 +975,15 @@ export const finalizeProject = action({
     conversationId: v.id('agentConversations'),
   },
   handler: async (ctx, args) => {
-    // Mark finalization started
-    await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+    await ctx.runMutation(api.sdk.projectPlanning.savePlanningState, {
       runId: args.runId,
-      type: 'project_planning_finalize_started',
-      payload: { stage: 'elements', percent: 0 },
-    });
-
-    // Run the full finalize flow from api.ts
-    const finalizeResult = await ctx.runAction(api.sdk.api.finalizeNow, {
+      currentStep: 'finalizing',
+    })
+    return await ctx.runAction(api.sdk.projectPlanning.startFinalizePhases, {
       projectId: args.projectId,
+      runId: args.runId,
       conversationId: args.conversationId,
-      runId: args.runId,
-      includeAssumptions: true,
-    });
-
-    // Get the final package
-    const pkg = finalizeResult as any;
-    const counts = pkg?.counts ?? {};
-
-    // Get element breakdown for report
-    const elements = await ctx.runQuery(api.flow.ui.getElementsHealth, {
-      projectId: args.projectId,
-    });
-
-    const report = {
-      counts: {
-        elements: counts.elements ?? 0,
-        tasks: counts.tasks ?? 0,
-        materialLines: counts.materialLines ?? 0,
-        workLines: counts.workLines ?? 0,
-        totalPrice: (elements as any)?.totals?.totalCost ?? 0,
-      },
-      summary: pkg?.summary ?? 'Project plan generated successfully',
-      elements: (elements as any)?.elements ?? [],
-      issues: pkg?.issues ?? [],
-    };
-
-    // Mark completed
-    await ctx.runMutation(internal.sdk.telemetry.logEvent, {
-      runId: args.runId,
-      type: 'project_planning_finalize_completed',
-      payload: { stage: 'completed', percent: 100 },
-    });
-
-    return report;
+    })
   },
 });
 
@@ -488,6 +1027,7 @@ export const getFinalizationProgress = query({
         pricing: 75,
         audit: 90,
         repair: 95,
+        package: 98,
       };
 
       const percent = status === 'completed' 
@@ -521,46 +1061,47 @@ export const rerunPhase = action({
     runId: v.id('sdkRuns'),
     conversationId: v.id('agentConversations'),
     phase: v.string(), // 'elements', 'tasks', 'budget', 'pricing'
+    forceNewRun: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    // Mark phase as running
-    await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
-      runId: args.runId,
-      phase: args.phase,
-      status: 'running',
-    });
+    let targetRunId = args.runId
+    const forceNewRun = args.forceNewRun === true
 
-    try {
-      // For now, rerun the full finalize flow
-      // TODO: In future, can optimize to run only specific phase
-      const result = await ctx.runAction(api.sdk.api.finalizeNow, {
+    if (forceNewRun) {
+      const started = await ctx.runMutation(api.sdk.api.startRun, {
         projectId: args.projectId,
         conversationId: args.conversationId,
-        runId: args.runId,
-        includeAssumptions: true,
-      });
+      })
+      targetRunId = started.runId
 
-      // Mark as success
-      await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
-        runId: args.runId,
-        phase: args.phase,
-        status: 'success',
-      });
-
-      return { success: true, result };
-    } catch (error: any) {
-      // Mark as failed
-      await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
-        runId: args.runId,
-        phase: args.phase,
-        status: 'failed',
-        error: error?.message ?? 'Unknown error',
-      });
-
-      return { success: false, error: error?.message };
+      await ctx.runMutation(internal.sdk.projectPlanning.setRunMode, {
+        runId: targetRunId,
+      })
+      await ctx.runMutation(api.sdk.projectPlanning.savePlanningState, {
+        runId: targetRunId,
+        currentStep: 'finalizing',
+      })
     }
+    await ctx.runAction(api.sdk.projectPlanning.startFinalizePhases, {
+      projectId: args.projectId,
+      runId: targetRunId,
+      conversationId: args.conversationId,
+      startFromPhase: args.phase,
+    })
+    return { success: true, runId: targetRunId, restartedFromPhase: args.phase }
   },
 });
+
+export const getFinalReport = query({
+  args: {
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId)
+    if (!run) return null
+    return (run as any).planningFinalizeCheckpoint?.finalReport ?? null
+  },
+})
 
 // Restart planning - go back to questions without deleting context
 export const restartPlanning = action({
@@ -611,6 +1152,7 @@ export const clearPhases = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.runId, {
       planningFinalizationPhases: [],
+      planningFinalizeCheckpoint: undefined,
     });
   },
 });

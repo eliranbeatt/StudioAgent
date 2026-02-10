@@ -66,7 +66,6 @@ import type * as flow_validation_validateG6OpsCompleteness from "../flow/validat
 import type * as flow_validation_validateG7PricingRecheck from "../flow/validation/validateG7PricingRecheck.js";
 import type * as flow_validation_validateG8Quote from "../flow/validation/validateG8Quote.js";
 import type * as flow_validation_validateG9Audit from "../flow/validation/validateG9Audit.js";
-import type * as graveyard from "../graveyard.js";
 import type * as inventory from "../inventory.js";
 import type * as inventory_helpers from "../inventory_helpers.js";
 import type * as lib_dates from "../lib/dates.js";
@@ -211,7 +210,6 @@ declare const fullApi: ApiFromModules<{
   "flow/validation/validateG7PricingRecheck": typeof flow_validation_validateG7PricingRecheck;
   "flow/validation/validateG8Quote": typeof flow_validation_validateG8Quote;
   "flow/validation/validateG9Audit": typeof flow_validation_validateG9Audit;
-  graveyard: typeof graveyard;
   inventory: typeof inventory;
   inventory_helpers: typeof inventory_helpers;
   "lib/dates": typeof lib_dates;

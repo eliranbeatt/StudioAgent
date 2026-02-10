@@ -2,10 +2,9 @@
 
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { useState, useEffect } from 'react';
-import { api, internal } from '../../../../../../convex/_generated/api';
+import { api } from '../../../../../../convex/_generated/api';
 import { Id } from '../../../../../../convex/_generated/dataModel';
 import { CheckCircle, Loader2, Play } from 'lucide-react';
-import { QuestionsBlock } from '../../agent/_components/Blocks/QuestionsBlock';
 
 type QuestionSet = {
   groupKey: string;
@@ -16,7 +15,14 @@ type QuestionSet = {
     type?: string;
     options?: Array<{ value: string; labelHe: string }>;
     suggestedAnswers?: Array<{ value: string; labelHe: string }>;
+    allowDontKnow?: boolean;
+    blockingLevel?: 'blocker' | 'helpful' | 'optional';
   }>;
+};
+
+type QuestionAnswer = {
+  selected: string;
+  freeText: string;
 };
 
 export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> }) {
@@ -24,8 +30,8 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
   const [runId, setRunId] = useState<Id<'sdkRuns'> | null>(null);
   const [currentStep, setCurrentStep] = useState<'start' | 'braindump' | 'questions' | 'finalizing' | 'report'>('start');
   const [brainDumpText, setBrainDumpText] = useState('');
-  const [currentQuestionSet, setCurrentQuestionSet] = useState<QuestionSet | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
+  const [setFreeText, setSetFreeText] = useState('');
   const [questionSetIndex, setQuestionSetIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [finalReport, setFinalReport] = useState<any>(null);
@@ -52,18 +58,24 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     api.sdk.projectPlanning.getPhaseResults,
     runId ? { runId } : 'skip'
   );
+  const finalReportQuery = useQuery(
+    api.sdk.projectPlanning.getFinalReport,
+    runId ? { runId } : 'skip'
+  );
   const rerunPhase = useAction(api.sdk.projectPlanning.rerunPhase);
   const restartPlanning = useAction(api.sdk.projectPlanning.restartPlanning);
 
   // Restore existing session on mount
   useEffect(() => {
-    if (existingSession && !sessionRestored) {
+    if (sessionRestored) return;
+    if (existingSession === undefined) return;
+    if (existingSession) {
       setConversationId(existingSession.conversationId);
       setRunId(existingSession.runId);
       setCurrentStep(existingSession.currentStep);
       setQuestionSetIndex(existingSession.questionSetIndex);
-      setSessionRestored(true);
     }
+    setSessionRestored(true);
   }, [existingSession, sessionRestored]);
 
   useEffect(() => {
@@ -75,22 +87,119 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     }
   }, [finalizationProgress]);
 
+  useEffect(() => {
+    if (!runId) return;
+    if (currentStep !== 'report') return;
+    void savePlanningState({
+      runId,
+      currentStep: 'report',
+    });
+  }, [runId, currentStep, savePlanningState]);
+
+  useEffect(() => {
+    if (finalReportQuery) {
+      setFinalReport(finalReportQuery);
+    }
+  }, [finalReportQuery]);
+
+  const setQuestionFreeText = (questionId: string, freeText: string) => {
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: {
+        selected: prev[questionId]?.selected ?? '',
+        freeText,
+      },
+    }));
+  };
+
+  const setQuestionSelected = (questionId: string, selected: string) => {
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: {
+        selected,
+        freeText: prev[questionId]?.freeText ?? '',
+      },
+    }));
+  };
+
+  const toggleQuestionMultiValue = (questionId: string, value: string) => {
+    setAnswers(prev => {
+      const current = String(prev[questionId]?.selected ?? '').trim();
+      const list = current ? current.split(',').map((item) => item.trim()).filter(Boolean) : [];
+      const next = list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+      return {
+        ...prev,
+        [questionId]: {
+          selected: next.join(','),
+          freeText: prev[questionId]?.freeText ?? '',
+        },
+      };
+    });
+  };
+
+  const buildAnswerText = (answer: QuestionAnswer | undefined) => {
+    const selected = String(answer?.selected ?? '').trim();
+    const freeText = String(answer?.freeText ?? '').trim();
+    if (selected === '__DONT_KNOW__') {
+      return freeText ? `[DONT_KNOW]\n${freeText}` : '[DONT_KNOW]';
+    }
+    if (selected && freeText) return `${selected}\n${freeText}`;
+    if (selected) return selected;
+    return freeText;
+  };
+
   const handleStart = async () => {
     setIsProcessing(true);
     try {
+      const project = (checkContextQuery as any)?.project ?? {};
+      const textCandidates = [
+        project.brainDumpRaw,
+        project.summary,
+        project.description,
+        project.notes,
+        project?.details?.notes,
+      ]
+        .filter((value: unknown) => typeof value === 'string')
+        .map((value: string) => value.trim())
+        .filter(Boolean);
+
+      const seededBrainDump = textCandidates.join('\n\n');
+      const hasBrainDumpRaw = typeof project.brainDumpRaw === 'string' && project.brainDumpRaw.trim().length > 0;
+
       // Check project context using query result
       const hasContext = 
         (checkContextQuery as any)?.elements?.length > 0 || 
         (checkContextQuery as any)?.tasks?.length > 0 ||
-        (checkContextQuery as any)?.projectContext?.length > 0;
+        textCandidates.length > 0;
 
       if (!hasContext) {
         setCurrentStep('braindump');
       } else {
-        // Start planning directly
-        const result = await initiatePlanning({ projectId });
+        let planningConversationId: Id<'agentConversations'> | null = null;
+        let planningRunId: Id<'sdkRuns'> | null = null;
+
+        // If we only have free-text context (summary/notes/description), seed it as brain dump first.
+        if (
+          ((checkContextQuery as any)?.elements?.length ?? 0) === 0 &&
+          ((checkContextQuery as any)?.tasks?.length ?? 0) === 0 &&
+          !hasBrainDumpRaw &&
+          seededBrainDump
+        ) {
+          const brainDumpResult = await submitBrainDump({
+            projectId,
+            brainDump: seededBrainDump,
+          });
+          planningConversationId = (brainDumpResult as any).conversationId;
+          planningRunId = (brainDumpResult as any).runId;
+        }
+
+        // Start planning
+        const result = await initiatePlanning({
+          projectId,
+          conversationId: planningConversationId ?? undefined,
+        });
         setConversationId((result as any).conversationId);
-        setRunId((result as any).runId);
+        setRunId((result as any).runId ?? planningRunId);
         setCurrentStep('questions');
       }
     } finally {
@@ -126,23 +235,40 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     }
   };
 
-  const handleAnswerSubmit = async () => {
+  const handleAnswerSubmit = async (questionSet: QuestionSet | null, hasMore: boolean) => {
     if (!runId) return;
     setIsProcessing(true);
     try {
+      const questionIds = new Set((questionSet?.questions ?? []).map(q => q.id));
+      const payload = Object.entries(answers)
+        .filter(([questionId]) => questionIds.has(questionId))
+        .map(([questionId, answer]) => ({
+          questionId: questionId as Id<'qaPairs'>,
+          answer: buildAnswerText(answer),
+        }))
+        .filter((item) => item.answer.trim().length > 0);
+
+      if (payload.length === 0 && !setFreeText.trim()) {
+        return;
+      }
+
       await submitAnswers({
         runId,
-        answers: Object.entries(answers).map(([questionId, answer]) => ({
-          questionId: questionId as Id<'qaPairs'>,
-          answer,
-        })),
+        answers: payload,
+        setNotes: setFreeText.trim() || undefined,
       });
       
       setAnswers({});
-      setQuestionSetIndex(prev => prev + 1);
+      setSetFreeText('');
+      if (hasMore) {
+        setQuestionSetIndex(prev => prev + 1);
+      }
       
-      // Check if there are more question sets
-      // If not, move to finalizing step automatically
+      await savePlanningState({
+        runId,
+        currentStep: 'questions',
+        questionSetIndex: hasMore ? questionSetIndex + 1 : questionSetIndex,
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -171,25 +297,31 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     setCurrentStep('finalizing');
     
     try {
-      const report = await finalizeProject({ projectId, runId, conversationId: conversationId! });
-      setFinalReport(report);
-      
-      // Save completed state
-      await savePlanningState({
-        runId,
-        currentStep: 'report',
-      });
-      setCurrentStep('report');
+      await finalizeProject({ projectId, runId, conversationId: conversationId! });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleRerunPhase = async (phase: string) => {
+  const handleRerunPhase = async (phase: string, status: 'pending' | 'running' | 'success' | 'failed') => {
     if (!runId || !conversationId) return;
     setIsProcessing(true);
     try {
-      await rerunPhase({ projectId, runId, conversationId, phase });
+      const result = await rerunPhase({
+        projectId,
+        runId,
+        conversationId,
+        phase,
+        forceNewRun: status === 'running',
+      });
+      const nextRunId = (result as any)?.runId as Id<'sdkRuns'> | undefined;
+      if (nextRunId && nextRunId !== runId) {
+        setRunId(nextRunId);
+        await savePlanningState({
+          runId: nextRunId,
+          currentStep: 'finalizing',
+        });
+      }
       // Report will be updated via phase results query
     } finally {
       setIsProcessing(false);
@@ -214,6 +346,17 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       setIsProcessing(false);
     }
   };
+
+  if (!sessionRestored) {
+    return (
+      <div className="flex items-center justify-center h-full bg-slate-50">
+        <div className="text-sm text-slate-500 flex items-center gap-2">
+          <Loader2 className="animate-spin" size={16} />
+          Restoring planning session...
+        </div>
+      </div>
+    );
+  }
 
   if (currentStep === 'start') {
     return (
@@ -280,7 +423,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
             <div>
               <h2 className="text-lg font-semibold text-slate-800">Planning Questions</h2>
               <p className="text-xs text-slate-500">
-                Set {questionSetIndex + 1} of {totalSets} • {questionSet?.groupLabelHe ?? 'Loading...'}
+                Set {totalSets > 0 ? questionSetIndex + 1 : 0} of {totalSets} | {questionSet?.groupLabelHe ?? 'Loading...'}
               </p>
             </div>
             <div className="flex gap-2">
@@ -296,7 +439,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
                 disabled={isProcessing}
                 className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
               >
-                Finalize Now
+                Finalize
               </button>
             </div>
           </div>
@@ -304,52 +447,164 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
 
         <div className="flex-1 overflow-y-auto p-6">
           {!questionSet ? (
-            <div className="text-center text-slate-400 py-20">Loading questions...</div>
-          ) : conversationId ? (
+            <div className="max-w-3xl mx-auto text-center py-20">
+              {totalSets === 0 ? (
+                <>
+                  <p className="text-slate-500 mb-4">No active question sets were generated.</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={handleRegenerateQuestions}
+                      disabled={isProcessing}
+                      className="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Regenerate Questions
+                    </button>
+                    <button
+                      onClick={handleFinalizeNow}
+                      disabled={isProcessing}
+                      className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      Finalize
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-slate-400">Loading questions...</p>
+              )}
+            </div>
+          ) : (
             <div className="max-w-3xl mx-auto">
-              {/* Use existing QuestionsBlock component with proper format */}
-              <QuestionsBlock
-                block={{
-                  type: 'QuestionsBlock',
-                  titleHe: questionSet.groupLabelHe,
-                  questions: questionSet.questions.map((q) => ({
-                    id: q.id,
-                    textHe: q.questionHe,
-                    text_he: q.questionHe,
-                    optionsHe: q.options?.map(o => o.labelHe),
-                    options_he: q.options?.map(o => o.labelHe),
-                    suggestedAnswers: q.suggestedAnswers,
-                    type: q.type,
-                  })),
-                  submitLabelHe: hasMore ? 'Submit & Next Set' : 'Submit & Finalize',
-                  submitLabel_he: hasMore ? 'Submit & Next Set' : 'Submit & Finalize',
-                  showFreeText: true,
-                  freeTextTitleHe: 'הערות נוספות',
-                  freeTextPromptHe: 'כל דבר נוסף שתרצה להוסיף...',
-                  autoRun: false,
-                }}
-                conversationId={conversationId}
-                projectId={projectId}
-                disabled={isProcessing}
-              />
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={handleRegenerateQuestions}
-                  disabled={isProcessing}
-                  className="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Regenerate Questions
-                </button>
-                <button
-                  onClick={handleFinalizeNow}
-                  disabled={isProcessing}
-                  className="flex-1 px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  Skip to Finalize
-                </button>
+              <div className="space-y-4">
+                {questionSet.questions.map((q) => {
+                  const answerState = answers[q.id] ?? { selected: '', freeText: '' }
+                  const suggested = q.suggestedAnswers ?? []
+                  const options = q.options ?? []
+                  const allOptions = [...options, ...suggested].filter((opt) => Boolean(opt?.value))
+                  const allowDontKnow = q.allowDontKnow !== false
+                  return (
+                    <div key={q.id} className="border border-slate-200 rounded-lg p-4 bg-white">
+                      <div className="flex items-start gap-2">
+                        <p className="text-sm font-medium text-slate-800 flex-1">{q.questionHe}</p>
+                        {q.blockingLevel === 'blocker' && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">Blocker</span>
+                        )}
+                      </div>
+
+                      {allOptions.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {q.type === 'multi' ? (
+                            <>
+                              {allOptions.map((opt) => {
+                                const selectedValues = String(answerState.selected ?? '')
+                                  .split(',')
+                                  .map((item) => item.trim())
+                                  .filter(Boolean);
+                                return (
+                                  <label key={`${q.id}-${opt.value}`} className="flex items-center gap-2 text-sm text-slate-700">
+                                    <input
+                                      type="checkbox"
+                                      value={opt.value}
+                                      checked={selectedValues.includes(opt.value)}
+                                      onChange={() => toggleQuestionMultiValue(q.id, opt.value)}
+                                      disabled={isProcessing || answerState.selected === '__DONT_KNOW__'}
+                                    />
+                                    <span>{opt.labelHe}</span>
+                                  </label>
+                                );
+                              })}
+                              {allowDontKnow && (
+                                <label className="flex items-center gap-2 text-sm text-slate-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={answerState.selected === '__DONT_KNOW__'}
+                                    onChange={(e) => setQuestionSelected(q.id, e.target.checked ? '__DONT_KNOW__' : '')}
+                                    disabled={isProcessing}
+                                  />
+                                  <span>I don&apos;t know (let the AI infer)</span>
+                                </label>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {allOptions.map((opt) => (
+                                <label key={`${q.id}-${opt.value}`} className="flex items-center gap-2 text-sm text-slate-700">
+                                  <input
+                                    type="radio"
+                                    name={`q-${q.id}`}
+                                    value={opt.value}
+                                    checked={answerState.selected === opt.value}
+                                    onChange={(e) => setQuestionSelected(q.id, e.target.value)}
+                                    disabled={isProcessing}
+                                  />
+                                  <span>{opt.labelHe}</span>
+                                </label>
+                              ))}
+                              {allowDontKnow && (
+                                <label className="flex items-center gap-2 text-sm text-slate-700">
+                                  <input
+                                    type="radio"
+                                    name={`q-${q.id}`}
+                                    value="__DONT_KNOW__"
+                                    checked={answerState.selected === '__DONT_KNOW__'}
+                                    onChange={(e) => setQuestionSelected(q.id, e.target.value)}
+                                    disabled={isProcessing}
+                                  />
+                                  <span>I don&apos;t know (let the AI infer)</span>
+                                </label>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      <textarea
+                        className="mt-3 w-full min-h-24 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none resize-y"
+                        placeholder="Free text answer..."
+                        value={answerState.freeText}
+                        onChange={(e) => setQuestionFreeText(q.id, e.target.value)}
+                        disabled={isProcessing}
+                      />
+                    </div>
+                  )
+                })}
+
+                <div className="border border-slate-200 rounded-lg p-4 bg-white">
+                  <p className="text-sm font-medium text-slate-800 mb-2">Additional notes for this set</p>
+                  <textarea
+                    className="w-full min-h-24 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none resize-y"
+                    placeholder="Anything else to add for this question set..."
+                    value={setFreeText}
+                    onChange={(e) => setSetFreeText(e.target.value)}
+                    disabled={isProcessing}
+                  />
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => handleAnswerSubmit(questionSet as QuestionSet, hasMore)}
+                    disabled={isProcessing}
+                    className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Next set of Questions
+                  </button>
+                  <button
+                    onClick={handleRegenerateQuestions}
+                    disabled={isProcessing}
+                    className="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Regenerate Questions
+                  </button>
+                  <button
+                    onClick={handleFinalizeNow}
+                    disabled={isProcessing}
+                    className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Finalize
+                  </button>
+                </div>
               </div>
             </div>
-          ) : null}
+          )}
         </div>
       </div>
     );
@@ -409,35 +664,35 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
                   label="Planning Elements"
                   phase="elements"
                   status={getPhaseStatus('elements')}
-                  onRerun={() => handleRerunPhase('elements')}
+                  onRerun={() => handleRerunPhase('elements', getPhaseStatus('elements'))}
                   disabled={isProcessing}
                 />
                 <FinalizePhaseRow
                   label="Breaking Down Tasks"
                   phase="tasks"
                   status={getPhaseStatus('tasks')}
-                  onRerun={() => handleRerunPhase('tasks')}
+                  onRerun={() => handleRerunPhase('tasks', getPhaseStatus('tasks'))}
                   disabled={isProcessing}
                 />
                 <FinalizePhaseRow
                   label="Building Budget"
                   phase="budget"
                   status={getPhaseStatus('budget')}
-                  onRerun={() => handleRerunPhase('budget')}
+                  onRerun={() => handleRerunPhase('budget', getPhaseStatus('budget'))}
                   disabled={isProcessing}
                 />
                 <FinalizePhaseRow
                   label="Resolving Pricing"
                   phase="pricing"
                   status={getPhaseStatus('pricing')}
-                  onRerun={() => handleRerunPhase('pricing')}
+                  onRerun={() => handleRerunPhase('pricing', getPhaseStatus('pricing'))}
                   disabled={isProcessing}
                 />
                 <FinalizePhaseRow
                   label="Auditing & Validation"
                   phase="audit"
                   status={getPhaseStatus('audit')}
-                  onRerun={() => handleRerunPhase('audit')}
+                  onRerun={() => handleRerunPhase('audit', getPhaseStatus('audit'))}
                   disabled={isProcessing}
                 />
               </div>
@@ -565,14 +820,12 @@ function FinalizePhaseRow({
       }`}>
         {label}
       </span>
-      {(status === 'success' || status === 'failed') && (
+      {(status === 'running' || status === 'success' || status === 'failed') && (
         <button
           onClick={onRerun}
           disabled={disabled}
           className="px-3 py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          🔄 Rerun
-        </button>
+        >{status === 'running' ? 'Restart Run' : 'Rerun'}</button>
       )}
     </div>
   );

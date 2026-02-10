@@ -242,9 +242,9 @@ async function buildNextSet(args: {
   const scopedAfterCursor =
     projectBlockers.length === 0 && cursor
       ? scoped.filter((qa) => {
-          const key = String(qa.orderKey ?? '')
-          return key && key.localeCompare(cursor) > 0
-        })
+        const key = String(qa.orderKey ?? '')
+        return key && key.localeCompare(cursor) > 0
+      })
       : scoped
   const effectiveScoped = scopedAfterCursor.length > 0 ? scopedAfterCursor : scoped
   const sortedScoped = [...effectiveScoped].sort((a, b) => {
@@ -567,28 +567,43 @@ export const createQuestion = mutation({
     questionHe: v.string(),
     groupKey: v.string(),
     groupLabelHe: v.string(),
+    questionKey: v.optional(v.string()),
+    questionType: v.optional(v.union(v.literal('text'), v.literal('number'), v.literal('date'), v.literal('single'), v.literal('multi'), v.literal('toggle'))),
+    sectionPath: v.optional(v.array(v.string())),
     blockingLevel: v.optional(v.string()),
+    scopeType: v.optional(v.union(v.literal('global'), v.literal('project'), v.literal('element'), v.literal('task'), v.literal('section'))),
+    scopeKey: v.optional(v.string()),
+    orderKey: v.optional(v.string()),
+    followUp: v.optional(v.boolean()),
     options: v.optional(v.any()),
     suggestedAnswers: v.optional(v.any()),
+    allowDontKnow: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const now = Date.now()
+    const scopeType = args.scopeType ?? 'global'
+    const resolvedScopeKey =
+      typeof args.scopeKey === 'string' && args.scopeKey.trim()
+        ? args.scopeKey.trim()
+        : scopeType === 'element'
+          ? 'element_unknown'
+          : '__global__'
     await ctx.db.insert('qaPairs', {
       projectId: args.projectId,
-      runId: args.runId,
       question_he: args.questionHe,
-      questionKey: `planning.${args.groupKey}.${now}`,
-      groupKey: args.groupKey,
-      groupLabelHe: args.groupLabelHe,
+      questionKey: args.questionKey ?? `planning.${args.groupKey}.${now}`,
       status: 'open',
-      questionType: 'text',
+      questionType: args.questionType ?? 'text',
       options: args.options,
       suggestedAnswers: args.suggestedAnswers,
-      scopeType: 'global',
-      scopeKey: '__global__',
+      allowDontKnow: args.allowDontKnow ?? true,
+      scopeType,
+      scopeKey: resolvedScopeKey,
+      sectionPath: args.sectionPath ?? [args.groupKey],
       blockingLevel: args.blockingLevel ?? 'helpful',
+      orderKey: args.orderKey,
       createdFrom: 'system',
-      followUp: true,
+      followUp: args.followUp ?? true,
       createdAt: now,
       version: 1,
     })
@@ -619,6 +634,54 @@ export const getAllAnswers = query({
   },
 })
 
+// Helper: Get all resolved answers for a project (used by projectPlanning.initiatePlanning)
+export const getResolvedAnswers = query({
+  args: {
+    projectId: v.id('projects'),
+  },
+  handler: async (ctx, args) => {
+    const qas = await ctx.db
+      .query('qaPairs')
+      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+      .collect();
+
+    return qas
+      .filter((qa) => isResolvedStatus(qa.status) || hasAnswer(qa))
+      .map((qa) => ({
+        id: qa._id,
+        questionHe: qa.question_he ?? '',
+        answer: qa.answer ?? qa.answerText ?? qa.answer_he ?? '',
+        status: qa.status ?? 'open',
+        groupKey: (qa as any).groupKey,
+        blockingLevel: qa.blockingLevel,
+        scopeType: qa.scopeType ?? null,
+        elementId: qa.elementId ?? null,
+      }));
+  },
+})
+
+// Helper: Get all QA pairs for a project (used by projectPlanning.regenerateQuestions)
+export const getAllQAPairs = query({
+  args: {
+    projectId: v.id('projects'),
+  },
+  handler: async (ctx, args) => {
+    const qas = await ctx.db
+      .query('qaPairs')
+      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+      .collect();
+
+    return qas.map((qa) => ({
+      id: qa._id,
+      questionHe: qa.question_he ?? '',
+      answer: qa.answer ?? qa.answerText ?? qa.answer_he ?? '',
+      status: qa.status ?? 'open',
+      groupKey: (qa as any).groupKey,
+      blockingLevel: qa.blockingLevel,
+    }));
+  },
+})
+
 // Helper: Dismiss all questions for a run
 export const dismissAllForRun = mutation({
   args: {
@@ -639,3 +702,33 @@ export const dismissAllForRun = mutation({
     }
   },
 });
+
+export const listOpenForProject = query({
+  args: {
+    projectId: v.id('projects'),
+  },
+  handler: async (ctx, args) => {
+    const qas = await ctx.db
+      .query('qaPairs')
+      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+      .filter((q) => q.eq(q.field('status'), 'open'))
+      .collect()
+
+    return qas.map((qa) => ({
+      id: qa._id,
+    }))
+  },
+})
+
+export const dismissQuestionById = mutation({
+  args: {
+    qaPairId: v.id('qaPairs'),
+  },
+  handler: async (ctx, args) => {
+    const qa = await ctx.db.get(args.qaPairId)
+    if (!qa || qa.status === 'dismissed') return
+    await ctx.db.patch(args.qaPairId, {
+      status: 'dismissed',
+    })
+  },
+})

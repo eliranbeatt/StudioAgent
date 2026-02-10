@@ -58,6 +58,34 @@ export const zQaPairOption = z.object({
   labelHe: z.string().optional(),
 });
 
+const zPlanningQuestion = z.object({
+  questionKey: z.string(),
+  questionHe: z.string(),
+  questionType: z.enum(['text', 'number', 'date', 'single', 'multi', 'toggle']).optional(),
+  options: z.array(z.object({
+    value: z.string(),
+    labelHe: z.string().optional(),
+  })).optional(),
+  blockingLevel: z.enum(['blocker', 'helpful', 'optional']).optional(),
+  scopeType: z.enum(['global', 'project', 'element', 'task', 'section']).optional(),
+  scopeKey: z.string().optional(),
+  sectionPath: z.array(z.string()).optional(),
+  orderKey: z.string().optional(),
+  followUp: z.boolean().optional(),
+  triggeredBy: z.string().optional(),
+  allowDontKnow: z.boolean().optional(),
+  allowFreeText: z.boolean().optional(),
+}).passthrough();
+
+const zPlanningQuestionGroup = z.object({
+  key: z.string(),
+  labelHe: z.string().optional(),
+  phase: z.enum(['blockers', 'per_element', 'project_level', 'suggestions']).optional(),
+  phaseOrder: z.number().optional(),
+  setOrder: z.number().optional(),
+  questions: z.array(zPlanningQuestion),
+}).passthrough();
+
 export const zQaPairFast = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -113,24 +141,17 @@ export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {
     planMd: z.string(),
     summaryHe: z.string().optional(),
     assumptionsHe: z.array(z.string()).optional(),
-    questions: z.array(z.object({
-      questionKey: z.string(),
-      questionHe: z.string(),
-      questionType: z.enum(['text', 'number', 'date', 'single', 'multi', 'toggle']).optional(),
-      options: z.array(z.object({
-        value: z.string(),
-        labelHe: z.string().optional(),
-      })).optional(),
-      blockingLevel: z.enum(['blocker', 'helpful', 'optional']).optional(),
-      scopeType: z.enum(['global', 'project', 'element', 'task', 'section']).optional(),
-      scopeKey: z.string().optional(),
-      sectionPath: z.array(z.string()).optional(),
-      orderKey: z.string().optional(),
-      followUp: z.boolean().optional(),
-      triggeredBy: z.string().optional(),
-    })),
+    planningAnalysis: z.any().optional(),
+    questionGroups: z.array(zPlanningQuestionGroup).optional(),
+    questions: z.array(zPlanningQuestion).optional(),
     meta: z.any().optional(),
-  }).passthrough(),
+  }).passthrough().refine((value) => {
+    const groupsCount = Array.isArray(value.questionGroups) ? value.questionGroups.length : 0
+    const questionsCount = Array.isArray(value.questions) ? value.questions.length : 0
+    return groupsCount > 0 || questionsCount > 0
+  }, {
+    message: 'draft.plan_and_questions must include questionGroups or questions',
+  }),
   'plan.elements': z.object({
     elements: z.array(z.any()),
     meta: z.any().optional(),

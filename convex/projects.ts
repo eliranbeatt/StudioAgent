@@ -544,7 +544,6 @@ export const deleteProject = mutation({
       "changeOrders",
       "changeSets",
       "auditLogs",
-      "graveyardItems",
       "suggestedElements",
       "shareLinks",
       "printFiles",

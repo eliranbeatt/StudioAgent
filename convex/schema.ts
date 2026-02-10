@@ -1036,38 +1036,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_changeSet", ["changeSetId"]),
 
-
-  // Graveyard Items
-  graveyardItems: defineTable({
-    projectId: v.id("projects"),
-    title: v.string(),
-    description: v.optional(v.string()),
-
-    // The "dead" item causing this entry (e.g. an element being deleted, or a high-value purchase being voided)
-    sourceRef: v.optional(v.object({
-      id: v.string(),
-      type: v.string(), // "element", "purchase", "task", etc.
-    })),
-
-    // Options for the user
-    options: v.array(v.object({
-      id: v.string(), // "keep", "discard", "archive"
-      label: v.string(),
-      // If chosen, these ops are applied as a new ChangeSet
-      patchOps: v.optional(v.array(v.any())),
-    })),
-
-    status: v.union(v.literal("pending"), v.literal("resolved"), v.literal("dismissed")),
-    resolvedAt: v.optional(v.number()),
-    resolvedBy: v.optional(v.id("users")),
-    chosenOptionId: v.optional(v.string()),
-
-    createdAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_status", ["projectId", "status"]),
-
-
   // Quote Versions
 
 
@@ -2093,6 +2061,7 @@ export default defineSchema({
       error: v.optional(v.string()),
       completedAt: v.optional(v.number()),
     }))),
+    planningFinalizeCheckpoint: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
     finishedAt: v.optional(v.number()),

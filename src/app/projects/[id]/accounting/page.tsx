@@ -6,7 +6,6 @@ import { Id } from "../../../../../convex/_generated/dataModel";
 import Link from "next/link";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ChevronDown,
@@ -120,7 +119,6 @@ export default function AccountingPage({
   const summary = useQuery(api.financials.getFinancialSummary, { projectId });
   const accounting = useQuery(api.financials.getAccountingView, { projectId });
   const tasksData = useQuery(api.tasks.listForProject, { projectId });
-  const pendingGraveyard = useQuery(api.graveyard.listPending, { projectId });
   const addMaterialLine = useMutation(api.accounting.addMaterialLine);
   const updateMaterialLine = useMutation(api.accounting.updateMaterialLine);
   const deleteMaterialLine = useMutation(api.accounting.deleteMaterialLine);
@@ -131,7 +129,6 @@ export default function AccountingPage({
   const [tab, setTab] = useState<TabKey>("summary");
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
-  const pendingCount = pendingGraveyard?.length ?? 0;
   const taskOptions: TaskOption[] = tasksData?.tasks ?? [];
 
   if (!summary || !accounting) {
@@ -266,29 +263,6 @@ export default function AccountingPage({
           </div>
         </div>
       </div>
-
-      {pendingCount > 0 ? (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="text-amber-600 mt-1" size={18} />
-            <div>
-              <div className="text-sm font-semibold text-amber-800">
-                {pendingCount} graveyard decision
-                {pendingCount > 1 ? "s" : ""} pending
-              </div>
-              <div className="text-xs text-amber-700">
-                Resolve flagged changes before saving changes.
-              </div>
-            </div>
-          </div>
-          <Link
-            href={`/projects/${projectId}/graveyard`}
-            className="text-xs font-semibold text-amber-800 hover:text-amber-900"
-          >
-            Review
-          </Link>
-        </div>
-      ) : null}
 
       <div className="flex items-center gap-3 mb-6">
         <TabButton active={tab === "summary"} onClick={() => setTab("summary")}>

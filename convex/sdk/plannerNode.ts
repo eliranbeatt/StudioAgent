@@ -52,6 +52,18 @@ export const draftPlanAndQuestions = action({
     }
 
     const data: any = validated.data
+    const questionGroups = Array.isArray(data.questionGroups) ? data.questionGroups : []
+    const flatQuestionsFromGroups = questionGroups.flatMap((group: any) =>
+      (Array.isArray(group?.questions) ? group.questions : []).map((q: any) => ({
+        ...q,
+        sectionPath: Array.isArray(q?.sectionPath) && q.sectionPath.length > 0
+          ? q.sectionPath
+          : [String(group?.phase ?? group?.key ?? 'general')],
+      }))
+    )
+    const questions = Array.isArray(data.questions) && data.questions.length > 0
+      ? data.questions
+      : flatQuestionsFromGroups
     const saveResult = await ctx.runMutation(internal['sdk/planner'].upsertPlanAndSeed, {
       projectId: args.projectId,
       runId: args.runId,
@@ -59,14 +71,15 @@ export const draftPlanAndQuestions = action({
       planMd: data.planMd,
       summaryHe: data.summaryHe,
       assumptionsHe: Array.isArray(data.assumptionsHe) ? data.assumptionsHe : [],
-      questions: Array.isArray(data.questions) ? data.questions : [],
+      questions,
     })
 
     return {
       summaryHe: data.summaryHe ?? 'Draft plan created',
       planMd: data.planMd,
       assumptionsHe: data.assumptionsHe ?? [],
-      questions: data.questions ?? [],
+      questionGroups,
+      questions,
       meta: {
         ...data.meta,
         planVersion: saveResult.planVersion,
@@ -75,4 +88,3 @@ export const draftPlanAndQuestions = action({
     }
   },
 })
-

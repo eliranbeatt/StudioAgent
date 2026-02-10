@@ -23,6 +23,10 @@ export const get = query({
           details: p.details,
           status: p.status,
           location: p.location,
+          notes: p.notes,
+          description: p.description,
+          summary: p.summary,
+          brainDumpRaw: p.brainDumpRaw,
         };
       }
     }
@@ -255,16 +259,17 @@ export const addKnowledge = mutation({
     priority: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    // For now, store in project briefNotes or a knowledge table
-    // This is a simple implementation; you may want to enhance it
+    // Persist lightweight knowledge on the project record using schema-safe fields.
     const project = await ctx.db.get(args.projectId);
     if (!project) return;
 
-    const existing = (project.briefNotes ?? '');
-    const newNotes = existing + `\n\n[${args.source}]: ${args.text}`;
+    const existing = (project.brainDumpRaw ?? '').trim();
+    const nextEntry = `[${args.source}]: ${args.text}`.trim();
+    const newNotes = existing ? `${existing}\n\n${nextEntry}` : nextEntry;
     
     await ctx.db.patch(args.projectId, {
-      briefNotes: newNotes,
+      brainDumpRaw: newNotes,
+      updatedAt: Date.now(),
     });
   },
 });

@@ -1690,43 +1690,85 @@ export const DRAFT_PLAN_AND_QUESTIONS_SYSTEM = `SYSTEM
 You are draft.plan_and_questions.
 
 Goal:
-- Produce an initial single-pass project plan markdown (PlanDoc v1).
-- Produce a deterministic first backlog of questions for progressive planning.
+- Produce a deterministic PlanDoc v1 and structured phased question sets for SDK planning.
+- First think through planning deeply from all provided context, then generate questions.
 
 Output rules:
 - Output valid JSON only.
 - ASCII keys only.
 - Human-facing text in Hebrew by default.
 
-Question ordering policy:
-1) global blockers first
-2) then element blockers by element order (if known)
-3) each scope should include blocker + helpful/optional questions where useful
+Required internal workflow (MUST follow before writing questions):
+1) Build normalized project understanding from all sources:
+   - project summary, notes, description, brain dump, files, prior QA.
+2) Extract and normalize element candidates in order.
+3) For each element, propose 2-4 production options (materials/build method/finish approach).
+4) Draft estimated task skeleton per element (design, production, logistics, install).
+5) Only then generate phased question sets to close critical gaps.
 
 Question rules:
 - Do not repeat already answered topics.
+- Do not repeat previously asked questionKeys from pastQA / existingQA.
 - Keep questions specific and actionable.
 - Include stable questionKey values.
+- Every question should support:
+  - structured options (multiple-choice style), and
+  - free text by default (UI supports this), and
+  - "I don't know" path (allowDontKnow=true).
+- Prefer 4-8 questions per set.
 
-Output JSON shape:
+Phase order (strict):
+1) blockers
+2) per_element (in detected element order)
+3) project_level
+4) suggestions
+
+Output JSON shape (strict):
 {
   "summaryHe": string,
   "planMd": string,
   "assumptionsHe": string[],
-  "questions": [
+  "planningAnalysis": {
+    "elements": [
+      {
+        "elementKey": string,
+        "nameHe": string,
+        "order": number,
+        "descriptionHe": string,
+        "productionOptionsHe": string[],
+        "estimatedTasksHe": string[]
+      }
+    ]
+  },
+  "questionGroups": [
     {
-      "questionKey": string,
-      "questionHe": string,
-      "questionType": "text"|"number"|"date"|"single"|"multi"|"toggle",
-      "options": [{ "value": string, "labelHe": string }],
-      "blockingLevel": "blocker"|"helpful"|"optional",
-      "scopeType": "global"|"project"|"element"|"task"|"section",
-      "scopeKey": string,
-      "sectionPath": string[],
-      "orderKey": string,
-      "followUp": boolean
+      "key": string,
+      "labelHe": string,
+      "phase": "blockers"|"per_element"|"project_level"|"suggestions",
+      "phaseOrder": number,
+      "setOrder": number,
+      "questions": [
+        {
+          "questionKey": string,
+          "questionHe": string,
+          "questionType": "text"|"number"|"date"|"single"|"multi"|"toggle",
+          "options": [{ "value": string, "labelHe": string }],
+          "blockingLevel": "blocker"|"helpful"|"optional",
+          "scopeType": "global"|"project"|"element"|"task"|"section",
+          "scopeKey": string,
+          "sectionPath": string[],
+          "orderKey": string,
+          "followUp": boolean,
+          "allowDontKnow": boolean,
+          "allowFreeText": boolean
+        }
+      ]
     }
-  ]
+  ],
+  "meta": {
+    "phaseOrder": ["blockers", "per_element", "project_level", "suggestions"],
+    "questionsPerSet": { "min": 4, "max": 8 }
+  }
 }
 END SYSTEM
 `;

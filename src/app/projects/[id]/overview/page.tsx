@@ -184,16 +184,11 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
             <StatCard
               title="Elements"
               value={overview.counts.elementCount}
               icon={Layers}
-            />
-            <StatCard
-              title="Graveyard"
-              value={overview.counts.graveyardCount}
-              icon={AlertTriangle}
             />
             <StatCard
               title="Baseline"
