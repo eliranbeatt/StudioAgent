@@ -98,6 +98,7 @@ import type * as sdk_knowledgeMutations from "../sdk/knowledgeMutations.js";
 import type * as sdk_llm from "../sdk/llm.js";
 import type * as sdk_planner from "../sdk/planner.js";
 import type * as sdk_plannerNode from "../sdk/plannerNode.js";
+import type * as sdk_projectPlanning from "../sdk/projectPlanning.js";
 import type * as sdk_prompts from "../sdk/prompts.js";
 import type * as sdk_queries from "../sdk/queries.js";
 import type * as sdk_questions from "../sdk/questions.js";
@@ -242,6 +243,7 @@ declare const fullApi: ApiFromModules<{
   "sdk/llm": typeof sdk_llm;
   "sdk/planner": typeof sdk_planner;
   "sdk/plannerNode": typeof sdk_plannerNode;
+  "sdk/projectPlanning": typeof sdk_projectPlanning;
   "sdk/prompts": typeof sdk_prompts;
   "sdk/queries": typeof sdk_queries;
   "sdk/questions": typeof sdk_questions;

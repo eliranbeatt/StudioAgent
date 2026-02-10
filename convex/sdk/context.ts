@@ -1,5 +1,5 @@
 // convex/sdk/context.ts
-import { query } from '../_generated/server';
+import { query, mutation } from '../_generated/server';
 import { v } from 'convex/values';
 
 export const get = query({
@@ -243,5 +243,28 @@ export const get = query({
     }
 
     return res;
+  },
+});
+
+// Add knowledge/context to a project
+export const addKnowledge = mutation({
+  args: {
+    projectId: v.id('projects'),
+    text: v.string(),
+    source: v.string(),
+    priority: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // For now, store in project briefNotes or a knowledge table
+    // This is a simple implementation; you may want to enhance it
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return;
+
+    const existing = (project.briefNotes ?? '');
+    const newNotes = existing + `\n\n[${args.source}]: ${args.text}`;
+    
+    await ctx.db.patch(args.projectId, {
+      briefNotes: newNotes,
+    });
   },
 });

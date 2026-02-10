@@ -48,7 +48,8 @@ export async function runJsonCompletion(args: {
   try {
     parsed = JSON.parse(content);
   } catch (error) {
-    throw new Error('Invalid JSON from LLM');
+    console.error('Failed to parse LLM response as JSON:', content?.substring(0, 500));
+    throw new Error(`Invalid JSON from LLM: ${error instanceof Error ? error.message : String(error)}. Response preview: ${content?.substring(0, 200)}`);
   }
   return { parsed, raw: content };
 }

@@ -558,3 +558,84 @@ export const upsertVNextQuestionsBridge = mutation({
     return { created, updated, reusedResolved, total: args.questions.length }
   },
 })
+
+// Helper: Create a question for project planning
+export const createQuestion = mutation({
+  args: {
+    projectId: v.id('projects'),
+    runId: v.id('sdkRuns'),
+    questionHe: v.string(),
+    groupKey: v.string(),
+    groupLabelHe: v.string(),
+    blockingLevel: v.optional(v.string()),
+    options: v.optional(v.any()),
+    suggestedAnswers: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    await ctx.db.insert('qaPairs', {
+      projectId: args.projectId,
+      runId: args.runId,
+      question_he: args.questionHe,
+      questionKey: `planning.${args.groupKey}.${now}`,
+      groupKey: args.groupKey,
+      groupLabelHe: args.groupLabelHe,
+      status: 'open',
+      questionType: 'text',
+      options: args.options,
+      suggestedAnswers: args.suggestedAnswers,
+      scopeType: 'global',
+      scopeKey: '__global__',
+      blockingLevel: args.blockingLevel ?? 'helpful',
+      createdFrom: 'system',
+      followUp: true,
+      createdAt: now,
+      version: 1,
+    })
+  },
+})
+
+// Helper: Get all answers for a run
+export const getAllAnswers = query({
+  args: {
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) return [];
+
+    const qas = await ctx.db
+      .query('qaPairs')
+      .withIndex('by_project', (q) => q.eq('projectId', run.projectId))
+      .collect();
+
+    return qas
+      .filter((qa) => hasAnswer(qa))
+      .map((qa) => ({
+        questionHe: qa.question_he ?? '',
+        answer: qa.answer ?? qa.answerText ?? qa.answer_he ?? '',
+        groupKey: (qa as any).groupKey,
+      }));
+  },
+})
+
+// Helper: Dismiss all questions for a run
+export const dismissAllForRun = mutation({
+  args: {
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) return;
+
+    const qas = await ctx.db
+      .query('qaPairs')
+      .withIndex('by_project', (q) => q.eq('projectId', run.projectId))
+      .filter((q) => q.eq(q.field('status'), 'open'))
+      .collect();
+
+    for (const qa of qas) {
+      await ctx.db.patch(qa._id, { status: 'dismissed' });
+    }
+  },
+});
