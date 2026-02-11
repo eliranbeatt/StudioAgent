@@ -12,6 +12,16 @@ export interface TracingParams {
     runId?: string;
 }
 
+function normalizeReasoningEffort(model: string, effort: unknown) {
+    if (model.toLowerCase().includes("gpt-5")) {
+        return "medium";
+    }
+    if (typeof effort !== "string") return undefined;
+    const normalized = effort.trim().toLowerCase();
+    if (!normalized) return undefined;
+    return normalized;
+}
+
 export const logTrace = internalMutation({
     args: {
         projectId: v.optional(v.id("projects")),
@@ -85,6 +95,7 @@ export async function completionWithTracing(
 ) {
     const provider = params.provider || "openai";
     const start = Date.now();
+    const normalizedReasoningEffort = normalizeReasoningEffort(params.model, params.reasoning_effort);
 
     // We only support OpenAI for now in this wrapper
     if (provider !== "openai") {
@@ -104,7 +115,7 @@ export async function completionWithTracing(
         temperature: params.temperature,
         stream: params.stream,
         tool_choice: params.tool_choice,
-        reasoning_effort: params.reasoning_effort,
+        reasoning_effort: normalizedReasoningEffort,
         prompt_cache_key: params.prompt_cache_key,
         prompt_cache_retention: params.prompt_cache_retention,
         traceMeta: params.traceMeta
@@ -113,6 +124,18 @@ export async function completionWithTracing(
     try {
         // Construct basic options, filtering out provider
         const { provider: _, traceMeta, ...openAIOptions } = params;
+        if (
+            typeof (openAIOptions as any).max_tokens === 'number' &&
+            typeof (openAIOptions as any).max_completion_tokens === 'number'
+        ) {
+            // Prefer the newer token limit field when both are accidentally supplied.
+            delete (openAIOptions as any).max_tokens;
+        }
+        if (normalizedReasoningEffort) {
+            (openAIOptions as any).reasoning_effort = normalizedReasoningEffort;
+        } else {
+            delete (openAIOptions as any).reasoning_effort;
+        }
 
         // Fix parameters for reasoning models (o1/o3/gpt-5)
         const m = params.model.toLowerCase();

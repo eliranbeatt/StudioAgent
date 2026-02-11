@@ -10,6 +10,8 @@ import { Id } from '../_generated/dataModel';
 
 const FINALIZE_PHASES = ['elements', 'tasks', 'budget', 'pricing', 'audit', 'repair', 'package'] as const
 type FinalizePhase = typeof FINALIZE_PHASES[number]
+type PlanningMode = 'separated' | 'combined'
+type PlanningLlmConfig = { model: 'gpt-5-mini' | 'gpt-5.2'; reasoningEffort: 'medium' }
 
 const TOOL_BY_PHASE: Record<Exclude<FinalizePhase, 'audit' | 'repair' | 'package'>, string> = {
   elements: 'plan.elements',
@@ -23,6 +25,26 @@ function nextFinalizePhase(phase: FinalizePhase | null | undefined): FinalizePha
   const index = FINALIZE_PHASES.indexOf(phase)
   if (index < 0 || index >= FINALIZE_PHASES.length - 1) return null
   return FINALIZE_PHASES[index + 1]
+}
+
+function resolvePlanningMode(value: unknown): PlanningMode {
+  return value === 'combined' ? 'combined' : 'separated'
+}
+
+function nextFinalizePhaseForMode(phase: FinalizePhase | null | undefined, mode: PlanningMode): FinalizePhase | null {
+  if (!phase) return FINALIZE_PHASES[0]
+  if (mode === 'combined') {
+    if (phase === 'elements') return 'pricing'
+    if (phase === 'tasks' || phase === 'budget') return 'pricing'
+  }
+  return nextFinalizePhase(phase)
+}
+
+function planningLlmConfigForMode(mode: PlanningMode): PlanningLlmConfig {
+  if (mode === 'combined') {
+    return { model: 'gpt-5.2', reasoningEffort: 'medium' }
+  }
+  return { model: 'gpt-5-mini', reasoningEffort: 'medium' }
 }
 
 function defaultFinalizePolicy() {
@@ -217,6 +239,11 @@ export const getPlanningSession = query({
       currentStep: inferredStep,
       questionSetIndex: existingRun.planningQuestionSetIndex ?? 0,
       finalizationPhases: existingRun.planningFinalizationPhases ?? [],
+      planningMode:
+        (existingRun as any)?.planningFinalizeCheckpoint?.planningMode === 'combined' ||
+        (existingRun as any)?.planningFinalizeCheckpoint?.planningMode === 'separated'
+          ? (existingRun as any).planningFinalizeCheckpoint.planningMode
+          : undefined,
     };
   },
 });
@@ -532,6 +559,32 @@ export const getQuestionSets = query({
   },
 });
 
+export const setPlanningModePreference = mutation({
+  args: {
+    runId: v.id('sdkRuns'),
+    planningMode: v.union(v.literal('separated'), v.literal('combined')),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId)
+    if (!run) return
+    const planningLlm = planningLlmConfigForMode(args.planningMode)
+    const existingCheckpoint =
+      (run as any).planningFinalizeCheckpoint && typeof (run as any).planningFinalizeCheckpoint === 'object'
+        ? (run as any).planningFinalizeCheckpoint
+        : {}
+    await ctx.db.patch(args.runId, {
+      planningFinalizeCheckpoint: {
+        ...existingCheckpoint,
+        planningMode: args.planningMode,
+        planningModel: planningLlm.model,
+        planningReasoningEffort: planningLlm.reasoningEffort,
+        updatedAt: Date.now(),
+      },
+      updatedAt: Date.now(),
+    })
+  },
+})
+
 // Submit answers for current question set
 export const submitAnswers = mutation({
   args: {
@@ -654,6 +707,7 @@ export const startFinalizePhases = action({
     runId: v.id('sdkRuns'),
     conversationId: v.id('agentConversations'),
     startFromPhase: v.optional(v.string()),
+    planningMode: v.optional(v.union(v.literal('separated'), v.literal('combined'))),
   },
   handler: async (ctx, args) => {
     const run = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
@@ -669,11 +723,18 @@ export const startFinalizePhases = action({
     const startPhase = (FINALIZE_PHASES.includes(requestedPhase as FinalizePhase)
       ? (requestedPhase as FinalizePhase)
       : FINALIZE_PHASES[0])
+    const planningMode = resolvePlanningMode(
+      args.planningMode ?? (run as any)?.planningFinalizeCheckpoint?.planningMode
+    )
+    const planningLlm = planningLlmConfigForMode(planningMode)
     const checkpoint = {
       version: 1,
       status: 'running',
       startedAt: Date.now(),
       updatedAt: Date.now(),
+      planningMode,
+      planningModel: planningLlm.model,
+      planningReasoningEffort: planningLlm.reasoningEffort,
       nextPhase: startPhase,
       lastCompletedPhase: null as string | null,
       latestUserText: '',
@@ -732,11 +793,16 @@ export const runFinalizePhase = internalAction({
     if (String(rawCheckpoint?.status ?? '') === 'cancelled') {
       return { ok: false, cancelled: true, error: 'Finalization cancelled by user' }
     }
+    const checkpointMode = resolvePlanningMode(rawCheckpoint?.planningMode)
+    const defaultPlanningLlm = planningLlmConfigForMode(checkpointMode)
     const checkpoint: any = {
       version: 1,
       status: 'running',
       startedAt: Number(rawCheckpoint?.startedAt ?? Date.now()),
       updatedAt: Date.now(),
+      planningMode: checkpointMode,
+      planningModel: String(rawCheckpoint?.planningModel ?? defaultPlanningLlm.model),
+      planningReasoningEffort: String(rawCheckpoint?.planningReasoningEffort ?? defaultPlanningLlm.reasoningEffort),
       nextPhase: String(rawCheckpoint?.nextPhase ?? FINALIZE_PHASES[0]),
       lastCompletedPhase: rawCheckpoint?.lastCompletedPhase ?? null,
       latestUserText: String(rawCheckpoint?.latestUserText ?? ''),
@@ -752,6 +818,7 @@ export const runFinalizePhase = internalAction({
     const phase = (FINALIZE_PHASES.includes(explicitPhase as FinalizePhase)
       ? (explicitPhase as FinalizePhase)
       : (checkpoint.nextPhase as FinalizePhase))
+    const planningMode = resolvePlanningMode(checkpoint.planningMode)
     if (!phase || !FINALIZE_PHASES.includes(phase)) {
       return { ok: false, error: 'Invalid phase' }
     }
@@ -808,8 +875,49 @@ export const runFinalizePhase = internalAction({
         userText: String(checkpoint.latestUserText ?? ''),
         finalizePolicy: defaultFinalizePolicy(),
       }
+      const planningLlm = {
+        model: String(checkpoint.planningModel ?? 'gpt-5.2'),
+        reasoningEffort: String(checkpoint.planningReasoningEffort ?? 'medium'),
+      }
 
       if (phase === 'elements' || phase === 'tasks' || phase === 'budget' || phase === 'pricing') {
+        if (planningMode === 'combined' && phase === 'elements') {
+          const combinedTools = ['plan.elements', 'plan.tasks', 'cost.build_budget'] as const
+          const phaseByTool: Record<(typeof combinedTools)[number], 'elements' | 'tasks' | 'budget'> = {
+            'plan.elements': 'elements',
+            'plan.tasks': 'tasks',
+            'cost.build_budget': 'budget',
+          }
+          for (const combinedToolId of combinedTools) {
+            const combinedResult = await runTool(combinedToolId, {
+              ...baseInput,
+              context: checkpoint.context,
+              llm: planningLlm,
+            })
+            checkpoint.toolOutputs[combinedToolId] = combinedResult
+            await ctx.runAction(internal.sdk.api.persistFinalizeStageCheckpoint, {
+              projectId: args.projectId,
+              conversationId: args.conversationId,
+              runId: args.runId,
+              stageKey: phaseByTool[combinedToolId],
+              toolOutputs: { ...checkpoint.toolOutputs },
+              source: `${combinedToolId}.combined`,
+            })
+            if (phaseByTool[combinedToolId] !== 'elements') {
+              await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+                runId: args.runId,
+                phase: phaseByTool[combinedToolId],
+                status: 'success',
+              })
+            }
+            checkpoint.context = await ctx.runQuery(api.sdk.api.contextGet, {
+              projectId: args.projectId,
+              packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
+            })
+          }
+        } else if (planningMode === 'combined' && (phase === 'tasks' || phase === 'budget')) {
+          // Combined mode already generated tasks+budget during elements phase.
+        } else {
         const runBeforeTool = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
         if (String((runBeforeTool as any)?.planningFinalizeCheckpoint?.status ?? '') === 'cancelled') {
           await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
@@ -824,6 +932,7 @@ export const runFinalizePhase = internalAction({
         const result = await runTool(toolId, {
           ...baseInput,
           context: checkpoint.context,
+          llm: phase === 'pricing' ? undefined : planningLlm,
         })
         checkpoint.toolOutputs[toolId] = result
         await ctx.runAction(internal.sdk.api.persistFinalizeStageCheckpoint, {
@@ -838,6 +947,7 @@ export const runFinalizePhase = internalAction({
           projectId: args.projectId,
           packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
         })
+        }
       } else if (phase === 'audit') {
         const auditResult = await runTool('audit.project', {
           context: checkpoint.context,
@@ -926,7 +1036,7 @@ export const runFinalizePhase = internalAction({
         }
       }
 
-      const nextPhase = nextFinalizePhase(phase)
+      const nextPhase = nextFinalizePhaseForMode(phase, planningMode)
       const runBeforeContinue = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
       const wasCancelled = String((runBeforeContinue as any)?.planningFinalizeCheckpoint?.status ?? '') === 'cancelled'
       checkpoint.lastCompletedPhase = phase
@@ -1007,6 +1117,7 @@ export const finalizeProject = action({
     projectId: v.id('projects'),
     runId: v.id('sdkRuns'),
     conversationId: v.id('agentConversations'),
+    planningMode: v.optional(v.union(v.literal('separated'), v.literal('combined'))),
   },
   handler: async (ctx, args) => {
     await ctx.runMutation(api.sdk.projectPlanning.savePlanningState, {
@@ -1017,6 +1128,7 @@ export const finalizeProject = action({
       projectId: args.projectId,
       runId: args.runId,
       conversationId: args.conversationId,
+      planningMode: args.planningMode,
     })
   },
 });
@@ -1096,10 +1208,15 @@ export const rerunPhase = action({
     conversationId: v.id('agentConversations'),
     phase: v.string(), // 'elements', 'tasks', 'budget', 'pricing'
     forceNewRun: v.optional(v.boolean()),
+    planningMode: v.optional(v.union(v.literal('separated'), v.literal('combined'))),
   },
   handler: async (ctx, args) => {
     let targetRunId = args.runId
     const forceNewRun = args.forceNewRun === true
+    const sourceRun = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
+    const planningMode = resolvePlanningMode(
+      args.planningMode ?? (sourceRun as any)?.planningFinalizeCheckpoint?.planningMode
+    )
 
     if (forceNewRun) {
       const started = await ctx.runMutation(api.sdk.api.startRun, {
@@ -1121,10 +1238,36 @@ export const rerunPhase = action({
       runId: targetRunId,
       conversationId: args.conversationId,
       startFromPhase: args.phase,
+      planningMode,
     })
     return { success: true, runId: targetRunId, restartedFromPhase: args.phase }
   },
 });
+
+export const getFinalizeCheckpointInfo = query({
+  args: {
+    runId: v.id('sdkRuns'),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId)
+    if (!run) return null
+    const checkpoint = (run as any).planningFinalizeCheckpoint ?? {}
+    const modeRaw = checkpoint?.planningMode
+    const mode =
+      modeRaw === 'combined' || modeRaw === 'separated'
+        ? (modeRaw as PlanningMode)
+        : undefined
+    return {
+      mode,
+      status: typeof checkpoint?.status === 'string' ? checkpoint.status : undefined,
+      model: typeof checkpoint?.planningModel === 'string' ? checkpoint.planningModel : undefined,
+      reasoningEffort:
+        typeof checkpoint?.planningReasoningEffort === 'string'
+          ? checkpoint.planningReasoningEffort
+          : undefined,
+    }
+  },
+})
 
 export const cancelFinalizePhase = action({
   args: {
@@ -1178,6 +1321,60 @@ export const getFinalReport = query({
     const run = await ctx.db.get(args.runId)
     if (!run) return null
     return (run as any).planningFinalizeCheckpoint?.finalReport ?? null
+  },
+})
+
+export const compareRecentRunsByMode = query({
+  args: {
+    projectId: v.id('projects'),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 30, 1), 200)
+    const runs = await ctx.db
+      .query('sdkRuns')
+      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+      .order('desc')
+      .take(limit)
+
+    const planningRuns = runs.filter((run: any) => run.runMode === 'PLANNING_FLOW')
+    const normalized = planningRuns.map((run: any) => {
+      const checkpoint = (run as any).planningFinalizeCheckpoint ?? {}
+      const mode = resolvePlanningMode(checkpoint?.planningMode)
+      const finishedAt = typeof run.finishedAt === 'number' ? run.finishedAt : null
+      const durationMs = finishedAt ? Math.max(0, finishedAt - run.createdAt) : null
+      return {
+        runId: run._id,
+        mode,
+        status: run.status,
+        createdAt: run.createdAt,
+        finishedAt,
+        durationMs,
+      }
+    })
+
+    const byMode: Record<'separated' | 'combined', { total: number; completed: number; failed: number; running: number; avgDurationMs: number | null }> = {
+      separated: { total: 0, completed: 0, failed: 0, running: 0, avgDurationMs: null },
+      combined: { total: 0, completed: 0, failed: 0, running: 0, avgDurationMs: null },
+    }
+    const durationBuckets: Record<'separated' | 'combined', number[]> = { separated: [], combined: [] }
+
+    for (const run of normalized) {
+      byMode[run.mode].total += 1
+      if (run.status === 'completed') byMode[run.mode].completed += 1
+      if (run.status === 'failed') byMode[run.mode].failed += 1
+      if (run.status === 'running') byMode[run.mode].running += 1
+      if (typeof run.durationMs === 'number') durationBuckets[run.mode].push(run.durationMs)
+    }
+
+    for (const mode of ['separated', 'combined'] as const) {
+      const values = durationBuckets[mode]
+      byMode[mode].avgDurationMs = values.length > 0
+        ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+        : null
+    }
+
+    return { runs: normalized, byMode }
   },
 })
 

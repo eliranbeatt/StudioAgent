@@ -7,6 +7,7 @@ export async function runJsonCompletion(args: {
   systemPrompt: string;
   userContent: string;
   model: string;
+  reasoningEffort?: string;
   temperature?: number;
   maxTokens?: number;
   maxCompletionTokens?: number;
@@ -19,13 +20,20 @@ export async function runJsonCompletion(args: {
     throw new Error('Missing OPENAI_API_KEY');
   }
 
+  const tokenLimitArgs: Record<string, number> = {}
+  if (typeof args.maxCompletionTokens === 'number') {
+    tokenLimitArgs.max_completion_tokens = args.maxCompletionTokens
+  } else if (typeof args.maxTokens === 'number') {
+    tokenLimitArgs.max_tokens = args.maxTokens
+  }
+
   const response = await completionWithTracing(
     args.ctx,
     {
       model: args.model,
+      reasoning_effort: args.reasoningEffort,
       temperature: args.temperature,
-      max_tokens: args.maxTokens,
-      max_completion_tokens: args.maxCompletionTokens,
+      ...tokenLimitArgs,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: args.systemPrompt },

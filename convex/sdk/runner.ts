@@ -159,6 +159,16 @@ function coerceToJson(input: any) {
   return JSON.stringify(input ?? {}, null, 2);
 }
 
+function resolveRuntimeLlm(input: any, toolDef: any) {
+  const llm = input && typeof input === 'object' ? (input as any).llm : undefined
+  const model = typeof llm?.model === 'string' && llm.model.trim() ? llm.model.trim() : toolDef.model
+  const reasoningEffort =
+    typeof llm?.reasoningEffort === 'string' && llm.reasoningEffort.trim()
+      ? llm.reasoningEffort.trim()
+      : toolDef.reasoningEffort
+  return { model, reasoningEffort }
+}
+
 async function buildToolHandlers(args: {
   ctx: any;
   projectId: string;
@@ -259,13 +269,15 @@ async function runAgentInternal(args: {
     { role: 'system', content: toolDef.systemPrompt },
     { role: 'user', content: coerceToJson(args.input) },
   ];
+  const runtimeLlm = resolveRuntimeLlm(args.input, toolDef);
 
   let finalContent: string | null = null;
   for (let i = 0; i < MAX_TOOL_LOOPS; i++) {
     const response = await completionWithTracing(
       args.ctx,
       {
-        model: toolDef.model,
+        model: runtimeLlm.model,
+        reasoning_effort: runtimeLlm.reasoningEffort,
         temperature: toolDef.temperature,
         max_tokens: toolDef.maxTokens,
         max_completion_tokens: toolDef.maxCompletionTokens,
@@ -374,11 +386,13 @@ export async function runToolInternal(args: {
     result = await runAgentInternal(args);
   } else {
     const userMessage = coerceToJson(args.input);
+    const runtimeLlm = resolveRuntimeLlm(args.input, toolDef);
     const { parsed } = await runJsonCompletion({
       ctx: args.ctx,
       systemPrompt: toolDef.systemPrompt,
       userContent: userMessage,
-      model: toolDef.model,
+      model: runtimeLlm.model,
+      reasoningEffort: runtimeLlm.reasoningEffort,
       temperature: toolDef.temperature,
       maxTokens: toolDef.maxTokens,
       maxCompletionTokens: toolDef.maxCompletionTokens,

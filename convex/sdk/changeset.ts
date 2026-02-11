@@ -183,7 +183,6 @@ export const compile = action({
           userContent: `${JSON.stringify(payload)}${retryHint}`,
           model: attempt.model,
           temperature: 0.1,
-          maxTokens: attempt.maxTokens,
           maxCompletionTokens: attempt.maxTokens,
           projectId: args.projectId,
           conversationId: args.conversationId as any,
