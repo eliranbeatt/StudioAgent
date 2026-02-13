@@ -325,6 +325,7 @@ export const submitBrainDump = mutation({
     const { runId } = await ctx.runMutation(api.sdk.api.startRun, {
       projectId: args.projectId,
       conversationId,
+      mode: 'planning',
     });
 
     // Set run mode to PLANNING_FLOW
@@ -374,6 +375,7 @@ export const initiatePlanning = action({
     const result = await ctx.runMutation(api.sdk.api.startRun, {
       projectId: args.projectId,
       conversationId,
+      mode: 'planning',
     });
     runId = result.runId;
 
@@ -1222,6 +1224,7 @@ export const rerunPhase = action({
       const started = await ctx.runMutation(api.sdk.api.startRun, {
         projectId: args.projectId,
         conversationId: args.conversationId,
+        mode: 'planning',
       })
       targetRunId = started.runId
 

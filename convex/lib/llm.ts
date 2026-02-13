@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import OpenAI from "openai";
 import { internal } from "../_generated/api";
 import { calculateCost } from "./pricing";
+import { normalizeReasoningEffort } from "./reasoning";
 
 export type LLMProvider = "openai" | "gemini" | "anthropic";
 
@@ -10,16 +11,6 @@ export interface TracingParams {
     projectId?: string; // ID string, to be safe
     conversationId?: string;
     runId?: string;
-}
-
-function normalizeReasoningEffort(model: string, effort: unknown) {
-    if (model.toLowerCase().includes("gpt-5")) {
-        return "medium";
-    }
-    if (typeof effort !== "string") return undefined;
-    const normalized = effort.trim().toLowerCase();
-    if (!normalized) return undefined;
-    return normalized;
 }
 
 export const logTrace = internalMutation({
@@ -147,10 +138,13 @@ export async function completionWithTracing(
                 delete openAIOptions.max_tokens;
             }
 
-            // Reasoning models include thought trace in token count, so standard 2k-4k limits are too low.
-            // If explicit limit is provided but it's low (< 10k), boost it to 25k to avoid truncation.
-            if ((openAIOptions as any).max_completion_tokens && (openAIOptions as any).max_completion_tokens < 10000) {
-                console.log(`[LLM] Boosting max_completion_tokens from ${(openAIOptions as any).max_completion_tokens} to 25000 for reasoning model`);
+            // Only boost completion budget for classic reasoning families.
+            if (
+                (m.startsWith('o1') || m.startsWith('o3')) &&
+                (openAIOptions as any).max_completion_tokens &&
+                (openAIOptions as any).max_completion_tokens < 10000
+            ) {
+                console.log(`[LLM] Boosting max_completion_tokens from ${(openAIOptions as any).max_completion_tokens} to 25000 for model ${params.model}`);
                 (openAIOptions as any).max_completion_tokens = 25000;
             }
             // Fix temperature: reasoning models often strictly require 1 (or don't support it)

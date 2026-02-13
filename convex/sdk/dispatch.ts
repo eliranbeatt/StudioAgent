@@ -11,6 +11,12 @@ import { searchWeb } from '../lib/webSearch';
 import { completionWithTracing } from '../lib/llm';
 import { runVNextStage } from './vnext/pipeline';
 import { getNextVNextStage, normalizeVNextStage } from './vnext/stages';
+import {
+  allowedToolsForChatIntent,
+  detectChatIntent,
+  packsForIntent,
+  shouldAttachSuggestions,
+} from './chatPolicy';
 
 const MAX_TOOL_LOOPS = 6;
 
@@ -62,30 +68,6 @@ function normalizeReviewIssues(review: any): any[] {
   return [...errors, ...warnings];
 }
 
-function detectSeverity(item: any): 'critical' | 'high' | 'medium' | 'low' {
-  const raw = String(
-    item?.severity ??
-    item?.level ??
-    item?.risk ??
-    item?.priority ??
-    ''
-  ).toLowerCase();
-  if (raw.includes('critical')) return 'critical';
-  if (raw.includes('high')) return 'high';
-  if (raw.includes('low')) return 'low';
-  if (raw.includes('medium')) return 'medium';
-
-  const text = String(item?.messageHe ?? item?.message ?? item?.labelHe ?? '').toLowerCase();
-  if (
-    text.includes('אין כלל') ||
-    text.includes('missing') ||
-    text.includes('duplicate') ||
-    text.includes('סתירה')
-  ) {
-    return 'high';
-  }
-  return 'medium';
-}
 
 function summarizeChangeSetCoverage(changeSet: any) {
   const ops = Array.isArray(changeSet?.ops) ? changeSet.ops : [];
@@ -156,11 +138,108 @@ function buildFallbackSuggestionBlock(isPlanningRequest: boolean) {
   };
 }
 
+function clipText(value: any, maxLen: number) {
+  const text = String(value ?? '').trim();
+  if (!text) return undefined;
+  return text.length > maxLen ? `${text.slice(0, maxLen - 3)}...` : text;
+}
+
+function compactBootstrapForChat(intent: string | null, context: any) {
+  if (!context || typeof context !== 'object') return context;
+  const compact: any = {};
+  const maxElements = Number(process.env.SDK_CHAT_BOOTSTRAP_MAX_ELEMENTS ?? 8);
+  const maxTasks = Number(process.env.SDK_CHAT_BOOTSTRAP_MAX_TASKS ?? 18);
+  const maxLines = Number(process.env.SDK_CHAT_BOOTSTRAP_MAX_LINES ?? 12);
+
+  if (context.project) {
+    compact.project = {
+      id: context.project.id,
+      name: context.project.name,
+      stage: context.project.stage,
+      eventDate: context.project.eventDate,
+      status: context.project.status,
+      summary: clipText(context.project.summary, 500),
+      notes: clipText(context.project.notes, 350),
+    };
+  }
+
+  if (Array.isArray(context.elements)) {
+    compact.elements = context.elements.slice(0, maxElements).map((e: any) => ({
+      id: e.id,
+      title: e.title,
+      status: e.status,
+      type: e.type,
+      description: clipText(e.description, 220),
+    }));
+  }
+
+  if (Array.isArray(context.tasks)) {
+    compact.tasks = context.tasks.slice(0, maxTasks).map((t: any) => ({
+      id: t.id,
+      title: t.title,
+      elementId: t.elementId,
+      status: t.status,
+      workType: t.workType,
+      estimatedHours: t.estimatedHours,
+      description: clipText(t.description, 200),
+    }));
+  }
+
+  if (intent === 'project_read_qna' || intent === 'project_write_change' || intent === 'planning_request') {
+    if (Array.isArray(context.materialLines)) {
+      compact.materialLines = context.materialLines.slice(0, maxLines).map((line: any) => ({
+        id: line.id,
+        taskId: line.taskId,
+        elementId: line.elementId,
+        title: line.title,
+        sectionKey: line.sectionKey,
+        plannedTotalCost: line.plannedTotalCost,
+      }));
+    }
+    if (Array.isArray(context.workLines)) {
+      compact.workLines = context.workLines.slice(0, maxLines).map((line: any) => ({
+        id: line.id,
+        taskId: line.taskId,
+        elementId: line.elementId,
+        title: line.title,
+        workType: line.workType,
+        hours: line.hours,
+        plannedTotalCost: line.plannedTotalCost,
+      }));
+    }
+  }
+
+  if (context.quote) {
+    compact.quote = {
+      id: context.quote.id,
+      titleHe: clipText(context.quote.titleHe, 160),
+      createdAt: context.quote.createdAt,
+    };
+  }
+
+  return compact;
+}
+
+function toPromptMessage(m: any, isChatEditRun: boolean) {
+  const text = String(m?.text ?? '').trim();
+  if (text) return { role: m.role, content: text };
+  if (!isChatEditRun && m?.blocks) {
+    return { role: m.role, content: JSON.stringify(m.blocks) };
+  }
+  const blocks = Array.isArray(m?.blocks) ? m.blocks : [];
+  const chatLike = blocks
+    .map((b: any) => String(b?.markdownHe ?? b?.contentHe ?? b?.titleHe ?? '').trim())
+    .filter(Boolean)
+    .join('\n');
+  return { role: m.role, content: chatLike || '' };
+}
+
 function ensureMinimumBlocks(args: {
   blocks: any;
   summaryHe?: string;
   rawText?: string;
   isPlanningRequest: boolean;
+  includeSuggestions?: boolean;
 }) {
   const blocks = Array.isArray(args.blocks) ? args.blocks.filter(Boolean) : [];
   if (blocks.length > 0) return blocks;
@@ -182,12 +261,15 @@ function ensureMinimumBlocks(args: {
   }
 
   if (sourceText) {
-    return [
-      { type: 'ChatBlock', markdownHe: sourceText },
-      buildFallbackSuggestionBlock(args.isPlanningRequest),
-    ];
+    if (!args.includeSuggestions) {
+      return [{ type: 'ChatBlock', markdownHe: sourceText }];
+    }
+    return [{ type: 'ChatBlock', markdownHe: sourceText }, buildFallbackSuggestionBlock(args.isPlanningRequest)];
   }
 
+  if (!args.includeSuggestions) {
+    return [{ type: 'ChatBlock', markdownHe: 'יש לי תשובה קצרה. איך להמשיך?' }];
+  }
   return [buildFallbackSuggestionBlock(args.isPlanningRequest)];
 }
 
@@ -466,6 +548,9 @@ export const runNext = action({
       runId: args.runId,
     });
     if (!run) throw new Error('Run not found');
+    const runMode = run.runMode ?? 'PLANNING_FLOW';
+    const isPlanningRun = runMode === 'PLANNING_FLOW';
+    const shouldUseVNextPipeline = useVNextPipeline && isPlanningRun;
 
     if (
       run.status === 'paused' ||
@@ -476,13 +561,21 @@ export const runNext = action({
       return { status: run.status };
     }
 
-    // Handle waiting states - return early to avoid silent loops.
+    // Waiting states are hard-blocking only for planning flow.
     if (run.status === 'blocked' || run.status === 'needs_input') {
+      if (!isPlanningRun && args.userMessage && args.userMessage !== '__continue__') {
+        await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+          runId: args.runId,
+          status: 'running',
+          lastError: undefined,
+        });
+      } else {
       return {
         status: run.status,
         lastError: run.lastError,
         pendingChangeSetId: run.pendingChangeSetId,
       };
+      }
     }
 
     if (args.userMessage && args.userMessage !== '__continue__') {
@@ -498,7 +591,7 @@ export const runNext = action({
       return { status: 'awaiting_approval', pendingChangeSetId: run.pendingChangeSetId };
     }
 
-    if (useVNextPipeline) {
+    if (shouldUseVNextPipeline) {
       let effectiveRun = run;
       if (args.userMessage === '__continue__') {
         const currentStage = normalizeVNextStage(run.stageKey);
@@ -620,49 +713,95 @@ export const runNext = action({
       currentAgentName: 'orchestrator',
     });
 
+    const historyLimit = 50;
     const history = await ctx.runQuery(sdkApi.listMessages, {
       conversationId: args.conversationId,
-      limit: 50,
+      limit: historyLimit,
     });
 
     const isPlanningRequest = (text: string): boolean => {
       const patterns = [
-        '×ª×›× ×Ÿ', 'plan', '×”×ª×—×œ', 'start', '×¦×•×¨', 'create', '×‘× ×”', 'build',
-        '×¢×©×”', 'do', '×”×›×Ÿ', 'prepare', '×ª×¢×©×”', '×™××œ×œ×”', '×§×“×™×ž×”', 'go',
-        '××œ×ž× ×˜×™×', 'elements', '×ž×©×™×ž×•×ª', 'tasks', '×ª×§×¦×™×‘', 'budget',
-        '×”×¦×¢×ª ×ž×—×™×¨', 'quote', '×ª×ž×—×•×¨', 'pricing'
+        'plan',
+        'planning',
+        'start plan',
+        'create plan',
+        'build budget',
+        'budget',
+        'quote',
+        'elements',
+        'tasks',
+        'תכנון',
+        'תכנן',
+        'תקציב',
       ];
       const lower = (text || '').toLowerCase();
-      return patterns.some(p => lower.includes(p.toLowerCase()));
+      return patterns.some((p) => lower.includes(p.toLowerCase()));
     };
 
     const lastUserMsg = args.userMessage ||
       history.filter((m: any) => m.role === 'user').slice(-1)[0]?.text || '';
-    const shouldForceTools = isPlanningRequest(lastUserMsg);
-    const strictFullPlanMode = shouldForceTools;
+    const isChatEditRun = runMode === 'CHAT_EDIT';
+    const chatIntent = isChatEditRun ? detectChatIntent(lastUserMsg) : null;
+    const shouldForceTools = !isChatEditRun && isPlanningRequest(lastUserMsg);
+    const strictFullPlanMode = !isChatEditRun && shouldForceTools;
 
-    const bootstrapContext = await ctx.runQuery(sdkApi.contextGet, {
-      projectId: args.projectId,
-      packs: ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa'],
-    });
+    if (isChatEditRun) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'chat_intent_detected',
+        payload: { intent: chatIntent, userMessage: lastUserMsg.slice(0, 250) },
+      });
+    }
+
+    const bootstrapPacks = isChatEditRun
+      ? []
+      : ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa'];
+    const shouldBootstrapContext = bootstrapPacks.length > 0 && (!isChatEditRun || chatIntent !== 'chat_smalltalk');
+    const bootstrapContext = shouldBootstrapContext
+      ? await ctx.runQuery(sdkApi.contextGet, {
+        projectId: args.projectId,
+        packs: bootstrapPacks,
+      })
+      : null;
+
+    if (isChatEditRun) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'chat_context_fetch',
+        payload: {
+          intent: chatIntent,
+          packs: bootstrapPacks,
+          fetched: Boolean(bootstrapContext),
+        },
+      });
+    }
+
+    const promptBootstrapContext = bootstrapContext;
 
     const messages: any[] = [
       { role: 'system', content: orchestrator.systemPrompt },
       {
         role: 'system',
-        content: `PROJECT CONTEXT (bootstrap, may be partial):\n${JSON.stringify(bootstrapContext, null, 2)}`,
+        content: isChatEditRun
+          ? 'Chat mode policy: concise Hebrew responses. For any non-smalltalk request, call context.get first with full packs ["project","elements","tasks","accounting","quote","knowledge","qa"] and only then answer from that context.'
+          : 'Planning mode policy: progress the planning pipeline with structured outputs.',
       },
-      ...history.map((m: any) => ({
-        role: m.role,
-        content: m.text ?? (m.blocks ? JSON.stringify(m.blocks) : ''),
-      })),
+      ...(promptBootstrapContext ? [{
+        role: 'system',
+        content: `PROJECT CONTEXT (bootstrap, may be partial):\n${JSON.stringify(promptBootstrapContext, null, 2)}`,
+      }] : []),
+      ...history.map((m: any) => toPromptMessage(m, isChatEditRun)),
     ];
 
     const toolHandlers: Record<string, ToolHandler> = {
       'context.get': async (input: any) =>
         ctx.runQuery(sdkApi.contextGet, {
           projectId: args.projectId,
-          packs: input?.packs ?? ['project', 'knowledge'],
+          packs: input?.packs ?? (
+            isChatEditRun
+              ? ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa']
+              : ['project', 'knowledge']
+          ),
           filters: input?.filters,
         }),
       'knowledge.summarize_or_update': async (input: any) =>
@@ -745,86 +884,6 @@ export const runNext = action({
               error: 'CHANGESET_INCOMPLETE',
               coverage,
             };
-          }
-          let auditResult: any = null;
-          try {
-            auditResult = await runToolInternal({
-              ctx,
-              projectId: args.projectId,
-              toolId: 'audit.project',
-              input: {
-                changeSetId: result.changeSetId,
-                changeSet: result.changeSet,
-              },
-              runId: args.runId,
-              conversationId: args.conversationId,
-            });
-          } catch (error: any) {
-            auditResult = { error: error?.message ?? String(error) };
-          }
-
-          if (auditResult && !auditResult.error) {
-            await ctx.runMutation(internal.sdk.telemetry.logEvent, {
-              runId: args.runId,
-              type: 'audit_snapshot',
-              payload: {
-                changeSetId: result.changeSetId,
-                summaryHe: auditResult.summaryHe,
-                findings: auditResult.findings ?? [],
-              },
-            });
-            blocks.push(
-              buildReviewBlock({
-                titleHe: 'ביקורת פרויקט',
-                summaryHe: auditResult.summaryHe,
-                risks: auditResult.findings,
-              })
-            );
-
-            const findings = Array.isArray(auditResult.findings) ? auditResult.findings : [];
-            const highOrCriticalFindings = findings.filter((item: any) => {
-              const severity = detectSeverity(item);
-              return severity === 'critical' || severity === 'high';
-            });
-            if (highOrCriticalFindings.length > 0) {
-              const fixIntents = Array.isArray(auditResult.fixIntents) ? auditResult.fixIntents : [];
-              if (!input?.autoRepairAttempt && fixIntents.length > 0) {
-                await ctx.runMutation(internal.sdk.telemetry.logEvent, {
-                  runId: args.runId,
-                  type: 'audit_autorepair_attempt',
-                  payload: {
-                    changeSetId: result.changeSetId,
-                    findingCount: findings.length,
-                    fixIntentCount: fixIntents.length,
-                  },
-                });
-                return await toolHandlers['changeset.compile']({
-                  intents: [...intents, ...fixIntents],
-                  context: input?.context,
-                  autoRepairAttempt: true,
-                });
-              }
-
-              await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
-                runId: args.runId,
-                status: 'blocked',
-                pendingChangeSetId: result.changeSetId,
-                approvalToken: undefined,
-                lastError: 'AUDIT_BLOCKED',
-              });
-              await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
-                conversationId: args.conversationId,
-                role: 'assistant',
-                text: 'הביקורת מצאה כשלים מהותיים. נדרש תיקון לפני אישור.',
-                blocks,
-                runId: args.runId,
-              });
-              return {
-                ...result,
-                error: 'AUDIT_BLOCKED',
-                auditFindings: findings,
-              };
-            }
           }
 
           const review = await ctx.runAction(sdkChangeset.review, {
@@ -918,13 +977,6 @@ export const runNext = action({
           throw new Error('ChangeSet review has unresolved issues');
         }
 
-        const auditEvent = await ctx.runQuery(internal.sdk.queries.getLatestAuditForRun, {
-          runId: args.runId,
-        });
-        if (!auditEvent) {
-          throw new Error('Audit required before apply');
-        }
-
         return await ctx.runAction(sdkChangeset.apply, {
           runId: args.runId,
           approvalToken: input?.approvalToken ?? '',
@@ -961,7 +1013,21 @@ export const runNext = action({
     }
 
     const toolNameMap = new Map<string, string>();
-    const tools = buildToolDefinitions(orchestrator.allowedTools ?? [], toolNameMap);
+    const allowedTools = isChatEditRun
+      ? allowedToolsForChatIntent(chatIntent ?? 'project_read_qna')
+      : (orchestrator.allowedTools ?? []);
+    const tools = buildToolDefinitions(allowedTools, toolNameMap);
+
+    if (isChatEditRun) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'chat_tool_policy',
+        payload: {
+          intent: chatIntent,
+          allowedTools,
+        },
+      });
+    }
 
     if (strictFullPlanMode) {
       const deterministicIntents: any[] = [];
@@ -1089,21 +1155,31 @@ export const runNext = action({
     let finalContent: string | null = null;
     let lastToolSignature: string | null = null;
     let repeatedToolSignatureCount = 0;
+    const maxToolLoops = isChatEditRun ? 2 : MAX_TOOL_LOOPS;
+    const runtimeModel = isChatEditRun ? 'gpt-5-mini' : orchestrator.model;
+    const runtimeReasoningEffort = isChatEditRun ? 'minimal' : orchestrator.reasoningEffort;
+    const runtimeMaxCompletionTokens = isChatEditRun
+      ? undefined
+      : orchestrator.maxCompletionTokens;
+    const runtimeMaxTokens = isChatEditRun
+      ? undefined
+      : orchestrator.maxTokens;
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('Missing OPENAI_API_KEY');
     }
-    for (let i = 0; i < MAX_TOOL_LOOPS; i++) {
-      // Force tool usage on first iteration if planning request detected
-      const toolChoice = (i === 0 && shouldForceTools) ? 'required' : 'auto';
+    for (let i = 0; i < maxToolLoops; i++) {
+      // Force tool usage on first iteration for planning or non-smalltalk chat
+      const shouldForceContextFetch = isChatEditRun && chatIntent !== 'chat_smalltalk';
+      const toolChoice = (i === 0 && (shouldForceTools || shouldForceContextFetch) && tools.length > 0) ? 'required' : 'auto';
 
       const response = await completionWithTracing(
         ctx,
         {
-          model: orchestrator.model,
-          reasoning_effort: orchestrator.reasoningEffort,
+          model: runtimeModel,
+          reasoning_effort: runtimeReasoningEffort,
           temperature: orchestrator.temperature,
-          max_tokens: orchestrator.maxTokens,
-          max_completion_tokens: orchestrator.maxCompletionTokens,
+          ...(typeof runtimeMaxTokens === 'number' ? { max_tokens: runtimeMaxTokens } : {}),
+          ...(typeof runtimeMaxCompletionTokens === 'number' ? { max_completion_tokens: runtimeMaxCompletionTokens } : {}),
           messages,
           tools,
           tool_choice: toolChoice,
@@ -1179,6 +1255,20 @@ export const runNext = action({
             payload: { toolName, toolArgs },
           });
 
+          if (isChatEditRun && !allowedTools.includes(toolName)) {
+            await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+              runId: args.runId,
+              type: 'chat_heavy_tool_blocked',
+              payload: { toolName, reason: 'not_allowed_for_intent', intent: chatIntent },
+            });
+            messages.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify({ error: `Tool ${toolName} is not allowed for current intent` }),
+            });
+            continue;
+          }
+
           let result: any;
           try {
             const handler = toolHandlers[toolName];
@@ -1200,7 +1290,7 @@ export const runNext = action({
           });
         }
 
-        if (!toolCalledCompile && pendingIntents.length > 0 && !autoCompiled) {
+        if (!isChatEditRun && !toolCalledCompile && pendingIntents.length > 0 && !autoCompiled) {
           autoCompiled = true;
           let compileResult: any;
           try {
@@ -1224,6 +1314,55 @@ export const runNext = action({
       break;
     }
 
+    if (!finalContent && isChatEditRun) {
+      const rescueResponse = await completionWithTracing(
+        ctx,
+        {
+          model: runtimeModel,
+          reasoning_effort: runtimeReasoningEffort,
+          ...(typeof runtimeMaxTokens === 'number' ? { max_tokens: runtimeMaxTokens } : {}),
+          messages: [
+            ...messages,
+            {
+              role: 'system',
+              content: 'Return a short direct Hebrew answer as plain text now. Do not call tools.',
+            },
+          ],
+          traceMeta: {
+            source: 'sdk',
+            runId: args.runId,
+            rescue: true,
+          },
+        },
+        {
+          projectId: args.projectId,
+          conversationId: args.conversationId,
+          runId: args.runId,
+        }
+      ) as any;
+
+      const rescueMessage = rescueResponse?.choices?.[0]?.message;
+      const rescueContent = String(rescueMessage?.content ?? '').trim();
+      if (rescueContent) {
+        finalContent = rescueContent;
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'chat_rescue_text_success',
+          payload: {
+            finishReason: rescueResponse?.choices?.[0]?.finish_reason ?? null,
+          },
+        });
+      } else {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'chat_rescue_text_empty',
+          payload: {
+            finishReason: rescueResponse?.choices?.[0]?.finish_reason ?? null,
+          },
+        });
+      }
+    }
+
     if (!finalContent) {
       finalContent = 'לא התקבלה תשובה. נסה שוב.';
     }
@@ -1240,7 +1379,9 @@ export const runNext = action({
     const hasActionableContent = (p: any): boolean => {
       const blocks = p?.blocks ?? [];
       const hasBlocks = blocks.some((b: any) =>
+        b?.type === 'ChatBlock' ||
         b?.type === 'QuestionsBlock' ||
+        b?.type === 'SuggestionBlock' ||
         b?.type === 'SuggestionsBlock' ||
         b?.type === 'ChangeSetBlock' ||
         b?.type === 'ReviewBlock'
@@ -1301,9 +1442,11 @@ export const runNext = action({
 
     // Check if agent needs recovery - use finalContent for pattern matching, not summaryHe
     // This is critical because when plain text is wrapped in ChatBlock, summaryHe becomes fallback
-    const needsRecovery = !hasActionableContent(parsed) ||
+    const needsRecovery = !isChatEditRun && (
+      !hasActionableContent(parsed) ||
       isRefusal(finalContent) ||
-      isTalkingAboutDoing(finalContent);
+      isTalkingAboutDoing(finalContent)
+    );
 
     // DYNAMIC RECOVERY: If agent gave refusal, lacks actionable content, or is just talking about doing
     if (needsRecovery) {
@@ -1380,6 +1523,15 @@ Then call changeset.compile to create the ChangeSet.`
             toolArgs = JSON.parse(toolCall.function.arguments || '{}');
           } catch { }
 
+          if (isChatEditRun && !allowedTools.includes(originalName)) {
+            await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+              runId: args.runId,
+              type: 'chat_heavy_tool_blocked',
+              payload: { toolName: originalName, reason: 'not_allowed_in_recovery', intent: chatIntent },
+            });
+            continue;
+          }
+
           const handler = toolHandlers[originalName];
           if (handler) {
             const result = await handler(toolArgs.input ?? toolArgs);
@@ -1433,11 +1585,22 @@ Then call changeset.compile to create the ChangeSet.`
       }
     }
 
+    if (isChatEditRun && typeof summaryHe === 'string' && summaryHe.length > 360) {
+      summaryHe = `${summaryHe.slice(0, 357)}...`;
+    }
+
+    const includeSuggestions = shouldAttachSuggestions({
+      intent: isChatEditRun ? (chatIntent ?? 'project_read_qna') : 'planning_flow',
+      userText: lastUserMsg,
+      summaryHe,
+    });
+
     blocks = ensureMinimumBlocks({
       blocks,
       summaryHe,
       rawText: finalContent ?? summaryHe,
       isPlanningRequest: shouldForceTools,
+      includeSuggestions,
     });
 
     await ctx.runMutation(internal.sdk.telemetry.appendMessage, {

@@ -41,6 +41,34 @@ export const listConversations = query({
   },
 });
 
+export const listChatConversations = query({
+  args: {
+    projectId: v.id('projects'),
+  },
+  handler: async (ctx, args) => {
+    const conversations = await ctx.db
+      .query('agentConversations')
+      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+      .order('desc')
+      .collect();
+
+    const out: any[] = [];
+    for (const conversation of conversations) {
+      const runs = await ctx.db
+        .query('sdkRuns')
+        .withIndex('by_conversation', (q) => q.eq('conversationId', conversation._id))
+        .order('desc')
+        .take(1);
+      const latest = runs[0];
+      if (latest?.runMode === 'CHAT_EDIT') {
+        out.push(conversation);
+      }
+    }
+
+    return out;
+  },
+});
+
 export const renameConversation = mutation({
   args: {
     conversationId: v.id('agentConversations'),
@@ -128,6 +156,9 @@ export const appendUserMessage = mutation({
       text: args.text,
       runId: args.runId,
       createdAt: Date.now(),
+    });
+    await ctx.db.patch(args.conversationId, {
+      updatedAt: Date.now(),
     });
   },
 });
@@ -302,14 +333,17 @@ export const startRun = mutation({
     conversationId: v.id('agentConversations'),
     input: v.optional(v.string()),
     shadowMode: v.optional(v.boolean()),
+    mode: v.optional(v.union(v.literal('chat'), v.literal('planning'))),
   },
   handler: async (ctx, args) => {
+    const runMode = args.mode === 'chat' ? 'CHAT_EDIT' : 'PLANNING_FLOW';
     const runId = await ctx.runMutation(internal.sdk.telemetry.createRun, {
       projectId: args.projectId,
       conversationId: args.conversationId,
       engine: 'sdk',
       currentAgent: 'orchestrator',
       shadowMode: args.shadowMode,
+      runMode,
     });
 
     if (args.input?.trim()) {
@@ -339,6 +373,7 @@ export const startVnextRun = mutation({
       engine: 'sdk',
       currentAgent: 'vnext_pipeline',
       shadowMode: args.shadowMode,
+      runMode: 'PLANNING_FLOW',
     })
 
     await ctx.runMutation(internal.sdk.telemetry.updateRunState, {

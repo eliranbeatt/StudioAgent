@@ -11,16 +11,19 @@ export const createRun = internalMutation({
     engine: v.string(), // "sdk"
     currentAgent: v.optional(v.string()),
     shadowMode: v.optional(v.boolean()),
+    runMode: v.optional(v.union(v.literal('PLANNING_FLOW'), v.literal('CHAT_EDIT'))),
   },
   handler: async (ctx, args) => {
+    const runMode = args.runMode ?? 'PLANNING_FLOW';
+    const initialStage = runMode === 'CHAT_EDIT' ? 'chat' : 'intake';
     return await ctx.db.insert('sdkRuns', {
       projectId: args.projectId,
       conversationId: args.conversationId,
       status: 'running',
       engine: 'sdk',
       currentAgentName: args.currentAgent || 'orchestrator',
-      stageKey: 'intake',
-      runMode: 'PLANNING_FLOW',
+      stageKey: initialStage,
+      runMode,
       progressCount: 0,
       noProgressCount: 0,
       dirtyAnswersCount: 0,
@@ -133,6 +136,9 @@ export const appendMessage = internalMutation({
       blocks: args.blocks,
       runId: args.runId,
       createdAt: Date.now(),
+    });
+    await ctx.db.patch(args.conversationId, {
+      updatedAt: Date.now(),
     });
   },
 });
