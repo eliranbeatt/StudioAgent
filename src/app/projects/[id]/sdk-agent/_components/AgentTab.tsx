@@ -6,66 +6,228 @@ import { api } from '../../../../../../convex/_generated/api'
 import { Id } from '../../../../../../convex/_generated/dataModel'
 import { Send } from 'lucide-react'
 import { ChatBlock } from '../../agent/_components/Blocks/ChatBlock'
-import { SuggestionBlock } from '../../agent/_components/Blocks/SuggestionBlock'
 import { ChangeSetBlock } from '../../agent/_components/Blocks/ChangeSetBlock'
 import { ReviewBlock } from '../../agent/_components/Blocks/ReviewBlock'
 import ChangeSetReviewDrawer from '../../agent/_components/ChangeSetReviewDrawer'
 import { ConversationsSidebar } from '../../_components/ConversationsSidebar'
+import { FlowElementsHealthPanel } from '../../flow-agent/_components/FlowElementsHealthPanel'
 import { SdkQuestionsBlock } from './SdkQuestionsBlock'
+import { SdkChangeSetsTray } from './SdkChangeSetsTray'
+import { SdkSuggestionBlock } from './SdkSuggestionBlock'
+import { BlocksPanelV2 } from './BlocksPanelV2'
+
+type SuggestionItem = {
+  id: string
+  labelHe: string
+}
+
+type QuestionsState = {
+  yesNo: 'yes' | 'no' | null
+  multiSelectedIds: string[]
+  multiOptions: SuggestionItem[]
+  yesNoQuestionHe: string
+  multiQuestionHe: string
+}
+
+type BlocksV2State = {
+  suggestions: {
+    items: SuggestionItem[]
+    selectedIds: string[]
+  }
+  questions: QuestionsState
+  chatDraft: string
+}
+
+const EMPTY_BLOCKS_STATE: BlocksV2State = {
+  suggestions: {
+    items: [],
+    selectedIds: [],
+  },
+  questions: {
+    yesNo: null,
+    multiSelectedIds: [],
+    multiOptions: [],
+    yesNoQuestionHe: 'האם נמשיך עם הכיוון הזה?',
+    multiQuestionHe: 'מה חשוב לטפל עכשיו?',
+  },
+  chatDraft: '',
+}
+
+function extractQuestionText(question: any) {
+  return String(
+    question?.textHe ??
+      question?.text_he ??
+      question?.questionHe ??
+      question?.question_he ??
+      question?.question ??
+      question?.labelHe ??
+      question?.label ??
+      ''
+  ).trim()
+}
+
+function extractOptions(question: any): SuggestionItem[] {
+  const raw = question?.optionsHe ?? question?.options_he ?? question?.options
+  if (!Array.isArray(raw)) return []
+  const out: SuggestionItem[] = []
+  for (let i = 0; i < raw.length; i += 1) {
+    const item = raw[i]
+    const label = String(item?.labelHe ?? item?.label ?? item?.value ?? item ?? '').trim()
+    if (!label) continue
+    out.push({
+      id: String(item?.value ?? item?.id ?? `opt_${i + 1}`).trim() || `opt_${i + 1}`,
+      labelHe: label,
+    })
+  }
+  return out
+}
+
+function normalizeSuggestions(block: any): SuggestionItem[] {
+  const source = Array.isArray(block?.suggestions)
+    ? block.suggestions
+    : Array.isArray(block?.items)
+      ? block.items
+      : []
+  const out: SuggestionItem[] = []
+  for (let i = 0; i < source.length; i += 1) {
+    const item = source[i]
+    const label = String(item?.labelHe ?? item?.label_he ?? item?.label ?? '').trim()
+    if (!label) continue
+    out.push({
+      id: String(item?.id ?? item?.actionKey ?? item?.payload?.action ?? `s_${i + 1}`),
+      labelHe: label,
+    })
+    if (out.length >= 3) break
+  }
+  return out
+}
+
+function normalizeQuestions(block: any): {
+  yesNoQuestionHe: string
+  multiQuestionHe: string
+  multiOptions: SuggestionItem[]
+} {
+  const questions = Array.isArray(block?.questions) ? block.questions : []
+  const q1 = questions[0] ?? null
+  const q2 = questions[1] ?? null
+
+  const q1Text = extractQuestionText(q1) || 'האם נמשיך עם הכיוון הזה?'
+  const q2Text = extractQuestionText(q2) || 'מה חשוב לטפל עכשיו?'
+  const q2Options = extractOptions(q2)
+  const fallbackOptions = extractOptions(q1)
+  const multiOptions = (q2Options.length > 0 ? q2Options : fallbackOptions).slice(0, 6)
+
+  return {
+    yesNoQuestionHe: q1Text,
+    multiQuestionHe: q2Text,
+    multiOptions,
+  }
+}
 
 export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
   const sdkApi = (api as any)['sdk/api'] ?? (api as any).sdk?.api
   const listConversationsQuery = sdkApi?.listChatConversations ?? sdkApi?.listConversations
   const [conversationId, setConversationId] = useState<Id<'agentConversations'> | null>(null)
-  const [input, setInput] = useState('')
   const [reviewChangeSetId, setReviewChangeSetId] = useState<Id<'changeSets'> | null>(null)
   const [isDispatching, setIsDispatching] = useState(false)
+  const [trayBusyId, setTrayBusyId] = useState<string | null>(null)
+  const [blocksState, setBlocksState] = useState<BlocksV2State>(EMPTY_BLOCKS_STATE)
   const creatingConversationRef = useRef(false)
   const creatingRunForRef = useRef<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
-  const conversations = useQuery(
-    listConversationsQuery,
-    projectId ? { projectId } : 'skip'
-  )
+  const featureFlags = useQuery(api.featureFlags.getAll)
+  const blocksV2Enabled = Boolean(featureFlags?.ff_blocks_v2)
+
+  const conversations = useQuery(listConversationsQuery, projectId ? { projectId } : 'skip')
 
   const createConversation = useMutation(api.sdk.api.createConversation)
   const renameConversation = useMutation(api.sdk.api.renameConversation)
   const deleteConversation = useMutation(api.sdk.api.deleteConversation)
   const startRun = useMutation(api.sdk.api.startRun)
   const runNext = useAction(api.sdk.dispatch.runNext)
+  const submitTurn = useAction((api as any).agentTurns.submitTurn)
   const approveChangeSet = useAction(api.sdk.api.approveChangeSet)
   const generateTitle = useAction(api.sdk.api.generateConversationTitle)
+  const applyChangeSet = useMutation(api.changeSets.applyChangeSet)
+  const discardChangeSet = useMutation(api.changeSets.discardChangeSet)
+  const listChangeSetsQuery = (api as any).changeSets?.listForProject
 
   const effectiveConversationId =
     conversationId ?? (conversations && conversations.length > 0 ? conversations[0]._id : null)
 
-  const runs = useQuery(
-    api.sdk.api.listRuns,
-    effectiveConversationId ? { conversationId: effectiveConversationId } : 'skip'
-  )
-  const chatRuns = useMemo(
-    () => (runs ?? []).filter((run: any) => run.runMode === 'CHAT_EDIT'),
-    [runs]
-  )
+  const runs = useQuery(api.sdk.api.listRuns, effectiveConversationId ? { conversationId: effectiveConversationId } : 'skip')
+  const chatRuns = useMemo(() => (runs ?? []).filter((run: any) => run.runMode === 'CHAT_EDIT'), [runs])
   const activeRun = chatRuns[0] ?? null
 
   const messages = useQuery(
     api.sdk.api.listMessages,
-    effectiveConversationId && activeRun
-      ? { conversationId: effectiveConversationId, runId: activeRun._id, limit: 100 }
-      : 'skip'
+    effectiveConversationId && activeRun ? { conversationId: effectiveConversationId, runId: activeRun._id, limit: 100 } : 'skip'
   )
+
+  const trayItems = useQuery(listChangeSetsQuery ?? 'skip', projectId && listChangeSetsQuery ? { projectId, limit: 80 } : 'skip')
+
+  const latestBlocks = useMemo(() => {
+    const all = Array.isArray(messages) ? messages : []
+    for (let i = all.length - 1; i >= 0; i -= 1) {
+      const msg = all[i]
+      if (msg?.role !== 'assistant') continue
+      if (!Array.isArray(msg?.blocks) || msg.blocks.length === 0) continue
+      return msg.blocks.map((rawBlock: any) => normalizeBlock(rawBlock))
+    }
+    return [] as any[]
+  }, [messages])
+
+  const latestSuggestions = useMemo(() => {
+    const suggestionBlock = latestBlocks.find(
+      (block: any) => block?.type === 'SuggestionBlock' || block?.type === 'SuggestionsBlock'
+    )
+    return suggestionBlock ? normalizeSuggestions(suggestionBlock) : []
+  }, [latestBlocks])
+
+  const latestQuestions = useMemo(() => {
+    const questionsBlock = latestBlocks.find((block: any) => block?.type === 'QuestionsBlock')
+    if (!questionsBlock) return null
+    return normalizeQuestions(questionsBlock)
+  }, [latestBlocks])
+
+  const blocksSignature = useMemo(() => {
+    const suggestionPart = latestSuggestions.map((item) => item.id).join('|')
+    const questionPart = latestQuestions
+      ? `${latestQuestions.yesNoQuestionHe}|${latestQuestions.multiQuestionHe}|${latestQuestions.multiOptions
+          .map((item) => item.id)
+          .join('|')}`
+      : ''
+    return `${suggestionPart}::${questionPart}`
+  }, [latestSuggestions, latestQuestions])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isDispatching])
 
+  useEffect(() => {
+    if (!blocksV2Enabled) return
+    setBlocksState((prev) => ({
+      ...prev,
+      suggestions: {
+        items: latestSuggestions,
+        selectedIds: [],
+      },
+      questions: {
+        yesNo: null,
+        multiSelectedIds: [],
+        multiOptions: latestQuestions?.multiOptions ?? [],
+        yesNoQuestionHe: latestQuestions?.yesNoQuestionHe ?? 'האם נמשיך עם הכיוון הזה?',
+        multiQuestionHe: latestQuestions?.multiQuestionHe ?? 'מה חשוב לטפל עכשיו?',
+      },
+    }))
+  }, [blocksV2Enabled, blocksSignature, latestSuggestions, latestQuestions])
+
   const handleCreateConversation = useCallback(async () => {
     const id = await createConversation({ projectId, title: 'New Session' })
     setConversationId(id)
     await startRun({ projectId, conversationId: id, mode: 'chat' })
-  }, [createConversation, startRun, projectId])
+  }, [createConversation, projectId, startRun])
 
   useEffect(() => {
     if (conversations === undefined) return
@@ -90,7 +252,73 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
     void startRun({ projectId, conversationId: effectiveConversationId, mode: 'chat' }).finally(() => {
       creatingRunForRef.current = null
     })
-  }, [effectiveConversationId, runs, chatRuns, projectId, startRun])
+  }, [chatRuns, effectiveConversationId, projectId, runs, startRun])
+
+  const hasStagedSelections =
+    blocksState.suggestions.selectedIds.length > 0 ||
+    blocksState.questions.yesNo !== null ||
+    blocksState.questions.multiSelectedIds.length > 0
+
+  const runStatus = activeRun?.status
+  const canSend = Boolean(activeRun) && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'
+
+  const resetStagedSelections = () => {
+    setBlocksState((prev) => ({
+      ...prev,
+      suggestions: {
+        ...prev.suggestions,
+        selectedIds: [],
+      },
+      questions: {
+        ...prev.questions,
+        yesNo: null,
+        multiSelectedIds: [],
+      },
+      chatDraft: '',
+    }))
+  }
+
+  const sendUserTurn = async () => {
+    if (!effectiveConversationId || !activeRun) return
+    const trimmed = blocksState.chatDraft.trim()
+    if (!trimmed && !hasStagedSelections) return
+
+    setIsDispatching(true)
+    try {
+      if (blocksV2Enabled) {
+        await submitTurn({
+          projectId,
+          conversationId: effectiveConversationId,
+          runId: activeRun._id,
+          stageId: String(activeRun.stageKey ?? 'chat'),
+          messageText: trimmed,
+          uiSelections: {
+            suggestionIds: blocksState.suggestions.selectedIds,
+            answers: {
+              yesNo: blocksState.questions.yesNo,
+              multiChoiceIds: blocksState.questions.multiSelectedIds,
+            },
+          },
+          clientMeta: {
+            uiVersion: 'blocks_v2',
+            locale: 'he-IL',
+            timestampMs: Date.now(),
+          },
+        })
+      } else {
+        const messageWithQueued = buildMessageWithQueuedInput(trimmed || 'apply queued updates', blocksState)
+        await runNext({
+          projectId,
+          conversationId: effectiveConversationId,
+          runId: activeRun._id,
+          userMessage: messageWithQueued,
+        })
+      }
+      resetStagedSelections()
+    } finally {
+      setIsDispatching(false)
+    }
+  }
 
   const handleRenameConversation = async (id: string, title: string) => {
     await renameConversation({ conversationId: id as Id<'agentConversations'>, title })
@@ -111,28 +339,91 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
     setConversationId(null)
   }
 
-  const sendUserMessage = async (text: string) => {
-    if (!effectiveConversationId || !activeRun || !text.trim()) return
-    setIsDispatching(true)
+  const handleToggleSuggestion = (id: string) => {
+    setBlocksState((prev) => {
+      const selected = prev.suggestions.selectedIds.includes(id)
+      return {
+        ...prev,
+        suggestions: {
+          ...prev.suggestions,
+          selectedIds: selected
+            ? prev.suggestions.selectedIds.filter((item) => item !== id)
+            : [...prev.suggestions.selectedIds, id],
+        },
+      }
+    })
+  }
+
+  const handleSetYesNo = (value: 'yes' | 'no') => {
+    setBlocksState((prev) => ({
+      ...prev,
+      questions: {
+        ...prev.questions,
+        yesNo: prev.questions.yesNo === value ? null : value,
+      },
+    }))
+  }
+
+  const handleToggleMulti = (id: string) => {
+    setBlocksState((prev) => {
+      const selected = prev.questions.multiSelectedIds.includes(id)
+      return {
+        ...prev,
+        questions: {
+          ...prev.questions,
+          multiSelectedIds: selected
+            ? prev.questions.multiSelectedIds.filter((item) => item !== id)
+            : [...prev.questions.multiSelectedIds, id],
+        },
+      }
+    })
+  }
+
+  const handleApplyChangeSet = async (changeSetId: Id<'changeSets'>) => {
+    setTrayBusyId(changeSetId)
     try {
-      await runNext({
-        projectId,
-        conversationId: effectiveConversationId,
-        runId: activeRun._id,
-        userMessage: text.trim(),
-      })
+      const isPendingCurrent =
+        activeRun?.status === 'awaiting_approval' &&
+        activeRun?.pendingChangeSetId === changeSetId &&
+        Boolean(activeRun?.approvalToken)
+      if (isPendingCurrent) {
+        await approveChangeSet({
+          runId: activeRun!._id,
+          approvalToken: activeRun!.approvalToken!,
+        })
+        return
+      }
+      await applyChangeSet({ changeSetId })
     } finally {
-      setIsDispatching(false)
+      setTrayBusyId(null)
     }
   }
 
-  const handleSend = async () => {
-    await sendUserMessage(input)
-    setInput('')
+  const handleDiscardChangeSet = async (changeSetId: Id<'changeSets'>) => {
+    setTrayBusyId(changeSetId)
+    try {
+      const isPendingCurrent = activeRun?.status === 'awaiting_approval' && activeRun?.pendingChangeSetId === changeSetId
+      if (isPendingCurrent) {
+        if (effectiveConversationId && activeRun) {
+          setIsDispatching(true)
+          try {
+            await runNext({
+              projectId,
+              conversationId: effectiveConversationId,
+              runId: activeRun._id,
+              userMessage: 'no',
+            })
+          } finally {
+            setIsDispatching(false)
+          }
+        }
+        return
+      }
+      await discardChangeSet({ changeSetId })
+    } finally {
+      setTrayBusyId(null)
+    }
   }
-
-  const runStatus = activeRun?.status
-  const canSend = Boolean(activeRun) && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'
 
   return (
     <div className='flex h-full bg-slate-50'>
@@ -147,92 +438,140 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
         emptyLabel='No chat sessions yet'
       />
 
-      <div className='flex-1 flex flex-col min-w-0'>
-        <div className='border-b border-slate-200 bg-white px-6 py-3 flex items-center justify-between'>
-          <div>
-            <div className='text-sm font-semibold text-slate-700'>Agent Orchestrator</div>
-            <div className='text-xs text-slate-500'>Free chat agent with SDK tools and structured blocks</div>
-          </div>
-          {activeRun ? (
-            <div className='text-xs text-slate-500'>
-              Run {String(activeRun._id).slice(-6)} • {activeRun.status}
+      <div className='flex-1 min-w-0 flex'>
+        <div className='flex-1 flex flex-col min-w-0'>
+          <div className='border-b border-slate-200 bg-white px-6 py-3 flex items-center justify-between'>
+            <div>
+              <div className='text-sm font-semibold text-slate-700'>Agent Orchestrator</div>
+              <div className='text-xs text-slate-500'>Free chat agent with SDK tools and structured blocks</div>
             </div>
-          ) : null}
-        </div>
-
-        <div className='flex-1 overflow-y-auto p-6 space-y-6'>
-          {!effectiveConversationId || !activeRun ? (
-            <div className='text-xs text-slate-400'>Initializing chat session...</div>
-          ) : !messages ? (
-            <div className='text-xs text-slate-400'>Loading history...</div>
-          ) : messages.length === 0 ? (
-            <div className='text-center py-20'>
-              <div className='text-sm font-semibold text-slate-700'>Agent Ready</div>
-              <div className='text-xs text-slate-400 mt-1'>
-                Ask naturally. The orchestrator will decide when to chat, ask structured questions, or execute tools.
+            {activeRun ? (
+              <div className='text-xs text-slate-500'>
+                Run {String(activeRun._id).slice(-6)} - {activeRun.status}
               </div>
-            </div>
-          ) : (
-            messages.map((msg: any) => (
-              <div key={msg._id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-3xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-lg p-3 text-sm' : 'w-full'}`}>
-                  {msg.role === 'user' ? (
-                    <div className='whitespace-pre-wrap'>{msg.text}</div>
-                  ) : (
-                    <div className='space-y-4'>
-                      {(msg.blocks ?? []).map((rawBlock: any, idx: number) => {
-                        const block = normalizeBlock(rawBlock)
-                        return (
-                          <BlockRenderer
-                            key={idx}
-                            block={block}
-                            onReviewChangeSet={(id) => setReviewChangeSetId(id)}
-                            onSubmit={sendUserMessage}
-                            disabled={isDispatching || !canSend}
-                          />
-                        )
-                      })}
-                    </div>
-                  )}
+            ) : null}
+          </div>
+
+          <div className='flex-1 overflow-y-auto p-6 space-y-6'>
+            {!effectiveConversationId || !activeRun ? (
+              <div className='text-xs text-slate-400'>Initializing chat session...</div>
+            ) : !messages ? (
+              <div className='text-xs text-slate-400'>Loading history...</div>
+            ) : messages.length === 0 ? (
+              <div className='text-center py-20'>
+                <div className='text-sm font-semibold text-slate-700'>Agent Ready</div>
+                <div className='text-xs text-slate-400 mt-1'>
+                  Ask naturally. The orchestrator will decide when to chat, ask structured questions, or execute tools.
                 </div>
               </div>
-            ))
-          )}
-          {isDispatching ? (
-            <div className='flex justify-start'>
-              <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-3 text-slate-600'>
-                <div className='w-4 h-4 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin' />
-                <span>Agent is working...</span>
+            ) : (
+              messages.map((msg: any) => (
+                <div key={msg._id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-3xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-lg p-3 text-sm' : 'w-full'}`}>
+                    {msg.role === 'user' ? (
+                      <div className='whitespace-pre-wrap'>{msg.text}</div>
+                    ) : (
+                      <div className='space-y-4'>
+                        {(msg.blocks ?? []).map((rawBlock: any, idx: number) => {
+                          const block = normalizeBlock(rawBlock)
+                          return (
+                            <BlockRenderer
+                              key={idx}
+                              block={block}
+                              blocksV2Enabled={blocksV2Enabled}
+                              onReviewChangeSet={(id) => setReviewChangeSetId(id)}
+                              onApplyChangeSet={(id) => id && void handleApplyChangeSet(id)}
+                              onDiscardChangeSet={(id) => id && void handleDiscardChangeSet(id)}
+                              blocksState={blocksState}
+                              onStateChange={setBlocksState}
+                              disabled={isDispatching || !canSend}
+                            />
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            {isDispatching ? (
+              <div className='flex justify-start'>
+                <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-3 text-slate-600'>
+                  <div className='w-4 h-4 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin' />
+                  <span>Agent is working...</span>
+                </div>
               </div>
-            </div>
-          ) : null}
-          <div ref={endRef} />
-        </div>
+            ) : null}
+            <div ref={endRef} />
+          </div>
 
-        <div className='p-4 bg-white border-t border-slate-200'>
-          <div className='flex gap-2'>
-            <textarea
-              className='flex-1 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none resize-none'
-              rows={1}
-              placeholder='Ask me anything about the project...'
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  void handleSend()
-                }
-              }}
+          {blocksV2Enabled ? (
+            <BlocksPanelV2
+              suggestions={blocksState.suggestions.items}
+              questions={
+                latestQuestions
+                  ? {
+                      yesNoQuestionHe: blocksState.questions.yesNoQuestionHe,
+                      multiQuestionHe: blocksState.questions.multiQuestionHe,
+                      multiOptions: blocksState.questions.multiOptions,
+                    }
+                  : null
+              }
+              selectedSuggestionIds={blocksState.suggestions.selectedIds}
+              yesNo={blocksState.questions.yesNo}
+              selectedMultiIds={blocksState.questions.multiSelectedIds}
+              onToggleSuggestion={handleToggleSuggestion}
+              onSetYesNo={handleSetYesNo}
+              onToggleMulti={handleToggleMulti}
+              disabled={isDispatching || !canSend}
             />
-            <button
-              onClick={() => void handleSend()}
-              disabled={!canSend || !input.trim() || isDispatching}
-              className='bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
-            >
-              <Send size={18} />
-            </button>
+          ) : null}
+
+          <div className='p-4 bg-white border-t border-slate-200'>
+            <div className='flex gap-2'>
+              <textarea
+                className='flex-1 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none resize-none'
+                rows={1}
+                placeholder='Ask me anything about the project...'
+                value={blocksState.chatDraft}
+                onChange={(e) =>
+                  setBlocksState((prev) => ({
+                    ...prev,
+                    chatDraft: e.target.value,
+                  }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    void sendUserTurn()
+                  }
+                }}
+              />
+              <button
+                onClick={() => void sendUserTurn()}
+                disabled={!canSend || (!blocksState.chatDraft.trim() && !hasStagedSelections) || isDispatching}
+                className='bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
+              >
+                <Send size={18} />
+              </button>
+            </div>
           </div>
         </div>
+
+        <aside className='hidden xl:flex w-[360px] border-l border-slate-200 bg-slate-50 flex-col h-full'>
+          <div className='flex-1 min-h-0 border-b border-slate-200 p-4'>
+            <FlowElementsHealthPanel projectId={projectId} />
+          </div>
+          <div className='flex-1 min-h-0 overflow-y-auto p-4'>
+            <SdkChangeSetsTray
+              items={(trayItems ?? []) as any}
+              busy={trayBusyId}
+              onReview={(id) => setReviewChangeSetId(id)}
+              onApply={handleApplyChangeSet}
+              onDiscard={handleDiscardChangeSet}
+            />
+          </div>
+        </aside>
       </div>
 
       {reviewChangeSetId ? (
@@ -269,6 +608,13 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
 }
 
 function normalizeBlock(block: any) {
+  if (typeof block === 'string') {
+    try {
+      return normalizeBlock(JSON.parse(block))
+    } catch {
+      return block
+    }
+  }
   if (!block || typeof block !== 'object') return block
   if (!block.type) {
     if (block.QuestionsBlock && Array.isArray(block.QuestionsBlock)) {
@@ -282,6 +628,7 @@ function normalizeBlock(block: any) {
     }
     if (block.ChatBlock) return { type: 'ChatBlock', markdownHe: block.ChatBlock }
     if (block.SuggestionBlock) return { type: 'SuggestionBlock', ...block.SuggestionBlock }
+    if (block.SuggestionsBlock) return { type: 'SuggestionsBlock', ...block.SuggestionsBlock }
     if (block.ChangeSetBlock) return { type: 'ChangeSetBlock', ...block.ChangeSetBlock }
   }
   if (block.type === 'ChatBlock' && block.contentHe && !block.markdownHe) {
@@ -290,30 +637,102 @@ function normalizeBlock(block: any) {
   return block
 }
 
+function buildMessageWithQueuedInput(text: string, state: BlocksV2State) {
+  const payload = {
+    suggestionDecision: state.suggestions.selectedIds.length > 0 ? 'accepted' : null,
+    answers: {
+      yesNo: state.questions.yesNo === 'yes' ? true : state.questions.yesNo === 'no' ? false : null,
+      choice: state.questions.multiSelectedIds[0] ?? null,
+      clarify: state.questions.multiSelectedIds.length > 0 ? state.questions.multiSelectedIds.join(', ') : null,
+    },
+    suggestions: {
+      actionPrimary: state.suggestions.selectedIds[0] ?? null,
+      actionSecondary: state.suggestions.selectedIds[1] ?? null,
+      changeSetAction: state.suggestions.selectedIds.find((id) => id.toLowerCase().includes('changeset')) ?? null,
+    },
+    sentAt: Date.now(),
+  }
+  return `${text}\n\n[SDK_QUEUED_INPUT_V1]${JSON.stringify(payload)}[/SDK_QUEUED_INPUT_V1]`
+}
+
 function BlockRenderer({
   block,
+  blocksV2Enabled,
   onReviewChangeSet,
-  onSubmit,
+  onApplyChangeSet,
+  onDiscardChangeSet,
+  blocksState,
+  onStateChange,
   disabled,
 }: {
   block: any
+  blocksV2Enabled: boolean
   onReviewChangeSet: (id: Id<'changeSets'>) => void
-  onSubmit: (text: string) => Promise<void>
+  onApplyChangeSet: (id?: Id<'changeSets'>) => void
+  onDiscardChangeSet: (id?: Id<'changeSets'>) => void
+  blocksState: BlocksV2State
+  onStateChange: (next: BlocksV2State | ((prev: BlocksV2State) => BlocksV2State)) => void
   disabled?: boolean
 }) {
   if (!block) return null
 
   if (block.type === 'ChatBlock') return <ChatBlock block={block} />
+  if (blocksV2Enabled && (block.type === 'QuestionsBlock' || block.type === 'SuggestionBlock' || block.type === 'SuggestionsBlock')) {
+    return null
+  }
   if (block.type === 'QuestionsBlock') {
-    return <SdkQuestionsBlock block={block} disabled={disabled} onSubmit={onSubmit} />
+    return (
+      <SdkQuestionsBlock
+        block={block}
+        disabled={disabled}
+        yesNo={blocksState.questions.yesNo}
+        multiSelectedIds={blocksState.questions.multiSelectedIds}
+        onSetYesNo={(value) =>
+          onStateChange((prev) => ({
+            ...prev,
+            questions: {
+              ...prev.questions,
+              yesNo: prev.questions.yesNo === value ? null : value,
+            },
+          }))
+        }
+        onToggleMulti={(id) =>
+          onStateChange((prev) => {
+            const selected = prev.questions.multiSelectedIds.includes(id)
+            return {
+              ...prev,
+              questions: {
+                ...prev.questions,
+                multiSelectedIds: selected
+                  ? prev.questions.multiSelectedIds.filter((item) => item !== id)
+                  : [...prev.questions.multiSelectedIds, id],
+              },
+            }
+          })
+        }
+      />
+    )
   }
   if (block.type === 'SuggestionBlock' || block.type === 'SuggestionsBlock') {
     return (
-      <SuggestionBlock
+      <SdkSuggestionBlock
         block={block}
-        onSubmit={(text) => {
-          void onSubmit(text)
-        }}
+        disabled={disabled}
+        selectedIds={blocksState.suggestions.selectedIds}
+        onToggle={(id) =>
+          onStateChange((prev) => {
+            const selected = prev.suggestions.selectedIds.includes(id)
+            return {
+              ...prev,
+              suggestions: {
+                ...prev.suggestions,
+                selectedIds: selected
+                  ? prev.suggestions.selectedIds.filter((item) => item !== id)
+                  : [...prev.suggestions.selectedIds, id],
+              },
+            }
+          })
+        }
       />
     )
   }
@@ -321,6 +740,8 @@ function BlockRenderer({
     return (
       <ChangeSetBlock
         block={block}
+        onApply={() => onApplyChangeSet(block.changeSetId)}
+        onDiscard={() => onDiscardChangeSet(block.changeSetId)}
         onReview={() => block.changeSetId && onReviewChangeSet(block.changeSetId)}
       />
     )
