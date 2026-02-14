@@ -259,6 +259,69 @@ Acceptance:
 1. `hi` does not trigger planning/costing/audit pipeline.
 2. Simple read queries use minimal context fetch.
 
+---
+
+## Execution Status (2026-02-13)
+
+### Completed
+1. Phase 0.1 pending approval resolver in `convex/sdk/dispatch.ts`
+   - `awaiting_approval` no longer hard-returns before resolving text approvals/rejections.
+   - explicit approve/reject text now resolves pending ChangeSet deterministically.
+   - added telemetry: `sdk_pending_action_detected`, `sdk_pending_action_resolved`, `approval_loop_detected`.
+2. Phase 0.2 classifier fixes in `convex/sdk/chatPolicy.ts`
+   - removed short-length smalltalk heuristic.
+   - added workflow reply detection (`כן`, `1`, `yes`, etc.).
+   - expanded planning phrase coverage including Hebrew task-creation intent.
+3. Phase 0.3 tool policy alignment in `convex/sdk/chatPolicy.ts`
+   - `planning_request` now allows `changeset.compile` and `changeset.review`.
+4. Phase 0.4 approval gate alignment in `convex/sdk/api.ts`
+   - removed audit hard-gate from `approveChangeSet`.
+   - kept review gate before apply.
+   - chat mode now returns run to `running` after apply (not terminal).
+5. Phase 0.5 SDK ChangeSet actions in `src/app/projects/[id]/sdk-agent/_components/AgentTab.tsx`
+   - `ChangeSetBlock` now wires `onApply`, `onDiscard`, and `onReview`.
+6. Phase 1 right rail implementation
+   - new `SdkNextPanel` component:
+     - staged controls (suggestion accept/decline, yes/no, single-choice).
+     - no backend call on click.
+     - explicit `Send updates`.
+   - new `SdkChangeSetsTray` component:
+     - grouped statuses (pending/applied/rejected).
+     - review/apply/discard row actions.
+   - integrated into SDK Agent 3-column layout in `AgentTab.tsx`.
+7. Phase 1.3 backend query
+   - added `changeSets.listForProject` in `convex/changeSets.ts` for tray listing.
+8. Queued-input transport implemented
+   - client appends envelope marker: `[SDK_QUEUED_INPUT_V1]{...}[/SDK_QUEUED_INPUT_V1]`.
+   - dispatch parses envelope and strips marker before intent routing.
+9. Phase 2 fast-chat behavior update in `convex/sdk/dispatch.ts`
+   - removed forced tool call for all non-smalltalk chat.
+   - first-turn forced tools now only for write/planning/skill/audit intents.
+10. Always-refresh Next controls on every chat turn
+   - `convex/sdk/dispatch.ts` now enforces a refreshed `SuggestionsBlock` + usable `QuestionsBlock` on every `CHAT_EDIT` assistant response.
+   - if model output lacks usable controls, deterministic fallback controls are appended.
+   - updated chat-mode policy prompt to explicitly require refreshed Next controls each turn.
+11. Right-rail block selection hardening in `AgentTab.tsx`
+   - Next panel now selects the latest *usable* suggestion/questions blocks (not just first block match).
+   - avoids empty panel when model emits non-interactive question formats.
+12. Context-aware Next controls (non-generic)
+   - `convex/sdk/dispatch.ts` now builds context-aware fallback suggestions/questions using current intent + fetched project snapshot.
+   - chat bootstrap in `CHAT_EDIT` now pulls packs by intent (`packsForIntent`) for non-smalltalk turns, so replies and Next controls are project-linked.
+   - fallback controls now include project/task/element-aware options instead of static mock text.
+
+### Tests and Validation Completed
+1. Updated `convex/sdk/__tests__/chatPolicy.test.mjs` with new coverage:
+   - Hebrew planning detection.
+   - workflow reply handling under pending state.
+   - planning tool allowlist includes compile/review.
+2. Executed: `node --test convex/sdk/__tests__/chatPolicy.test.mjs` (pass).
+3. Executed targeted lint on changed files (pass).
+
+### Remaining
+1. Optional Phase 1.4 chat timeline system-events on tray apply/discard is not implemented yet.
+2. Optional Phase 3 deep loop-guard escalation logic (beyond current telemetry + deterministic pending resolver) can be expanded with stricter repeated-pending counters.
+3. Optional Phase 4 persisted staged side-panel state across refresh not implemented.
+
 ### 2.2 Update chat system policy text
 Files:
 - `convex/sdk/dispatch.ts` (system policy message for chat mode)

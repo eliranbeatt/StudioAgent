@@ -12,11 +12,11 @@ const SMALLTALK_PATTERNS = [
   'hey',
   'shalom',
   'yo',
-  'what\'s up',
+  "what's up",
   'how are you',
-  'מה קורה',
-  'היי',
-  'שלום',
+  '\u05de\u05d4 \u05e7\u05d5\u05e8\u05d4',
+  '\u05d4\u05d9\u05d9',
+  '\u05e9\u05dc\u05d5\u05dd',
 ]
 
 const READ_PATTERNS = [
@@ -32,12 +32,12 @@ const READ_PATTERNS = [
   'budget',
   'quote',
   'project',
-  'הצג',
-  'רשימה',
-  'סיכום',
-  'סטטוס',
-  'משימות',
-  'תקציב',
+  '\u05d4\u05e6\u05d2',
+  '\u05e8\u05e9\u05d9\u05de\u05d4',
+  '\u05e1\u05d9\u05db\u05d5\u05dd',
+  '\u05e1\u05d8\u05d8\u05d5\u05e1',
+  '\u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+  '\u05ea\u05e7\u05e6\u05d9\u05d1',
 ]
 
 const WRITE_PATTERNS = [
@@ -51,12 +51,12 @@ const WRITE_PATTERNS = [
   'add',
   'remove',
   'modify',
-  'שנה',
-  'עדכן',
-  'ערוך',
-  'צור',
-  'הוסף',
-  'מחק',
+  '\u05e9\u05e0\u05d4',
+  '\u05e2\u05d3\u05db\u05df',
+  '\u05e2\u05e8\u05d5\u05da',
+  '\u05e6\u05d5\u05e8',
+  '\u05d4\u05d5\u05e1\u05e3',
+  '\u05de\u05d7\u05e7',
 ]
 
 const PLANNING_PATTERNS = [
@@ -70,13 +70,22 @@ const PLANNING_PATTERNS = [
   'create elements',
   'generate tasks',
   'create tasks',
+  'plan tasks',
+  'build plan',
+  'create plan',
   'runbook',
-  'אלמנטים',
-  'משימות',
-  'בנה תקציב',
-  'צור תקציב',
-  'צור הצעת מחיר',
-  'בנה הצעת מחיר',
+  '\u05ea\u05d9\u05d9\u05e6\u05e8',
+  '\u05ea\u05e6\u05d5\u05e8',
+  '\u05ea\u05db\u05e0\u05df',
+  '\u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+  '\u05ea\u05d9\u05d9\u05e6\u05e8 \u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+  '\u05ea\u05e6\u05d5\u05e8 \u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+  '\u05ea\u05d9\u05d9\u05e6\u05e8 \u05de\u05d6\u05d4 \u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+  '\u05d0\u05dc\u05de\u05e0\u05d8\u05d9\u05dd',
+  '\u05d1\u05e0\u05d4 \u05ea\u05e7\u05e6\u05d9\u05d1',
+  '\u05e6\u05d5\u05e8 \u05ea\u05e7\u05e6\u05d9\u05d1',
+  '\u05e6\u05d5\u05e8 \u05d4\u05e6\u05e2\u05ea \u05de\u05d7\u05d9\u05e8',
+  '\u05d1\u05e0\u05d4 \u05d4\u05e6\u05e2\u05ea \u05de\u05d7\u05d9\u05e8',
 ]
 
 const EXPLICIT_SKILL_PATTERNS = [
@@ -85,17 +94,37 @@ const EXPLICIT_SKILL_PATTERNS = [
   'use tool',
   'use skill',
   'call ',
-  'הפעל',
-  'תריץ',
+  '\u05d4\u05e4\u05e2\u05dc',
+  '\u05ea\u05e8\u05d9\u05e5',
 ]
 
 const AUDIT_PATTERNS = [
   'audit',
   'review project',
   'critique',
-  'בדיקה',
-  'אודיט',
-  'בקרת איכות',
+  '\u05d1\u05d3\u05d9\u05e7\u05d4',
+  '\u05d0\u05d5\u05d3\u05d9\u05d8',
+  '\u05d1\u05e7\u05e8\u05ea \u05d0\u05d9\u05db\u05d5\u05ea',
+]
+
+const WORKFLOW_REPLY_PATTERNS = [
+  'yes',
+  'no',
+  'approve',
+  'reject',
+  'cancel',
+  'ok',
+  'k',
+  '1',
+  '2',
+  '3',
+  '\u05db\u05df',
+  '\u05dc\u05d0',
+  '\u05de\u05d0\u05e9\u05e8',
+  '\u05de\u05d0\u05e9\u05e8\u05ea',
+  '\u05de\u05d1\u05d8\u05dc',
+  '\u05d9\u05d0\u05dc\u05dc\u05d4',
+  '\u05e1\u05d1\u05d1\u05d4',
 ]
 
 function includesAny(text: string, patterns: string[]) {
@@ -105,13 +134,24 @@ function includesAny(text: string, patterns: string[]) {
 function looksLikeSmalltalk(text: string) {
   const trimmed = text.trim()
   if (!trimmed) return true
-  if (trimmed.length <= 4) return true
   return includesAny(text, SMALLTALK_PATTERNS)
 }
 
-export function detectChatIntent(userText: string): ChatIntent {
+export function isWorkflowReply(userText: string): boolean {
+  const text = String(userText ?? '').trim().toLowerCase()
+  if (!text) return false
+  return text.length <= 12 && includesAny(text, WORKFLOW_REPLY_PATTERNS)
+}
+
+export function detectChatIntent(
+  userText: string,
+  options?: {
+    hasPendingAction?: boolean
+  }
+): ChatIntent {
   const text = String(userText ?? '').trim().toLowerCase()
   if (!text) return 'chat_smalltalk'
+  if (options?.hasPendingAction && isWorkflowReply(text)) return 'project_write_change'
   if (includesAny(text, AUDIT_PATTERNS)) return 'audit_request'
   if (includesAny(text, EXPLICIT_SKILL_PATTERNS)) return 'explicit_skill_run'
   if (includesAny(text, PLANNING_PATTERNS)) return 'planning_request'
@@ -125,10 +165,10 @@ export function packsForIntent(intent: ChatIntent, userText: string): string[] {
   const text = String(userText ?? '').toLowerCase()
   if (intent === 'chat_smalltalk') return []
   if (intent === 'project_read_qna') {
-    if (text.includes('task') || text.includes('משימ')) return ['project', 'tasks', 'elements']
-    if (text.includes('budget') || text.includes('תקציב')) return ['project', 'accounting', 'tasks', 'elements']
-    if (text.includes('quote') || text.includes('הצעת')) return ['project', 'quote', 'accounting']
-    return ['project', 'knowledge']
+    if (text.includes('task') || text.includes('\u05de\u05e9\u05d9\u05de')) return ['project', 'tasks', 'elements', 'knowledge', 'qa']
+    if (text.includes('budget') || text.includes('\u05ea\u05e7\u05e6\u05d9\u05d1')) return ['project', 'accounting', 'tasks', 'elements', 'quote', 'knowledge', 'qa']
+    if (text.includes('quote') || text.includes('\u05d4\u05e6\u05e2\u05ea')) return ['project', 'quote', 'accounting', 'tasks', 'elements', 'knowledge']
+    return ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa']
   }
   if (intent === 'audit_request') return ['project', 'elements', 'tasks', 'accounting', 'quote']
   if (intent === 'planning_request' || intent === 'project_write_change' || intent === 'explicit_skill_run') {
@@ -144,6 +184,7 @@ export function allowedToolsForChatIntent(intent: ChatIntent): string[] {
   if (intent === 'planning_request') {
     return [
       'context.get',
+      'changeset.compile',
       'plan.elements',
       'plan.tasks',
       'cost.build_budget',
@@ -156,7 +197,6 @@ export function allowedToolsForChatIntent(intent: ChatIntent): string[] {
     return [
       'context.get',
       'changeset.compile',
-      'changeset.review',
       'changeset.apply',
       'plan.elements',
       'plan.tasks',
@@ -200,7 +240,7 @@ export function shouldAttachSuggestions(args: {
 }) {
   if (args.intent === 'chat_smalltalk') return false
   const source = `${args.userText ?? ''} ${args.summaryHe ?? ''}`.toLowerCase()
-  if (source.includes('?') || source.includes('next') || source.includes('הבא')) return true
+  if (source.includes('?') || source.includes('next') || source.includes('\u05d4\u05d1\u05d0')) return true
   if (args.intent === 'project_write_change' || args.intent === 'planning_request') return true
   return false
 }

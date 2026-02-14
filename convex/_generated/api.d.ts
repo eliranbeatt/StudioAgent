@@ -13,6 +13,7 @@ import type * as accountingStudio from "../accountingStudio.js";
 import type * as adminHealth from "../adminHealth.js";
 import type * as agent from "../agent.js";
 import type * as agentData from "../agentData.js";
+import type * as agentTurns from "../agentTurns.js";
 import type * as agent_tasks from "../agent_tasks.js";
 import type * as brainDump from "../brainDump.js";
 import type * as changeSets from "../changeSets.js";
@@ -159,6 +160,7 @@ declare const fullApi: ApiFromModules<{
   adminHealth: typeof adminHealth;
   agent: typeof agent;
   agentData: typeof agentData;
+  agentTurns: typeof agentTurns;
   agent_tasks: typeof agent_tasks;
   brainDump: typeof brainDump;
   changeSets: typeof changeSets;

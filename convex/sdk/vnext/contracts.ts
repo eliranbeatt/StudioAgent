@@ -80,6 +80,20 @@ export type PlannedTask = {
   titleHe: string
   durationHours?: number
   category?: string
+  stageKey?: string
+  workType?: string
+  workTypeLabelHe?: string
+  dedupKey?: string
+  doneCriteriaHe?: string
+  checklist?: Array<{
+    id: string
+    title: string
+    done?: boolean
+    order?: number
+    estimatedHours?: number
+    workType?: string
+    workTypeLabelHe?: string
+  }>
 }
 
 export type StageArtifactMap = {

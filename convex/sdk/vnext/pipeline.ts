@@ -358,8 +358,22 @@ function mergeArtifact(
           titleHe,
           taskKey: String(task?.taskKey ?? task?.titleHe ?? task?.title ?? `task_${index + 1}`),
           elementKey,
-          durationHours: typeof task?.estimatedHours === 'number' ? task.estimatedHours : undefined,
+          durationHours:
+            typeof task?.estimatedHours === 'number'
+              ? task.estimatedHours
+              : typeof task?.estimateHours === 'number'
+                ? task.estimateHours
+                : typeof task?.durationHours === 'number'
+                  ? task.durationHours
+                  : undefined,
           category: task?.category,
+          stageKey: String(task?.stageKey ?? task?.stage ?? '').trim() || undefined,
+          workType: String(task?.workType?.key ?? task?.workType ?? '').trim() || undefined,
+          workTypeLabelHe:
+            String(task?.workTypeLabelHe ?? task?.workType?.labelHe ?? '').trim() || undefined,
+          dedupKey: String(task?.dedupKey ?? '').trim() || undefined,
+          doneCriteriaHe: String(task?.doneCriteriaHe ?? '').trim() || undefined,
+          checklist: toChecklistItems(task),
         }
       })
       .filter((task: any) => {
@@ -519,6 +533,48 @@ function mergeArtifact(
     return next
   }
   return next
+}
+
+function toChecklistItems(task: any) {
+  const explicitChecklist = Array.isArray(task?.checklist) ? task.checklist : []
+  if (explicitChecklist.length > 0) {
+    return explicitChecklist
+      .map((item: any, index: number) => {
+        const title = String(item?.title ?? item?.textHe ?? item?.labelHe ?? '').trim()
+        if (!title) return null
+        return {
+          id: String(item?.id ?? `item_${index + 1}`),
+          title,
+          done: typeof item?.done === 'boolean' ? item.done : false,
+          order: Number.isFinite(item?.order) ? Number(item.order) : index,
+          estimatedHours:
+            typeof item?.estimatedHours === 'number'
+              ? item.estimatedHours
+              : typeof item?.estimatedMinutes === 'number'
+                ? item.estimatedMinutes / 60
+                : undefined,
+          workType: typeof item?.workType === 'string' ? item.workType : undefined,
+          workTypeLabelHe: typeof item?.workTypeLabelHe === 'string' ? item.workTypeLabelHe : undefined,
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const checklistHe = Array.isArray(task?.checklistHe) ? task.checklistHe : []
+  const subtasksHe = Array.isArray(task?.subtasksHe) ? task.subtasksHe : []
+  const fallbackTitles = [...checklistHe, ...subtasksHe]
+  return fallbackTitles
+    .map((value: any, index: number) => {
+      const title = String(value ?? '').trim()
+      if (!title) return null
+      return {
+        id: `item_${index + 1}`,
+        title,
+        done: false,
+        order: index,
+      }
+    })
+    .filter(Boolean)
 }
 
 function buildPersistedArtifact(args: {

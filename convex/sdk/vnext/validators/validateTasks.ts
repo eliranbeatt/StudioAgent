@@ -1,4 +1,4 @@
-import { GateIssue, GateResult, PlannedTask } from '../contracts'
+import type { GateIssue, GateResult, PlannedTask } from '../contracts'
 
 function normalizeTitle(value: unknown) {
   return String(value ?? '')
@@ -51,6 +51,28 @@ export function validateTasks(args: { artifact?: any }): GateResult {
           severity: 'medium',
         })
       }
+    }
+
+    const checklistCount = Array.isArray((task as any)?.checklist)
+      ? (task as any).checklist.filter((item: any) => String(item?.title ?? '').trim()).length
+      : Array.isArray((task as any)?.checklistHe)
+        ? (task as any).checklistHe.filter((item: any) => String(item ?? '').trim()).length
+        : 0
+    if (checklistCount === 0) {
+      issues.push({
+        code: 'tasks.missing_checklist',
+        messageHe: `למשימה "${task?.titleHe ?? title}" חסרה רשימת בדיקה`,
+        severity: 'high',
+      })
+    }
+
+    const doneCriteria = String((task as any)?.doneCriteriaHe ?? '').trim()
+    if (!doneCriteria) {
+      issues.push({
+        code: 'tasks.missing_done_criteria',
+        messageHe: `למשימה "${task?.titleHe ?? title}" חסר קריטריון סיום`,
+        severity: 'medium',
+      })
     }
   }
 

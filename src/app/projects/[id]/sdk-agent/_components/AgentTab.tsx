@@ -19,6 +19,7 @@ import { BlocksPanelV2 } from './BlocksPanelV2'
 type SuggestionItem = {
   id: string
   labelHe: string
+  actionKey: string
 }
 
 type QuestionsState = {
@@ -53,16 +54,53 @@ const EMPTY_BLOCKS_STATE: BlocksV2State = {
   chatDraft: '',
 }
 
+const TURN_REQUEST_TIMEOUT_MS = 45000
+
+function timeoutError(label: string) {
+  return new Error(`${label} request timed out after ${Math.round(TURN_REQUEST_TIMEOUT_MS / 1000)}s`)
+}
+
+async function withTimeout<T>(promise: Promise<T>, label: string) {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(timeoutError(label)), TURN_REQUEST_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+function parseUiErrorMessage(error: unknown) {
+  const value =
+    (error as any)?.data?.message ??
+    (error as any)?.message ??
+    (typeof error === 'string' ? error : '')
+  return String(value ?? '').trim()
+}
+
+function isInFlightDisconnectError(error: unknown) {
+  const message = parseUiErrorMessage(error).toLowerCase()
+  return message.includes('connection lost while action was in flight')
+}
+
+function isRequestTimeoutError(error: unknown) {
+  const message = parseUiErrorMessage(error).toLowerCase()
+  return message.includes('request timed out')
+}
+
 function extractQuestionText(question: any) {
   return String(
     question?.textHe ??
-      question?.text_he ??
-      question?.questionHe ??
-      question?.question_he ??
-      question?.question ??
-      question?.labelHe ??
-      question?.label ??
-      ''
+    question?.text_he ??
+    question?.text ??
+    question?.questionHe ??
+    question?.question_he ??
+    question?.question ??
+    question?.labelHe ??
+    question?.label ??
+    ''
   ).trim()
 }
 
@@ -77,6 +115,7 @@ function extractOptions(question: any): SuggestionItem[] {
     out.push({
       id: String(item?.value ?? item?.id ?? `opt_${i + 1}`).trim() || `opt_${i + 1}`,
       labelHe: label,
+      actionKey: String(item?.value ?? item?.id ?? `opt_${i + 1}`).trim() || `opt_${i + 1}`,
     })
   }
   return out
@@ -91,11 +130,12 @@ function normalizeSuggestions(block: any): SuggestionItem[] {
   const out: SuggestionItem[] = []
   for (let i = 0; i < source.length; i += 1) {
     const item = source[i]
-    const label = String(item?.labelHe ?? item?.label_he ?? item?.label ?? '').trim()
+    const label = String(item?.labelHe ?? item?.label_he ?? item?.label ?? item?.text ?? item?.title ?? item?.description ?? '').trim()
     if (!label) continue
     out.push({
       id: String(item?.id ?? item?.actionKey ?? item?.payload?.action ?? `s_${i + 1}`),
       labelHe: label,
+      actionKey: String(item?.actionKey ?? item?.payload?.action ?? item?.id ?? `action_${i + 1}`),
     })
     if (out.length >= 3) break
   }
@@ -106,20 +146,21 @@ function normalizeQuestions(block: any): {
   yesNoQuestionHe: string
   multiQuestionHe: string
   multiOptions: SuggestionItem[]
-} {
+} | null {
   const questions = Array.isArray(block?.questions) ? block.questions : []
   const q1 = questions[0] ?? null
   const q2 = questions[1] ?? null
 
-  const q1Text = extractQuestionText(q1) || 'האם נמשיך עם הכיוון הזה?'
-  const q2Text = extractQuestionText(q2) || 'מה חשוב לטפל עכשיו?'
+  const q1Text = extractQuestionText(q1)
+  const q2Text = extractQuestionText(q2)
   const q2Options = extractOptions(q2)
   const fallbackOptions = extractOptions(q1)
   const multiOptions = (q2Options.length > 0 ? q2Options : fallbackOptions).slice(0, 6)
+  if (!q1Text && !q2Text && multiOptions.length === 0) return null
 
   return {
-    yesNoQuestionHe: q1Text,
-    multiQuestionHe: q2Text,
+    yesNoQuestionHe: q1Text || q2Text || 'Continue?',
+    multiQuestionHe: q2Text || q1Text || 'What should we handle next?',
     multiOptions,
   }
 }
@@ -130,6 +171,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
   const [conversationId, setConversationId] = useState<Id<'agentConversations'> | null>(null)
   const [reviewChangeSetId, setReviewChangeSetId] = useState<Id<'changeSets'> | null>(null)
   const [isDispatching, setIsDispatching] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [trayBusyId, setTrayBusyId] = useState<string | null>(null)
   const [blocksState, setBlocksState] = useState<BlocksV2State>(EMPTY_BLOCKS_STATE)
   const creatingConversationRef = useRef(false)
@@ -167,36 +209,45 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
 
   const trayItems = useQuery(listChangeSetsQuery ?? 'skip', projectId && listChangeSetsQuery ? { projectId, limit: 80 } : 'skip')
 
-  const latestBlocks = useMemo(() => {
+  /* scan history for the most recent interactive blocks instead of just the last message */
+  const latestSuggestions = useMemo(() => {
     const all = Array.isArray(messages) ? messages : []
     for (let i = all.length - 1; i >= 0; i -= 1) {
       const msg = all[i]
       if (msg?.role !== 'assistant') continue
-      if (!Array.isArray(msg?.blocks) || msg.blocks.length === 0) continue
-      return msg.blocks.map((rawBlock: any) => normalizeBlock(rawBlock))
+      const blocks = Array.isArray(msg?.blocks) ? msg.blocks : []
+      for (const rawBlock of blocks) {
+        const block = normalizeBlock(rawBlock)
+        if (block?.type === 'SuggestionBlock' || block?.type === 'SuggestionsBlock') {
+          return normalizeSuggestions(block)
+        }
+      }
     }
-    return [] as any[]
+    return []
   }, [messages])
 
-  const latestSuggestions = useMemo(() => {
-    const suggestionBlock = latestBlocks.find(
-      (block: any) => block?.type === 'SuggestionBlock' || block?.type === 'SuggestionsBlock'
-    )
-    return suggestionBlock ? normalizeSuggestions(suggestionBlock) : []
-  }, [latestBlocks])
-
   const latestQuestions = useMemo(() => {
-    const questionsBlock = latestBlocks.find((block: any) => block?.type === 'QuestionsBlock')
-    if (!questionsBlock) return null
-    return normalizeQuestions(questionsBlock)
-  }, [latestBlocks])
+    const all = Array.isArray(messages) ? messages : []
+    for (let i = all.length - 1; i >= 0; i -= 1) {
+      const msg = all[i]
+      if (msg?.role !== 'assistant') continue
+      const blocks = Array.isArray(msg?.blocks) ? msg.blocks : []
+      for (const rawBlock of blocks) {
+        const block = normalizeBlock(rawBlock)
+        if (block?.type === 'QuestionsBlock') {
+          return normalizeQuestions(block)
+        }
+      }
+    }
+    return null
+  }, [messages])
 
   const blocksSignature = useMemo(() => {
     const suggestionPart = latestSuggestions.map((item) => item.id).join('|')
     const questionPart = latestQuestions
       ? `${latestQuestions.yesNoQuestionHe}|${latestQuestions.multiQuestionHe}|${latestQuestions.multiOptions
-          .map((item) => item.id)
-          .join('|')}`
+        .map((item) => item.id)
+        .join('|')}`
       : ''
     return `${suggestionPart}::${questionPart}`
   }, [latestSuggestions, latestQuestions])
@@ -283,38 +334,54 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
     const trimmed = blocksState.chatDraft.trim()
     if (!trimmed && !hasStagedSelections) return
 
+    setSendError(null)
     setIsDispatching(true)
     try {
       if (blocksV2Enabled) {
-        await submitTurn({
-          projectId,
-          conversationId: effectiveConversationId,
-          runId: activeRun._id,
-          stageId: String(activeRun.stageKey ?? 'chat'),
-          messageText: trimmed,
-          uiSelections: {
-            suggestionIds: blocksState.suggestions.selectedIds,
-            answers: {
-              yesNo: blocksState.questions.yesNo,
-              multiChoiceIds: blocksState.questions.multiSelectedIds,
+        await withTimeout(
+          submitTurn({
+            projectId,
+            conversationId: effectiveConversationId,
+            runId: activeRun._id,
+            stageId: String(activeRun.stageKey ?? 'chat'),
+            messageText: trimmed,
+            uiSelections: {
+              suggestionIds: blocksState.suggestions.selectedIds,
+              answers: {
+                yesNo: blocksState.questions.yesNo,
+                multiChoiceIds: blocksState.questions.multiSelectedIds,
+              },
             },
-          },
-          clientMeta: {
-            uiVersion: 'blocks_v2',
-            locale: 'he-IL',
-            timestampMs: Date.now(),
-          },
-        })
+            clientMeta: {
+              uiVersion: 'blocks_v2',
+              locale: 'he-IL',
+              timestampMs: Date.now(),
+            },
+          }),
+          'submitTurn'
+        )
       } else {
         const messageWithQueued = buildMessageWithQueuedInput(trimmed || 'apply queued updates', blocksState)
-        await runNext({
-          projectId,
-          conversationId: effectiveConversationId,
-          runId: activeRun._id,
-          userMessage: messageWithQueued,
-        })
+        await withTimeout(
+          runNext({
+            projectId,
+            conversationId: effectiveConversationId,
+            runId: activeRun._id,
+            userMessage: messageWithQueued,
+          }),
+          'runNext'
+        )
       }
       resetStagedSelections()
+    } catch (error) {
+      if (isRequestTimeoutError(error)) {
+        setSendError('The request is taking too long. The backend run may still be processing; check for a new assistant message or retry once.')
+      } else if (isInFlightDisconnectError(error)) {
+        setSendError('Connection dropped while the request was in flight. The action may still complete; wait a moment before retrying.')
+      } else {
+        const details = parseUiErrorMessage(error)
+        setSendError(details || 'Failed to send message. Please try again.')
+      }
     } finally {
       setIsDispatching(false)
     }
@@ -511,10 +578,10 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
               questions={
                 latestQuestions
                   ? {
-                      yesNoQuestionHe: blocksState.questions.yesNoQuestionHe,
-                      multiQuestionHe: blocksState.questions.multiQuestionHe,
-                      multiOptions: blocksState.questions.multiOptions,
-                    }
+                    yesNoQuestionHe: blocksState.questions.yesNoQuestionHe,
+                    multiQuestionHe: blocksState.questions.multiQuestionHe,
+                    multiOptions: blocksState.questions.multiOptions,
+                  }
                   : null
               }
               selectedSuggestionIds={blocksState.suggestions.selectedIds}
@@ -528,6 +595,11 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
           ) : null}
 
           <div className='p-4 bg-white border-t border-slate-200'>
+            {sendError ? (
+              <div className='mb-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900'>
+                {sendError}
+              </div>
+            ) : null}
             <div className='flex gap-2'>
               <textarea
                 className='flex-1 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none resize-none'
@@ -617,18 +689,44 @@ function normalizeBlock(block: any) {
   }
   if (!block || typeof block !== 'object') return block
   if (!block.type) {
-    if (block.QuestionsBlock && Array.isArray(block.QuestionsBlock)) {
+    if (block.QuestionsBlock) {
+      const source = block.QuestionsBlock
+      const questions = Array.isArray(source)
+        ? source
+        : source && typeof source === 'object'
+          ? [source]
+          : []
       return {
         type: 'QuestionsBlock',
-        questions: block.QuestionsBlock.map((q: any, i: number) => {
-          if (typeof q === 'string') return { id: `q${i}`, textHe: q }
-          return q
-        }),
+        questions: questions
+          .map((q: any, i: number) => {
+            if (typeof q === 'string') return { id: `q${i}`, textHe: q }
+            const textHe = String(q?.textHe ?? q?.text_he ?? q?.text ?? q?.questionHe ?? q?.question ?? '').trim()
+            if (!textHe) return null
+            return {
+              ...q,
+              id: String(q?.id ?? `q${i}`),
+              textHe,
+            }
+          })
+          .filter(Boolean),
       }
     }
-    if (block.ChatBlock) return { type: 'ChatBlock', markdownHe: block.ChatBlock }
+    if (block.ChatBlock) {
+      const source = block.ChatBlock
+      const markdownHe = typeof source === 'string'
+        ? source
+        : String(source?.markdownHe ?? source?.text ?? source?.contentHe ?? '').trim()
+      return { type: 'ChatBlock', markdownHe }
+    }
     if (block.SuggestionBlock) return { type: 'SuggestionBlock', ...block.SuggestionBlock }
-    if (block.SuggestionsBlock) return { type: 'SuggestionsBlock', ...block.SuggestionsBlock }
+    if (block.SuggestionsBlock) {
+      const source = block.SuggestionsBlock
+      if (Array.isArray(source)) {
+        return { type: 'SuggestionsBlock', suggestions: source }
+      }
+      return { type: 'SuggestionsBlock', ...source }
+    }
     if (block.ChangeSetBlock) return { type: 'ChangeSetBlock', ...block.ChangeSetBlock }
   }
   if (block.type === 'ChatBlock' && block.contentHe && !block.markdownHe) {
@@ -638,17 +736,24 @@ function normalizeBlock(block: any) {
 }
 
 function buildMessageWithQueuedInput(text: string, state: BlocksV2State) {
+  const selectedActions = state.suggestions.selectedIds
+    .map((id) => {
+      const match = state.suggestions.items.find((item) => item.id === id)
+      return String(match?.actionKey ?? id).trim()
+    })
+    .filter(Boolean)
+
   const payload = {
-    suggestionDecision: state.suggestions.selectedIds.length > 0 ? 'accepted' : null,
+    suggestionDecision: selectedActions.length > 0 ? 'accepted' : null,
     answers: {
       yesNo: state.questions.yesNo === 'yes' ? true : state.questions.yesNo === 'no' ? false : null,
       choice: state.questions.multiSelectedIds[0] ?? null,
       clarify: state.questions.multiSelectedIds.length > 0 ? state.questions.multiSelectedIds.join(', ') : null,
     },
     suggestions: {
-      actionPrimary: state.suggestions.selectedIds[0] ?? null,
-      actionSecondary: state.suggestions.selectedIds[1] ?? null,
-      changeSetAction: state.suggestions.selectedIds.find((id) => id.toLowerCase().includes('changeset')) ?? null,
+      actionPrimary: selectedActions[0] ?? null,
+      actionSecondary: selectedActions[1] ?? null,
+      changeSetAction: selectedActions.find((id) => id.toLowerCase().includes('changeset') || id === 'create_changeset') ?? null,
     },
     sentAt: Date.now(),
   }
@@ -677,9 +782,6 @@ function BlockRenderer({
   if (!block) return null
 
   if (block.type === 'ChatBlock') return <ChatBlock block={block} />
-  if (blocksV2Enabled && (block.type === 'QuestionsBlock' || block.type === 'SuggestionBlock' || block.type === 'SuggestionsBlock')) {
-    return null
-  }
   if (block.type === 'QuestionsBlock') {
     return (
       <SdkQuestionsBlock
@@ -755,3 +857,4 @@ function BlockRenderer({
     </div>
   )
 }
+

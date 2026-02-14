@@ -24,25 +24,13 @@ function formatCurrency(amount: number) {
 
 export function FlowElementsHealthPanel({ projectId }: Props) {
   const data = useQuery(api.flow.ui.getElementsHealth, { projectId })
-  const [query, setQuery] = useState('')
-  const [onlyMissing, setOnlyMissing] = useState(false)
-  const [onlyNoTasks, setOnlyNoTasks] = useState(false)
+
 
   const elements = useMemo(() => {
     if (!data?.elements) return []
     let list = data.elements
-    if (query.trim()) {
-      const q = query.trim().toLowerCase()
-      list = list.filter((el: any) => String(el.nameHe ?? '').toLowerCase().includes(q))
-    }
-    if (onlyMissing) {
-      list = list.filter((el: any) => Array.isArray(el.flags) && el.flags.length > 0)
-    }
-    if (onlyNoTasks) {
-      list = list.filter((el: any) => (el.tasksCount ?? 0) === 0)
-    }
     return list
-  }, [data?.elements, onlyMissing, onlyNoTasks, query])
+  }, [data?.elements])
 
   return (
     <div className='flex flex-col h-full min-h-0 rounded-xl border border-slate-200 bg-white p-4'>
@@ -53,7 +41,7 @@ export function FlowElementsHealthPanel({ projectId }: Props) {
             {data?.elements?.length ?? 0} אלמנטים
           </div>
         </div>
-        <div className='text-xs text-slate-500'>בריאות פרויקט</div>
+        <div className='text-xs text-slate-400 font-medium'>פרויקט</div>
       </div>
 
       <div className='mt-3 rounded-lg bg-slate-50 p-3 text-[11px] text-slate-600'>
@@ -75,34 +63,7 @@ export function FlowElementsHealthPanel({ projectId }: Props) {
         </div>
       </div>
 
-      <div className='mt-3 space-y-2'>
-        <input
-          className='w-full rounded-md border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-100'
-          placeholder='חיפוש אלמנט...'
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <div className='flex flex-wrap gap-2 text-[11px] text-slate-600'>
-          <label className='inline-flex items-center gap-2'>
-            <input
-              type='checkbox'
-              checked={onlyMissing}
-              onChange={(e) => setOnlyMissing(e.target.checked)}
-              className='h-3 w-3'
-            />
-            רק חסרים
-          </label>
-          <label className='inline-flex items-center gap-2'>
-            <input
-              type='checkbox'
-              checked={onlyNoTasks}
-              onChange={(e) => setOnlyNoTasks(e.target.checked)}
-              className='h-3 w-3'
-            />
-            בלי משימות
-          </label>
-        </div>
-      </div>
+
 
       <div className='mt-4 flex-1 overflow-y-auto space-y-3'>
         {!data ? (
@@ -112,9 +73,8 @@ export function FlowElementsHealthPanel({ projectId }: Props) {
         ) : (
           elements.map((el: any) => (
             <div key={el.elementId} className='rounded-lg border border-slate-100 p-3'>
-              <div className='flex items-center justify-between'>
-                <div className='text-xs font-medium text-slate-900'>{el.nameHe}</div>
-                <span className='text-[10px] text-slate-400'>{el.status ?? 'draft'}</span>
+              <div className='flex items-center justify-between mb-1'>
+                <div className='text-xs font-semibold text-slate-800'>{el.nameHe}</div>
               </div>
 
               <div className='mt-2 grid grid-cols-3 gap-2 text-[11px] text-slate-600'>

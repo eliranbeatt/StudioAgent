@@ -582,6 +582,47 @@ function normalizeKeyPart(value: unknown): string {
     .replace(/^-|-$/g, '')
 }
 
+function normalizeTaskChecklistFromOutput(task: any) {
+  const explicitChecklist = Array.isArray(task?.checklist) ? task.checklist : []
+  if (explicitChecklist.length > 0) {
+    return explicitChecklist
+      .map((item: any, index: number) => {
+        const title = firstNonEmpty([item?.title, item?.textHe, item?.labelHe])
+        if (!title) return null
+        const estimatedHours = toFiniteNumber(
+          item?.estimatedHours ??
+          (toFiniteNumber(item?.estimatedMinutes) !== undefined ? Number(item.estimatedMinutes) / 60 : undefined)
+        )
+        return {
+          id: firstNonEmpty([item?.id, `item_${index + 1}`]),
+          title,
+          done: typeof item?.done === 'boolean' ? item.done : false,
+          order: Number.isFinite(item?.order) ? Number(item.order) : index,
+          estimatedHours,
+          workType: firstNonEmpty([item?.workType]) || undefined,
+          workTypeLabelHe: firstNonEmpty([item?.workTypeLabelHe]) || undefined,
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const checklistHe = Array.isArray(task?.checklistHe) ? task.checklistHe : []
+  const subtasksHe = Array.isArray(task?.subtasksHe) ? task.subtasksHe : []
+  const fallback = [...checklistHe, ...subtasksHe]
+  return fallback
+    .map((value: any, index: number) => {
+      const title = String(value ?? '').trim()
+      if (!title) return null
+      return {
+        id: `item_${index + 1}`,
+        title,
+        done: false,
+        order: index,
+      }
+    })
+    .filter(Boolean)
+}
+
 function buildFinalizeDirectOps(
   outputs: Record<string, any>,
   projectId: string,
@@ -692,6 +733,9 @@ function buildFinalizeDirectOps(
     const stage = firstNonEmpty([item.stage, item.stageKey])
     const workType = firstNonEmpty([item.workType?.key, item.workType])
     const workTypeLabelHe = firstNonEmpty([item.workTypeLabelHe, item.workType?.labelHe])
+    const checklist = normalizeTaskChecklistFromOutput(item)
+    const doneCriteriaHe = firstNonEmpty([item.doneCriteriaHe, item.doneCriteria, item.doneCriteriaTextHe])
+    const taskDescription = description || doneCriteriaHe || undefined
     const inputElementRef = firstNonEmpty([item.elementTempOrId, item.elementId])
     const resolvedElementRef = elementRefMap.get(inputElementRef) ?? inputElementRef
     const resolvedElementKey = elementKeyByRef.get(inputElementRef) ?? normalizeKeyPart(inputElementRef) ?? 'project'
@@ -724,11 +768,13 @@ function buildFinalizeDirectOps(
           taskId: existingTask.id,
           fields: {
             title,
-            description: description || undefined,
+            description: taskDescription,
             estimatedHours,
             stage: stage || undefined,
             workType: workType || undefined,
             workTypeLabelHe: workTypeLabelHe || undefined,
+            checklist: checklist.length > 0 ? checklist : undefined,
+            category: firstNonEmpty([item.category, item.stageKey, item.stage]) || undefined,
             dependencies: normalizedDependencies.length > 0 ? normalizedDependencies : undefined,
             dedupKey: dedupKey || undefined,
           },
@@ -749,11 +795,13 @@ function buildFinalizeDirectOps(
         elementTempOrId: resolvedElementRef || undefined,
         fields: {
           title,
-          description: description || undefined,
+          description: taskDescription,
           estimatedHours,
           stage: stage || undefined,
           workType: workType || undefined,
           workTypeLabelHe: workTypeLabelHe || undefined,
+          checklist: checklist.length > 0 ? checklist : undefined,
+          category: firstNonEmpty([item.category, item.stageKey, item.stage]) || undefined,
           dependencies: normalizedDependencies.length > 0 ? normalizedDependencies : undefined,
           dedupKey: dedupKey || undefined,
         },
@@ -936,8 +984,14 @@ function stageArtifactFromFinalizeTool(
       return {
         elementKey: mappedElementKey,
         titleHe: firstNonEmpty([item?.titleHe, item?.title, item?.descriptionHe, 'משימה']),
-        durationHours: toFiniteNumber(item?.estimateHours ?? item?.estimatedHours) ?? 1,
+        durationHours: toFiniteNumber(item?.estimateHours ?? item?.estimatedHours ?? item?.durationHours) ?? 1,
         category: firstNonEmpty([item?.workType?.key, item?.workType, item?.stageKey, item?.stage]),
+        stageKey: firstNonEmpty([item?.stageKey, item?.stage]) || undefined,
+        workType: firstNonEmpty([item?.workType?.key, item?.workType]) || undefined,
+        workTypeLabelHe: firstNonEmpty([item?.workTypeLabelHe, item?.workType?.labelHe]) || undefined,
+        dedupKey: firstNonEmpty([item?.dedupKey]) || undefined,
+        doneCriteriaHe: firstNonEmpty([item?.doneCriteriaHe, item?.doneCriteria]) || undefined,
+        checklist: normalizeTaskChecklistFromOutput(item),
       }
     })
     return {
@@ -1936,21 +1990,6 @@ export const approveChangeSet = action({
       throw new Error('ChangeSet review has unresolved issues');
     }
 
-    const auditEvent = await ctx.runQuery(internal.sdk.queries.getLatestAuditForRun, {
-      runId: args.runId,
-    });
-    if (!auditEvent) {
-      throw new Error('Audit required before apply');
-    }
-    const findings = Array.isArray(auditEvent.payload?.findings) ? auditEvent.payload.findings : [];
-    const highOrCriticalFindings = findings.filter((item: any) => {
-      const severity = detectSeverity(item);
-      return severity === 'critical' || severity === 'high';
-    });
-    if (highOrCriticalFindings.length > 0) {
-      throw new Error('Audit has unresolved high-severity findings');
-    }
-
     await ctx.runMutation(api.changeSets.applyChangeSet, {
       changeSetId: run.pendingChangeSetId,
     });
@@ -1959,7 +1998,7 @@ export const approveChangeSet = action({
     });
     await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
       runId: args.runId,
-      status: 'completed',
+      status: run.runMode === 'CHAT_EDIT' ? 'running' : 'completed',
       currentAgentName: run.currentAgentName ?? 'orchestrator',
       lastError: undefined,
     });
@@ -1974,31 +2013,6 @@ function normalizeReviewIssues(payload: any): any[] {
   const errors = Array.isArray(payload.errors) ? payload.errors : [];
   const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
   return [...errors, ...warnings];
-}
-
-function detectSeverity(item: any): 'critical' | 'high' | 'medium' | 'low' {
-  const raw = String(
-    item?.severity ??
-    item?.level ??
-    item?.risk ??
-    item?.priority ??
-    ''
-  ).toLowerCase();
-  if (raw.includes('critical')) return 'critical';
-  if (raw.includes('high')) return 'high';
-  if (raw.includes('low')) return 'low';
-  if (raw.includes('medium')) return 'medium';
-
-  const text = String(item?.messageHe ?? item?.message ?? item?.labelHe ?? '').toLowerCase();
-  if (
-    text.includes('אין כלל') ||
-    text.includes('missing') ||
-    text.includes('duplicate') ||
-    text.includes('סתירה')
-  ) {
-    return 'high';
-  }
-  return 'medium';
 }
 
 function extractMessageText(message: any) {
@@ -2020,6 +2034,7 @@ function extractMessageText(message: any) {
 
   return `${text} ${blockText}`.trim();
 }
+
 
 
 

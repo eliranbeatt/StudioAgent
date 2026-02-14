@@ -14,7 +14,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test:sdk": "node --test convex/sdk/__tests__/*.test.mjs convex/sdk/vnext/__tests__/*.test.mjs",
+    "check:sdk:mojibake": "node scripts/check_sdk_mojibake.mjs",
+    "test:sdk": "node scripts/check_sdk_mojibake.mjs && node --test convex/sdk/__tests__/*.test.mjs convex/sdk/vnext/__tests__/*.test.mjs",
     "test:vnext": "node --test convex/sdk/vnext/__tests__/*.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"

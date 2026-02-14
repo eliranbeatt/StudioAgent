@@ -280,10 +280,31 @@ export const compile = action({
   },
 });
 
+function normalizeCompileEntity(raw: any): 'element' | 'task' | 'materialLine' | 'workLine' | 'accountingLine' | null {
+  const value = String(raw ?? '').trim().toLowerCase();
+  if (!value) return null;
+  if (value === 'element' || value === 'elements') return 'element';
+  if (value === 'task' || value === 'tasks') return 'task';
+  if (value === 'materialline' || value === 'material_line' || value === 'material') return 'materialLine';
+  if (value === 'workline' || value === 'work_line' || value === 'laborline' || value === 'labourline' || value === 'labor') return 'workLine';
+  if (value === 'accountingline' || value === 'accounting_line' || value === 'line') return 'accountingLine';
+  return null;
+}
+
+function normalizeCompileAction(raw: any): 'create' | 'patch' | 'delete' | null {
+  const value = String(raw ?? '').trim().toLowerCase();
+  if (!value) return null;
+  if (value === 'create' || value === 'insert' || value === 'add') return 'create';
+  if (value === 'patch' || value === 'update' || value === 'edit') return 'patch';
+  if (value === 'delete' || value === 'remove' || value === 'softdelete' || value === 'archive') return 'delete';
+  return null;
+}
+
 function mapCompileOp(op: any) {
-  if (!op || !op.entity || !op.op) return null;
-  const entity = String(op.entity);
-  const action = String(op.op);
+  if (!op) return null;
+  const entity = normalizeCompileEntity(op.entity);
+  const action = normalizeCompileAction(op.op);
+  if (!entity || !action) return null;
   const tempId = op.tempId ?? undefined;
 
   if (action === 'create') {
@@ -327,7 +348,20 @@ function mapCompileOp(op: any) {
         },
       };
     }
-    return { kind: `${entity}.create`, payload: op.create ?? {} };
+    if (entity === 'accountingLine') {
+      return {
+        kind: 'accountingLine.create',
+        payload: {
+          tempId,
+          elementTempOrId: op.create?.elementTempOrId ?? op.create?.elementId,
+          taskTempOrId: op.create?.taskTempOrId ?? op.create?.taskId,
+          elementId: op.create?.elementId,
+          fields: op.create ?? {},
+          dedupKey: op.dedupKey,
+        },
+      };
+    }
+    return null;
   }
 
   if (action === 'patch') {
@@ -373,7 +407,18 @@ function mapCompileOp(op: any) {
         },
       };
     }
-    return { kind: `${entity}.patch`, payload: op.patch ?? {} };
+    if (entity === 'accountingLine') {
+      return {
+        kind: 'accountingLine.patch',
+        payload: {
+          lineId: op.id ?? undefined,
+          accountingLineId: op.id ?? undefined,
+          tempId: op.tempId ?? undefined,
+          fields: op.patch ?? {},
+        },
+      };
+    }
+    return null;
   }
 
   if (action === 'delete') {
@@ -390,7 +435,13 @@ function mapCompileOp(op: any) {
     if (entity === 'workLine') {
       return { kind: 'workLine.delete', payload: { lineId: deleteId, workLineId: deleteId, tempId: op.tempId } };
     }
-    return { kind: `${entity}.delete`, payload: { id: deleteId } };
+    if (entity === 'accountingLine') {
+      return {
+        kind: 'accountingLine.delete',
+        payload: { lineId: deleteId, accountingLineId: deleteId, tempId: op.tempId },
+      };
+    }
+    return null;
   }
 
   return null;

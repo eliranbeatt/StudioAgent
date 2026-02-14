@@ -260,6 +260,52 @@ export const get = query({
   },
 });
 
+export const listForProject = query({
+  args: {
+    projectId: v.id("projects"),
+    limit: v.optional(v.number()),
+    statuses: v.optional(
+      v.array(
+        v.union(
+          v.literal("PROPOSED"),
+          v.literal("APPLIED"),
+          v.literal("PARTIALLY_APPLIED"),
+          v.literal("DISCARDED")
+        )
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
+    const rows = await ctx.db
+      .query("changeSets")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .take(limit * 2);
+
+    const statusFilter = Array.isArray(args.statuses) && args.statuses.length > 0
+      ? new Set(args.statuses)
+      : null;
+    const filtered = statusFilter
+      ? rows.filter((row: any) => statusFilter.has(row.status))
+      : rows;
+
+    return filtered.slice(0, limit).map((row: any) => ({
+      _id: row._id,
+      projectId: row.projectId,
+      stage: row.stage,
+      status: row.status,
+      reason_he: row.reason_he,
+      preview_he: row.preview_he,
+      createdAt: row.createdAt,
+      appliedAt: row.appliedAt,
+      discardedAt: row.discardedAt,
+      opsCount: Array.isArray(row.ops) ? row.ops.length : 0,
+      appliedOpIndicesCount: Array.isArray(row.appliedOpIndices) ? row.appliedOpIndices.length : 0,
+    }));
+  },
+});
+
 export const getBaseSnapshotForProject = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -505,11 +551,26 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
   const workLineTempMap: TempMap<WorkLineId> = new Map();
   const elementsToBump = new Set<string>();
 
+  const normalizeElementId = (value: unknown): ElementId | null => {
+    if (!value || typeof value !== "string") return null;
+    try {
+      return ctx.db.normalizeId("elements", value) as ElementId;
+    } catch {
+      return null;
+    }
+  };
+
   const resolveElementId = (ref: any): ElementId | null => {
     if (!ref) return null;
-    if (typeof ref === "string") return resolveFromTemp(ref, elementTempMap);
-    if (ref.elementId) return ref.elementId as ElementId;
-    if (ref.tempId) return resolveFromTemp(ref.tempId, elementTempMap);
+    if (typeof ref === "string") {
+      return elementTempMap.get(ref) ?? normalizeElementId(ref);
+    }
+    if (ref.elementId) {
+      return elementTempMap.get(ref.elementId) ?? normalizeElementId(ref.elementId);
+    }
+    if (ref.tempId) {
+      return elementTempMap.get(ref.tempId) ?? normalizeElementId(ref.tempId);
+    }
     return null;
   };
   const normalizeElementType = (value: any) => {
@@ -2093,6 +2154,73 @@ async function applyOpsList(ctx: any, args: { projectId: Id<"projects">, ops: an
   });
 }
 
+function collectReferencedTempIds(value: any): Set<string> {
+  const refs = new Set<string>();
+  const visit = (node: any) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    for (const [rawKey, rawVal] of Object.entries(node)) {
+      const key = rawKey.toLowerCase();
+      if (
+        typeof rawVal === "string" &&
+        (key.includes("temporid") || key.endsWith("tempid"))
+      ) {
+        refs.add(rawVal);
+      } else if (typeof rawVal === "object") {
+        visit(rawVal);
+      }
+    }
+  };
+  visit(value);
+  return refs;
+}
+
+function buildSelectionWithTempDependencies(
+  allOps: any[],
+  requestedIndices: number[],
+  appliedOpIndices: number[]
+) {
+  const validRequested = Array.from(
+    new Set(
+      requestedIndices.filter((i) => Number.isInteger(i) && i >= 0 && i < allOps.length)
+    )
+  );
+  const appliedSet = new Set(appliedOpIndices);
+  const selected = new Set(validRequested);
+  const producerByTempId = new Map<string, number>();
+
+  for (let i = 0; i < allOps.length; i += 1) {
+    const tempId = allOps[i]?.payload?.tempId;
+    if (typeof tempId === "string" && tempId.length > 0) {
+      producerByTempId.set(tempId, i);
+    }
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const i of Array.from(selected)) {
+      const refs = collectReferencedTempIds(allOps[i]?.payload);
+      for (const ref of refs) {
+        const producerIndex = producerByTempId.get(ref);
+        if (
+          producerIndex !== undefined &&
+          !selected.has(producerIndex) &&
+          !appliedSet.has(producerIndex)
+        ) {
+          selected.add(producerIndex);
+          changed = true;
+        }
+      }
+    }
+  }
+
+  return Array.from(selected).sort((a, b) => a - b);
+}
+
 export const applyChangeSetOps = mutation({
   args: {
     changeSetId: v.id("changeSets"),
@@ -2104,10 +2232,12 @@ export const applyChangeSetOps = mutation({
     if (!cs) throw new Error("ChangeSet not found");
     if (!cs.ops) throw new Error("No ops in ChangeSet");
 
-    // Filter ops
-    const selectedOps = args.opIndices
-      .filter(i => i >= 0 && i < (cs.ops?.length ?? 0))
-      .map(i => cs.ops![i]);
+    const selectedIndices = buildSelectionWithTempDependencies(
+      cs.ops,
+      args.opIndices,
+      cs.appliedOpIndices ?? []
+    );
+    const selectedOps = selectedIndices.map((i) => cs.ops![i]);
 
     if (selectedOps.length === 0) return;
 
@@ -2119,16 +2249,26 @@ export const applyChangeSetOps = mutation({
     }
 
     // Apply them
-    await applyOpsList(ctx, {
-      projectId: cs.projectId,
-      ops: selectedOps,
-      stage: cs.stage,
-      sourceChangeSetId: cs._id
-    });
+    try {
+      await applyOpsList(ctx, {
+        projectId: cs.projectId,
+        ops: selectedOps,
+        stage: cs.stage,
+        sourceChangeSetId: cs._id
+      });
+    } catch (error: any) {
+      const message = String(error?.message ?? error);
+      if (message.includes("Unable to decode ID")) {
+        throw new Error(
+          "ChangeSet contains unresolved IDs in selected ops. Re-apply with all dependent create ops (the server now auto-includes temp dependencies, but one or more references are still invalid)."
+        );
+      }
+      throw error;
+    }
 
     // Update state
     const alreadyApplied = cs.appliedOpIndices ?? [];
-    const newApplied = Array.from(new Set([...alreadyApplied, ...args.opIndices]));
+    const newApplied = Array.from(new Set([...alreadyApplied, ...selectedIndices]));
 
     let status = cs.status;
     if (cs.ops.length === newApplied.length) {

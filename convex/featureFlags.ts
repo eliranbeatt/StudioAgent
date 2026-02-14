@@ -33,6 +33,8 @@ export const DEFAULT_FLAGS: Record<string, boolean> = {
   ff_sdk_vnext_soft_gates: true,
   ff_sdk_vnext_pricing_queue: true,
   ff_sdk_vnext_stage_budgets: true,
+  ff_blocks_v2: false,
+  ff_sdk_chat_explicit_changeset_only: true,
 }
 
 export function normalizeFlags(raw: unknown): Record<string, boolean> {

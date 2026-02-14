@@ -1,6 +1,23 @@
 import { Task, TaskChecklistItem } from "./types";
-import { useState, useEffect } from "react";
-import { X, Save, MessageSquare, Sparkles, Trash2, Plus, Copy } from "lucide-react";
+import { useState } from "react";
+import { X, Save, MessageSquare, Sparkles, Trash2, Plus, Copy, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type TaskModalProps = {
   task: Task;
@@ -15,6 +32,84 @@ type TaskModalProps = {
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
+function SortableChecklistItem({
+  item,
+  onToggle,
+  onUpdate,
+  onRemove,
+}: {
+  item: TaskChecklistItem;
+  onToggle: (id: string) => void;
+  onUpdate: (id: string, patch: Partial<TaskChecklistItem>) => void;
+  onRemove: (id: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2 text-sm text-gray-700 group ${
+        isDragging ? "shadow-lg bg-gray-100" : ""
+      }`}
+    >
+      {/* Drag Handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="mt-1 p-0.5 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing outline-none"
+      >
+        <GripVertical size={14} />
+      </button>
+
+      <input
+        type="checkbox"
+        checked={item.done}
+        onChange={() => onToggle(item.id)}
+        className="mt-1"
+      />
+      <div className="flex-1 space-y-1">
+        <input
+          type="text"
+          value={item.title}
+          onChange={(e) => onUpdate(item.id, { title: e.target.value })}
+          placeholder="Item title..."
+          className={`w-full bg-transparent border-none focus:ring-0 p-0 font-medium ${
+            item.done ? "line-through text-gray-400" : "text-gray-900"
+          }`}
+        />
+        <input
+          type="text"
+          value={item.description ?? ""}
+          onChange={(e) => onUpdate(item.id, { description: e.target.value })}
+          placeholder="Add description (optional)"
+          className="w-full bg-transparent border-none focus:ring-0 p-0 text-xs text-gray-400 placeholder:text-gray-300"
+        />
+      </div>
+      <button
+        onClick={() => onRemove(item.id)}
+        className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition"
+      >
+        <Trash2 size={14} />
+      </button>
+    </div>
+  );
+}
+
 export function TaskModal({ task, employees, elements, onClose, onSave, onDuplicate, draftMode, isSaving }: TaskModalProps) {
   const [formData, setFormData] = useState<Partial<Task>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -23,6 +118,13 @@ export function TaskModal({ task, employees, elements, onClose, onSave, onDuplic
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant", content: string }>>([
     { role: "assistant", content: "Hi! I can help you edit this task. Try saying 'change status to blocked' or 'add a subtask'." }
   ]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Reset state when task changes (pattern: derive state from props)
   const [prevTaskId, setPrevTaskId] = useState(task.id);
@@ -64,7 +166,9 @@ export function TaskModal({ task, employees, elements, onClose, onSave, onDuplic
 
   // Merge task + formData for display
   const effectiveTask = { ...task, ...formData };
-  const checklist = effectiveTask.checklist ?? [];
+  const rawChecklist = effectiveTask.checklist ?? [];
+  // Ensure consistent order for drag & drop
+  const checklist = [...rawChecklist].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const checklistDone = checklist.filter((item) => item.done).length;
   const checklistTotal = checklist.length;
   const selectedAssigneeId =
@@ -99,6 +203,24 @@ export function TaskModal({ task, employees, elements, onClose, onSave, onDuplic
       item.id === itemId ? { ...item, ...patch } : item
     );
     handleChange("checklist", nextChecklist);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = checklist.findIndex((item) => item.id === active.id);
+      const newIndex = checklist.findIndex((item) => item.id === over.id);
+
+      const newChecklist = arrayMove(checklist, oldIndex, newIndex).map(
+        (item, index) => ({
+          ...item,
+          order: index,
+        })
+      );
+
+      handleChange("checklist", newChecklist);
+    }
   };
 
   const handleAssigneeChange = (nextId: string) => {
@@ -290,43 +412,28 @@ export function TaskModal({ task, employees, elements, onClose, onSave, onDuplic
                   No checklist items yet.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {checklist.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2 text-sm text-gray-700 group"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={item.done}
-                        onChange={() => toggleChecklistItem(item.id)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1 space-y-1">
-                        <input
-                          type="text"
-                          value={item.title}
-                          onChange={(e) => updateChecklistItem(item.id, { title: e.target.value })}
-                          placeholder="Item title..."
-                          className={`w-full bg-transparent border-none focus:ring-0 p-0 font-medium ${item.done ? "line-through text-gray-400" : "text-gray-900"}`}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={checklist}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-2">
+                      {checklist.map((item) => (
+                        <SortableChecklistItem
+                          key={item.id}
+                          item={item}
+                          onToggle={toggleChecklistItem}
+                          onUpdate={updateChecklistItem}
+                          onRemove={removeChecklistItem}
                         />
-                        <input
-                          type="text"
-                          value={item.description ?? ""}
-                          onChange={(e) => updateChecklistItem(item.id, { description: e.target.value })}
-                          placeholder="Add description (optional)"
-                          className="w-full bg-transparent border-none focus:ring-0 p-0 text-xs text-gray-400 placeholder:text-gray-300"
-                        />
-                      </div>
-                      <button
-                        onClick={() => removeChecklistItem(item.id)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </div>
 

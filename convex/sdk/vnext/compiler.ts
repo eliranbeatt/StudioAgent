@@ -8,6 +8,46 @@ function slugify(input: unknown) {
     .replace(/^-+|-+$/g, '')
 }
 
+function toTaskChecklist(task: any) {
+  const explicitChecklist = Array.isArray(task?.checklist) ? task.checklist : []
+  if (explicitChecklist.length > 0) {
+    return explicitChecklist
+      .map((item: any, index: number) => {
+        const title = String(item?.title ?? item?.textHe ?? item?.labelHe ?? '').trim()
+        if (!title) return null
+        return {
+          id: String(item?.id ?? `item_${index + 1}`),
+          title,
+          done: typeof item?.done === 'boolean' ? item.done : false,
+          order: Number.isFinite(item?.order) ? Number(item.order) : index,
+          estimatedHours:
+            typeof item?.estimatedHours === 'number'
+              ? item.estimatedHours
+              : typeof item?.estimatedMinutes === 'number'
+                ? item.estimatedMinutes / 60
+                : undefined,
+          workType: typeof item?.workType === 'string' ? item.workType : undefined,
+          workTypeLabelHe: typeof item?.workTypeLabelHe === 'string' ? item.workTypeLabelHe : undefined,
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const checklistHe = Array.isArray(task?.checklistHe) ? task.checklistHe : []
+  return checklistHe
+    .map((value: any, index: number) => {
+      const title = String(value ?? '').trim()
+      if (!title) return null
+      return {
+        id: `item_${index + 1}`,
+        title,
+        done: false,
+        order: index,
+      }
+    })
+    .filter(Boolean)
+}
+
 export function compileDeterministicChangeSet(args: {
   spec: TargetPlanSpec
   artifacts: StageArtifactMap
@@ -58,16 +98,22 @@ export function compileDeterministicChangeSet(args: {
     const title = String(task?.titleHe ?? '').trim()
     if (!title) continue
     const taskKey = `${elementKey || 'project'}::${slugify(title)}`
+    const checklist = toTaskChecklist(task)
+    const description = String(task?.doneCriteriaHe ?? '').trim() || (elementKey ? `Element: ${elementKey}` : undefined)
     ops.push({
       kind: 'task.create',
       payload: {
-        dedupKey: taskKey,
         elementTempOrId,
         fields: {
           title,
           estimatedHours: task?.durationHours,
           category: task?.category,
-          description: elementKey ? `Element: ${elementKey}` : undefined,
+          stage: task?.stageKey,
+          workType: task?.workType,
+          workTypeLabelHe: task?.workTypeLabelHe,
+          checklist: checklist.length > 0 ? checklist : undefined,
+          dedupKey: task?.dedupKey ?? taskKey,
+          description,
           createdBy: 'agent',
         },
       },
@@ -136,4 +182,3 @@ export function compileDeterministicChangeSet(args: {
     },
   }
 }
-

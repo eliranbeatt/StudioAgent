@@ -14,11 +14,236 @@ import { getNextVNextStage, normalizeVNextStage } from './vnext/stages';
 import {
   allowedToolsForChatIntent,
   detectChatIntent,
+  isWorkflowReply,
   packsForIntent,
   shouldAttachSuggestions,
 } from './chatPolicy';
 
 const MAX_TOOL_LOOPS = 6;
+const QUEUED_INPUT_OPEN = '[SDK_QUEUED_INPUT_V1]';
+const QUEUED_INPUT_CLOSE = '[/SDK_QUEUED_INPUT_V1]';
+
+type ApprovalDecision = 'approve' | 'reject' | 'ambiguous';
+
+type SanitizedQueuedInput = {
+  suggestionDecision: 'accepted' | 'declined' | null;
+  answers: {
+    yesNo: boolean | null;
+    choice: string | null;
+    clarify: string | null;
+  };
+  suggestions: {
+    actionPrimary: string | null;
+    actionSecondary: string | null;
+    changeSetAction: string | null;
+  };
+  sentAt: number | null;
+};
+
+type QueuedExplicitAction =
+  | 'create_changeset'
+  | 'build_tasks'
+  | 'build_elements'
+  | 'build_budget'
+  | 'build_quote'
+  | 'clarify'
+  | 'focus_task'
+  | null;
+
+type ParsedQueuedInputEnvelope = {
+  text: string;
+  queuedInput: SanitizedQueuedInput | null;
+  explicitAction: QueuedExplicitAction;
+};
+
+const EMPTY_QUEUED_INPUT: SanitizedQueuedInput = {
+  suggestionDecision: null,
+  answers: { yesNo: null, choice: null, clarify: null },
+  suggestions: { actionPrimary: null, actionSecondary: null, changeSetAction: null },
+  sentAt: null,
+};
+
+function normalizeActionToken(value: any) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function resolveQueuedActionToken(value: any): QueuedExplicitAction {
+  const token = normalizeActionToken(value);
+  if (!token) return null;
+  if (
+    token === 'create_changeset' ||
+    token === 'compile_and_review_changeset' ||
+    token === 'changeset.compile' ||
+    token === 's_changeset' ||
+    token.includes('changeset')
+  ) {
+    return 'create_changeset';
+  }
+  if (token === 'build_tasks' || token === 'generate_tasks_from_elements' || token === 'plan.tasks' || token === 's_build_tasks') {
+    return 'build_tasks';
+  }
+  if (token === 'build_elements' || token === 'define_core_elements' || token === 'plan.elements' || token === 's_define_elements') {
+    return 'build_elements';
+  }
+  if (token === 'build_budget' || token === 'draft_budget_lines' || token === 'cost.build_budget' || token === 's_budget_lines') {
+    return 'build_budget';
+  }
+  if (token === 'build_quote' || token === 'generate_quote_draft' || token === 'quote.generate' || token === 's_quote_first') {
+    return 'build_quote';
+  }
+  if (token === 'clarify' || token === 'fill_single_blocker_gap' || token === 'clarify.next_questions' || token === 's_context_gap') {
+    return 'clarify';
+  }
+  if (token === 'focus_task' || token === 'focus_open_task' || token === 's_task_focus') {
+    return 'focus_task';
+  }
+  return null;
+}
+
+function resolveQueuedExplicitAction(queuedInput: SanitizedQueuedInput | null): QueuedExplicitAction {
+  if (!queuedInput) return null;
+  const candidates = [
+    queuedInput.suggestions.changeSetAction,
+    queuedInput.suggestions.actionPrimary,
+    queuedInput.suggestions.actionSecondary,
+    queuedInput.answers.choice,
+    queuedInput.answers.clarify,
+  ];
+  for (const candidate of candidates) {
+    const action = resolveQueuedActionToken(candidate);
+    if (action) return action;
+  }
+  return null;
+}
+
+function asOptionalShortString(value: any, maxLen: number) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLen);
+}
+
+function sanitizeQueuedInput(value: any): SanitizedQueuedInput | null {
+  if (!value || typeof value !== 'object') return null;
+  const suggestionDecision = value?.suggestionDecision === 'accepted' || value?.suggestionDecision === 'declined'
+    ? value.suggestionDecision
+    : null;
+  const yesNo = typeof value?.answers?.yesNo === 'boolean' ? value.answers.yesNo : null;
+  const choice = asOptionalShortString(value?.answers?.choice, 180);
+  const clarify = asOptionalShortString(value?.answers?.clarify, 500);
+  const actionPrimary = asOptionalShortString(value?.suggestions?.actionPrimary, 180);
+  const actionSecondary = asOptionalShortString(value?.suggestions?.actionSecondary, 180);
+  const changeSetAction = asOptionalShortString(value?.suggestions?.changeSetAction, 180);
+  const sentAt = Number.isFinite(value?.sentAt) ? Number(value.sentAt) : null;
+
+  const sanitized: SanitizedQueuedInput = {
+    suggestionDecision,
+    answers: { yesNo, choice, clarify },
+    suggestions: { actionPrimary, actionSecondary, changeSetAction },
+    sentAt,
+  };
+  const hasAnySelection =
+    Boolean(suggestionDecision) ||
+    yesNo !== null ||
+    Boolean(choice) ||
+    Boolean(clarify) ||
+    Boolean(actionPrimary) ||
+    Boolean(actionSecondary) ||
+    Boolean(changeSetAction);
+  return hasAnySelection ? sanitized : null;
+}
+
+function parseQueuedInputEnvelope(userMessage?: string): ParsedQueuedInputEnvelope {
+  const raw = String(userMessage ?? '');
+  const start = raw.indexOf(QUEUED_INPUT_OPEN);
+  const end = raw.indexOf(QUEUED_INPUT_CLOSE);
+  if (start === -1 || end === -1 || end <= start) {
+    return { text: raw.trim(), queuedInput: null, explicitAction: null };
+  }
+
+  const payloadRaw = raw.slice(start + QUEUED_INPUT_OPEN.length, end).trim();
+  let queuedInput: SanitizedQueuedInput | null = null;
+  try {
+    queuedInput = sanitizeQueuedInput(payloadRaw ? JSON.parse(payloadRaw) : null);
+  } catch {
+    queuedInput = null;
+  }
+
+  const cleanedText = `${raw.slice(0, start)} ${raw.slice(end + QUEUED_INPUT_CLOSE.length)}`
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return {
+    text: cleanedText,
+    queuedInput,
+    explicitAction: resolveQueuedExplicitAction(queuedInput),
+  };
+}
+
+function buildQueuedInputPrompt(queuedInput: any) {
+  if (!queuedInput || typeof queuedInput !== 'object') return null;
+  const suggestionDecision = queuedInput.suggestionDecision ?? null;
+  const yesNo = queuedInput.answers?.yesNo ?? null;
+  const choice = queuedInput.answers?.choice ?? null;
+  const clarify = queuedInput.answers?.clarify ?? null;
+  const actionPrimary = queuedInput.suggestions?.actionPrimary ?? null;
+  const actionSecondary = queuedInput.suggestions?.actionSecondary ?? null;
+  const changeSetAction = queuedInput.suggestions?.changeSetAction ?? null;
+  const explicitAction = resolveQueuedExplicitAction(queuedInput);
+  const sentAt = queuedInput.sentAt ?? null;
+  return [
+    'QUEUED_UI_INPUT (staged from chat blocks):',
+    `- suggestionDecision: ${JSON.stringify(suggestionDecision)}`,
+    `- yesNo: ${JSON.stringify(yesNo)}`,
+    `- choice: ${JSON.stringify(choice)}`,
+    `- clarify: ${JSON.stringify(clarify)}`,
+    `- actionPrimary: ${JSON.stringify(actionPrimary)}`,
+    `- actionSecondary: ${JSON.stringify(actionSecondary)}`,
+    `- changeSetAction: ${JSON.stringify(changeSetAction)}`,
+    `- explicitAction: ${JSON.stringify(explicitAction)}`,
+    `- sentAt: ${JSON.stringify(sentAt)}`,
+    'Treat these values as explicit user inputs for this turn.',
+  ].join('\n');
+}
+
+function parseApprovalDecision(userMessage?: string): ApprovalDecision {
+  const text = String(userMessage ?? '').trim().toLowerCase();
+  if (!text) return 'ambiguous';
+  const approveTokens = [
+    'yes',
+    'approve',
+    'approved',
+    'ok',
+    'done',
+    'sure',
+    '\u05db\u05df',
+    '\u05de\u05d0\u05e9\u05e8',
+    '\u05de\u05d0\u05e9\u05e8\u05ea',
+    '\u05d9\u05d0\u05dc\u05dc\u05d4',
+    '\u05e1\u05d1\u05d1\u05d4',
+  ];
+  const rejectTokens = [
+    'no',
+    'reject',
+    'decline',
+    'cancel',
+    'stop',
+    '\u05dc\u05d0',
+    '\u05d1\u05d8\u05dc',
+    '\u05e2\u05d6\u05d5\u05d1',
+  ];
+  if (approveTokens.some((token) => text === token || text.includes(`${token} `) || text.includes(` ${token}`))) {
+    return 'approve';
+  }
+  if (rejectTokens.some((token) => text === token || text.includes(`${token} `) || text.includes(` ${token}`))) {
+    return 'reject';
+  }
+  if (isWorkflowReply(text)) return 'ambiguous';
+  return 'ambiguous';
+}
 
 function toHeList(items: any) {
   const list = Array.isArray(items) ? items : items ? [items] : [];
@@ -68,6 +293,24 @@ function normalizeReviewIssues(review: any): any[] {
   return [...errors, ...warnings];
 }
 
+function hasChangeProducingIntents(intents: any[]) {
+  return (Array.isArray(intents) ? intents : []).some((intent: any) => {
+    const type = String(intent?.type ?? '').toLowerCase();
+    if (!type) return false;
+    return (
+      type.includes('create') ||
+      type.includes('patch') ||
+      type.includes('update') ||
+      type.includes('delete') ||
+      type.includes('plan.') ||
+      type.includes('cost.') ||
+      type.includes('quote.') ||
+      type.includes('runbook.') ||
+      type.includes('ops.')
+    );
+  });
+}
+
 
 function summarizeChangeSetCoverage(changeSet: any) {
   const ops = Array.isArray(changeSet?.ops) ? changeSet.ops : [];
@@ -95,49 +338,344 @@ function extractQuestionTexts(text: string): string[] {
   return sentenceMatches.map((s) => s.trim()).filter(Boolean).slice(0, 3);
 }
 
-function buildFallbackSuggestionBlock(isPlanningRequest: boolean) {
-  if (isPlanningRequest) {
-    return {
-      type: 'SuggestionsBlock',
-      titleHe: 'פעולות המשך',
-      suggestions: [
+function parseListLikeItems(source: string, maxItems: number) {
+  const lines = String(source ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const bulletLike = lines
+    .map((line) => line.replace(/^[-*•]\s+/, '').replace(/^\d+[\.)]\s+/, '').trim())
+    .filter(Boolean);
+  if (bulletLike.length > 0) return bulletLike.slice(0, maxItems);
+  return lines.slice(0, maxItems);
+}
+
+function extractLabeledBlocksFromText(text: string) {
+  const source = String(text ?? '').trim();
+  if (!source) return [] as any[];
+
+  const questionsMatch =
+    source.match(/(?:^|\n)\s*(?:questions?|clarifications?)\s*:\s*([\s\S]*?)(?=\n\s*(?:suggestions?|actions?)\s*:|$)/i) ??
+    source.match(/(?:^|\n)\s*(?:שאלות|הבהרות)\s*:\s*([\s\S]*?)(?=\n\s*(?:הצעות|פעולות)\s*:|$)/i);
+  const suggestionsMatch =
+    source.match(/(?:^|\n)\s*(?:suggestions?|actions?)\s*:\s*([\s\S]*?)(?=\n\s*(?:questions?|clarifications?)\s*:|$)/i) ??
+    source.match(/(?:^|\n)\s*(?:הצעות|פעולות)\s*:\s*([\s\S]*?)(?=\n\s*(?:שאלות|הבהרות)\s*:|$)/i);
+
+  const questionsText = questionsMatch?.[1] ?? '';
+  const suggestionsText = suggestionsMatch?.[1] ?? '';
+  const extractedQuestions = parseListLikeItems(questionsText, 3);
+  const extractedSuggestions = parseListLikeItems(suggestionsText, 3);
+
+  const blocks: any[] = [];
+  if (extractedQuestions.length > 0) {
+    blocks.push({
+      type: 'QuestionsBlock',
+      titleHe: 'שאלת הבהרה קצרה',
+      questions: [
         {
-          id: 's_plan_elements',
-          labelHe: 'להפיק אלמנטים',
-          whyHe: 'מייצר רשימת אלמנטים מסודרת מהבריף',
-          payload: { action: 'plan.elements' },
-        },
-        {
-          id: 's_plan_tasks',
-          labelHe: 'להפיק משימות',
-          whyHe: 'מפרק את האלמנטים למשימות עבודה',
-          payload: { action: 'plan.tasks' },
-        },
-        {
-          id: 's_compile_changeset',
-          labelHe: 'לקמפל ChangeSet',
-          whyHe: 'מייצר סט שינויים ישים לאישור',
-          payload: { action: 'changeset.compile' },
+          id: 'q_from_labeled_text',
+          textHe: extractedQuestions[0],
+          type: 'text',
         },
       ],
-      freeTextPromptHe: 'אם יש תיקון נקודתי, כתוב לי מה לשנות.',
-    };
+    });
+  }
+  if (extractedSuggestions.length > 0) {
+    blocks.push({
+      type: 'SuggestionsBlock',
+      titleHe: 'צעדים מומלצים להמשך',
+      suggestions: extractedSuggestions.slice(0, 3).map((label: string, index: number) => ({
+        id: `s_from_labeled_text_${index + 1}`,
+        actionKey: `text_suggestion_${index + 1}`,
+        labelHe: label,
+        whyHe: 'הומר מתוך טקסט התשובה',
+      })),
+      freeTextPromptHe: 'אפשר גם לכתוב תשובה חופשית בצ׳אט.',
+    });
+  }
+  return blocks;
+}
+
+function buildFallbackSuggestionBlock(isPlanningRequest: boolean) {
+  return buildContextAwareSuggestionBlock({
+    isPlanningRequest,
+    intent: isPlanningRequest ? 'planning_request' : 'project_read_qna',
+    userText: isPlanningRequest ? 'planning follow-up' : 'next step',
+    context: null,
+  });
+}
+
+function normalizeForCompare(value: any) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collectRecentBlockTexts(history: any[], limit = 8) {
+  const messages = Array.isArray(history) ? history.slice(-limit) : [];
+  const out: string[] = [];
+  for (const message of messages) {
+    const blocks = Array.isArray(message?.blocks) ? message.blocks : [];
+    for (const block of blocks) {
+      if (!block || typeof block !== 'object') continue;
+      if (block.type === 'SuggestionsBlock' || block.type === 'SuggestionBlock') {
+        const suggestions = Array.isArray(block.suggestions) ? block.suggestions : [];
+        for (const item of suggestions) {
+          const label = String(item?.labelHe ?? item?.titleHe ?? item?.label ?? '').trim();
+          const why = String(item?.whyHe ?? item?.descriptionHe ?? '').trim();
+          if (label) out.push(label);
+          if (why) out.push(why);
+        }
+      }
+      if (block.type === 'QuestionsBlock') {
+        const questions = Array.isArray(block.questions) ? block.questions : [];
+        for (const question of questions) {
+          const text = String(question?.textHe ?? question?.questionHe ?? '').trim();
+          if (text) out.push(text);
+        }
+      }
+    }
+  }
+  return out.map((entry) => normalizeForCompare(entry)).filter(Boolean);
+}
+
+function isRepeatedText(value: string, recentNormalized: string[]) {
+  const normalized = normalizeForCompare(value);
+  if (!normalized) return false;
+  return recentNormalized.some((item) => item === normalized || item.includes(normalized) || normalized.includes(item));
+}
+
+const GENERIC_HINTS = [
+  'next action',
+  'continue',
+  'follow up',
+  'clarify',
+  'quick clarification',
+  'answer from context',
+  'ask one clarifying question',
+  'choose one or more',
+  'how should we continue',
+  'המשך',
+  'הבהרה',
+  'שאלת הבהרה',
+  'שאלה כללית',
+  'פעולה הבאה',
+  'איך נמשיך',
+];
+
+function isGenericText(value: any) {
+  const normalized = normalizeForCompare(value);
+  if (!normalized) return true;
+  if (normalized.length < 8) return true;
+  return GENERIC_HINTS.some((hint) => normalized.includes(normalizeForCompare(hint)));
+}
+
+function summarizeContextSignals(context: any) {
+  const tasks = Array.isArray(context?.tasks) ? context.tasks : [];
+  const elements = Array.isArray(context?.elements) ? context.elements : [];
+  const materialLines = Array.isArray(context?.materialLines) ? context.materialLines : [];
+  const workLines = Array.isArray(context?.workLines) ? context.workLines : [];
+  const quote = context?.quote ?? null;
+
+  const openTask = tasks.find((task: any) =>
+    ['todo', 'open', 'pending', 'in_progress', 'blocked'].includes(String(task?.status ?? '').toLowerCase())
+  ) ?? tasks[0] ?? null;
+  const openElement = elements.find((element: any) =>
+    ['draft', 'pending', 'open', 'in_progress'].includes(String(element?.status ?? '').toLowerCase())
+  ) ?? elements[0] ?? null;
+  const focusTitle = String(openTask?.title ?? openElement?.title ?? context?.project?.name ?? '').trim();
+
+  return {
+    taskCount: tasks.length,
+    elementCount: elements.length,
+    materialCount: materialLines.length,
+    workCount: workLines.length,
+    hasQuote: Boolean(quote),
+    openTaskTitle: String(openTask?.title ?? '').trim(),
+    openElementTitle: String(openElement?.title ?? '').trim(),
+    focusTitle,
+  };
+}
+
+function buildContextAwareSuggestionBlock(args: {
+  isPlanningRequest: boolean;
+  intent?: string | null;
+  userText?: string;
+  context?: any;
+  recentBlockTexts?: string[];
+}) {
+  const projectName = String(args.context?.project?.name ?? '').trim();
+  const userText = String(args.userText ?? '').trim();
+  const writeLike = args.intent === 'project_write_change' || args.intent === 'planning_request' || args.isPlanningRequest;
+  const recent = Array.isArray(args.recentBlockTexts) ? args.recentBlockTexts : [];
+  const signals = summarizeContextSignals(args.context);
+
+  const candidates: any[] = [];
+  if (signals.openTaskTitle) {
+    candidates.push({
+      id: 's_task_focus',
+      actionKey: 'focus_task',
+      labelHe: `לקדם עכשיו את המשימה: ${signals.openTaskTitle}`,
+      whyHe: 'זו המשימה הפתוחה עם ההשפעה הגבוהה ביותר כרגע.',
+      payload: { action: 'focus_task', focusTaskTitle: signals.openTaskTitle },
+    });
+  }
+  if (signals.taskCount === 0 && signals.elementCount > 0) {
+    candidates.push({
+      id: 's_build_tasks',
+      actionKey: 'build_tasks',
+      labelHe: `לייצר משימות לביצוע עבור ${signals.openElementTitle || 'האלמנטים שהוגדרו'}`,
+      whyHe: 'יש אלמנטים, אבל עדיין אין פירוק ביצועי למשימות.',
+      payload: { action: 'build_tasks' },
+    });
+  }
+  if (signals.elementCount === 0) {
+    candidates.push({
+      id: 's_define_elements',
+      actionKey: 'build_elements',
+      labelHe: 'להגדיר עכשיו 2-4 אלמנטים מרכזיים',
+      whyHe: 'בלי מבנה אלמנטים אי אפשר להתקדם לתכנון אמין.',
+      payload: { action: 'build_elements' },
+    });
+  }
+  if (signals.materialCount + signals.workCount === 0 && signals.taskCount > 0) {
+    candidates.push({
+      id: 's_budget_lines',
+      actionKey: 'build_budget',
+      labelHe: 'לבנות שורות חומר + עבודה למשימות הפעילות',
+      whyHe: 'המשימות קיימות, אבל חסרה כרגע תמונת עלות.',
+      payload: { action: 'build_budget' },
+    });
+  }
+  if (!signals.hasQuote && (signals.materialCount > 0 || signals.workCount > 0)) {
+    candidates.push({
+      id: 's_quote_first',
+      actionKey: 'build_quote',
+      labelHe: 'להפיק טיוטת הצעת מחיר ראשונה מהעלויות הקיימות',
+      whyHe: 'כבר קיימות שורות עלות, אז אפשר לייצר בסיס להצעה ללקוח.',
+      payload: { action: 'build_quote' },
+    });
+  }
+  candidates.push({
+    id: 's_context_gap',
+    actionKey: 'clarify',
+    labelHe: signals.focusTitle
+      ? `לחדד חסם אחד שחוסם את ${signals.focusTitle}`
+      : 'לחדד את החסם המרכזי הבא',
+    whyHe: 'החלטה אחת נכונה עכשיו תפתח את הצעד המעשי הבא.',
+    payload: { action: 'clarify' },
+  });
+  if (writeLike) {
+    candidates.push({
+      id: 's_changeset',
+      actionKey: 'create_changeset',
+      labelHe: 'לייצר ChangeSet לאישור',
+      whyHe: 'להכין עדכונים לבדיקה ואישור בלי החלה אוטומטית.',
+      payload: { action: 'create_changeset' },
+    });
+  }
+
+  const suggestions = candidates
+    .filter((candidate) => !isGenericText(candidate?.labelHe))
+    .filter((candidate) => !isRepeatedText(String(candidate?.labelHe ?? ''), recent))
+    .slice(0, 3);
+
+  while (suggestions.length < (writeLike ? 3 : 2) && suggestions.length < candidates.length) {
+    const next = candidates[suggestions.length];
+    if (!next) break;
+    if (!suggestions.some((item) => String(item?.actionKey ?? '') === String(next?.actionKey ?? ''))) {
+      suggestions.push(next);
+    }
   }
 
   return {
     type: 'SuggestionsBlock',
-    titleHe: 'פעולות המשך',
-    suggestions: [
-      {
-        id: 's_continue',
-        labelHe: 'להמשיך',
-        whyHe: 'נמשיך לצעד הבא באופן ממוקד',
-      },
-    ],
-    freeTextPromptHe: 'כתוב מה תרצה שאעשה עכשיו.',
+    titleHe: `צעדים מומלצים להמשך${projectName ? ` - ${projectName}` : ''}${userText ? `: ${clipText(userText, 56)}` : ''}`,
+    suggestions: suggestions.slice(0, 3),
   };
 }
+function hasSuggestionControls(block: any) {
+  if (!block) return false;
+  if (block.type !== 'SuggestionBlock' && block.type !== 'SuggestionsBlock') return false;
+  const items = Array.isArray(block.suggestions)
+    ? block.suggestions
+    : Array.isArray(block.items)
+      ? block.items
+      : [];
+  return items.length > 0;
+}
 
+function hasUsableQuestionControls(block: any) {
+  if (!block || block.type !== 'QuestionsBlock') return false;
+  const questions = Array.isArray(block.questions) ? block.questions : [];
+  return questions.length > 0;
+}
+
+function buildContextAwareQuestionsBlock(args: {
+  isPlanningRequest: boolean;
+  intent?: string | null;
+  userText?: string;
+  context?: any;
+  recentBlockTexts?: string[];
+}) {
+  const userText = String(args.userText ?? '').trim();
+  const writeLike = args.intent === 'project_write_change' || args.intent === 'planning_request' || args.isPlanningRequest;
+  const recent = Array.isArray(args.recentBlockTexts) ? args.recentBlockTexts : [];
+  const signals = summarizeContextSignals(args.context);
+  const focusLabel = signals.openTaskTitle || signals.openElementTitle || signals.focusTitle || 'היקף הפרויקט הנוכחי';
+  const primaryGap = signals.elementCount === 0
+    ? 'חסרה הגדרת אלמנטים מרכזיים'
+    : signals.taskCount === 0
+      ? 'חסרות משימות ביצוע'
+      : signals.materialCount + signals.workCount === 0
+        ? 'חסרות שורות עלות'
+        : !signals.hasQuote
+          ? 'חסר בסיס להצעת מחיר'
+          : 'חסרה החלטה קריטית אחת';
+
+  let yesNoQuestionText = `להתמקד עכשיו ב-${focusLabel}?`;
+  if (writeLike) yesNoQuestionText = `לבצע עכשיו את העדכון הבא עבור ${focusLabel}?`;
+  if (userText) yesNoQuestionText = `${yesNoQuestionText} (הקשר: ${clipText(userText, 52)})`;
+  if (isRepeatedText(yesNoQuestionText, recent) || isGenericText(yesNoQuestionText)) {
+    yesNoQuestionText = writeLike
+      ? `להחיל בסבב הזה את העדכון הבא סביב ${focusLabel}?`
+      : `שהתשובה הבאה תהיה ממוקדת אך ורק ב-${focusLabel}?`;
+  }
+
+  const optionsHe = [
+    writeLike ? `להכין ChangeSet עבור ${focusLabel}` : `לתת תשובה ממוקדת עבור ${focusLabel}`,
+    `לסגור פער: ${primaryGap}`,
+    signals.taskCount > 0 ? 'לפרק את העבודה לצעדי ביצוע' : 'לייצר רשימת משימות ביצוע ראשונה',
+    signals.materialCount + signals.workCount > 0 ? 'להמיר עלויות קיימות לטיוטת הצעת מחיר' : 'לבנות בסיס עלויות ראשוני',
+  ]
+    .filter((option) => !isRepeatedText(option, recent))
+    .slice(0, 4);
+  if (optionsHe.length < 2) {
+    optionsHe.push('לשאול שאלה חוסמת אחת שתפתח התקדמות');
+  }
+
+  const multiQuestionText = `מה התוצאה הכי דחופה שצריך לקדם בסבב הבא עבור ${focusLabel}?`;
+
+  return {
+    type: 'QuestionsBlock',
+    titleHe: 'החלטות קצרות להמשך',
+    questions: [
+      {
+        id: 'q_yes_no',
+        textHe: yesNoQuestionText,
+        type: 'toggle',
+      },
+      {
+        id: 'q_multi',
+        textHe: multiQuestionText,
+        type: 'multi',
+        optionsHe,
+      },
+    ],
+  };
+}
 function clipText(value: any, maxLen: number) {
   const text = String(value ?? '').trim();
   if (!text) return undefined;
@@ -220,6 +758,34 @@ function compactBootstrapForChat(intent: string | null, context: any) {
   return compact;
 }
 
+function summarizeBlocksForPrompt(blocks: any[]) {
+  const lines: string[] = [];
+  for (const block of Array.isArray(blocks) ? blocks : []) {
+    if (!block || typeof block !== 'object') continue;
+    if (block.type === 'ChatBlock') {
+      const text = String(block?.markdownHe ?? block?.contentHe ?? '').trim();
+      if (text) lines.push(`Chat: ${text}`);
+    }
+    if (block.type === 'QuestionsBlock') {
+      const questions = Array.isArray(block?.questions) ? block.questions : [];
+      const list = questions
+        .map((question: any) => String(question?.textHe ?? question?.questionHe ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 4);
+      if (list.length > 0) lines.push(`Questions: ${list.join(' | ')}`);
+    }
+    if (block.type === 'SuggestionsBlock' || block.type === 'SuggestionBlock') {
+      const suggestions = Array.isArray(block?.suggestions) ? block.suggestions : [];
+      const list = suggestions
+        .map((item: any) => String(item?.labelHe ?? item?.titleHe ?? item?.label ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 4);
+      if (list.length > 0) lines.push(`Suggestions: ${list.join(' | ')}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 function toPromptMessage(m: any, isChatEditRun: boolean) {
   const text = String(m?.text ?? '').trim();
   if (text) return { role: m.role, content: text };
@@ -227,11 +793,208 @@ function toPromptMessage(m: any, isChatEditRun: boolean) {
     return { role: m.role, content: JSON.stringify(m.blocks) };
   }
   const blocks = Array.isArray(m?.blocks) ? m.blocks : [];
-  const chatLike = blocks
-    .map((b: any) => String(b?.markdownHe ?? b?.contentHe ?? b?.titleHe ?? '').trim())
-    .filter(Boolean)
-    .join('\n');
+  const chatLike = summarizeBlocksForPrompt(blocks);
   return { role: m.role, content: chatLike || '' };
+}
+
+function normalizeAssistantBlock(raw: any): any[] {
+  if (!raw) return [];
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      return normalizeAssistantBlock(JSON.parse(trimmed));
+    } catch {
+      return [{ type: 'ChatBlock', markdownHe: trimmed }];
+    }
+  }
+  if (Array.isArray(raw)) return raw.flatMap((item) => normalizeAssistantBlock(item));
+  if (typeof raw !== 'object') return [{ type: 'ChatBlock', markdownHe: String(raw) }];
+  const out: any[] = [];
+  if (raw.ChatBlock) {
+    const source = raw.ChatBlock;
+    const markdownHe = typeof source === 'string'
+      ? source
+      : String(source?.markdownHe ?? source?.text ?? source?.contentHe ?? '').trim();
+    if (markdownHe) out.push({ type: 'ChatBlock', markdownHe });
+  }
+  const mapSuggestionItem = (item: any, index: number) => {
+    const labelHe = String(item?.labelHe ?? item?.label ?? item?.text ?? item?.title ?? item?.description ?? '').trim();
+    if (!labelHe) return null;
+    return {
+      ...item,
+      id: String(item?.id ?? `s_${index + 1}`),
+      actionKey: String(item?.actionKey ?? item?.payload?.action ?? item?.id ?? `action_${index + 1}`),
+      labelHe,
+      whyHe: String(item?.whyHe ?? item?.why ?? '').trim(),
+    };
+  };
+  const mapQuestionItem = (item: any, index: number) => {
+    if (typeof item === 'string') {
+      const textHe = item.trim();
+      if (!textHe) return null;
+      return { id: `q_${index + 1}`, textHe, type: 'text' };
+    }
+    const textHe = String(
+      item?.textHe ??
+      item?.text_he ??
+      item?.text ??
+      item?.questionHe ??
+      item?.question_he ??
+      item?.question ??
+      item?.labelHe ??
+      item?.label ??
+      ''
+    ).trim();
+    if (!textHe) return null;
+    const rawOptions = item?.optionsHe ?? item?.options_he ?? item?.options;
+    const optionsHe = Array.isArray(rawOptions)
+      ? rawOptions
+        .map((option: any) => {
+          if (typeof option === 'string') return option.trim();
+          return String(option?.labelHe ?? option?.label ?? option?.text ?? option?.title ?? option?.value ?? '').trim();
+        })
+        .filter(Boolean)
+      : undefined;
+    return {
+      ...item,
+      id: String(item?.id ?? `q_${index + 1}`),
+      textHe,
+      type: item?.type ?? 'text',
+      ...(optionsHe && optionsHe.length > 0 ? { optionsHe } : {}),
+    };
+  };
+
+  if (raw.type) {
+    if (raw.type === 'ChatBlock') {
+      const markdownHe = String(raw?.markdownHe ?? raw?.contentHe ?? raw?.text ?? '').trim();
+      if (!markdownHe) return [];
+      return [{ ...raw, type: 'ChatBlock', markdownHe }];
+    }
+    if (raw.type === 'QuestionsBlock') {
+      const questions = (Array.isArray(raw?.questions) ? raw.questions : [])
+        .map((item: any, index: number) => mapQuestionItem(item, index))
+        .filter(Boolean);
+      if (questions.length === 0) return [];
+      return [{
+        ...raw,
+        type: 'QuestionsBlock',
+        titleHe: raw?.titleHe ?? raw?.title_he ?? 'שאלת הבהרה קצרה',
+        questions,
+      }];
+    }
+    if (raw.type === 'SuggestionBlock' || raw.type === 'SuggestionsBlock') {
+      const sourceItems = Array.isArray(raw?.suggestions)
+        ? raw.suggestions
+        : Array.isArray(raw?.items)
+          ? raw.items
+          : [];
+      const suggestions = sourceItems
+        .map((item: any, index: number) => mapSuggestionItem(item, index))
+        .filter(Boolean);
+      if (suggestions.length === 0) return [];
+      return [{
+        ...raw,
+        type: raw.type === 'SuggestionBlock' ? 'SuggestionBlock' : 'SuggestionsBlock',
+        titleHe: raw?.titleHe ?? raw?.title_he ?? 'Suggested next steps',
+        suggestions,
+      }];
+    }
+    if (raw.type === 'ChangeSetBlock' || raw.type === 'ReviewBlock') return [raw];
+    return [raw];
+  }
+
+  if (raw.QuestionsBlock) {
+    const source = raw.QuestionsBlock;
+    const fromArray = Array.isArray(source)
+      ? source.map((q: any, i: number) => (typeof q === 'string' ? { id: `q_${i + 1}`, textHe: q, type: 'text' } : q))
+      : [];
+    const fromSingleQuestion = !Array.isArray(source) && typeof source?.question === 'string'
+      ? [{ id: 'q_1', textHe: source.question, type: 'text' }]
+      : [];
+    const fromObjectText = !Array.isArray(source) && typeof source?.textHe === 'string'
+      ? [{ id: String(source?.id ?? 'q_1'), textHe: source.textHe, type: source?.type ?? 'text', optionsHe: source?.optionsHe }]
+      : [];
+    const questions = [...fromArray, ...fromSingleQuestion, ...fromObjectText].filter(Boolean);
+    out.push({
+      type: 'QuestionsBlock',
+      titleHe: raw.titleHe ?? raw.title_he ?? source?.titleHe ?? source?.title_he ?? 'שאלת הבהרה קצרה',
+      questions,
+    });
+  }
+  if (raw.SuggestionBlock) {
+    const source = raw.SuggestionBlock;
+    const sourceItems = Array.isArray(source?.suggestions)
+      ? source.suggestions
+      : Array.isArray(source)
+        ? source
+        : source?.suggestion
+          ? [source.suggestion]
+          : source && typeof source === 'object'
+            ? [source]
+            : [];
+    out.push({
+      type: 'SuggestionBlock',
+      ...(source && typeof source === 'object' && !Array.isArray(source) ? source : {}),
+      suggestions: sourceItems.map((item: any, index: number) => mapSuggestionItem(item, index)).filter(Boolean),
+    });
+  }
+  if (raw.SuggestionsBlock) {
+    const source = raw.SuggestionsBlock;
+    const sourceItems = Array.isArray(source?.suggestions)
+      ? source.suggestions
+      : Array.isArray(source)
+        ? source
+        : source && typeof source === 'object' && source.text
+          ? [source]
+          : [];
+    out.push({
+      type: 'SuggestionsBlock',
+      ...(source && typeof source === 'object' && !Array.isArray(source) ? source : {}),
+      titleHe: source?.titleHe ?? source?.title_he ?? 'Suggested next steps',
+      suggestions: sourceItems.map((item: any, index: number) => mapSuggestionItem(item, index)).filter(Boolean),
+    });
+  }
+  if (raw.ChangeSetBlock) {
+    const source = Array.isArray(raw.ChangeSetBlock) ? raw.ChangeSetBlock[0] : raw.ChangeSetBlock;
+    if (source && typeof source === 'object') out.push({ type: 'ChangeSetBlock', ...source });
+  }
+  if (raw.ReviewBlock) {
+    const source = Array.isArray(raw.ReviewBlock) ? raw.ReviewBlock[0] : raw.ReviewBlock;
+    if (source && typeof source === 'object') {
+      const summaryHe = String(source?.summaryHe ?? source?.text ?? source?.markdownHe ?? '').trim();
+      out.push({
+        type: 'ReviewBlock',
+        ...source,
+        ...(summaryHe ? { summaryHe } : {}),
+      });
+    }
+  }
+  if (out.length > 0) return out;
+  const markdown = String(raw.markdownHe ?? raw.contentHe ?? raw.summaryHe ?? '').trim();
+  if (markdown) return [{ type: 'ChatBlock', markdownHe: markdown }];
+  return [{ type: 'ChatBlock', markdownHe: JSON.stringify(raw) }];
+}
+
+function hasWrapperShapeCoercion(raw: any) {
+  if (!raw || typeof raw !== 'object') return false;
+  const source = raw?.blocks ?? raw;
+  const list = Array.isArray(source) ? source : [source];
+  return list.some((item: any) => {
+    if (!item || typeof item !== 'object') return false;
+    if (item.ChatBlock && typeof item.ChatBlock === 'object') return true;
+    if (Array.isArray(item.SuggestionsBlock)) return true;
+    if (Array.isArray(item.ChangeSetBlock) || Array.isArray(item.ReviewBlock)) return true;
+    return false;
+  });
+}
+
+function normalizeAssistantResponse(parsed: any, rawText: string) {
+  const blocks = normalizeAssistantBlock(parsed?.blocks ?? parsed);
+  if (blocks.length > 0) return blocks;
+  const fallbackText = String(parsed?.summaryHe ?? parsed?.contentHe ?? rawText ?? '').trim();
+  if (!fallbackText) return [];
+  return [{ type: 'ChatBlock', markdownHe: fallbackText }];
 }
 
 function ensureMinimumBlocks(args: {
@@ -240,9 +1003,130 @@ function ensureMinimumBlocks(args: {
   rawText?: string;
   isPlanningRequest: boolean;
   includeSuggestions?: boolean;
+  alwaysIncludeNextSet?: boolean;
+  skipSyntheticNextSet?: boolean;
+  intent?: string | null;
+  userText?: string;
+  context?: any;
+  history?: any[];
 }) {
   const blocks = Array.isArray(args.blocks) ? args.blocks.filter(Boolean) : [];
-  if (blocks.length > 0) return blocks;
+  const recentBlockTexts = collectRecentBlockTexts(args.history ?? []);
+  if (args.alwaysIncludeNextSet && !args.skipSyntheticNextSet) {
+    if (blocks.length > 0) {
+      return blocks;
+    }
+    const baseBlocks = blocks.filter((block: any) => block?.type !== 'SuggestionBlock' && block?.type !== 'SuggestionsBlock' && block?.type !== 'QuestionsBlock');
+    const questionBlock = blocks.find((block: any) => hasUsableQuestionControls(block));
+    const suggestionBlock = blocks.find((block: any) => hasSuggestionControls(block));
+    const output = baseBlocks.length > 0
+      ? [...baseBlocks]
+      : [{ type: 'ChatBlock', markdownHe: String(args.rawText ?? args.summaryHe ?? 'איך תרצה/י שנמשיך?').trim() || 'איך תרצה/י שנמשיך?' }];
+    output.push(
+      questionBlock &&
+      hasUsableQuestionControls(questionBlock) &&
+      !isGenericText(String(questionBlock?.questions?.[0]?.textHe ?? '')) &&
+      !isRepeatedText(String(questionBlock?.questions?.[0]?.textHe ?? ''), recentBlockTexts)
+        ? {
+          ...questionBlock,
+          titleHe: questionBlock?.titleHe ?? questionBlock?.title_he ?? 'שאלת הבהרה קצרה',
+          questions: (() => {
+            const fallback = buildContextAwareQuestionsBlock({
+              isPlanningRequest: args.isPlanningRequest,
+              intent: args.intent,
+              userText: args.userText,
+              context: args.context,
+              recentBlockTexts,
+            }).questions;
+            const current = Array.isArray(questionBlock?.questions) && questionBlock.questions.length > 0
+              ? questionBlock.questions.slice(0, 2)
+              : [];
+            if (current.length >= 2) return current;
+            const next = [...current];
+            for (const candidate of fallback) {
+              if (next.length >= 2) break;
+              const id = String(candidate?.id ?? '');
+              const exists = next.some((item: any) => String(item?.id ?? '') === id);
+              if (!exists) next.push(candidate);
+            }
+            return next.slice(0, 2);
+          })(),
+        }
+        : buildContextAwareQuestionsBlock({
+          isPlanningRequest: args.isPlanningRequest,
+          intent: args.intent,
+          userText: args.userText,
+          context: args.context,
+          recentBlockTexts,
+        })
+    );
+    output.push(
+      (() => {
+        const fallbackSuggestions = buildContextAwareSuggestionBlock({
+          isPlanningRequest: args.isPlanningRequest,
+          intent: args.intent,
+          userText: args.userText,
+          context: args.context,
+          recentBlockTexts,
+        })
+        if (!(suggestionBlock && hasSuggestionControls(suggestionBlock))) {
+          return fallbackSuggestions
+        }
+        const existing = Array.isArray(suggestionBlock?.suggestions) ? suggestionBlock.suggestions : []
+        const merged = existing.filter((item: any) => {
+          const label = String(item?.labelHe ?? item?.titleHe ?? item?.label ?? '');
+          return !isGenericText(label) && !isRepeatedText(label, recentBlockTexts);
+        })
+        for (const candidate of fallbackSuggestions.suggestions ?? []) {
+          if (merged.length >= 3) break
+          const key = String(candidate?.actionKey ?? candidate?.id ?? '')
+          const already = merged.some((item: any) => String(item?.actionKey ?? item?.id ?? '') === key)
+          if (!already) merged.push(candidate)
+        }
+        return {
+          ...suggestionBlock,
+          suggestions: merged.slice(0, 3),
+        }
+      })()
+    );
+
+    const writeLike = args.intent === 'project_write_change' || args.intent === 'planning_request' || args.isPlanningRequest;
+    const suggestionOut = output.find((block: any) => block?.type === 'SuggestionsBlock' || block?.type === 'SuggestionBlock');
+    if (suggestionOut && Array.isArray(suggestionOut.suggestions)) {
+      const all = suggestionOut.suggestions.filter(Boolean);
+      const isChangeSetSuggestion = (item: any) => {
+        const actionKey = String(item?.actionKey ?? '').toLowerCase();
+        const payloadAction = String(item?.payload?.action ?? '').toLowerCase();
+        return actionKey.includes('changeset') || payloadAction === 'create_changeset' || payloadAction === 'changeset.compile';
+      };
+      const actionSuggestions = all.filter((item: any) => !isChangeSetSuggestion(item)).slice(0, 2);
+      const changeSetSuggestion = all.find((item: any) => isChangeSetSuggestion(item));
+      suggestionOut.suggestions = writeLike && changeSetSuggestion
+        ? [...actionSuggestions, changeSetSuggestion]
+        : actionSuggestions;
+    }
+    return output;
+  }
+  if (blocks.length > 0) {
+    if (!args.includeSuggestions) return blocks;
+    const hasNextControls = blocks.some(
+      (block: any) =>
+        block?.type === 'SuggestionBlock' ||
+        block?.type === 'SuggestionsBlock' ||
+        block?.type === 'QuestionsBlock'
+    );
+    if (hasNextControls) return blocks;
+    return [
+      ...blocks,
+      buildContextAwareSuggestionBlock({
+        isPlanningRequest: args.isPlanningRequest,
+        intent: args.intent,
+        userText: args.userText,
+        context: args.context,
+        recentBlockTexts,
+      }),
+    ];
+  }
 
   const sourceText = String(args.rawText ?? args.summaryHe ?? '').trim();
   const questionTexts = extractQuestionTexts(sourceText);
@@ -250,12 +1134,8 @@ function ensureMinimumBlocks(args: {
     return [
       {
         type: 'QuestionsBlock',
-        titleHe: 'שאלות להמשך',
-        questions: questionTexts.map((textHe, i) => ({
-          id: `q_auto_${i + 1}`,
-          textHe,
-          type: 'text',
-        })),
+        titleHe: 'שאלת הבהרה קצרה',
+        questions: [{ id: 'q_auto_1', textHe: questionTexts[0], type: 'text' }],
       },
     ];
   }
@@ -264,13 +1144,37 @@ function ensureMinimumBlocks(args: {
     if (!args.includeSuggestions) {
       return [{ type: 'ChatBlock', markdownHe: sourceText }];
     }
-    return [{ type: 'ChatBlock', markdownHe: sourceText }, buildFallbackSuggestionBlock(args.isPlanningRequest)];
+    return [
+      { type: 'ChatBlock', markdownHe: sourceText },
+      buildContextAwareSuggestionBlock({
+        isPlanningRequest: args.isPlanningRequest,
+        intent: args.intent,
+        userText: args.userText,
+        context: args.context,
+        recentBlockTexts,
+      }),
+    ];
   }
 
   if (!args.includeSuggestions) {
-    return [{ type: 'ChatBlock', markdownHe: 'יש לי תשובה קצרה. איך להמשיך?' }];
+    return [{ type: 'ChatBlock', markdownHe: 'יש לי תשובה קצרה. איך תרצה/י שנמשיך?' }];
   }
-  return [buildFallbackSuggestionBlock(args.isPlanningRequest)];
+  return [
+    buildContextAwareSuggestionBlock({
+      isPlanningRequest: args.isPlanningRequest,
+      intent: args.intent,
+      userText: args.userText,
+      context: args.context,
+      recentBlockTexts,
+    }),
+    buildContextAwareQuestionsBlock({
+      isPlanningRequest: args.isPlanningRequest,
+      intent: args.intent,
+      userText: args.userText,
+      context: args.context,
+      recentBlockTexts,
+    }),
+  ];
 }
 
 function stableHash(input: string) {
@@ -363,8 +1267,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   'context.get': 'Fetch project context (elements, tasks, accounting, etc). USE THIS at the start of any planning/costing action to get current state.',
   'knowledge.summarize_or_update': 'Update working knowledge doc with new facts. USE THIS when you learn new info about the project.',
   'changeset.compile': 'Convert intents to ChangeSet ops to create/update entities in database. USE THIS after generating intents from plan.* or cost.* tools.',
-  'changeset.review': 'Review a ChangeSet draft for issues. USE THIS before applying a changeset.',
-  'changeset.apply': 'Apply ChangeSet after user approval. USE THIS only after review passes and user approves.',
+  'changeset.review': 'Review a ChangeSet draft for issues when explicitly requested.',
+  'changeset.apply': 'Apply ChangeSet after user approval token is present.',
   'clarify.next_questions': 'Ask focused clarifying questions. USE THIS only if you truly cannot proceed with 80% rule - prefer making assumptions.',
   'chat.free': 'Free conversation without structured output. USE THIS only when user explicitly wants to chat, not plan.',
   'pricing.resolve_lines': 'Research prices for materials/items. USE THIS when budget lines need verified pricing.',
@@ -535,6 +1439,7 @@ export const runNext = action({
     const cycleBudgetMs = Number(process.env.SDK_DISPATCH_CYCLE_BUDGET_MS ?? 120000);
     const flags = await ctx.runQuery(api.featureFlags.getAll, {});
     const useVNextPipeline = Boolean(flags?.ff_sdk_vnext_pipeline);
+    const explicitChangeSetOnly = Boolean(flags?.ff_sdk_chat_explicit_changeset_only);
 
     const sdkApi = (api as any)['sdk/api'] ?? (api as any).sdk?.api;
     const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
@@ -552,6 +1457,21 @@ export const runNext = action({
     const isPlanningRun = runMode === 'PLANNING_FLOW';
     const shouldUseVNextPipeline = useVNextPipeline && isPlanningRun;
 
+    const parsedInput = parseQueuedInputEnvelope(args.userMessage);
+    const userMessage = args.userMessage === '__continue__' ? '__continue__' : parsedInput.text;
+    const queuedInputPrompt = buildQueuedInputPrompt(parsedInput.queuedInput);
+    const explicitQueuedAction = parsedInput.explicitAction;
+    if (parsedInput.queuedInput) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_queued_input_received',
+        payload: {
+          ...parsedInput.queuedInput,
+          explicitAction: explicitQueuedAction,
+        },
+      });
+    }
+
     if (
       run.status === 'paused' ||
       run.status === 'cancelled' ||
@@ -563,7 +1483,7 @@ export const runNext = action({
 
     // Waiting states are hard-blocking only for planning flow.
     if (run.status === 'blocked' || run.status === 'needs_input') {
-      if (!isPlanningRun && args.userMessage && args.userMessage !== '__continue__') {
+      if (!isPlanningRun && userMessage && userMessage !== '__continue__') {
         await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
           runId: args.runId,
           status: 'running',
@@ -578,22 +1498,131 @@ export const runNext = action({
       }
     }
 
-    if (args.userMessage && args.userMessage !== '__continue__') {
+    if (userMessage && userMessage !== '__continue__') {
       await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
         conversationId: args.conversationId,
         role: 'user',
-        text: args.userMessage,
+        text: userMessage,
         runId: args.runId,
       });
     }
 
     if (run.status === 'awaiting_approval') {
+      if (!userMessage || userMessage === '__continue__') {
+        return { status: 'awaiting_approval', pendingChangeSetId: run.pendingChangeSetId };
+      }
+
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'sdk_pending_action_detected',
+        payload: {
+          pendingChangeSetId: run.pendingChangeSetId ?? null,
+          userMessage: userMessage.slice(0, 120),
+        },
+      });
+
+      const decision = parseApprovalDecision(userMessage);
+      if (decision === 'approve') {
+        if (!run.pendingChangeSetId || !run.approvalToken) {
+          await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+            conversationId: args.conversationId,
+            role: 'assistant',
+            text: 'אין ChangeSet ממתין לאישור.',
+            blocks: [{ type: 'ChatBlock', markdownHe: 'אין ChangeSet ממתין לאישור.' }],
+            runId: args.runId,
+          });
+          return { status: 'success', output: { ok: false, reason: 'missing_pending_changeset' } };
+        }
+
+        const result = await ctx.runAction(sdkApi.approveChangeSet, {
+          runId: args.runId,
+          approvalToken: run.approvalToken,
+        });
+
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'sdk_pending_action_resolved',
+          payload: {
+            action: 'approve',
+            pendingChangeSetId: run.pendingChangeSetId,
+          },
+        });
+
+        await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+          conversationId: args.conversationId,
+          role: 'assistant',
+          text: 'השינויים אושרו והוחלו.',
+          blocks: [{ type: 'ChatBlock', markdownHe: 'אישרתי והחלתי את ה-ChangeSet.' }],
+          runId: args.runId,
+        });
+
+        return { status: 'success', output: result };
+      }
+
+      if (decision === 'reject') {
+        if (run.pendingChangeSetId) {
+          await ctx.runMutation(api.changeSets.discardChangeSet, { changeSetId: run.pendingChangeSetId });
+        }
+        await ctx.runMutation(internal.sdk.telemetry.clearPendingChangeSet, { runId: args.runId });
+        await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
+          runId: args.runId,
+          status: 'running',
+          currentAgentName: run.currentAgentName ?? 'orchestrator',
+          lastError: undefined,
+        });
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'sdk_pending_action_resolved',
+          payload: {
+            action: 'reject',
+            pendingChangeSetId: run.pendingChangeSetId ?? null,
+          },
+        });
+        await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+          conversationId: args.conversationId,
+          role: 'assistant',
+          text: 'ביטלתי את השינויים המוצעים.',
+          blocks: [{ type: 'ChatBlock', markdownHe: 'בוטל. לא הוחלו שינויים.' }],
+          runId: args.runId,
+        });
+        return {
+          status: 'success',
+          output: { ok: true, discarded: run.pendingChangeSetId ?? null },
+        };
+      }
+
+      await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+        conversationId: args.conversationId,
+        role: 'assistant',
+        text: 'כדי להמשיך כתוב "כן" לאישור או "לא" לביטול.',
+        blocks: [
+          {
+            type: 'SuggestionBlock',
+            titleHe: 'נדרש אישור',
+            suggestions: [
+              { id: 'approve_changeset', labelHe: 'כן, אשר והחל' },
+              { id: 'reject_changeset', labelHe: 'לא, בטל' },
+            ],
+          },
+        ],
+        runId: args.runId,
+      });
+
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'approval_loop_detected',
+        payload: {
+          pendingChangeSetId: run.pendingChangeSetId ?? null,
+          userMessage: userMessage.slice(0, 120),
+        },
+      });
+
       return { status: 'awaiting_approval', pendingChangeSetId: run.pendingChangeSetId };
     }
 
     if (shouldUseVNextPipeline) {
       let effectiveRun = run;
-      if (args.userMessage === '__continue__') {
+      if (userMessage === '__continue__') {
         const currentStage = normalizeVNextStage(run.stageKey);
         const stageArtifact = await ctx.runQuery(
           internal['sdk/vnext/artifacts'].getStageArtifactByRunStage,
@@ -638,7 +1667,7 @@ export const runNext = action({
         conversationId: args.conversationId,
         run: effectiveRun,
         runId: args.runId,
-        userMessage: args.userMessage,
+        userMessage,
         options: {
           softGates: Boolean(flags?.ff_sdk_vnext_soft_gates ?? true),
           pricingQueue: Boolean(flags?.ff_sdk_vnext_pricing_queue ?? true),
@@ -738,10 +1767,18 @@ export const runNext = action({
       return patterns.some((p) => lower.includes(p.toLowerCase()));
     };
 
-    const lastUserMsg = args.userMessage ||
+    const lastUserMsg = userMessage ||
       history.filter((m: any) => m.role === 'user').slice(-1)[0]?.text || '';
     const isChatEditRun = runMode === 'CHAT_EDIT';
-    const chatIntent = isChatEditRun ? detectChatIntent(lastUserMsg) : null;
+    const chatIntent = isChatEditRun
+      ? detectChatIntent(lastUserMsg, {
+        hasPendingAction:
+          run.status === 'awaiting_approval' ||
+          run.status === 'needs_input' ||
+          run.status === 'blocked' ||
+          Boolean(run.pendingChangeSetId),
+      })
+      : null;
     const shouldForceTools = !isChatEditRun && isPlanningRequest(lastUserMsg);
     const strictFullPlanMode = !isChatEditRun && shouldForceTools;
 
@@ -754,7 +1791,7 @@ export const runNext = action({
     }
 
     const bootstrapPacks = isChatEditRun
-      ? []
+      ? packsForIntent(chatIntent ?? 'project_read_qna', lastUserMsg)
       : ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa'];
     const shouldBootstrapContext = bootstrapPacks.length > 0 && (!isChatEditRun || chatIntent !== 'chat_smalltalk');
     const bootstrapContext = shouldBootstrapContext
@@ -783,13 +1820,14 @@ export const runNext = action({
       {
         role: 'system',
         content: isChatEditRun
-          ? 'Chat mode policy: concise Hebrew responses. For any non-smalltalk request, call context.get first with full packs ["project","elements","tasks","accounting","quote","knowledge","qa"] and only then answer from that context.'
+          ? 'Chat mode policy (internal instructions in English): discussion-first and clarification-first. User-facing content must stay Hebrew unless an English technical token is required. Always include a ChatBlock. Include QuestionsBlock only for truly blocking clarifications (do not repeat the same clarification after user answered). Include SuggestionsBlock only when actionable next steps exist. Suggestions for write/planning intents should include explicit create_changeset when relevant. Never create a ChangeSet unless explicit queued action resolves to create_changeset. Keep suggestions in timeline and avoid generic or repeated text.'
           : 'Planning mode policy: progress the planning pipeline with structured outputs.',
       },
       ...(promptBootstrapContext ? [{
         role: 'system',
         content: `PROJECT CONTEXT (bootstrap, may be partial):\n${JSON.stringify(promptBootstrapContext, null, 2)}`,
       }] : []),
+      ...(queuedInputPrompt ? [{ role: 'system', content: queuedInputPrompt }] : []),
       ...history.map((m: any) => toPromptMessage(m, isChatEditRun)),
     ];
 
@@ -799,7 +1837,7 @@ export const runNext = action({
           projectId: args.projectId,
           packs: input?.packs ?? (
             isChatEditRun
-              ? ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa']
+              ? packsForIntent(chatIntent ?? 'project_read_qna', lastUserMsg)
               : ['project', 'knowledge']
           ),
           filters: input?.filters,
@@ -814,6 +1852,22 @@ export const runNext = action({
           conversationId: args.conversationId,
         }),
       'changeset.compile': async (input: any) => {
+        if (isChatEditRun && explicitChangeSetOnly && explicitQueuedAction !== 'create_changeset') {
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'chat_compile_skipped_no_explicit_action',
+            payload: {
+              explicitAction: explicitQueuedAction,
+              hasQueuedInput: Boolean(parsedInput.queuedInput),
+            },
+          });
+          return {
+            skipped: true,
+            code: 'EXPLICIT_ACTION_REQUIRED',
+            reason: 'Compile in chat mode requires explicit create_changeset action.',
+          };
+        }
+
         const intents = Array.isArray(input?.intents) ? input.intents : [];
         if (intents.length === 0) {
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
@@ -822,7 +1876,7 @@ export const runNext = action({
             payload: { reason: 'empty_intents' },
           });
           return {
-            error: 'changeset.compile requires intents. Generate plan intents first (plan.elements/plan.tasks/cost.build_budget).',
+            error: 'changeset.compile דורש intents. קודם צריך לייצר intents דרך plan.elements / plan.tasks / cost.build_budget.',
             code: 'EMPTY_INTENTS',
           };
         }
@@ -836,6 +1890,17 @@ export const runNext = action({
         });
 
         if (result?.changeSetId && !run.shadowMode) {
+          if (isChatEditRun && explicitChangeSetOnly) {
+            await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+              runId: args.runId,
+              type: 'chat_compile_started_explicit_action',
+              payload: {
+                explicitAction: explicitQueuedAction,
+                changeSetId: result.changeSetId,
+              },
+            });
+          }
+
           const blocks: any[] = [];
           const coverage = summarizeChangeSetCoverage(result?.changeSet);
           const coverageIssues: string[] = [];
@@ -846,7 +1911,7 @@ export const runNext = action({
             coverageIssues.push('חסרות פעולות משימות ב-ChangeSet');
           }
           if (strictFullPlanMode && !coverage.hasAccounting) {
-            coverageIssues.push('חסרות פעולות תמחור/הנהלת חשבונות (material/work lines) ב-ChangeSet');
+            coverageIssues.push('חסרות פעולות חומר/עבודה (material/work lines) ב-ChangeSet');
           }
           if (coverageIssues.length > 0) {
             await ctx.runMutation(internal.sdk.telemetry.logEvent, {
@@ -886,48 +1951,6 @@ export const runNext = action({
             };
           }
 
-          const review = await ctx.runAction(sdkChangeset.review, {
-            projectId: args.projectId,
-            changeSetId: result.changeSetId,
-            runId: args.runId,
-            conversationId: args.conversationId,
-          });
-
-          const reviewIssues = normalizeReviewIssues(review);
-          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
-            runId: args.runId,
-            type: 'changeset_review',
-            payload: {
-              changeSetId: result.changeSetId,
-              issues: reviewIssues,
-              summaryHe: review?.summaryHe,
-            },
-          });
-          blocks.push(
-            buildReviewBlock({
-              titleHe: 'בדיקת ChangeSet',
-              summaryHe: review?.summaryHe,
-              risks: reviewIssues,
-            })
-          );
-
-          if (reviewIssues.length > 0) {
-            await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
-              runId: args.runId,
-              status: 'blocked',
-              pendingChangeSetId: result.changeSetId,
-              approvalToken: undefined,
-            });
-            await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
-              conversationId: args.conversationId,
-              role: 'assistant',
-              text: 'נדרש תיקון לפני אישור.',
-              blocks,
-              runId: args.runId,
-            });
-            return result;
-          }
-
           const approvalToken = randomUUID();
           await ctx.runMutation(internal.sdk.telemetry.updateRunState, {
             runId: args.runId,
@@ -962,26 +1985,11 @@ export const runNext = action({
           runId: args.runId,
           conversationId: args.conversationId,
         }),
-      'changeset.apply': async (input: any) => {
-        const reviewEvent = await ctx.runQuery(internal.sdk.queries.getLatestReviewForRun, {
-          runId: args.runId,
-          changeSetId: run.pendingChangeSetId,
-        });
-        if (!reviewEvent) {
-          throw new Error('ChangeSet review required before apply');
-        }
-        const issues = Array.isArray(reviewEvent.payload?.issues)
-          ? reviewEvent.payload.issues
-          : [];
-        if (issues.length > 0) {
-          throw new Error('ChangeSet review has unresolved issues');
-        }
-
-        return await ctx.runAction(sdkChangeset.apply, {
+      'changeset.apply': async (input: any) =>
+        ctx.runAction(sdkChangeset.apply, {
           runId: args.runId,
           approvalToken: input?.approvalToken ?? '',
-        });
-      },
+        }),
       'finalize.build_structured_package': async (input: any) =>
         ctx.runAction(sdkFinalize.buildStructuredPackage, {
           projectId: args.projectId,
@@ -1069,7 +2077,7 @@ export const runNext = action({
           });
           const blocks = [
             buildReviewBlock({
-              titleHe: 'כשלון בתכנון דטרמיניסטי',
+              titleHe: 'כשלון בביצוע כלי דטרמיניסטי',
               summaryHe: `הכלי ${toolId} נכשל`,
               risks: [String(toolResult.error)],
             }),
@@ -1108,7 +2116,7 @@ export const runNext = action({
         await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
           conversationId: args.conversationId,
           role: 'assistant',
-          text: 'לא נוצרו אינטנטים. התהליך נעצר כדי למנוע לולאות מיותרות.',
+          text: 'לא נוצרו אינטנטים. התהליך נעצר כדי למנוע פעולות מיותרות.',
           blocks,
           runId: args.runId,
         });
@@ -1140,7 +2148,7 @@ export const runNext = action({
         await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
           conversationId: args.conversationId,
           role: 'assistant',
-          text: 'לא ניתן להשלים שינויי מערכת. התהליך נעצר לתיקון.',
+          text: 'לא ניתן להשלים שינויים מערכתיים. התהליך נעצר לתיקון.',
           blocks,
           runId: args.runId,
         });
@@ -1168,9 +2176,7 @@ export const runNext = action({
       throw new Error('Missing OPENAI_API_KEY');
     }
     for (let i = 0; i < maxToolLoops; i++) {
-      // Force tool usage on first iteration for planning or non-smalltalk chat
-      const shouldForceContextFetch = isChatEditRun && chatIntent !== 'chat_smalltalk';
-      const toolChoice = (i === 0 && (shouldForceTools || shouldForceContextFetch) && tools.length > 0) ? 'required' : 'auto';
+      const toolChoice = (i === 0 && shouldForceTools && tools.length > 0) ? 'required' : 'auto';
 
       const response = await completionWithTracing(
         ctx,
@@ -1212,11 +2218,11 @@ export const runNext = action({
         }
         if (repeatedToolSignatureCount >= 2) {
           finalContent = JSON.stringify({
-            summaryHe: 'התהליך נעצר כדי למנוע לולאה חוזרת ללא התקדמות.',
+            summaryHe: 'Run stopped because the same tool sequence repeated without progress.',
             blocks: [
               buildReviewBlock({
-                titleHe: 'זוהתה לולאת כלים',
-                summaryHe: 'אותו רצף כלים חזר מספר פעמים ללא התקדמות.',
+                titleHe: 'Detected repeated tool loop',
+                summaryHe: 'The orchestrator repeated the same tool calls multiple times without advancing state.',
                 risks: ['REPEATED_TOOL_SEQUENCE'],
               }),
               buildFallbackSuggestionBlock(false),
@@ -1290,7 +2296,23 @@ export const runNext = action({
           });
         }
 
-        if (!isChatEditRun && !toolCalledCompile && pendingIntents.length > 0 && !autoCompiled) {
+        const shouldCompileFromExplicitAction =
+          isChatEditRun &&
+          explicitChangeSetOnly &&
+          explicitQueuedAction === 'create_changeset' &&
+          !toolCalledCompile &&
+          !autoCompiled &&
+          hasChangeProducingIntents(pendingIntents);
+
+        const shouldLogSkippedCompile =
+          isChatEditRun &&
+          explicitChangeSetOnly &&
+          explicitQueuedAction !== 'create_changeset' &&
+          !toolCalledCompile &&
+          !autoCompiled &&
+          hasChangeProducingIntents(pendingIntents);
+
+        if ((!isChatEditRun || shouldCompileFromExplicitAction) && !toolCalledCompile && pendingIntents.length > 0 && !autoCompiled) {
           autoCompiled = true;
           let compileResult: any;
           try {
@@ -1304,6 +2326,36 @@ export const runNext = action({
           messages.push({
             role: 'system',
             content: `AUTO TOOL RESULT (changeset.compile): ${JSON.stringify(compileResult)}`,
+          });
+
+          if (shouldCompileFromExplicitAction) {
+            await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+              runId: args.runId,
+              type: 'chat_compile_started_explicit_action',
+              payload: {
+                intent: chatIntent,
+                explicitAction: explicitQueuedAction,
+                pendingIntents: pendingIntents.length,
+                hasError: Boolean(compileResult?.error),
+                hasChangeSetId: Boolean(compileResult?.changeSetId),
+              },
+            });
+            return {
+              status: 'success',
+              output: compileResult,
+            };
+          }
+        }
+
+        if (shouldLogSkippedCompile) {
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'chat_compile_skipped_no_explicit_action',
+            payload: {
+              intent: chatIntent,
+              explicitAction: explicitQueuedAction,
+              pendingIntents: pendingIntents.length,
+            },
           });
         }
 
@@ -1368,12 +2420,80 @@ export const runNext = action({
     }
 
     let parsed: any;
+    let parseFailed = false;
     try {
       parsed = JSON.parse(finalContent);
       assertAsciiKeys(parsed);
     } catch (error) {
+      parseFailed = true;
       parsed = { blocks: [{ type: 'ChatBlock', contentHe: finalContent }] };
     }
+
+    if (parseFailed) {
+      const repairModel = String(process.env.SDK_CHAT_FORMAT_REPAIR_MODEL ?? runtimeModel);
+      try {
+        const repairResponse = await completionWithTracing(
+          ctx,
+          {
+            model: repairModel,
+            reasoning_effort: 'minimal',
+            response_format: { type: 'json_object' },
+            messages: [
+              {
+                role: 'system',
+                content: 'Convert assistant output into strict JSON. Output one JSON object with ASCII keys only. Allowed block types: ChatBlock, QuestionsBlock, SuggestionBlock, SuggestionsBlock, ChangeSetBlock, ReviewBlock. Preserve meaning from input. If unsure, keep only ChatBlock text. Never invent actions, questions, or suggestions.',
+              },
+              {
+                role: 'user',
+                content: finalContent,
+              },
+            ],
+            traceMeta: {
+              source: 'sdk',
+              runId: args.runId,
+              formatRepair: true,
+            },
+          },
+          {
+            projectId: args.projectId,
+            conversationId: args.conversationId,
+            runId: args.runId,
+          }
+        ) as any;
+
+        const repairContent = String(repairResponse?.choices?.[0]?.message?.content ?? '').trim();
+        if (repairContent) {
+          const repaired = JSON.parse(repairContent);
+          assertAsciiKeys(repaired);
+          parsed = repaired;
+          parseFailed = false;
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'format_repair_success',
+            payload: { repairModel },
+          });
+        } else {
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'format_repair_empty',
+            payload: { repairModel },
+          });
+        }
+      } catch (repairError: any) {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'format_repair_failed',
+          payload: {
+            repairModel,
+            message: String(repairError?.message ?? repairError ?? 'unknown'),
+          },
+        });
+      }
+    }
+    parsed = {
+      ...parsed,
+      blocks: normalizeAssistantResponse(parsed, finalContent),
+    };
 
     // Helper: Check if response has actionable structured content
     const hasActionableContent = (p: any): boolean => {
@@ -1394,7 +2514,7 @@ export const runNext = action({
     const isRefusal = (text: string): boolean => {
       const refusalPhrases = [
         'אני לא יכול',
-        'לא יכולה',
+        'לא יכול',
         'אין לי מספיק',
         'צריך יותר מידע',
         'cannot create',
@@ -1409,24 +2529,21 @@ export const runNext = action({
     // Helper: Check if agent is talking ABOUT doing instead of DOING
     const isTalkingAboutDoing = (text: string): boolean => {
       const patterns = [
-        'נצטרך לפרט',        // we'll need to detail
-        'בשלב הבא',         // in the next step
-        'אני אתחיל',         // I'll start
-        'אני אעבור',         // I'll go through
-        'אמשיך ב',           // I'll continue with
-        'נתחיל ב',           // we'll start with
-        'אני מתכנן',         // I'm planning
-        'התכנון יכלול',      // the plan will include
-        'אני אעשה',          // I will do
-        'אני אמשיך',         // I will continue
-        'הנה מה שאני מתכנן',  // here's what I'm planning
-        'אני בונה לך',       // I'm building for you (describing)
-        'כרגע אני מתקדם',    // currently I'm proceeding
-        'הנחות עבודה',       // working assumptions
-        'שאלות כדי לנעול',   // questions to lock in
-        'ענה לי על',         // answer me on
-        'כדי להתקדם',        // in order to proceed
-        'אעדכן את',          // I'll update
+        'נצטרך לפרט',
+        'בשלב הבא',
+        'אני אתחיל',
+        'אני אעבור',
+        'אני אמשיך',
+        'נתחיל ב',
+        'אני מתכנן',
+        'התכנון יכלול',
+        'אני אעשה',
+        'הנה מה שאני מתכנן',
+        'כרגע אני מתקדם',
+        'הנחות עבודה',
+        'שאלות כדי לנעול',
+        'כדי להתקדם',
+        'אעדכן את',
         'I will create',
         'I will generate',
         'Let me start by',
@@ -1437,20 +2554,39 @@ export const runNext = action({
       return patterns.some(p => lower.includes(p.toLowerCase()));
     };
 
-    let summaryHe = parsed.summaryHe ?? parsed.contentHe ?? 'תשובה מהסוכן';
-    let blocks = parsed.blocks ?? [];
+    let summaryHe = parsed.summaryHe ?? parsed.contentHe ?? 'תשובה מסוכמת';
+    const looksLikeRawChangeSetDump = (text: string): boolean => {
+      const value = String(text ?? '').toLowerCase();
+      if (!value) return false;
+      const hasOpsJson = value.includes('"ops"') || value.includes('{ "ops"') || value.includes('"op"');
+      const hasChangeSetTerms =
+        value.includes('changeset') ||
+        value.includes('change set') ||
+        value.includes('changeset.apply') ||
+        value.includes('אשר והחל') ||
+        value.includes('להלן changeset');
+      const hasApplyLanguage =
+        value.includes('apply') ||
+        value.includes('נא אשר') ||
+        value.includes('אישור נדרש');
+      return (hasOpsJson && hasChangeSetTerms) || (hasChangeSetTerms && hasApplyLanguage);
+    };
+
+    let blocks = normalizeAssistantResponse(parsed, finalContent);
 
     // Check if agent needs recovery - use finalContent for pattern matching, not summaryHe
     // This is critical because when plain text is wrapped in ChatBlock, summaryHe becomes fallback
-    const needsRecovery = !isChatEditRun && (
-      !hasActionableContent(parsed) ||
-      isRefusal(finalContent) ||
-      isTalkingAboutDoing(finalContent)
-    );
+    const needsRecovery =
+      !isChatEditRun && (
+        !hasActionableContent(parsed) ||
+        isRefusal(finalContent) ||
+        isTalkingAboutDoing(finalContent)
+      );
 
     // DYNAMIC RECOVERY: If agent gave refusal, lacks actionable content, or is just talking about doing
     if (needsRecovery) {
       const reason = isRefusal(finalContent) ? 'refusal_detected' :
+        looksLikeRawChangeSetDump(finalContent) ? 'raw_changeset_dump' :
         isTalkingAboutDoing(finalContent) ? 'talking_not_doing' :
           'no_actionable_blocks';
       console.warn(`[SDK] Agent response needs recovery: ${reason}, re-prompting...`);
@@ -1478,15 +2614,17 @@ Your response: "${summaryHe.slice(0, 150)}..."
 This is NOT acceptable. You must CALL TOOLS, not describe calling them.
 
 CALL ONE OF THESE TOOLS NOW:
-• plan.elements - to generate elements for the project
-• plan.tasks - to generate tasks  
-• cost.build_budget - to generate budget lines
-• changeset.compile - to create a ChangeSet from intents
-• clarify.next_questions - ONLY if you truly cannot proceed (use 80% rule first)
+- plan.elements - to generate elements for the project
+- plan.tasks - to generate tasks
+- cost.build_budget - to generate budget lines
+- changeset.compile - to create a ChangeSet from intents
+- clarify.next_questions - ONLY if you truly cannot proceed (use 80% rule first)
 
 DO NOT respond with text describing what you will do.
 DO NOT ask generic questions.
 CALL A TOOL and produce real output.
+DO NOT print raw "ops" JSON in chat.
+If this is a write/planning request, produce a real ChangeSetBlock via changeset.compile.
 
 The user asked to plan - so call plan.elements to generate elements NOW.
 After elements, call plan.tasks to generate tasks.
@@ -1497,14 +2635,14 @@ Then call changeset.compile to create the ChangeSet.`
       const recoveryResponse = await completionWithTracing(
         ctx,
         {
-          model: orchestrator.model,
-          reasoning_effort: orchestrator.reasoningEffort,
+          model: runtimeModel,
+          reasoning_effort: runtimeReasoningEffort,
           temperature: orchestrator.temperature ? Math.min(orchestrator.temperature + 0.1, 0.5) : undefined,
-          max_tokens: orchestrator.maxTokens,
-          max_completion_tokens: orchestrator.maxCompletionTokens,
+          ...(typeof runtimeMaxTokens === 'number' ? { max_tokens: runtimeMaxTokens } : {}),
+          ...(typeof runtimeMaxCompletionTokens === 'number' ? { max_completion_tokens: runtimeMaxCompletionTokens } : {}),
           messages,
           tools,
-          tool_choice: 'required',  // Force tool usage in recovery
+          tool_choice: 'required',
           traceMeta: { source: 'sdk', runId: args.runId, recovery: true },
         },
         { projectId: args.projectId, conversationId: args.conversationId, runId: args.runId }
@@ -1548,8 +2686,8 @@ Then call changeset.compile to create the ChangeSet.`
             // If tool returned structured output, use it
             if (result?.blocks || result?.intent || result?.intents) {
               parsed = result;
-              summaryHe = result.summaryHe ?? result.contentHe ?? 'תוצאה מהסוכן';
-              blocks = result.blocks ?? [];
+              summaryHe = result.summaryHe ?? result.contentHe ?? 'תוצאה מסוכמת';
+              blocks = normalizeAssistantResponse(result, finalContent ?? '');
             }
           }
         }
@@ -1566,8 +2704,8 @@ Then call changeset.compile to create the ChangeSet.`
 
           if (compileResult?.blocks || compileResult?.intent || compileResult?.intents) {
             parsed = compileResult;
-            summaryHe = compileResult.summaryHe ?? compileResult.contentHe ?? 'תוצאה מהסוכן';
-            blocks = compileResult.blocks ?? blocks;
+            summaryHe = compileResult.summaryHe ?? compileResult.contentHe ?? 'תוצאה מסוכמת';
+            blocks = normalizeAssistantResponse(compileResult, finalContent ?? '');
           }
         }
       } else if (recoveryMessage?.content) {
@@ -1575,11 +2713,12 @@ Then call changeset.compile to create the ChangeSet.`
           const recoveryParsed = JSON.parse(recoveryMessage.content);
           assertAsciiKeys(recoveryParsed);
           parsed = recoveryParsed;
-          summaryHe = parsed.summaryHe ?? parsed.contentHe ?? 'תשובה מהסוכן';
-          blocks = parsed.blocks ?? [];
+          parseFailed = false;
+          summaryHe = parsed.summaryHe ?? parsed.contentHe ?? 'תשובה מסוכמת';
+          blocks = normalizeAssistantResponse(parsed, recoveryMessage.content ?? finalContent ?? '');
         } catch {
           // If recovery also fails to parse, keep original with ChatBlock wrapper
-          blocks = [{ type: 'ChatBlock', contentHe: recoveryMessage.content }];
+          blocks = normalizeAssistantResponse({ blocks: [{ type: 'ChatBlock', contentHe: recoveryMessage.content }] }, recoveryMessage.content ?? '');
           summaryHe = recoveryMessage.content.slice(0, 100);
         }
       }
@@ -1595,13 +2734,52 @@ Then call changeset.compile to create the ChangeSet.`
       summaryHe,
     });
 
+    const hadShapeCoercion = hasWrapperShapeCoercion(parsed);
+    const hadParsedBlocksBeforeEnsure = Array.isArray(blocks) && blocks.length > 0;
+
     blocks = ensureMinimumBlocks({
       blocks,
       summaryHe,
       rawText: finalContent ?? summaryHe,
       isPlanningRequest: shouldForceTools,
       includeSuggestions,
+      alwaysIncludeNextSet: isChatEditRun,
+      skipSyntheticNextSet: parseFailed,
+      intent: isChatEditRun ? chatIntent : null,
+      userText: lastUserMsg,
+      context: promptBootstrapContext,
+      history,
     });
+
+    if (hadShapeCoercion) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'shape_coercion_applied',
+        payload: {
+          parseFailed,
+        },
+      });
+    }
+
+    if (isChatEditRun && !parseFailed && hadParsedBlocksBeforeEnsure) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'synthetic_skipped_real_blocks',
+        payload: {
+          blockCount: blocks.length,
+        },
+      });
+    }
+
+    if (isChatEditRun && !parseFailed && !hadParsedBlocksBeforeEnsure) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'synthetic_used_empty_blocks',
+        payload: {
+          blockCount: blocks.length,
+        },
+      });
+    }
 
     await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
       conversationId: args.conversationId,
@@ -1646,3 +2824,9 @@ Then call changeset.compile to create the ChangeSet.`
     };
   },
 });
+
+
+
+
+
+
