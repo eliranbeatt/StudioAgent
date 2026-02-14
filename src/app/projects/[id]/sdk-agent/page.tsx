@@ -16,7 +16,7 @@ export default function SdkAgentPage() {
   const featureFlags = useQuery(api.featureFlags.getAll);
   const isEnabled = featureFlags?.ff_sdk_agent_tab;
 
-  const [activeTab, setActiveTab] = useState<'planning' | 'agent'>('planning');
+  const [activeTab, setActiveTab] = useState<'planning' | 'agent'>('agent');
 
   if (!isEnabled) {
     return (
