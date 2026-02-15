@@ -1,0 +1,1285 @@
+{
+  "count": 160,
+  "exports": [
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "TagGroupId",
+      "exportKind": "other",
+      "signature": "export type TagGroupId = 'category'"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 3,
+      "kind": "type",
+      "name": "TagGroup",
+      "exportKind": "other",
+      "signature": "export type TagGroup = {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 9,
+      "kind": "type",
+      "name": "TagDefinition",
+      "exportKind": "other",
+      "signature": "export type TagDefinition = {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 16,
+      "kind": "type",
+      "name": "SkillTagSource",
+      "exportKind": "other",
+      "signature": "export type SkillTagSource = {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 35,
+      "kind": "const",
+      "name": "TAG_GROUPS",
+      "exportKind": "other",
+      "signature": "export const TAG_GROUPS: TagGroup[] = ["
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 39,
+      "kind": "const",
+      "name": "TAG_DEFINITIONS",
+      "exportKind": "other",
+      "signature": "export const TAG_DEFINITIONS: TagDefinition[] = ["
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 50,
+      "kind": "const",
+      "name": "buildSkillTagIds",
+      "exportKind": "other",
+      "signature": "export const buildSkillTagIds = (skill: SkillTagSource) => {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 58,
+      "kind": "const",
+      "name": "resolveTagRecords",
+      "exportKind": "other",
+      "signature": "export const resolveTagRecords = (tagIds: string[]) => {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 79,
+      "kind": "const",
+      "name": "addSkillTags",
+      "exportKind": "other",
+      "signature": "export const addSkillTags = <T extends SkillTagSource>(skill: T) => {"
+    },
+    {
+      "file": "convex\\skills\\registry.ts",
+      "line": 6,
+      "kind": "interface",
+      "name": "SkillDefinition",
+      "exportKind": "other",
+      "signature": "export interface SkillDefinition {"
+    },
+    {
+      "file": "convex\\skills\\registry.ts",
+      "line": 41,
+      "kind": "const",
+      "name": "SKILL_CATALOG",
+      "exportKind": "other",
+      "signature": "export const SKILL_CATALOG: SkillDefinition[] = ["
+    },
+    {
+      "file": "convex\\skills\\prompts.ts",
+      "line": 1,
+      "kind": "const",
+      "name": "SHARED_HEADER",
+      "exportKind": "other",
+      "signature": "export const SHARED_HEADER = `SYSTEM (shared header; English instructions)"
+    },
+    {
+      "file": "convex\\skills\\prompts.ts",
+      "line": 242,
+      "kind": "const",
+      "name": "SKILL_SYSTEM_ADDONS",
+      "exportKind": "other",
+      "signature": "export const SKILL_SYSTEM_ADDONS = {"
+    },
+    {
+      "file": "convex\\inventory_helpers.ts",
+      "line": 11,
+      "kind": "async function",
+      "name": "computeAvailability",
+      "exportKind": "other",
+      "signature": "export async function computeAvailability(ctx: any, inventoryItemId: any) {"
+    },
+    {
+      "file": "convex\\inventory_helpers.ts",
+      "line": 40,
+      "kind": "async function",
+      "name": "findExistingReservation",
+      "exportKind": "other",
+      "signature": "export async function findExistingReservation("
+    },
+    {
+      "file": "convex\\inventory_helpers.ts",
+      "line": 59,
+      "kind": "async function",
+      "name": "reserveStockInternal",
+      "exportKind": "other",
+      "signature": "export async function reserveStockInternal("
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "ORCHESTRATOR_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const ORCHESTRATOR_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 336,
+      "kind": "const",
+      "name": "CLARIFY_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const CLARIFY_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 506,
+      "kind": "const",
+      "name": "FREE_CHAT_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const FREE_CHAT_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 640,
+      "kind": "const",
+      "name": "PRICING_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PRICING_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 759,
+      "kind": "const",
+      "name": "PROCUREMENT_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PROCUREMENT_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 841,
+      "kind": "const",
+      "name": "RECEIPT_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const RECEIPT_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 929,
+      "kind": "const",
+      "name": "AUDIT_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const AUDIT_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1016,
+      "kind": "const",
+      "name": "PRINT_QA_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PRINT_QA_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1064,
+      "kind": "const",
+      "name": "MAINTENANCE_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const MAINTENANCE_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1122,
+      "kind": "const",
+      "name": "INTAKE_BRIEF_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const INTAKE_BRIEF_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1211,
+      "kind": "const",
+      "name": "PLAN_ELEMENTS_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PLAN_ELEMENTS_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1285,
+      "kind": "const",
+      "name": "PLAN_TASKS_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PLAN_TASKS_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1383,
+      "kind": "const",
+      "name": "PLAN_PHASES_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PLAN_PHASES_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1440,
+      "kind": "const",
+      "name": "COST_BUDGET_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const COST_BUDGET_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1543,
+      "kind": "const",
+      "name": "QUOTE_GENERATE_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const QUOTE_GENERATE_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1614,
+      "kind": "const",
+      "name": "RUNBOOK_INSTALL_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const RUNBOOK_INSTALL_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1681,
+      "kind": "const",
+      "name": "OPS_DAILY_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const OPS_DAILY_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1744,
+      "kind": "const",
+      "name": "DRAFT_PLAN_AND_QUESTIONS_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const DRAFT_PLAN_AND_QUESTIONS_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1831,
+      "kind": "const",
+      "name": "REGENERATE_QUESTIONS_MANUAL_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const REGENERATE_QUESTIONS_MANUAL_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1885,
+      "kind": "const",
+      "name": "CHANGESET_COMPILE_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const CHANGESET_COMPILE_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2004,
+      "kind": "const",
+      "name": "CHANGESET_REVIEW_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const CHANGESET_REVIEW_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2070,
+      "kind": "const",
+      "name": "ADMIN_RATES_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const ADMIN_RATES_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2123,
+      "kind": "const",
+      "name": "ADMIN_MEASUREMENTS_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const ADMIN_MEASUREMENTS_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2166,
+      "kind": "const",
+      "name": "KNOWLEDGE_UPDATE_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const KNOWLEDGE_UPDATE_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2243,
+      "kind": "const",
+      "name": "FULL_PROMPTS",
+      "exportKind": "other",
+      "signature": "export const FULL_PROMPTS = {"
+    },
+    {
+      "file": "convex\\sdk\\llm.ts",
+      "line": 5,
+      "kind": "async function",
+      "name": "runJsonCompletion",
+      "exportKind": "other",
+      "signature": "export async function runJsonCompletion(args: {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "QaResolvedStatus",
+      "exportKind": "other",
+      "signature": "export type QaResolvedStatus = 'answered' | 'assumed' | 'resolved' | 'skipped' | 'dismissed'"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "isResolvedQaStatus",
+      "exportKind": "other",
+      "signature": "export function isResolvedQaStatus(status: unknown): status is QaResolvedStatus {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 13,
+      "kind": "function",
+      "name": "canApplyPlanDocCas",
+      "exportKind": "other",
+      "signature": "export function canApplyPlanDocCas(expectedPlanVersion: number, currentPlanVersion: number) {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 17,
+      "kind": "function",
+      "name": "shouldAllowStatusTransition",
+      "exportKind": "other",
+      "signature": "export function shouldAllowStatusTransition(currentStatus: unknown, nextStatus: unknown) {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 24,
+      "kind": "function",
+      "name": "shouldInsertQuestionFromDedupe",
+      "exportKind": "other",
+      "signature": "export function shouldInsertQuestionFromDedupe(args: {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 35,
+      "kind": "function",
+      "name": "applyRegenCaps",
+      "exportKind": "other",
+      "signature": "export function applyRegenCaps<T extends { blockingLevel?: string }>("
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 63,
+      "kind": "function",
+      "name": "shouldPreemptWithProjectBlockers",
+      "exportKind": "other",
+      "signature": "export function shouldPreemptWithProjectBlockers(args: {"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 56,
+      "kind": "const",
+      "name": "zQaPairOption",
+      "exportKind": "other",
+      "signature": "export const zQaPairOption = z.object({"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 89,
+      "kind": "const",
+      "name": "zQaPairFast",
+      "exportKind": "other",
+      "signature": "export const zQaPairFast = z.object({"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 116,
+      "kind": "const",
+      "name": "SDK_SCHEMAS",
+      "exportKind": "other",
+      "signature": "export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 286,
+      "kind": "function",
+      "name": "validateSdkOutput",
+      "exportKind": "other",
+      "signature": "export function validateSdkOutput(schemaName: string, payload: unknown) {"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 298,
+      "kind": "function",
+      "name": "assertAsciiKeys",
+      "exportKind": "other",
+      "signature": "export function assertAsciiKeys(value: unknown, path = 'root') {"
+    },
+    {
+      "file": "convex\\sdk\\runner.ts",
+      "line": 371,
+      "kind": "async function",
+      "name": "runToolInternal",
+      "exportKind": "other",
+      "signature": "export async function runToolInternal(args: {"
+    },
+    {
+      "file": "convex\\sdk\\registry.ts",
+      "line": 4,
+      "kind": "interface",
+      "name": "ToolDefinition",
+      "exportKind": "other",
+      "signature": "export interface ToolDefinition {"
+    },
+    {
+      "file": "convex\\sdk\\registry.ts",
+      "line": 18,
+      "kind": "const",
+      "name": "REGISTRY",
+      "exportKind": "other",
+      "signature": "export const REGISTRY: Record<string, ToolDefinition> = {"
+    },
+    {
+      "file": "convex\\patch.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "PatchOp",
+      "exportKind": "other",
+      "signature": "export type PatchOp ="
+    },
+    {
+      "file": "convex\\patch.ts",
+      "line": 91,
+      "kind": "function",
+      "name": "applyPatchOps",
+      "exportKind": "other",
+      "signature": "export function applyPatchOps(snapshot: any, ops: PatchOp[]) {"
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "ChatIntent",
+      "exportKind": "other",
+      "signature": "export type ChatIntent ="
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 140,
+      "kind": "function",
+      "name": "isWorkflowReply",
+      "exportKind": "other",
+      "signature": "export function isWorkflowReply(userText: string): boolean {"
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 146,
+      "kind": "function",
+      "name": "detectChatIntent",
+      "exportKind": "other",
+      "signature": "export function detectChatIntent("
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 164,
+      "kind": "function",
+      "name": "packsForIntent",
+      "exportKind": "other",
+      "signature": "export function packsForIntent(intent: ChatIntent, userText: string): string[] {"
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 180,
+      "kind": "function",
+      "name": "allowedToolsForChatIntent",
+      "exportKind": "other",
+      "signature": "export function allowedToolsForChatIntent(intent: ChatIntent): string[] {"
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 236,
+      "kind": "function",
+      "name": "shouldAttachSuggestions",
+      "exportKind": "other",
+      "signature": "export function shouldAttachSuggestions(args: {"
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 6,
+      "kind": "const",
+      "name": "DEFAULT_FLAGS",
+      "exportKind": "other",
+      "signature": "export const DEFAULT_FLAGS: Record<string, boolean> = {"
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 40,
+      "kind": "function",
+      "name": "normalizeFlags",
+      "exportKind": "other",
+      "signature": "export function normalizeFlags(raw: unknown): Record<string, boolean> {"
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 50,
+      "kind": "function",
+      "name": "isEnabled",
+      "exportKind": "other",
+      "signature": "export function isEnabled("
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 11,
+      "kind": "async function",
+      "name": "syncSnapshotToLiveTables",
+      "exportKind": "other",
+      "signature": "export async function syncSnapshotToLiveTables(ctx: any, elementId: Id<\"elements\">, snapshot: any) {"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 196,
+      "kind": "async function",
+      "name": "syncProjectCostSnapshotToLiveTables",
+      "exportKind": "other",
+      "signature": "export async function syncProjectCostSnapshotToLiveTables(ctx: any, projectId: Id<\"projects\">, snapshot: any) {"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 285,
+      "kind": "async function",
+      "name": "captureSnapshotFromLive",
+      "exportKind": "other",
+      "signature": "export async function captureSnapshotFromLive(ctx: any, elementId: Id<\"elements\">) {"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 325,
+      "kind": "async function",
+      "name": "captureProjectCostSnapshot",
+      "exportKind": "other",
+      "signature": "export async function captureProjectCostSnapshot(ctx: any, projectId: Id<\"projects\">) {"
+    },
+    {
+      "file": "convex\\drafts.ts",
+      "line": 26,
+      "kind": "async function",
+      "name": "applyChangeSetInternal",
+      "exportKind": "other",
+      "signature": "export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs) {"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 511,
+      "kind": "async function",
+      "name": "applyChangeSetInternalLogic",
+      "exportKind": "other",
+      "signature": "export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId: Id<\"changeSets\"> }) {"
+    },
+    {
+      "file": "convex\\reconciliation.ts",
+      "line": 71,
+      "kind": "async function",
+      "name": "runReconciliation",
+      "exportKind": "other",
+      "signature": "export async function runReconciliation("
+    },
+    {
+      "file": "convex\\contextManager\\promptBuilder.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "buildContextPackPrompt",
+      "exportKind": "other",
+      "signature": "export function buildContextPackPrompt(args: {"
+    },
+    {
+      "file": "convex\\contextManager\\recipes.ts",
+      "line": 3,
+      "kind": "type",
+      "name": "ContextRecipe",
+      "exportKind": "other",
+      "signature": "export type ContextRecipe = {"
+    },
+    {
+      "file": "convex\\contextManager\\recipes.ts",
+      "line": 57,
+      "kind": "function",
+      "name": "getRecipeForSkill",
+      "exportKind": "other",
+      "signature": "export function getRecipeForSkill(args: {"
+    },
+    {
+      "file": "convex\\contextManager\\types.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "ContextView",
+      "exportKind": "other",
+      "signature": "export type ContextView = 'project_core_v1'"
+    },
+    {
+      "file": "convex\\contextManager\\types.ts",
+      "line": 3,
+      "kind": "type",
+      "name": "ContextPack",
+      "exportKind": "other",
+      "signature": "export type ContextPack = {"
+    },
+    {
+      "file": "convex\\contextManager\\types.ts",
+      "line": 10,
+      "kind": "type",
+      "name": "ContextPackManifest",
+      "exportKind": "other",
+      "signature": "export type ContextPackManifest = {"
+    },
+    {
+      "file": "convex\\contextManager\\types.ts",
+      "line": 19,
+      "kind": "type",
+      "name": "ContextPackEnvelope",
+      "exportKind": "other",
+      "signature": "export type ContextPackEnvelope = {"
+    },
+    {
+      "file": "convex\\lib\\normalize.ts",
+      "line": 1,
+      "kind": "function",
+      "name": "normalizeName",
+      "exportKind": "other",
+      "signature": "export function normalizeName(value: string) {"
+    },
+    {
+      "file": "convex\\lib\\normalize.ts",
+      "line": 5,
+      "kind": "function",
+      "name": "newBusinessId",
+      "exportKind": "other",
+      "signature": "export function newBusinessId(prefix: string) {"
+    },
+    {
+      "file": "convex\\lib\\webSearch.ts",
+      "line": 1,
+      "kind": "async function",
+      "name": "searchWeb",
+      "exportKind": "other",
+      "signature": "export async function searchWeb(query: string) {"
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 8,
+      "kind": "type",
+      "name": "LLMProvider",
+      "exportKind": "other",
+      "signature": "export type LLMProvider = \"openai\" | \"gemini\" | \"anthropic\";"
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 10,
+      "kind": "interface",
+      "name": "TracingParams",
+      "exportKind": "other",
+      "signature": "export interface TracingParams {"
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 69,
+      "kind": "async function",
+      "name": "completionWithTracing",
+      "exportKind": "other",
+      "signature": "export async function completionWithTracing("
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 312,
+      "kind": "function",
+      "name": "isUnsupportedTemperatureError",
+      "exportKind": "other",
+      "signature": "export function isUnsupportedTemperatureError(error: any): boolean {"
+    },
+    {
+      "file": "convex\\lib\\reasoning.ts",
+      "line": 1,
+      "kind": "function",
+      "name": "normalizeReasoningEffort",
+      "exportKind": "other",
+      "signature": "export function normalizeReasoningEffort(model: string, effort: unknown) {"
+    },
+    {
+      "file": "convex\\lib\\dates.ts",
+      "line": 1,
+      "kind": "function",
+      "name": "getTodayDateString",
+      "exportKind": "other",
+      "signature": "export function getTodayDateString() {"
+    },
+    {
+      "file": "convex\\lib\\dates.ts",
+      "line": 9,
+      "kind": "function",
+      "name": "withDefaultStartDate",
+      "exportKind": "other",
+      "signature": "export function withDefaultStartDate(startDate?: string | null) {"
+    },
+    {
+      "file": "convex\\lib\\pricing.ts",
+      "line": 2,
+      "kind": "const",
+      "name": "MODEL_PRICING",
+      "exportKind": "other",
+      "signature": "export const MODEL_PRICING = ["
+    },
+    {
+      "file": "convex\\lib\\pricing.ts",
+      "line": 25,
+      "kind": "const",
+      "name": "calculateCost",
+      "exportKind": "other",
+      "signature": "export const calculateCost = (params: {"
+    },
+    {
+      "file": "convex\\lib\\pricing.ts",
+      "line": 50,
+      "kind": "const",
+      "name": "calculateFormulaPrice",
+      "exportKind": "other",
+      "signature": "export const calculateFormulaPrice = ("
+    },
+    {
+      "file": "convex\\sdk\\vnext\\pipeline.ts",
+      "line": 659,
+      "kind": "async function",
+      "name": "runVNextStage",
+      "exportKind": "other",
+      "signature": "export async function runVNextStage(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 3,
+      "kind": "const",
+      "name": "VNEXT_STAGE_ORDER",
+      "exportKind": "other",
+      "signature": "export const VNEXT_STAGE_ORDER = ["
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 16,
+      "kind": "type",
+      "name": "VNextStageKey",
+      "exportKind": "other",
+      "signature": "export type VNextStageKey = (typeof VNEXT_STAGE_ORDER)[number]"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 18,
+      "kind": "type",
+      "name": "QuestionBlockOption",
+      "exportKind": "other",
+      "signature": "export type QuestionBlockOption = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 23,
+      "kind": "type",
+      "name": "QuestionBlock",
+      "exportKind": "other",
+      "signature": "export type QuestionBlock = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 33,
+      "kind": "type",
+      "name": "GateIssue",
+      "exportKind": "other",
+      "signature": "export type GateIssue = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 40,
+      "kind": "type",
+      "name": "GateResult",
+      "exportKind": "other",
+      "signature": "export type GateResult = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 46,
+      "kind": "type",
+      "name": "TargetPlanSpec",
+      "exportKind": "other",
+      "signature": "export type TargetPlanSpec = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 78,
+      "kind": "type",
+      "name": "PlannedTask",
+      "exportKind": "other",
+      "signature": "export type PlannedTask = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 99,
+      "kind": "type",
+      "name": "StageArtifactMap",
+      "exportKind": "other",
+      "signature": "export type StageArtifactMap = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 112,
+      "kind": "type",
+      "name": "VNextStageRunOutput",
+      "exportKind": "other",
+      "signature": "export type VNextStageRunOutput = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 120,
+      "kind": "type",
+      "name": "VNextStageProgressMeta",
+      "exportKind": "other",
+      "signature": "export type VNextStageProgressMeta = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\compiler.ts",
+      "line": 51,
+      "kind": "function",
+      "name": "compileDeterministicChangeSet",
+      "exportKind": "other",
+      "signature": "export function compileDeterministicChangeSet(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\auditBridge.ts",
+      "line": 3,
+      "kind": "async function",
+      "name": "runSemanticAudit",
+      "exportKind": "other",
+      "signature": "export async function runSemanticAudit(args: { findings: any[] }) {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\skillBridge.ts",
+      "line": 7,
+      "kind": "async function",
+      "name": "runStageSkills",
+      "exportKind": "other",
+      "signature": "export async function runStageSkills(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\progress.ts",
+      "line": 3,
+      "kind": "const",
+      "name": "MAX_NO_PROGRESS_CYCLES",
+      "exportKind": "other",
+      "signature": "export const MAX_NO_PROGRESS_CYCLES = 3"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\progress.ts",
+      "line": 5,
+      "kind": "function",
+      "name": "computeStageProgress",
+      "exportKind": "other",
+      "signature": "export function computeStageProgress(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\progress.ts",
+      "line": 44,
+      "kind": "function",
+      "name": "shouldTriggerNoProgressGuard",
+      "exportKind": "other",
+      "signature": "export function shouldTriggerNoProgressGuard(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\specBuilder.ts",
+      "line": 139,
+      "kind": "function",
+      "name": "buildTargetPlanSpec",
+      "exportKind": "other",
+      "signature": "export function buildTargetPlanSpec(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\stages.ts",
+      "line": 3,
+      "kind": "const",
+      "name": "VNEXT_STAGE_META",
+      "exportKind": "other",
+      "signature": "export const VNEXT_STAGE_META: Record<VNextStageKey, { titleEn: string; titleHe: string }> = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\stages.ts",
+      "line": 16,
+      "kind": "const",
+      "name": "VNEXT_STAGE_SKILLS",
+      "exportKind": "other",
+      "signature": "export const VNEXT_STAGE_SKILLS: Record<VNextStageKey, string[]> = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\stages.ts",
+      "line": 29,
+      "kind": "function",
+      "name": "normalizeVNextStage",
+      "exportKind": "other",
+      "signature": "export function normalizeVNextStage(value: unknown): VNextStageKey {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\stages.ts",
+      "line": 37,
+      "kind": "function",
+      "name": "getNextVNextStage",
+      "exportKind": "other",
+      "signature": "export function getNextVNextStage(stageKey: VNextStageKey): VNextStageKey | null {"
+    },
+    {
+      "file": "convex\\flow\\clarificationPackBuilder.ts",
+      "line": 14,
+      "kind": "type",
+      "name": "QuestionsBlockV1",
+      "exportKind": "other",
+      "signature": "export type QuestionsBlockV1 = {"
+    },
+    {
+      "file": "convex\\flow\\clarificationPackBuilder.ts",
+      "line": 143,
+      "kind": "function",
+      "name": "buildQuestionsBlock",
+      "exportKind": "other",
+      "signature": "export function buildQuestionsBlock(args: {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "FlowNode",
+      "exportKind": "other",
+      "signature": "export type FlowNode = {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 6,
+      "kind": "type",
+      "name": "FlowGraph",
+      "exportKind": "other",
+      "signature": "export type FlowGraph = {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 12,
+      "kind": "const",
+      "name": "FLOW_GRAPH_V2",
+      "exportKind": "other",
+      "signature": "export const FLOW_GRAPH_V2: FlowGraph = {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 31,
+      "kind": "const",
+      "name": "FLOW_GRAPH_V3",
+      "exportKind": "other",
+      "signature": "export const FLOW_GRAPH_V3: FlowGraph = {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 43,
+      "kind": "function",
+      "name": "getNode",
+      "exportKind": "other",
+      "signature": "export function getNode(graph: FlowGraph, id: string): FlowNode | undefined {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 47,
+      "kind": "function",
+      "name": "getReadyNodes",
+      "exportKind": "other",
+      "signature": "export function getReadyNodes("
+    },
+    {
+      "file": "convex\\flow\\brainDumpExtractor.ts",
+      "line": 111,
+      "kind": "function",
+      "name": "extractBrainDumpStructuredDraft",
+      "exportKind": "other",
+      "signature": "export function extractBrainDumpStructuredDraft(raw: string): BrainDumpStructuredDraftV1 | null {"
+    },
+    {
+      "file": "convex\\flow\\batching.ts",
+      "line": 5,
+      "kind": "type",
+      "name": "BatchSelection",
+      "exportKind": "other",
+      "signature": "export type BatchSelection = {"
+    },
+    {
+      "file": "convex\\flow\\batching.ts",
+      "line": 12,
+      "kind": "function",
+      "name": "selectBatch",
+      "exportKind": "other",
+      "signature": "export function selectBatch("
+    },
+    {
+      "file": "convex\\flow\\artifactRevisions.ts",
+      "line": 38,
+      "kind": "async function",
+      "name": "createRevisionFromSnapshot",
+      "exportKind": "other",
+      "signature": "export async function createRevisionFromSnapshot("
+    },
+    {
+      "file": "convex\\flow\\artifactRevisions.ts",
+      "line": 61,
+      "kind": "async function",
+      "name": "createRevisionFromLive",
+      "exportKind": "other",
+      "signature": "export async function createRevisionFromLive("
+    },
+    {
+      "file": "convex\\flow\\artifactRevisions.ts",
+      "line": 80,
+      "kind": "async function",
+      "name": "applyChangeSetAndCreateRevision",
+      "exportKind": "other",
+      "signature": "export async function applyChangeSetAndCreateRevision("
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateTasks.ts",
+      "line": 10,
+      "kind": "function",
+      "name": "validateTasks",
+      "exportKind": "other",
+      "signature": "export function validateTasks(args: { artifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateScope.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateScope",
+      "exportKind": "other",
+      "signature": "export function validateScope(args: { spec: TargetPlanSpec; artifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateQuote.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateQuote",
+      "exportKind": "other",
+      "signature": "export function validateQuote(args: { quoteArtifact?: any; scopeArtifact?: any; pricingArtifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validatePricing.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validatePricing",
+      "exportKind": "other",
+      "signature": "export function validatePricing(args: { pricingArtifact?: any; budgetArtifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateOps.ts",
+      "line": 10,
+      "kind": "function",
+      "name": "validateOps",
+      "exportKind": "other",
+      "signature": "export function validateOps(args: { opsArtifact?: any; coverageRules?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateConcept.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateConcept",
+      "exportKind": "other",
+      "signature": "export function validateConcept(): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateCompile.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateCompile",
+      "exportKind": "other",
+      "signature": "export function validateCompile(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateBudget.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateBudget",
+      "exportKind": "other",
+      "signature": "export function validateBudget(args: { tasksArtifact?: any; budgetArtifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateBrief.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateBrief",
+      "exportKind": "other",
+      "signature": "export function validateBrief(args: { spec: TargetPlanSpec; artifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateAudit.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateAudit",
+      "exportKind": "other",
+      "signature": "export function validateAudit(args?: { findings?: any[]; acceptedRiskNote?: string }): GateResult {"
+    },
+    {
+      "file": "convex\\flow\\snapshotBuilder.ts",
+      "line": 5,
+      "kind": "type",
+      "name": "ProjectSnapshotV1",
+      "exportKind": "other",
+      "signature": "export type ProjectSnapshotV1 = {"
+    },
+    {
+      "file": "convex\\flow\\snapshotBuilder.ts",
+      "line": 94,
+      "kind": "async function",
+      "name": "buildProjectSnapshot",
+      "exportKind": "other",
+      "signature": "export async function buildProjectSnapshot("
+    },
+    {
+      "file": "convex\\contextManager\\views\\projectCore.ts",
+      "line": 3,
+      "kind": "async function",
+      "name": "buildProjectCorePacks",
+      "exportKind": "other",
+      "signature": "export async function buildProjectCorePacks("
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG0Brief.ts",
+      "line": 9,
+      "kind": "function",
+      "name": "validateG0Brief",
+      "exportKind": "other",
+      "signature": "export function validateG0Brief(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\types.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "IssueSeverity",
+      "exportKind": "other",
+      "signature": "export type IssueSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'"
+    },
+    {
+      "file": "convex\\flow\\validation\\types.ts",
+      "line": 3,
+      "kind": "type",
+      "name": "ValidationStatus",
+      "exportKind": "other",
+      "signature": "export type ValidationStatus = 'pass' | 'fail'"
+    },
+    {
+      "file": "convex\\flow\\validation\\types.ts",
+      "line": 5,
+      "kind": "type",
+      "name": "IssueV1",
+      "exportKind": "other",
+      "signature": "export type IssueV1 = {"
+    },
+    {
+      "file": "convex\\flow\\validation\\types.ts",
+      "line": 12,
+      "kind": "type",
+      "name": "ValidationReportV1",
+      "exportKind": "other",
+      "signature": "export type ValidationReportV1 = {"
+    },
+    {
+      "file": "convex\\flow\\validation\\readiness.ts",
+      "line": 10,
+      "kind": "function",
+      "name": "computeReadiness",
+      "exportKind": "other",
+      "signature": "export function computeReadiness(report: ValidationReportV1): number {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG2Tasks.ts",
+      "line": 33,
+      "kind": "function",
+      "name": "validateG2Tasks",
+      "exportKind": "other",
+      "signature": "export function validateG2Tasks(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG1Elements.ts",
+      "line": 9,
+      "kind": "function",
+      "name": "validateG1Elements",
+      "exportKind": "other",
+      "signature": "export function validateG1Elements(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG3Accounting.ts",
+      "line": 35,
+      "kind": "function",
+      "name": "validateG3Accounting",
+      "exportKind": "other",
+      "signature": "export function validateG3Accounting(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG9Audit.ts",
+      "line": 13,
+      "kind": "function",
+      "name": "validateG9Audit",
+      "exportKind": "other",
+      "signature": "export function validateG9Audit(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG8Quote.ts",
+      "line": 13,
+      "kind": "function",
+      "name": "validateG8Quote",
+      "exportKind": "other",
+      "signature": "export function validateG8Quote(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG7PricingRecheck.ts",
+      "line": 32,
+      "kind": "function",
+      "name": "validateG7PricingRecheck",
+      "exportKind": "other",
+      "signature": "export function validateG7PricingRecheck(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG6OpsCompleteness.ts",
+      "line": 27,
+      "kind": "function",
+      "name": "validateG6OpsCompleteness",
+      "exportKind": "other",
+      "signature": "export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG5TasksEnrichment.ts",
+      "line": 13,
+      "kind": "function",
+      "name": "validateG5TasksEnrichment",
+      "exportKind": "other",
+      "signature": "export function validateG5TasksEnrichment(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG4Pricing.ts",
+      "line": 39,
+      "kind": "function",
+      "name": "validateG4Pricing",
+      "exportKind": "other",
+      "signature": "export function validateG4Pricing(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    }
+  ]
+}

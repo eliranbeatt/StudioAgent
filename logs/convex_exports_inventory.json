@@ -1,0 +1,5109 @@
+{
+  "count": 638,
+  "entries": [
+    {
+      "file": "convex\\users.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "getViewer",
+      "exportKind": "query",
+      "signature": "export const getViewer = query({"
+    },
+    {
+      "file": "convex\\users.ts",
+      "line": 25,
+      "kind": "const",
+      "name": "updatePreferredModel",
+      "exportKind": "mutation",
+      "signature": "export const updatePreferredModel = mutation({"
+    },
+    {
+      "file": "convex\\trelloSync.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "saveConfig",
+      "exportKind": "mutation",
+      "signature": "export const saveConfig = mutation({"
+    },
+    {
+      "file": "convex\\trelloSync.ts",
+      "line": 47,
+      "kind": "const",
+      "name": "getConfig",
+      "exportKind": "query",
+      "signature": "export const getConfig = query({"
+    },
+    {
+      "file": "convex\\trelloSync.ts",
+      "line": 73,
+      "kind": "const",
+      "name": "listBoards",
+      "exportKind": "action",
+      "signature": "export const listBoards = action({"
+    },
+    {
+      "file": "convex\\trelloSync.ts",
+      "line": 101,
+      "kind": "const",
+      "name": "listLists",
+      "exportKind": "action",
+      "signature": "export const listLists = action({"
+    },
+    {
+      "file": "convex\\trelloSync.ts",
+      "line": 118,
+      "kind": "const",
+      "name": "createBoard",
+      "exportKind": "action",
+      "signature": "export const createBoard = action({"
+    },
+    {
+      "file": "convex\\trelloSync.ts",
+      "line": 138,
+      "kind": "const",
+      "name": "sync",
+      "exportKind": "action",
+      "signature": "export const sync = action({"
+    },
+    {
+      "file": "convex\\trelloSync.ts",
+      "line": 326,
+      "kind": "const",
+      "name": "logRunStart",
+      "exportKind": "mutation",
+      "signature": "export const logRunStart = mutation({"
+    },
+    {
+      "file": "convex\\trelloSync.ts",
+      "line": 337,
+      "kind": "const",
+      "name": "logRunEnd",
+      "exportKind": "mutation",
+      "signature": "export const logRunEnd = mutation({"
+    },
+    {
+      "file": "convex\\tracing.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "list",
+      "exportKind": "query",
+      "signature": "export const list = query({"
+    },
+    {
+      "file": "convex\\tracing.ts",
+      "line": 58,
+      "kind": "const",
+      "name": "get",
+      "exportKind": "query",
+      "signature": "export const get = query({"
+    },
+    {
+      "file": "convex\\tracing.ts",
+      "line": 65,
+      "kind": "const",
+      "name": "latestByConversation",
+      "exportKind": "query",
+      "signature": "export const latestByConversation = query({"
+    },
+    {
+      "file": "convex\\tracing.ts",
+      "line": 78,
+      "kind": "const",
+      "name": "analytics",
+      "exportKind": "query",
+      "signature": "export const analytics = query({"
+    },
+    {
+      "file": "convex\\tracing.ts",
+      "line": 103,
+      "kind": "const",
+      "name": "listRunIds",
+      "exportKind": "query",
+      "signature": "export const listRunIds = query({"
+    },
+    {
+      "file": "convex\\tracing.ts",
+      "line": 126,
+      "kind": "const",
+      "name": "analyticsFiltered",
+      "exportKind": "query",
+      "signature": "export const analyticsFiltered = query({"
+    },
+    {
+      "file": "convex\\test_hello_world.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "execute",
+      "exportKind": "action",
+      "signature": "export const execute = action({"
+    },
+    {
+      "file": "convex\\test_chat.ts",
+      "line": 6,
+      "kind": "const",
+      "name": "execute",
+      "exportKind": "action",
+      "signature": "export const execute = action({"
+    },
+    {
+      "file": "convex\\testing.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "seedP0",
+      "exportKind": "mutation",
+      "signature": "export const seedP0 = mutation({"
+    },
+    {
+      "file": "convex\\testing.ts",
+      "line": 26,
+      "kind": "const",
+      "name": "seedP1",
+      "exportKind": "mutation",
+      "signature": "export const seedP1 = mutation({"
+    },
+    {
+      "file": "convex\\testing.ts",
+      "line": 80,
+      "kind": "const",
+      "name": "seedP1_v2",
+      "exportKind": "mutation",
+      "signature": "export const seedP1_v2 = mutation({"
+    },
+    {
+      "file": "convex\\testing.ts",
+      "line": 87,
+      "kind": "const",
+      "name": "clearAllTestProjects",
+      "exportKind": "mutation",
+      "signature": "export const clearAllTestProjects = mutation({"
+    },
+    {
+      "file": "convex\\testing.ts",
+      "line": 116,
+      "kind": "const",
+      "name": "resetFlowRuns",
+      "exportKind": "mutation",
+      "signature": "export const resetFlowRuns = mutation({"
+    },
+    {
+      "file": "convex\\testing.ts",
+      "line": 132,
+      "kind": "const",
+      "name": "getFlowState",
+      "exportKind": "query",
+      "signature": "export const getFlowState = query({"
+    },
+    {
+      "file": "convex\\testing.ts",
+      "line": 150,
+      "kind": "const",
+      "name": "getLatestSkillRun",
+      "exportKind": "query",
+      "signature": "export const getLatestSkillRun = query({"
+    },
+    {
+      "file": "convex\\testing.ts",
+      "line": 161,
+      "kind": "const",
+      "name": "seedContext",
+      "exportKind": "mutation",
+      "signature": "export const seedContext = mutation({"
+    },
+    {
+      "file": "convex\\tasksStudio.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "listGlobal",
+      "exportKind": "query",
+      "signature": "export const listGlobal = query({"
+    },
+    {
+      "file": "convex\\tasks.ts",
+      "line": 20,
+      "kind": "const",
+      "name": "updateTaskStatus",
+      "exportKind": "mutation",
+      "signature": "export const updateTaskStatus = mutation({"
+    },
+    {
+      "file": "convex\\tasks.ts",
+      "line": 43,
+      "kind": "const",
+      "name": "getTask",
+      "exportKind": "query",
+      "signature": "export const getTask = query({"
+    },
+    {
+      "file": "convex\\tasks.ts",
+      "line": 50,
+      "kind": "const",
+      "name": "updateTask",
+      "exportKind": "mutation",
+      "signature": "export const updateTask = mutation({"
+    },
+    {
+      "file": "convex\\tasks.ts",
+      "line": 73,
+      "kind": "const",
+      "name": "createTask",
+      "exportKind": "mutation",
+      "signature": "export const createTask = mutation({"
+    },
+    {
+      "file": "convex\\tasks.ts",
+      "line": 108,
+      "kind": "const",
+      "name": "listForProject",
+      "exportKind": "query",
+      "signature": "export const listForProject = query({"
+    },
+    {
+      "file": "convex\\taskRevisions.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "getByTask",
+      "exportKind": "query",
+      "signature": "export const getByTask = query({"
+    },
+    {
+      "file": "convex\\taskRevisions.ts",
+      "line": 16,
+      "kind": "const",
+      "name": "upsertDraft",
+      "exportKind": "mutation",
+      "signature": "export const upsertDraft = mutation({"
+    },
+    {
+      "file": "convex\\taskRevisions.ts",
+      "line": 59,
+      "kind": "const",
+      "name": "discard",
+      "exportKind": "mutation",
+      "signature": "export const discard = mutation({"
+    },
+    {
+      "file": "convex\\taskRevisions.ts",
+      "line": 69,
+      "kind": "const",
+      "name": "apply",
+      "exportKind": "mutation",
+      "signature": "export const apply = mutation({"
+    },
+    {
+      "file": "convex\\suggestions.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "listSuggested",
+      "exportKind": "query",
+      "signature": "export const listSuggested = query({"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "TagGroupId",
+      "exportKind": "other",
+      "signature": "export type TagGroupId = 'category'"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 3,
+      "kind": "type",
+      "name": "TagGroup",
+      "exportKind": "other",
+      "signature": "export type TagGroup = {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 9,
+      "kind": "type",
+      "name": "TagDefinition",
+      "exportKind": "other",
+      "signature": "export type TagDefinition = {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 16,
+      "kind": "type",
+      "name": "SkillTagSource",
+      "exportKind": "other",
+      "signature": "export type SkillTagSource = {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 35,
+      "kind": "const",
+      "name": "TAG_GROUPS",
+      "exportKind": "other",
+      "signature": "export const TAG_GROUPS: TagGroup[] = ["
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 39,
+      "kind": "const",
+      "name": "TAG_DEFINITIONS",
+      "exportKind": "other",
+      "signature": "export const TAG_DEFINITIONS: TagDefinition[] = ["
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 50,
+      "kind": "const",
+      "name": "buildSkillTagIds",
+      "exportKind": "other",
+      "signature": "export const buildSkillTagIds = (skill: SkillTagSource) => {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 58,
+      "kind": "const",
+      "name": "resolveTagRecords",
+      "exportKind": "other",
+      "signature": "export const resolveTagRecords = (tagIds: string[]) => {"
+    },
+    {
+      "file": "convex\\skills\\tags.ts",
+      "line": 79,
+      "kind": "const",
+      "name": "addSkillTags",
+      "exportKind": "other",
+      "signature": "export const addSkillTags = <T extends SkillTagSource>(skill: T) => {"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 74,
+      "kind": "const",
+      "name": "runSkill",
+      "exportKind": "action",
+      "signature": "export const runSkill = action({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 368,
+      "kind": "const",
+      "name": "sendMessageAndRun",
+      "exportKind": "action",
+      "signature": "export const sendMessageAndRun = action({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 413,
+      "kind": "const",
+      "name": "generateConversationTitle",
+      "exportKind": "action",
+      "signature": "export const generateConversationTitle = action({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 457,
+      "kind": "const",
+      "name": "renameConversation",
+      "exportKind": "mutation",
+      "signature": "export const renameConversation = mutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 464,
+      "kind": "const",
+      "name": "getConversation",
+      "exportKind": "internalQuery",
+      "signature": "export const getConversation = internalQuery({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 471,
+      "kind": "const",
+      "name": "listAgentConversations",
+      "exportKind": "query",
+      "signature": "export const listAgentConversations = query({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 482,
+      "kind": "const",
+      "name": "createAgentConversation",
+      "exportKind": "mutation",
+      "signature": "export const createAgentConversation = mutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 495,
+      "kind": "const",
+      "name": "listAgentMessages",
+      "exportKind": "query",
+      "signature": "export const listAgentMessages = query({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 506,
+      "kind": "const",
+      "name": "getActiveConversationRun",
+      "exportKind": "query",
+      "signature": "export const getActiveConversationRun = query({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 521,
+      "kind": "const",
+      "name": "getSkillAndGateStatus",
+      "exportKind": "internalQuery",
+      "signature": "export const getSkillAndGateStatus = internalQuery({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 547,
+      "kind": "const",
+      "name": "createRun",
+      "exportKind": "internalMutation",
+      "signature": "export const createRun = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 567,
+      "kind": "const",
+      "name": "setRunProgress",
+      "exportKind": "internalMutation",
+      "signature": "export const setRunProgress = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 584,
+      "kind": "const",
+      "name": "buildContext",
+      "exportKind": "internalQuery",
+      "signature": "export const buildContext = internalQuery({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 815,
+      "kind": "const",
+      "name": "getLatestClarifications",
+      "exportKind": "internalQuery",
+      "signature": "export const getLatestClarifications = internalQuery({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 835,
+      "kind": "const",
+      "name": "saveRunResult",
+      "exportKind": "internalMutation",
+      "signature": "export const saveRunResult = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1334,
+      "kind": "const",
+      "name": "failRun",
+      "exportKind": "internalMutation",
+      "signature": "export const failRun = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1349,
+      "kind": "const",
+      "name": "createClarificationSession",
+      "exportKind": "internalMutation",
+      "signature": "export const createClarificationSession = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1364,
+      "kind": "const",
+      "name": "sendUserMessage",
+      "exportKind": "mutation",
+      "signature": "export const sendUserMessage = mutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1376,
+      "kind": "const",
+      "name": "logToolCall",
+      "exportKind": "internalMutation",
+      "signature": "export const logToolCall = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1408,
+      "kind": "const",
+      "name": "submitClarifications",
+      "exportKind": "mutation",
+      "signature": "export const submitClarifications = mutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1551,
+      "kind": "const",
+      "name": "saveAgentMessage",
+      "exportKind": "internalMutation",
+      "signature": "export const saveAgentMessage = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1563,
+      "kind": "const",
+      "name": "appendWebPriceOps",
+      "exportKind": "internalMutation",
+      "signature": "export const appendWebPriceOps = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1575,
+      "kind": "const",
+      "name": "saveWebSearchResults",
+      "exportKind": "internalMutation",
+      "signature": "export const saveWebSearchResults = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\runner.ts",
+      "line": 1663,
+      "kind": "const",
+      "name": "getGateSkill",
+      "exportKind": "internalQuery",
+      "signature": "export const getGateSkill = internalQuery({"
+    },
+    {
+      "file": "convex\\skills\\registry.ts",
+      "line": 6,
+      "kind": "interface",
+      "name": "SkillDefinition",
+      "exportKind": "other",
+      "signature": "export interface SkillDefinition {"
+    },
+    {
+      "file": "convex\\skills\\registry.ts",
+      "line": 41,
+      "kind": "const",
+      "name": "SKILL_CATALOG",
+      "exportKind": "other",
+      "signature": "export const SKILL_CATALOG: SkillDefinition[] = ["
+    },
+    {
+      "file": "convex\\skills\\registry.ts",
+      "line": 986,
+      "kind": "const",
+      "name": "seedSkills",
+      "exportKind": "internalMutation",
+      "signature": "export const seedSkills = internalMutation({"
+    },
+    {
+      "file": "convex\\skills\\registry.ts",
+      "line": 993,
+      "kind": "const",
+      "name": "ensureSkillsSeeded",
+      "exportKind": "mutation",
+      "signature": "export const ensureSkillsSeeded = mutation({"
+    },
+    {
+      "file": "convex\\skills\\registry.ts",
+      "line": 1038,
+      "kind": "const",
+      "name": "listEnabledSkills",
+      "exportKind": "query",
+      "signature": "export const listEnabledSkills = query({"
+    },
+    {
+      "file": "convex\\skills\\registry.ts",
+      "line": 1049,
+      "kind": "const",
+      "name": "listSkillTagDefinitions",
+      "exportKind": "query",
+      "signature": "export const listSkillTagDefinitions = query({"
+    },
+    {
+      "file": "convex\\skills\\recommender.ts",
+      "line": 6,
+      "kind": "const",
+      "name": "getProjectDigest",
+      "exportKind": "query",
+      "signature": "export const getProjectDigest = query({"
+    },
+    {
+      "file": "convex\\skills\\recommender.ts",
+      "line": 61,
+      "kind": "const",
+      "name": "recommendSkills",
+      "exportKind": "query",
+      "signature": "export const recommendSkills = query({"
+    },
+    {
+      "file": "convex\\skills\\prompts.ts",
+      "line": 1,
+      "kind": "const",
+      "name": "SHARED_HEADER",
+      "exportKind": "other",
+      "signature": "export const SHARED_HEADER = `SYSTEM (shared header; English instructions)"
+    },
+    {
+      "file": "convex\\skills\\prompts.ts",
+      "line": 242,
+      "kind": "const",
+      "name": "SKILL_SYSTEM_ADDONS",
+      "exportKind": "other",
+      "signature": "export const SKILL_SYSTEM_ADDONS = {"
+    },
+    {
+      "file": "convex\\shareLinks.ts",
+      "line": 13,
+      "kind": "const",
+      "name": "create",
+      "exportKind": "mutation",
+      "signature": "export const create = mutation({"
+    },
+    {
+      "file": "convex\\shareLinks.ts",
+      "line": 46,
+      "kind": "const",
+      "name": "getByToken",
+      "exportKind": "query",
+      "signature": "export const getByToken = query({"
+    },
+    {
+      "file": "convex\\inventory_helpers.ts",
+      "line": 11,
+      "kind": "async function",
+      "name": "computeAvailability",
+      "exportKind": "other",
+      "signature": "export async function computeAvailability(ctx: any, inventoryItemId: any) {"
+    },
+    {
+      "file": "convex\\inventory_helpers.ts",
+      "line": 40,
+      "kind": "async function",
+      "name": "findExistingReservation",
+      "exportKind": "other",
+      "signature": "export async function findExistingReservation("
+    },
+    {
+      "file": "convex\\inventory_helpers.ts",
+      "line": 59,
+      "kind": "async function",
+      "name": "reserveStockInternal",
+      "exportKind": "other",
+      "signature": "export async function reserveStockInternal("
+    },
+    {
+      "file": "convex\\brainDump.ts",
+      "line": 21,
+      "kind": "const",
+      "name": "getProjectBrainDump",
+      "exportKind": "query",
+      "signature": "export const getProjectBrainDump = query({"
+    },
+    {
+      "file": "convex\\brainDump.ts",
+      "line": 37,
+      "kind": "const",
+      "name": "appendProjectBrainDump",
+      "exportKind": "mutation",
+      "signature": "export const appendProjectBrainDump = mutation({"
+    },
+    {
+      "file": "convex\\brainDump.ts",
+      "line": 67,
+      "kind": "const",
+      "name": "setProjectBrainDumpRaw",
+      "exportKind": "mutation",
+      "signature": "export const setProjectBrainDumpRaw = mutation({"
+    },
+    {
+      "file": "convex\\inventory.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "reserveStock",
+      "exportKind": "mutation",
+      "signature": "export const reserveStock = mutation({"
+    },
+    {
+      "file": "convex\\inventory.ts",
+      "line": 24,
+      "kind": "const",
+      "name": "listForProject",
+      "exportKind": "query",
+      "signature": "export const listForProject = query({"
+    },
+    {
+      "file": "convex\\inventory.ts",
+      "line": 34,
+      "kind": "const",
+      "name": "listInventoryItems",
+      "exportKind": "query",
+      "signature": "export const listInventoryItems = query({"
+    },
+    {
+      "file": "convex\\inventory.ts",
+      "line": 40,
+      "kind": "const",
+      "name": "createInventoryItem",
+      "exportKind": "mutation",
+      "signature": "export const createInventoryItem = mutation({"
+    },
+    {
+      "file": "convex\\inventory.ts",
+      "line": 81,
+      "kind": "const",
+      "name": "updateInventoryStock",
+      "exportKind": "mutation",
+      "signature": "export const updateInventoryStock = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 404,
+      "kind": "const",
+      "name": "listConversations",
+      "exportKind": "query",
+      "signature": "export const listConversations = query({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 432,
+      "kind": "const",
+      "name": "createConversation",
+      "exportKind": "mutation",
+      "signature": "export const createConversation = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 450,
+      "kind": "const",
+      "name": "listConversationMessages",
+      "exportKind": "query",
+      "signature": "export const listConversationMessages = query({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 463,
+      "kind": "const",
+      "name": "appendUserMessage",
+      "exportKind": "mutation",
+      "signature": "export const appendUserMessage = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 480,
+      "kind": "const",
+      "name": "appendEventMessage",
+      "exportKind": "mutation",
+      "signature": "export const appendEventMessage = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 502,
+      "kind": "const",
+      "name": "appendAssistantMessage",
+      "exportKind": "mutation",
+      "signature": "export const appendAssistantMessage = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 526,
+      "kind": "const",
+      "name": "setConversationStageV1",
+      "exportKind": "mutation",
+      "signature": "export const setConversationStageV1 = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 561,
+      "kind": "const",
+      "name": "setConversationMode",
+      "exportKind": "mutation",
+      "signature": "export const setConversationMode = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 572,
+      "kind": "const",
+      "name": "setConversationTitle",
+      "exportKind": "mutation",
+      "signature": "export const setConversationTitle = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 583,
+      "kind": "const",
+      "name": "setConversationStatus",
+      "exportKind": "mutation",
+      "signature": "export const setConversationStatus = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 594,
+      "kind": "const",
+      "name": "agentRespond",
+      "exportKind": "action",
+      "signature": "export const agentRespond = action({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1333,
+      "kind": "const",
+      "name": "getOrCreateConversation",
+      "exportKind": "mutation",
+      "signature": "export const getOrCreateConversation = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1354,
+      "kind": "const",
+      "name": "listMessages",
+      "exportKind": "query",
+      "signature": "export const listMessages = query({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1369,
+      "kind": "const",
+      "name": "cancelRunningAgent",
+      "exportKind": "mutation",
+      "signature": "export const cancelRunningAgent = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1386,
+      "kind": "const",
+      "name": "createPlaceholderMessage",
+      "exportKind": "internalMutation",
+      "signature": "export const createPlaceholderMessage = internalMutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1403,
+      "kind": "const",
+      "name": "updateMessageContent",
+      "exportKind": "internalMutation",
+      "signature": "export const updateMessageContent = internalMutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1420,
+      "kind": "const",
+      "name": "finalizeMessage",
+      "exportKind": "internalMutation",
+      "signature": "export const finalizeMessage = internalMutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1436,
+      "kind": "const",
+      "name": "preProcessMessage",
+      "exportKind": "internalMutation",
+      "signature": "export const preProcessMessage = internalMutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1610,
+      "kind": "const",
+      "name": "saveAgentMessage",
+      "exportKind": "internalMutation",
+      "signature": "export const saveAgentMessage = internalMutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1633,
+      "kind": "const",
+      "name": "sendMessage",
+      "exportKind": "action",
+      "signature": "export const sendMessage = action({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1719,
+      "kind": "const",
+      "name": "getConversation",
+      "exportKind": "query",
+      "signature": "export const getConversation = query({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1726,
+      "kind": "const",
+      "name": "setConversationStage",
+      "exportKind": "mutation",
+      "signature": "export const setConversationStage = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1737,
+      "kind": "const",
+      "name": "getStructuredAnswers",
+      "exportKind": "query",
+      "signature": "export const getStructuredAnswers = query({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1752,
+      "kind": "const",
+      "name": "saveStructuredAnswers",
+      "exportKind": "mutation",
+      "signature": "export const saveStructuredAnswers = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1786,
+      "kind": "const",
+      "name": "createElementFromStructured",
+      "exportKind": "mutation",
+      "signature": "export const createElementFromStructured = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1808,
+      "kind": "const",
+      "name": "generateTaskPatchOps",
+      "exportKind": "mutation",
+      "signature": "export const generateTaskPatchOps = mutation({"
+    },
+    {
+      "file": "convex\\agent.ts",
+      "line": 1862,
+      "kind": "const",
+      "name": "estimateTaskDependencies",
+      "exportKind": "mutation",
+      "signature": "export const estimateTaskDependencies = mutation({"
+    },
+    {
+      "file": "convex\\agent_tasks.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "runEstimator",
+      "exportKind": "mutation",
+      "signature": "export const runEstimator = mutation({"
+    },
+    {
+      "file": "convex\\flowSteps.ts",
+      "line": 19,
+      "kind": "const",
+      "name": "listByRun",
+      "exportKind": "query",
+      "signature": "export const listByRun = query({"
+    },
+    {
+      "file": "convex\\adminHealth.ts",
+      "line": 3,
+      "kind": "const",
+      "name": "health",
+      "exportKind": "query",
+      "signature": "export const health = query({"
+    },
+    {
+      "file": "convex\\agentTurns.ts",
+      "line": 49,
+      "kind": "const",
+      "name": "submitTurn",
+      "exportKind": "action",
+      "signature": "export const submitTurn = action({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 119,
+      "kind": "const",
+      "name": "getActiveByProject",
+      "exportKind": "query",
+      "signature": "export const getActiveByProject = query({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 143,
+      "kind": "const",
+      "name": "listByProject",
+      "exportKind": "query",
+      "signature": "export const listByProject = query({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 157,
+      "kind": "const",
+      "name": "compareRecentByPlanningMode",
+      "exportKind": "query",
+      "signature": "export const compareRecentByPlanningMode = query({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 212,
+      "kind": "const",
+      "name": "start",
+      "exportKind": "mutation",
+      "signature": "export const start = mutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 281,
+      "kind": "const",
+      "name": "runNext",
+      "exportKind": "action",
+      "signature": "export const runNext = action({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 292,
+      "kind": "const",
+      "name": "setToggles",
+      "exportKind": "mutation",
+      "signature": "export const setToggles = mutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 349,
+      "kind": "const",
+      "name": "setApprovalMode",
+      "exportKind": "mutation",
+      "signature": "export const setApprovalMode = mutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 378,
+      "kind": "const",
+      "name": "setApprovalModeInternal",
+      "exportKind": "internalMutation",
+      "signature": "export const setApprovalModeInternal = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 406,
+      "kind": "const",
+      "name": "applyChangeSetOpsAndContinue",
+      "exportKind": "action",
+      "signature": "export const applyChangeSetOpsAndContinue = action({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 442,
+      "kind": "const",
+      "name": "discardChangeSetAndContinue",
+      "exportKind": "action",
+      "signature": "export const discardChangeSetAndContinue = action({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 460,
+      "kind": "const",
+      "name": "pause",
+      "exportKind": "mutation",
+      "signature": "export const pause = mutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 471,
+      "kind": "const",
+      "name": "resume",
+      "exportKind": "mutation",
+      "signature": "export const resume = mutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 482,
+      "kind": "const",
+      "name": "cancel",
+      "exportKind": "mutation",
+      "signature": "export const cancel = mutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 497,
+      "kind": "const",
+      "name": "computeValidation",
+      "exportKind": "mutation",
+      "signature": "export const computeValidation = mutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 820,
+      "kind": "const",
+      "name": "getRunInternal",
+      "exportKind": "internalQuery",
+      "signature": "export const getRunInternal = internalQuery({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 825,
+      "kind": "const",
+      "name": "setRunStatus",
+      "exportKind": "internalMutation",
+      "signature": "export const setRunStatus = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 843,
+      "kind": "const",
+      "name": "advanceToGate",
+      "exportKind": "internalMutation",
+      "signature": "export const advanceToGate = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 868,
+      "kind": "const",
+      "name": "bumpStepRetry",
+      "exportKind": "internalMutation",
+      "signature": "export const bumpStepRetry = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 889,
+      "kind": "const",
+      "name": "ensureConversation",
+      "exportKind": "internalMutation",
+      "signature": "export const ensureConversation = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 910,
+      "kind": "const",
+      "name": "setAwaitingApproval",
+      "exportKind": "internalMutation",
+      "signature": "export const setAwaitingApproval = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 936,
+      "kind": "const",
+      "name": "setDraftChangeSets",
+      "exportKind": "internalMutation",
+      "signature": "export const setDraftChangeSets = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 960,
+      "kind": "const",
+      "name": "setStepLastEmittedHash",
+      "exportKind": "internalMutation",
+      "signature": "export const setStepLastEmittedHash = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 980,
+      "kind": "const",
+      "name": "clearAwaitingApproval",
+      "exportKind": "internalMutation",
+      "signature": "export const clearAwaitingApproval = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 987,
+      "kind": "const",
+      "name": "getStepInternal",
+      "exportKind": "internalQuery",
+      "signature": "export const getStepInternal = internalQuery({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 996,
+      "kind": "const",
+      "name": "tickValidation",
+      "exportKind": "internalMutation",
+      "signature": "export const tickValidation = internalMutation({"
+    },
+    {
+      "file": "convex\\flowRuns.ts",
+      "line": 1021,
+      "kind": "const",
+      "name": "setForceQuestionGate",
+      "exportKind": "internalMutation",
+      "signature": "export const setForceQuestionGate = internalMutation({"
+    },
+    {
+      "file": "convex\\flowNodeRuns.ts",
+      "line": 19,
+      "kind": "const",
+      "name": "listByRun",
+      "exportKind": "query",
+      "signature": "export const listByRun = query({"
+    },
+    {
+      "file": "convex\\flowChangeSetApplyLogs.ts",
+      "line": 19,
+      "kind": "const",
+      "name": "listByRun",
+      "exportKind": "query",
+      "signature": "export const listByRun = query({"
+    },
+    {
+      "file": "convex\\flowAnswers.ts",
+      "line": 42,
+      "kind": "const",
+      "name": "submitAnswers",
+      "exportKind": "mutation",
+      "signature": "export const submitAnswers = mutation({"
+    },
+    {
+      "file": "convex\\flowAnswers.ts",
+      "line": 134,
+      "kind": "const",
+      "name": "submitAnswersAndAdvance",
+      "exportKind": "action",
+      "signature": "export const submitAnswersAndAdvance = action({"
+    },
+    {
+      "file": "convex\\flowAnswers.ts",
+      "line": 152,
+      "kind": "const",
+      "name": "acceptUnknown",
+      "exportKind": "mutation",
+      "signature": "export const acceptUnknown = mutation({"
+    },
+    {
+      "file": "convex\\flowAnswers.ts",
+      "line": 179,
+      "kind": "const",
+      "name": "acceptAssumption",
+      "exportKind": "mutation",
+      "signature": "export const acceptAssumption = mutation({"
+    },
+    {
+      "file": "convex\\flowAnswers.ts",
+      "line": 209,
+      "kind": "const",
+      "name": "dismissOpportunity",
+      "exportKind": "mutation",
+      "signature": "export const dismissOpportunity = mutation({"
+    },
+    {
+      "file": "convex\\flowAnswers.ts",
+      "line": 245,
+      "kind": "const",
+      "name": "adoptOpportunity",
+      "exportKind": "action",
+      "signature": "export const adoptOpportunity = action({"
+    },
+    {
+      "file": "convex\\accountingStudio.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "getGlobalSummary",
+      "exportKind": "query",
+      "signature": "export const getGlobalSummary = query({"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "ORCHESTRATOR_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const ORCHESTRATOR_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 336,
+      "kind": "const",
+      "name": "CLARIFY_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const CLARIFY_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 506,
+      "kind": "const",
+      "name": "FREE_CHAT_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const FREE_CHAT_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 640,
+      "kind": "const",
+      "name": "PRICING_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PRICING_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 759,
+      "kind": "const",
+      "name": "PROCUREMENT_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PROCUREMENT_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 841,
+      "kind": "const",
+      "name": "RECEIPT_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const RECEIPT_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 929,
+      "kind": "const",
+      "name": "AUDIT_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const AUDIT_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1016,
+      "kind": "const",
+      "name": "PRINT_QA_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PRINT_QA_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1064,
+      "kind": "const",
+      "name": "MAINTENANCE_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const MAINTENANCE_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1122,
+      "kind": "const",
+      "name": "INTAKE_BRIEF_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const INTAKE_BRIEF_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1211,
+      "kind": "const",
+      "name": "PLAN_ELEMENTS_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PLAN_ELEMENTS_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1285,
+      "kind": "const",
+      "name": "PLAN_TASKS_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PLAN_TASKS_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1383,
+      "kind": "const",
+      "name": "PLAN_PHASES_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const PLAN_PHASES_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1440,
+      "kind": "const",
+      "name": "COST_BUDGET_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const COST_BUDGET_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1543,
+      "kind": "const",
+      "name": "QUOTE_GENERATE_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const QUOTE_GENERATE_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1614,
+      "kind": "const",
+      "name": "RUNBOOK_INSTALL_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const RUNBOOK_INSTALL_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1681,
+      "kind": "const",
+      "name": "OPS_DAILY_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const OPS_DAILY_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1744,
+      "kind": "const",
+      "name": "DRAFT_PLAN_AND_QUESTIONS_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const DRAFT_PLAN_AND_QUESTIONS_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1831,
+      "kind": "const",
+      "name": "REGENERATE_QUESTIONS_MANUAL_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const REGENERATE_QUESTIONS_MANUAL_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 1885,
+      "kind": "const",
+      "name": "CHANGESET_COMPILE_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const CHANGESET_COMPILE_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2004,
+      "kind": "const",
+      "name": "CHANGESET_REVIEW_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const CHANGESET_REVIEW_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2070,
+      "kind": "const",
+      "name": "ADMIN_RATES_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const ADMIN_RATES_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2123,
+      "kind": "const",
+      "name": "ADMIN_MEASUREMENTS_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const ADMIN_MEASUREMENTS_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2166,
+      "kind": "const",
+      "name": "KNOWLEDGE_UPDATE_SYSTEM",
+      "exportKind": "other",
+      "signature": "export const KNOWLEDGE_UPDATE_SYSTEM = `SYSTEM"
+    },
+    {
+      "file": "convex\\sdk\\prompts.ts",
+      "line": 2243,
+      "kind": "const",
+      "name": "FULL_PROMPTS",
+      "exportKind": "other",
+      "signature": "export const FULL_PROMPTS = {"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 201,
+      "kind": "const",
+      "name": "getPlanningSession",
+      "exportKind": "query",
+      "signature": "export const getPlanningSession = query({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 252,
+      "kind": "const",
+      "name": "savePlanningState",
+      "exportKind": "mutation",
+      "signature": "export const savePlanningState = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 274,
+      "kind": "const",
+      "name": "updatePhaseStatus",
+      "exportKind": "mutation",
+      "signature": "export const updatePhaseStatus = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 312,
+      "kind": "const",
+      "name": "submitBrainDump",
+      "exportKind": "mutation",
+      "signature": "export const submitBrainDump = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 358,
+      "kind": "const",
+      "name": "initiatePlanning",
+      "exportKind": "action",
+      "signature": "export const initiatePlanning = action({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 450,
+      "kind": "const",
+      "name": "getQuestionSets",
+      "exportKind": "query",
+      "signature": "export const getQuestionSets = query({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 564,
+      "kind": "const",
+      "name": "setPlanningModePreference",
+      "exportKind": "mutation",
+      "signature": "export const setPlanningModePreference = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 591,
+      "kind": "const",
+      "name": "submitAnswers",
+      "exportKind": "mutation",
+      "signature": "export const submitAnswers = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 625,
+      "kind": "const",
+      "name": "regenerateQuestions",
+      "exportKind": "action",
+      "signature": "export const regenerateQuestions = action({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 693,
+      "kind": "const",
+      "name": "setFinalizeCheckpoint",
+      "exportKind": "internalMutation",
+      "signature": "export const setFinalizeCheckpoint = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 706,
+      "kind": "const",
+      "name": "startFinalizePhases",
+      "exportKind": "action",
+      "signature": "export const startFinalizePhases = action({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 782,
+      "kind": "const",
+      "name": "runFinalizePhase",
+      "exportKind": "internalAction",
+      "signature": "export const runFinalizePhase = internalAction({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1117,
+      "kind": "const",
+      "name": "finalizeProject",
+      "exportKind": "action",
+      "signature": "export const finalizeProject = action({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1139,
+      "kind": "const",
+      "name": "getFinalizationProgress",
+      "exportKind": "query",
+      "signature": "export const getFinalizationProgress = query({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1193,
+      "kind": "const",
+      "name": "getPhaseResults",
+      "exportKind": "query",
+      "signature": "export const getPhaseResults = query({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1206,
+      "kind": "const",
+      "name": "rerunPhase",
+      "exportKind": "action",
+      "signature": "export const rerunPhase = action({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1250,
+      "kind": "const",
+      "name": "getFinalizeCheckpointInfo",
+      "exportKind": "query",
+      "signature": "export const getFinalizeCheckpointInfo = query({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1275,
+      "kind": "const",
+      "name": "cancelFinalizePhase",
+      "exportKind": "action",
+      "signature": "export const cancelFinalizePhase = action({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1319,
+      "kind": "const",
+      "name": "getFinalReport",
+      "exportKind": "query",
+      "signature": "export const getFinalReport = query({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1330,
+      "kind": "const",
+      "name": "compareRecentRunsByMode",
+      "exportKind": "query",
+      "signature": "export const compareRecentRunsByMode = query({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1385,
+      "kind": "const",
+      "name": "restartPlanning",
+      "exportKind": "action",
+      "signature": "export const restartPlanning = action({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1414,
+      "kind": "const",
+      "name": "setRunMode",
+      "exportKind": "internalMutation",
+      "signature": "export const setRunMode = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\projectPlanning.ts",
+      "line": 1426,
+      "kind": "const",
+      "name": "clearPhases",
+      "exportKind": "internalMutation",
+      "signature": "export const clearPhases = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\plannerNode.ts",
+      "line": 10,
+      "kind": "const",
+      "name": "draftPlanAndQuestions",
+      "exportKind": "action",
+      "signature": "export const draftPlanAndQuestions = action({"
+    },
+    {
+      "file": "convex\\sdk\\planner.ts",
+      "line": 91,
+      "kind": "const",
+      "name": "upsertPlanAndSeed",
+      "exportKind": "internalMutation",
+      "signature": "export const upsertPlanAndSeed = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\llm.ts",
+      "line": 5,
+      "kind": "async function",
+      "name": "runJsonCompletion",
+      "exportKind": "other",
+      "signature": "export async function runJsonCompletion(args: {"
+    },
+    {
+      "file": "convex\\sdk\\knowledgeMutations.ts",
+      "line": 7,
+      "kind": "const",
+      "name": "saveKnowledgeDoc",
+      "exportKind": "internalMutation",
+      "signature": "export const saveKnowledgeDoc = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\knowledge.ts",
+      "line": 10,
+      "kind": "const",
+      "name": "summarizeOrUpdate",
+      "exportKind": "action",
+      "signature": "export const summarizeOrUpdate = action({"
+    },
+    {
+      "file": "convex\\sdk\\finalize.ts",
+      "line": 16,
+      "kind": "const",
+      "name": "buildStructuredPackage",
+      "exportKind": "action",
+      "signature": "export const buildStructuredPackage = action({"
+    },
+    {
+      "file": "convex\\sdk\\dispatch.ts",
+      "line": 1430,
+      "kind": "const",
+      "name": "runNext",
+      "exportKind": "action",
+      "signature": "export const runNext = action({"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "QaResolvedStatus",
+      "exportKind": "other",
+      "signature": "export type QaResolvedStatus = 'answered' | 'assumed' | 'resolved' | 'skipped' | 'dismissed'"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "isResolvedQaStatus",
+      "exportKind": "other",
+      "signature": "export function isResolvedQaStatus(status: unknown): status is QaResolvedStatus {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 13,
+      "kind": "function",
+      "name": "canApplyPlanDocCas",
+      "exportKind": "other",
+      "signature": "export function canApplyPlanDocCas(expectedPlanVersion: number, currentPlanVersion: number) {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 17,
+      "kind": "function",
+      "name": "shouldAllowStatusTransition",
+      "exportKind": "other",
+      "signature": "export function shouldAllowStatusTransition(currentStatus: unknown, nextStatus: unknown) {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 24,
+      "kind": "function",
+      "name": "shouldInsertQuestionFromDedupe",
+      "exportKind": "other",
+      "signature": "export function shouldInsertQuestionFromDedupe(args: {"
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 35,
+      "kind": "function",
+      "name": "applyRegenCaps",
+      "exportKind": "other",
+      "signature": "export function applyRegenCaps<T extends { blockingLevel?: string }>("
+    },
+    {
+      "file": "convex\\sdk\\regenRules.ts",
+      "line": 63,
+      "kind": "function",
+      "name": "shouldPreemptWithProjectBlockers",
+      "exportKind": "other",
+      "signature": "export function shouldPreemptWithProjectBlockers(args: {"
+    },
+    {
+      "file": "convex\\sdk\\rebaseNode.ts",
+      "line": 10,
+      "kind": "const",
+      "name": "regenerateQuestionsManual",
+      "exportKind": "action",
+      "signature": "export const regenerateQuestionsManual = action({"
+    },
+    {
+      "file": "convex\\sdk\\rebase.ts",
+      "line": 79,
+      "kind": "const",
+      "name": "rebaseFromAnswersAsync",
+      "exportKind": "internalMutation",
+      "signature": "export const rebaseFromAnswersAsync = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\rebase.ts",
+      "line": 198,
+      "kind": "const",
+      "name": "acquireManualRegenLock",
+      "exportKind": "internalMutation",
+      "signature": "export const acquireManualRegenLock = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\rebase.ts",
+      "line": 238,
+      "kind": "const",
+      "name": "getManualRegenInputs",
+      "exportKind": "internalQuery",
+      "signature": "export const getManualRegenInputs = internalQuery({"
+    },
+    {
+      "file": "convex\\sdk\\rebase.ts",
+      "line": 308,
+      "kind": "const",
+      "name": "applyRegenerationPatch",
+      "exportKind": "internalMutation",
+      "signature": "export const applyRegenerationPatch = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\rebase.ts",
+      "line": 590,
+      "kind": "const",
+      "name": "failManualRegen",
+      "exportKind": "internalMutation",
+      "signature": "export const failManualRegen = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 268,
+      "kind": "const",
+      "name": "peekNextSet",
+      "exportKind": "query",
+      "signature": "export const peekNextSet = query({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 284,
+      "kind": "const",
+      "name": "nextSet",
+      "exportKind": "mutation",
+      "signature": "export const nextSet = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 310,
+      "kind": "const",
+      "name": "submitAnswers",
+      "exportKind": "mutation",
+      "signature": "export const submitAnswers = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 462,
+      "kind": "const",
+      "name": "upsertVNextQuestionsBridge",
+      "exportKind": "mutation",
+      "signature": "export const upsertVNextQuestionsBridge = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 563,
+      "kind": "const",
+      "name": "createQuestion",
+      "exportKind": "mutation",
+      "signature": "export const createQuestion = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 614,
+      "kind": "const",
+      "name": "getAllAnswers",
+      "exportKind": "query",
+      "signature": "export const getAllAnswers = query({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 638,
+      "kind": "const",
+      "name": "getResolvedAnswers",
+      "exportKind": "query",
+      "signature": "export const getResolvedAnswers = query({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 664,
+      "kind": "const",
+      "name": "getAllQAPairs",
+      "exportKind": "query",
+      "signature": "export const getAllQAPairs = query({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 686,
+      "kind": "const",
+      "name": "dismissAllForRun",
+      "exportKind": "mutation",
+      "signature": "export const dismissAllForRun = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 706,
+      "kind": "const",
+      "name": "listOpenForProject",
+      "exportKind": "query",
+      "signature": "export const listOpenForProject = query({"
+    },
+    {
+      "file": "convex\\sdk\\questions.ts",
+      "line": 723,
+      "kind": "const",
+      "name": "dismissQuestionById",
+      "exportKind": "mutation",
+      "signature": "export const dismissQuestionById = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\queries.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "getRun",
+      "exportKind": "internalQuery",
+      "signature": "export const getRun = internalQuery({"
+    },
+    {
+      "file": "convex\\sdk\\queries.ts",
+      "line": 14,
+      "kind": "const",
+      "name": "getLatestReviewForRun",
+      "exportKind": "internalQuery",
+      "signature": "export const getLatestReviewForRun = internalQuery({"
+    },
+    {
+      "file": "convex\\sdk\\queries.ts",
+      "line": 31,
+      "kind": "const",
+      "name": "getLatestAuditForRun",
+      "exportKind": "internalQuery",
+      "signature": "export const getLatestAuditForRun = internalQuery({"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 56,
+      "kind": "const",
+      "name": "zQaPairOption",
+      "exportKind": "other",
+      "signature": "export const zQaPairOption = z.object({"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 89,
+      "kind": "const",
+      "name": "zQaPairFast",
+      "exportKind": "other",
+      "signature": "export const zQaPairFast = z.object({"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 116,
+      "kind": "const",
+      "name": "SDK_SCHEMAS",
+      "exportKind": "other",
+      "signature": "export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 286,
+      "kind": "function",
+      "name": "validateSdkOutput",
+      "exportKind": "other",
+      "signature": "export function validateSdkOutput(schemaName: string, payload: unknown) {"
+    },
+    {
+      "file": "convex\\sdk\\schemas.ts",
+      "line": 298,
+      "kind": "function",
+      "name": "assertAsciiKeys",
+      "exportKind": "other",
+      "signature": "export function assertAsciiKeys(value: unknown, path = 'root') {"
+    },
+    {
+      "file": "convex\\sdk\\runner.ts",
+      "line": 371,
+      "kind": "async function",
+      "name": "runToolInternal",
+      "exportKind": "other",
+      "signature": "export async function runToolInternal(args: {"
+    },
+    {
+      "file": "convex\\sdk\\runner.ts",
+      "line": 427,
+      "kind": "const",
+      "name": "runTool",
+      "exportKind": "action",
+      "signature": "export const runTool = action({"
+    },
+    {
+      "file": "convex\\sdk\\registry.ts",
+      "line": 4,
+      "kind": "interface",
+      "name": "ToolDefinition",
+      "exportKind": "other",
+      "signature": "export interface ToolDefinition {"
+    },
+    {
+      "file": "convex\\sdk\\registry.ts",
+      "line": 18,
+      "kind": "const",
+      "name": "REGISTRY",
+      "exportKind": "other",
+      "signature": "export const REGISTRY: Record<string, ToolDefinition> = {"
+    },
+    {
+      "file": "convex\\sdk\\shadow.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "evaluate",
+      "exportKind": "action",
+      "signature": "export const evaluate = action({"
+    },
+    {
+      "file": "convex\\sdk\\telemetry.ts",
+      "line": 7,
+      "kind": "const",
+      "name": "createRun",
+      "exportKind": "internalMutation",
+      "signature": "export const createRun = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\telemetry.ts",
+      "line": 38,
+      "kind": "const",
+      "name": "updateRunState",
+      "exportKind": "internalMutation",
+      "signature": "export const updateRunState = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\telemetry.ts",
+      "line": 106,
+      "kind": "const",
+      "name": "clearPendingChangeSet",
+      "exportKind": "internalMutation",
+      "signature": "export const clearPendingChangeSet = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\telemetry.ts",
+      "line": 123,
+      "kind": "const",
+      "name": "appendMessage",
+      "exportKind": "internalMutation",
+      "signature": "export const appendMessage = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\telemetry.ts",
+      "line": 146,
+      "kind": "const",
+      "name": "getRunMessages",
+      "exportKind": "query",
+      "signature": "export const getRunMessages = query({"
+    },
+    {
+      "file": "convex\\sdk\\telemetry.ts",
+      "line": 165,
+      "kind": "const",
+      "name": "logEvent",
+      "exportKind": "internalMutation",
+      "signature": "export const logEvent = internalMutation({"
+    },
+    {
+      "file": "convex\\accounting.ts",
+      "line": 6,
+      "kind": "const",
+      "name": "addMaterialLine",
+      "exportKind": "mutation",
+      "signature": "export const addMaterialLine = mutation({"
+    },
+    {
+      "file": "convex\\accounting.ts",
+      "line": 31,
+      "kind": "const",
+      "name": "updateMaterialLine",
+      "exportKind": "mutation",
+      "signature": "export const updateMaterialLine = mutation({"
+    },
+    {
+      "file": "convex\\accounting.ts",
+      "line": 81,
+      "kind": "const",
+      "name": "deleteMaterialLine",
+      "exportKind": "mutation",
+      "signature": "export const deleteMaterialLine = mutation({"
+    },
+    {
+      "file": "convex\\accounting.ts",
+      "line": 91,
+      "kind": "const",
+      "name": "addWorkLine",
+      "exportKind": "mutation",
+      "signature": "export const addWorkLine = mutation({"
+    },
+    {
+      "file": "convex\\accounting.ts",
+      "line": 116,
+      "kind": "const",
+      "name": "updateWorkLine",
+      "exportKind": "mutation",
+      "signature": "export const updateWorkLine = mutation({"
+    },
+    {
+      "file": "convex\\accounting.ts",
+      "line": 159,
+      "kind": "const",
+      "name": "deleteWorkLine",
+      "exportKind": "mutation",
+      "signature": "export const deleteWorkLine = mutation({"
+    },
+    {
+      "file": "convex\\agentData.ts",
+      "line": 441,
+      "kind": "const",
+      "name": "fetchInternal",
+      "exportKind": "internalQuery",
+      "signature": "export const fetchInternal = internalQuery({"
+    },
+    {
+      "file": "convex\\agentData.ts",
+      "line": 683,
+      "kind": "const",
+      "name": "logAccess",
+      "exportKind": "internalMutation",
+      "signature": "export const logAccess = internalMutation({"
+    },
+    {
+      "file": "convex\\agentData.ts",
+      "line": 713,
+      "kind": "const",
+      "name": "fetch",
+      "exportKind": "action",
+      "signature": "export const fetch = action({"
+    },
+    {
+      "file": "convex\\debug_inspect.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "inspectMessages",
+      "exportKind": "query",
+      "signature": "export const inspectMessages = query({"
+    },
+    {
+      "file": "convex\\debug_fetch_traces.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "getRecentSkillRuns",
+      "exportKind": "query",
+      "signature": "export const getRecentSkillRuns = query({"
+    },
+    {
+      "file": "convex\\customersStudio.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "listCustomersStudio",
+      "exportKind": "query",
+      "signature": "export const listCustomersStudio = query({"
+    },
+    {
+      "file": "convex\\customersStudio.ts",
+      "line": 56,
+      "kind": "const",
+      "name": "getCustomerStudio",
+      "exportKind": "query",
+      "signature": "export const getCustomerStudio = query({"
+    },
+    {
+      "file": "convex\\customersStudio.ts",
+      "line": 74,
+      "kind": "const",
+      "name": "listProjectsByCustomer",
+      "exportKind": "query",
+      "signature": "export const listProjectsByCustomer = query({"
+    },
+    {
+      "file": "convex\\customers.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "findOrCreateByName",
+      "exportKind": "mutation",
+      "signature": "export const findOrCreateByName = mutation({"
+    },
+    {
+      "file": "convex\\customers.ts",
+      "line": 41,
+      "kind": "const",
+      "name": "listActive",
+      "exportKind": "query",
+      "signature": "export const listActive = query({"
+    },
+    {
+      "file": "convex\\customers.ts",
+      "line": 51,
+      "kind": "const",
+      "name": "listWithContacts",
+      "exportKind": "query",
+      "signature": "export const listWithContacts = query({"
+    },
+    {
+      "file": "convex\\customers.ts",
+      "line": 78,
+      "kind": "const",
+      "name": "addContact",
+      "exportKind": "mutation",
+      "signature": "export const addContact = mutation({"
+    },
+    {
+      "file": "convex\\filesActions.ts",
+      "line": 16,
+      "kind": "const",
+      "name": "saveUploadedFile",
+      "exportKind": "action",
+      "signature": "export const saveUploadedFile = action({"
+    },
+    {
+      "file": "convex\\files.ts",
+      "line": 8,
+      "kind": "const",
+      "name": "generateUploadUrl",
+      "exportKind": "mutation",
+      "signature": "export const generateUploadUrl = mutation({"
+    },
+    {
+      "file": "convex\\files.ts",
+      "line": 15,
+      "kind": "const",
+      "name": "saveFileRecord",
+      "exportKind": "internalMutation",
+      "signature": "export const saveFileRecord = internalMutation({"
+    },
+    {
+      "file": "convex\\files.ts",
+      "line": 43,
+      "kind": "const",
+      "name": "listProjectFiles",
+      "exportKind": "query",
+      "signature": "export const listProjectFiles = query({"
+    },
+    {
+      "file": "convex\\files.ts",
+      "line": 54,
+      "kind": "const",
+      "name": "getFileUrl",
+      "exportKind": "query",
+      "signature": "export const getFileUrl = query({"
+    },
+    {
+      "file": "convex\\files.ts",
+      "line": 64,
+      "kind": "const",
+      "name": "deleteProjectFile",
+      "exportKind": "action",
+      "signature": "export const deleteProjectFile = action({"
+    },
+    {
+      "file": "convex\\files.ts",
+      "line": 78,
+      "kind": "const",
+      "name": "getProjectContext",
+      "exportKind": "query",
+      "signature": "export const getProjectContext = query({"
+    },
+    {
+      "file": "convex\\files.ts",
+      "line": 94,
+      "kind": "const",
+      "name": "getFileRecord",
+      "exportKind": "internalQuery",
+      "signature": "export const getFileRecord = internalQuery({"
+    },
+    {
+      "file": "convex\\files.ts",
+      "line": 101,
+      "kind": "const",
+      "name": "deleteFileRecord",
+      "exportKind": "internalMutation",
+      "signature": "export const deleteFileRecord = internalMutation({"
+    },
+    {
+      "file": "convex\\financials.ts",
+      "line": 6,
+      "kind": "const",
+      "name": "approveQuoteAsBaseline",
+      "exportKind": "mutation",
+      "signature": "export const approveQuoteAsBaseline = mutation({"
+    },
+    {
+      "file": "convex\\financials.ts",
+      "line": 57,
+      "kind": "const",
+      "name": "createChangeOrder",
+      "exportKind": "mutation",
+      "signature": "export const createChangeOrder = mutation({"
+    },
+    {
+      "file": "convex\\financials.ts",
+      "line": 98,
+      "kind": "const",
+      "name": "approveChangeOrder",
+      "exportKind": "mutation",
+      "signature": "export const approveChangeOrder = mutation({"
+    },
+    {
+      "file": "convex\\financials.ts",
+      "line": 130,
+      "kind": "const",
+      "name": "updateProjectPricingDefaults",
+      "exportKind": "mutation",
+      "signature": "export const updateProjectPricingDefaults = mutation({"
+    },
+    {
+      "file": "convex\\financials.ts",
+      "line": 156,
+      "kind": "const",
+      "name": "getFinancialSummary",
+      "exportKind": "query",
+      "signature": "export const getFinancialSummary = query({"
+    },
+    {
+      "file": "convex\\financials.ts",
+      "line": 219,
+      "kind": "const",
+      "name": "getDraftCostBreakdown",
+      "exportKind": "query",
+      "signature": "export const getDraftCostBreakdown = query({"
+    },
+    {
+      "file": "convex\\financials.ts",
+      "line": 226,
+      "kind": "const",
+      "name": "getAccountingView",
+      "exportKind": "query",
+      "signature": "export const getAccountingView = query({"
+    },
+    {
+      "file": "convex\\financials.ts",
+      "line": 233,
+      "kind": "const",
+      "name": "getAccountingSectionTotals",
+      "exportKind": "query",
+      "signature": "export const getAccountingSectionTotals = query({"
+    },
+    {
+      "file": "convex\\quotePdf.ts",
+      "line": 9,
+      "kind": "const",
+      "name": "generateQuotePdf",
+      "exportKind": "action",
+      "signature": "export const generateQuotePdf = action({"
+    },
+    {
+      "file": "convex\\projectsStage.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "getStageSignals",
+      "exportKind": "query",
+      "signature": "export const getStageSignals = query({"
+    },
+    {
+      "file": "convex\\projectsStage.ts",
+      "line": 48,
+      "kind": "const",
+      "name": "resolveStage",
+      "exportKind": "query",
+      "signature": "export const resolveStage = query({"
+    },
+    {
+      "file": "convex\\projectsStage.ts",
+      "line": 106,
+      "kind": "const",
+      "name": "recomputeStage",
+      "exportKind": "internalMutation",
+      "signature": "export const recomputeStage = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\context.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "get",
+      "exportKind": "query",
+      "signature": "export const get = query({"
+    },
+    {
+      "file": "convex\\sdk\\context.ts",
+      "line": 254,
+      "kind": "const",
+      "name": "addKnowledge",
+      "exportKind": "mutation",
+      "signature": "export const addKnowledge = mutation({"
+    },
+    {
+      "file": "convex\\projectsCustomers.ts",
+      "line": 5,
+      "kind": "const",
+      "name": "setProjectCustomerByName",
+      "exportKind": "mutation",
+      "signature": "export const setProjectCustomerByName = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 8,
+      "kind": "const",
+      "name": "create",
+      "exportKind": "mutation",
+      "signature": "export const create = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 43,
+      "kind": "const",
+      "name": "list",
+      "exportKind": "query",
+      "signature": "export const list = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 49,
+      "kind": "const",
+      "name": "listProjects",
+      "exportKind": "query",
+      "signature": "export const listProjects = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 63,
+      "kind": "const",
+      "name": "getStats",
+      "exportKind": "query",
+      "signature": "export const getStats = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 77,
+      "kind": "const",
+      "name": "getOverview",
+      "exportKind": "query",
+      "signature": "export const getOverview = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 126,
+      "kind": "const",
+      "name": "resolveProjectId",
+      "exportKind": "query",
+      "signature": "export const resolveProjectId = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 145,
+      "kind": "const",
+      "name": "getRecentElements",
+      "exportKind": "query",
+      "signature": "export const getRecentElements = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 165,
+      "kind": "const",
+      "name": "getTasksForElements",
+      "exportKind": "query",
+      "signature": "export const getTasksForElements = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 190,
+      "kind": "const",
+      "name": "getAccountingForElements",
+      "exportKind": "query",
+      "signature": "export const getAccountingForElements = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 216,
+      "kind": "const",
+      "name": "getPrintPartsForElements",
+      "exportKind": "query",
+      "signature": "export const getPrintPartsForElements = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 241,
+      "kind": "const",
+      "name": "updateProjectDetails",
+      "exportKind": "mutation",
+      "signature": "export const updateProjectDetails = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 287,
+      "kind": "const",
+      "name": "generateOverviewSummary",
+      "exportKind": "action",
+      "signature": "export const generateOverviewSummary = action({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 324,
+      "kind": "const",
+      "name": "updateProjectSummary",
+      "exportKind": "mutation",
+      "signature": "export const updateProjectSummary = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 338,
+      "kind": "const",
+      "name": "listLinkedProjects",
+      "exportKind": "query",
+      "signature": "export const listLinkedProjects = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 376,
+      "kind": "const",
+      "name": "linkProject",
+      "exportKind": "mutation",
+      "signature": "export const linkProject = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 414,
+      "kind": "const",
+      "name": "unlinkProject",
+      "exportKind": "mutation",
+      "signature": "export const unlinkProject = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 434,
+      "kind": "const",
+      "name": "generateProjectDigest",
+      "exportKind": "mutation",
+      "signature": "export const generateProjectDigest = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 496,
+      "kind": "const",
+      "name": "updateTaskOrder",
+      "exportKind": "mutation",
+      "signature": "export const updateTaskOrder = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 516,
+      "kind": "const",
+      "name": "deleteProject",
+      "exportKind": "mutation",
+      "signature": "export const deleteProject = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 658,
+      "kind": "const",
+      "name": "getTaskOrder",
+      "exportKind": "query",
+      "signature": "export const getTaskOrder = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 785,
+      "kind": "const",
+      "name": "createProjectFromModal",
+      "exportKind": "mutation",
+      "signature": "export const createProjectFromModal = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 911,
+      "kind": "const",
+      "name": "generateInitialSummary",
+      "exportKind": "internalAction",
+      "signature": "export const generateInitialSummary = internalAction({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 1039,
+      "kind": "const",
+      "name": "retrySummary",
+      "exportKind": "mutation",
+      "signature": "export const retrySummary = mutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 1049,
+      "kind": "const",
+      "name": "updateSummaryStatus",
+      "exportKind": "internalMutation",
+      "signature": "export const updateSummaryStatus = internalMutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 1058,
+      "kind": "const",
+      "name": "saveSummary",
+      "exportKind": "internalMutation",
+      "signature": "export const saveSummary = internalMutation({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 1083,
+      "kind": "const",
+      "name": "getProjectInternal",
+      "exportKind": "query",
+      "signature": "export const getProjectInternal = query({"
+    },
+    {
+      "file": "convex\\projects.ts",
+      "line": 1090,
+      "kind": "const",
+      "name": "getElementsInternal",
+      "exportKind": "query",
+      "signature": "export const getElementsInternal = query({"
+    },
+    {
+      "file": "convex\\printing.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "attachPrintFile",
+      "exportKind": "mutation",
+      "signature": "export const attachPrintFile = mutation({"
+    },
+    {
+      "file": "convex\\printing.ts",
+      "line": 32,
+      "kind": "const",
+      "name": "writePrintFileAnalysis",
+      "exportKind": "mutation",
+      "signature": "export const writePrintFileAnalysis = mutation({"
+    },
+    {
+      "file": "convex\\patch.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "PatchOp",
+      "exportKind": "other",
+      "signature": "export type PatchOp ="
+    },
+    {
+      "file": "convex\\patch.ts",
+      "line": 91,
+      "kind": "function",
+      "name": "applyPatchOps",
+      "exportKind": "other",
+      "signature": "export function applyPatchOps(snapshot: any, ops: PatchOp[]) {"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 8,
+      "kind": "const",
+      "name": "backfillElementRevs",
+      "exportKind": "internalMutation",
+      "signature": "export const backfillElementRevs = internalMutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 23,
+      "kind": "const",
+      "name": "migrateProjectsClientNameToCustomers",
+      "exportKind": "mutation",
+      "signature": "export const migrateProjectsClientNameToCustomers = mutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 86,
+      "kind": "const",
+      "name": "migrateTasksAssigneeToEmployeeIds",
+      "exportKind": "mutation",
+      "signature": "export const migrateTasksAssigneeToEmployeeIds = mutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 126,
+      "kind": "const",
+      "name": "backfillQuoteVersionsCustomerFromProject",
+      "exportKind": "mutation",
+      "signature": "export const backfillQuoteVersionsCustomerFromProject = mutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 158,
+      "kind": "const",
+      "name": "backfillTraceCosts",
+      "exportKind": "mutation",
+      "signature": "export const backfillTraceCosts = mutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 196,
+      "kind": "const",
+      "name": "backfillFlowRunApprovalModes",
+      "exportKind": "mutation",
+      "signature": "export const backfillFlowRunApprovalModes = mutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 234,
+      "kind": "const",
+      "name": "backfillFlowRunToggles",
+      "exportKind": "mutation",
+      "signature": "export const backfillFlowRunToggles = mutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 276,
+      "kind": "const",
+      "name": "seedCatalogDefaults",
+      "exportKind": "internalMutation",
+      "signature": "export const seedCatalogDefaults = internalMutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 345,
+      "kind": "const",
+      "name": "migrateMaterialLinesUomCode",
+      "exportKind": "internalMutation",
+      "signature": "export const migrateMaterialLinesUomCode = internalMutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 386,
+      "kind": "const",
+      "name": "flushAllDrafts",
+      "exportKind": "mutation",
+      "signature": "export const flushAllDrafts = mutation({"
+    },
+    {
+      "file": "convex\\migrations.ts",
+      "line": 428,
+      "kind": "const",
+      "name": "promoteAllDraftsToLive",
+      "exportKind": "mutation",
+      "signature": "export const promoteAllDraftsToLive = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "ChatIntent",
+      "exportKind": "other",
+      "signature": "export type ChatIntent ="
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 140,
+      "kind": "function",
+      "name": "isWorkflowReply",
+      "exportKind": "other",
+      "signature": "export function isWorkflowReply(userText: string): boolean {"
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 146,
+      "kind": "function",
+      "name": "detectChatIntent",
+      "exportKind": "other",
+      "signature": "export function detectChatIntent("
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 164,
+      "kind": "function",
+      "name": "packsForIntent",
+      "exportKind": "other",
+      "signature": "export function packsForIntent(intent: ChatIntent, userText: string): string[] {"
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 180,
+      "kind": "function",
+      "name": "allowedToolsForChatIntent",
+      "exportKind": "other",
+      "signature": "export function allowedToolsForChatIntent(intent: ChatIntent): string[] {"
+    },
+    {
+      "file": "convex\\sdk\\chatPolicy.ts",
+      "line": 236,
+      "kind": "function",
+      "name": "shouldAttachSuggestions",
+      "exportKind": "other",
+      "signature": "export function shouldAttachSuggestions(args: {"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 10,
+      "kind": "const",
+      "name": "saveSummary",
+      "exportKind": "internalMutation",
+      "signature": "export const saveSummary = internalMutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 30,
+      "kind": "const",
+      "name": "saveRunningMemory",
+      "exportKind": "internalMutation",
+      "signature": "export const saveRunningMemory = internalMutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 62,
+      "kind": "const",
+      "name": "saveProjectContextDoc",
+      "exportKind": "internalMutation",
+      "signature": "export const saveProjectContextDoc = internalMutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 91,
+      "kind": "const",
+      "name": "upsertMemoryDoc",
+      "exportKind": "internalMutation",
+      "signature": "export const upsertMemoryDoc = internalMutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 124,
+      "kind": "const",
+      "name": "upsertQAPairs",
+      "exportKind": "mutation",
+      "signature": "export const upsertQAPairs = mutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 184,
+      "kind": "const",
+      "name": "appendUserInput",
+      "exportKind": "internalMutation",
+      "signature": "export const appendUserInput = internalMutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 218,
+      "kind": "const",
+      "name": "saveQADigest",
+      "exportKind": "internalMutation",
+      "signature": "export const saveQADigest = internalMutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 250,
+      "kind": "const",
+      "name": "ingestSourceDoc",
+      "exportKind": "action",
+      "signature": "export const ingestSourceDoc = action({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 287,
+      "kind": "const",
+      "name": "appendRunningMemory",
+      "exportKind": "action",
+      "signature": "export const appendRunningMemory = action({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 322,
+      "kind": "const",
+      "name": "updateQADigest",
+      "exportKind": "action",
+      "signature": "export const updateQADigest = action({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 408,
+      "kind": "const",
+      "name": "generateProjectContextDoc",
+      "exportKind": "action",
+      "signature": "export const generateProjectContextDoc = action({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 477,
+      "kind": "const",
+      "name": "regenerateRunningMemory",
+      "exportKind": "action",
+      "signature": "export const regenerateRunningMemory = action({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 538,
+      "kind": "const",
+      "name": "getFileDetails",
+      "exportKind": "query",
+      "signature": "export const getFileDetails = query({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 545,
+      "kind": "const",
+      "name": "getRunningMemory",
+      "exportKind": "query",
+      "signature": "export const getRunningMemory = query({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 555,
+      "kind": "const",
+      "name": "getProjectContextDoc",
+      "exportKind": "query",
+      "signature": "export const getProjectContextDoc = query({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 565,
+      "kind": "const",
+      "name": "updateRunningMemory",
+      "exportKind": "mutation",
+      "signature": "export const updateRunningMemory = mutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 594,
+      "kind": "const",
+      "name": "updateProjectContextDoc",
+      "exportKind": "mutation",
+      "signature": "export const updateProjectContextDoc = mutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 623,
+      "kind": "const",
+      "name": "setRunningMemoryAutoAppend",
+      "exportKind": "mutation",
+      "signature": "export const setRunningMemoryAutoAppend = mutation({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 653,
+      "kind": "const",
+      "name": "getRecentQAPairs",
+      "exportKind": "query",
+      "signature": "export const getRecentQAPairs = query({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 664,
+      "kind": "const",
+      "name": "listQAPairs",
+      "exportKind": "query",
+      "signature": "export const listQAPairs = query({"
+    },
+    {
+      "file": "convex\\memory.ts",
+      "line": 675,
+      "kind": "const",
+      "name": "getUserInputLog",
+      "exportKind": "query",
+      "signature": "export const getUserInputLog = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 77,
+      "kind": "const",
+      "name": "createVendor",
+      "exportKind": "mutation",
+      "signature": "export const createVendor = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 97,
+      "kind": "const",
+      "name": "listVendors",
+      "exportKind": "query",
+      "signature": "export const listVendors = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 107,
+      "kind": "const",
+      "name": "createCategory",
+      "exportKind": "mutation",
+      "signature": "export const createCategory = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 126,
+      "kind": "const",
+      "name": "listCategories",
+      "exportKind": "query",
+      "signature": "export const listCategories = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 132,
+      "kind": "const",
+      "name": "createUom",
+      "exportKind": "mutation",
+      "signature": "export const createUom = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 172,
+      "kind": "const",
+      "name": "listUoms",
+      "exportKind": "query",
+      "signature": "export const listUoms = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 178,
+      "kind": "const",
+      "name": "createTemplate",
+      "exportKind": "mutation",
+      "signature": "export const createTemplate = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 251,
+      "kind": "const",
+      "name": "updateTemplate",
+      "exportKind": "mutation",
+      "signature": "export const updateTemplate = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 272,
+      "kind": "const",
+      "name": "deleteTemplate",
+      "exportKind": "mutation",
+      "signature": "export const deleteTemplate = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 282,
+      "kind": "const",
+      "name": "searchTemplates",
+      "exportKind": "query",
+      "signature": "export const searchTemplates = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 293,
+      "kind": "const",
+      "name": "listVariants",
+      "exportKind": "query",
+      "signature": "export const listVariants = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 304,
+      "kind": "const",
+      "name": "listVariantsAll",
+      "exportKind": "query",
+      "signature": "export const listVariantsAll = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 310,
+      "kind": "const",
+      "name": "createVariant",
+      "exportKind": "mutation",
+      "signature": "export const createVariant = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 370,
+      "kind": "const",
+      "name": "updateVariant",
+      "exportKind": "mutation",
+      "signature": "export const updateVariant = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 392,
+      "kind": "const",
+      "name": "deleteVariant",
+      "exportKind": "mutation",
+      "signature": "export const deleteVariant = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 406,
+      "kind": "const",
+      "name": "listSynonyms",
+      "exportKind": "query",
+      "signature": "export const listSynonyms = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 412,
+      "kind": "const",
+      "name": "createSynonym",
+      "exportKind": "mutation",
+      "signature": "export const createSynonym = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 432,
+      "kind": "const",
+      "name": "resolveTemplateByPhrase",
+      "exportKind": "query",
+      "signature": "export const resolveTemplateByPhrase = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 447,
+      "kind": "const",
+      "name": "searchVendors",
+      "exportKind": "query",
+      "signature": "export const searchVendors = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 457,
+      "kind": "const",
+      "name": "getLaborDefaults",
+      "exportKind": "query",
+      "signature": "export const getLaborDefaults = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 466,
+      "kind": "const",
+      "name": "getBestPrice",
+      "exportKind": "query",
+      "signature": "export const getBestPrice = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 513,
+      "kind": "const",
+      "name": "getPreferredForProject",
+      "exportKind": "query",
+      "signature": "export const getPreferredForProject = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 552,
+      "kind": "const",
+      "name": "getFreshnessDefaults",
+      "exportKind": "query",
+      "signature": "export const getFreshnessDefaults = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 562,
+      "kind": "const",
+      "name": "setFreshnessDefaults",
+      "exportKind": "mutation",
+      "signature": "export const setFreshnessDefaults = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 582,
+      "kind": "const",
+      "name": "listPriceRecords",
+      "exportKind": "query",
+      "signature": "export const listPriceRecords = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 588,
+      "kind": "const",
+      "name": "createPriceRecord",
+      "exportKind": "mutation",
+      "signature": "export const createPriceRecord = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 649,
+      "kind": "const",
+      "name": "listPricingFormulas",
+      "exportKind": "query",
+      "signature": "export const listPricingFormulas = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 655,
+      "kind": "const",
+      "name": "createPricingFormula",
+      "exportKind": "mutation",
+      "signature": "export const createPricingFormula = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 699,
+      "kind": "const",
+      "name": "listVendorLocations",
+      "exportKind": "query",
+      "signature": "export const listVendorLocations = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 705,
+      "kind": "const",
+      "name": "createVendorLocation",
+      "exportKind": "mutation",
+      "signature": "export const createVendorLocation = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 730,
+      "kind": "const",
+      "name": "getProcurementPrefs",
+      "exportKind": "query",
+      "signature": "export const getProcurementPrefs = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 740,
+      "kind": "const",
+      "name": "setProcurementPrefs",
+      "exportKind": "mutation",
+      "signature": "export const setProcurementPrefs = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 759,
+      "kind": "const",
+      "name": "listPurchases",
+      "exportKind": "query",
+      "signature": "export const listPurchases = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 765,
+      "kind": "const",
+      "name": "createPurchase",
+      "exportKind": "mutation",
+      "signature": "export const createPurchase = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 821,
+      "kind": "const",
+      "name": "createEmployee",
+      "exportKind": "mutation",
+      "signature": "export const createEmployee = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 840,
+      "kind": "const",
+      "name": "listEmployees",
+      "exportKind": "query",
+      "signature": "export const listEmployees = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 850,
+      "kind": "const",
+      "name": "listProposed",
+      "exportKind": "query",
+      "signature": "export const listProposed = query({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 860,
+      "kind": "const",
+      "name": "proposeUpdate",
+      "exportKind": "mutation",
+      "signature": "export const proposeUpdate = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 886,
+      "kind": "const",
+      "name": "acceptProposed",
+      "exportKind": "mutation",
+      "signature": "export const acceptProposed = mutation({"
+    },
+    {
+      "file": "convex\\management.ts",
+      "line": 903,
+      "kind": "const",
+      "name": "rejectProposed",
+      "exportKind": "mutation",
+      "signature": "export const rejectProposed = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\changeset.ts",
+      "line": 130,
+      "kind": "const",
+      "name": "compile",
+      "exportKind": "action",
+      "signature": "export const compile = action({"
+    },
+    {
+      "file": "convex\\sdk\\changeset.ts",
+      "line": 450,
+      "kind": "const",
+      "name": "review",
+      "exportKind": "action",
+      "signature": "export const review = action({"
+    },
+    {
+      "file": "convex\\sdk\\changeset.ts",
+      "line": 504,
+      "kind": "const",
+      "name": "apply",
+      "exportKind": "action",
+      "signature": "export const apply = action({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 13,
+      "kind": "const",
+      "name": "createConversation",
+      "exportKind": "mutation",
+      "signature": "export const createConversation = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 31,
+      "kind": "const",
+      "name": "listConversations",
+      "exportKind": "query",
+      "signature": "export const listConversations = query({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 44,
+      "kind": "const",
+      "name": "listChatConversations",
+      "exportKind": "query",
+      "signature": "export const listChatConversations = query({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 72,
+      "kind": "const",
+      "name": "renameConversation",
+      "exportKind": "mutation",
+      "signature": "export const renameConversation = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 85,
+      "kind": "const",
+      "name": "deleteConversation",
+      "exportKind": "mutation",
+      "signature": "export const deleteConversation = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 126,
+      "kind": "const",
+      "name": "listMessages",
+      "exportKind": "query",
+      "signature": "export const listMessages = query({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 146,
+      "kind": "const",
+      "name": "appendUserMessage",
+      "exportKind": "mutation",
+      "signature": "export const appendUserMessage = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 166,
+      "kind": "const",
+      "name": "listRuns",
+      "exportKind": "query",
+      "signature": "export const listRuns = query({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 179,
+      "kind": "const",
+      "name": "cleanupFinalizePlaceholders",
+      "exportKind": "mutation",
+      "signature": "export const cleanupFinalizePlaceholders = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 242,
+      "kind": "const",
+      "name": "listRunEvents",
+      "exportKind": "query",
+      "signature": "export const listRunEvents = query({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 265,
+      "kind": "const",
+      "name": "generateConversationTitle",
+      "exportKind": "action",
+      "signature": "export const generateConversationTitle = action({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 330,
+      "kind": "const",
+      "name": "startRun",
+      "exportKind": "mutation",
+      "signature": "export const startRun = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 362,
+      "kind": "const",
+      "name": "startVnextRun",
+      "exportKind": "mutation",
+      "signature": "export const startVnextRun = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 399,
+      "kind": "const",
+      "name": "answerVnext",
+      "exportKind": "mutation",
+      "signature": "export const answerVnext = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 470,
+      "kind": "const",
+      "name": "continueVnext",
+      "exportKind": "action",
+      "signature": "export const continueVnext = action({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 510,
+      "kind": "const",
+      "name": "bootstrapFastPlan",
+      "exportKind": "action",
+      "signature": "export const bootstrapFastPlan = action({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1073,
+      "kind": "const",
+      "name": "ensureFinalizeAutofill",
+      "exportKind": "internalMutation",
+      "signature": "export const ensureFinalizeAutofill = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1090,
+      "kind": "const",
+      "name": "clearFinalizeAutofill",
+      "exportKind": "internalMutation",
+      "signature": "export const clearFinalizeAutofill = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1154,
+      "kind": "const",
+      "name": "requestFinalizeCancel",
+      "exportKind": "mutation",
+      "signature": "export const requestFinalizeCancel = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1169,
+      "kind": "const",
+      "name": "persistFinalizeStageCheckpoint",
+      "exportKind": "internalAction",
+      "signature": "export const persistFinalizeStageCheckpoint = internalAction({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1235,
+      "kind": "const",
+      "name": "persistFinalizeIntentsCheckpoint",
+      "exportKind": "internalAction",
+      "signature": "export const persistFinalizeIntentsCheckpoint = internalAction({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1293,
+      "kind": "const",
+      "name": "finalizeNow",
+      "exportKind": "action",
+      "signature": "export const finalizeNow = action({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1912,
+      "kind": "const",
+      "name": "approveVnext",
+      "exportKind": "action",
+      "signature": "export const approveVnext = action({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1922,
+      "kind": "const",
+      "name": "pauseRun",
+      "exportKind": "mutation",
+      "signature": "export const pauseRun = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1932,
+      "kind": "const",
+      "name": "resumeRun",
+      "exportKind": "mutation",
+      "signature": "export const resumeRun = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1943,
+      "kind": "const",
+      "name": "cancelRun",
+      "exportKind": "mutation",
+      "signature": "export const cancelRun = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1953,
+      "kind": "const",
+      "name": "setRunMode",
+      "exportKind": "mutation",
+      "signature": "export const setRunMode = mutation({"
+    },
+    {
+      "file": "convex\\sdk\\api.ts",
+      "line": 1967,
+      "kind": "const",
+      "name": "approveChangeSet",
+      "exportKind": "action",
+      "signature": "export const approveChangeSet = action({"
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 6,
+      "kind": "const",
+      "name": "DEFAULT_FLAGS",
+      "exportKind": "other",
+      "signature": "export const DEFAULT_FLAGS: Record<string, boolean> = {"
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 40,
+      "kind": "function",
+      "name": "normalizeFlags",
+      "exportKind": "other",
+      "signature": "export function normalizeFlags(raw: unknown): Record<string, boolean> {"
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 50,
+      "kind": "function",
+      "name": "isEnabled",
+      "exportKind": "other",
+      "signature": "export function isEnabled("
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 60,
+      "kind": "const",
+      "name": "getAll",
+      "exportKind": "query",
+      "signature": "export const getAll = query({"
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 73,
+      "kind": "const",
+      "name": "setAll",
+      "exportKind": "mutation",
+      "signature": "export const setAll = mutation({"
+    },
+    {
+      "file": "convex\\featureFlags.ts",
+      "line": 94,
+      "kind": "const",
+      "name": "setFlag",
+      "exportKind": "mutation",
+      "signature": "export const setFlag = mutation({"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 11,
+      "kind": "async function",
+      "name": "syncSnapshotToLiveTables",
+      "exportKind": "other",
+      "signature": "export async function syncSnapshotToLiveTables(ctx: any, elementId: Id<\"elements\">, snapshot: any) {"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 196,
+      "kind": "async function",
+      "name": "syncProjectCostSnapshotToLiveTables",
+      "exportKind": "other",
+      "signature": "export async function syncProjectCostSnapshotToLiveTables(ctx: any, projectId: Id<\"projects\">, snapshot: any) {"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 285,
+      "kind": "async function",
+      "name": "captureSnapshotFromLive",
+      "exportKind": "other",
+      "signature": "export async function captureSnapshotFromLive(ctx: any, elementId: Id<\"elements\">) {"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 325,
+      "kind": "async function",
+      "name": "captureProjectCostSnapshot",
+      "exportKind": "other",
+      "signature": "export async function captureProjectCostSnapshot(ctx: any, projectId: Id<\"projects\">) {"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 350,
+      "kind": "const",
+      "name": "listByProject",
+      "exportKind": "query",
+      "signature": "export const listByProject = query({"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 390,
+      "kind": "const",
+      "name": "getComposite",
+      "exportKind": "query",
+      "signature": "export const getComposite = query({"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 445,
+      "kind": "const",
+      "name": "getElementDetail",
+      "exportKind": "query",
+      "signature": "export const getElementDetail = query({"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 455,
+      "kind": "const",
+      "name": "updateElementMeta",
+      "exportKind": "mutation",
+      "signature": "export const updateElementMeta = mutation({"
+    },
+    {
+      "file": "convex\\elements.ts",
+      "line": 473,
+      "kind": "const",
+      "name": "deleteElement",
+      "exportKind": "mutation",
+      "signature": "export const deleteElement = mutation({"
+    },
+    {
+      "file": "convex\\drafts.ts",
+      "line": 26,
+      "kind": "async function",
+      "name": "applyChangeSetInternal",
+      "exportKind": "other",
+      "signature": "export async function applyChangeSetInternal(ctx: any, args: ApplyChangeSetArgs) {"
+    },
+    {
+      "file": "convex\\drafts.ts",
+      "line": 110,
+      "kind": "const",
+      "name": "applyChangeSet",
+      "exportKind": "mutation",
+      "signature": "export const applyChangeSet = mutation({"
+    },
+    {
+      "file": "convex\\drafts.ts",
+      "line": 135,
+      "kind": "const",
+      "name": "ensureElementDraft",
+      "exportKind": "mutation",
+      "signature": "export const ensureElementDraft = mutation({"
+    },
+    {
+      "file": "convex\\drafts.ts",
+      "line": 147,
+      "kind": "const",
+      "name": "listOpenDrafts",
+      "exportKind": "query",
+      "signature": "export const listOpenDrafts = query({"
+    },
+    {
+      "file": "convex\\drafts.ts",
+      "line": 155,
+      "kind": "const",
+      "name": "ensureProjectCostDraft",
+      "exportKind": "mutation",
+      "signature": "export const ensureProjectCostDraft = mutation({"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 207,
+      "kind": "const",
+      "name": "createChangeSet",
+      "exportKind": "mutation",
+      "signature": "export const createChangeSet = mutation({"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 256,
+      "kind": "const",
+      "name": "get",
+      "exportKind": "query",
+      "signature": "export const get = query({"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 263,
+      "kind": "const",
+      "name": "listForProject",
+      "exportKind": "query",
+      "signature": "export const listForProject = query({"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 309,
+      "kind": "const",
+      "name": "getBaseSnapshotForProject",
+      "exportKind": "query",
+      "signature": "export const getBaseSnapshotForProject = query({"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 316,
+      "kind": "const",
+      "name": "discardChangeSet",
+      "exportKind": "mutation",
+      "signature": "export const discardChangeSet = mutation({"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 511,
+      "kind": "async function",
+      "name": "applyChangeSetInternalLogic",
+      "exportKind": "other",
+      "signature": "export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId: Id<\"changeSets\"> }) {"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 1950,
+      "kind": "const",
+      "name": "applyChangeSet",
+      "exportKind": "mutation",
+      "signature": "export const applyChangeSet = mutation({"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 2089,
+      "kind": "const",
+      "name": "updateChangeSetOp",
+      "exportKind": "mutation",
+      "signature": "export const updateChangeSetOp = mutation({"
+    },
+    {
+      "file": "convex\\changeSets.ts",
+      "line": 2224,
+      "kind": "const",
+      "name": "applyChangeSetOps",
+      "exportKind": "mutation",
+      "signature": "export const applyChangeSetOps = mutation({"
+    },
+    {
+      "file": "convex\\receiptsActions.ts",
+      "line": 27,
+      "kind": "const",
+      "name": "analyzeReceipt",
+      "exportKind": "action",
+      "signature": "export const analyzeReceipt = action({"
+    },
+    {
+      "file": "convex\\receipts.ts",
+      "line": 21,
+      "kind": "const",
+      "name": "createReceipt",
+      "exportKind": "mutation",
+      "signature": "export const createReceipt = mutation({"
+    },
+    {
+      "file": "convex\\receipts.ts",
+      "line": 45,
+      "kind": "const",
+      "name": "upsertReceiptItems",
+      "exportKind": "mutation",
+      "signature": "export const upsertReceiptItems = mutation({"
+    },
+    {
+      "file": "convex\\receipts.ts",
+      "line": 75,
+      "kind": "const",
+      "name": "approveReceipt",
+      "exportKind": "mutation",
+      "signature": "export const approveReceipt = mutation({"
+    },
+    {
+      "file": "convex\\receipts.ts",
+      "line": 177,
+      "kind": "const",
+      "name": "listByProject",
+      "exportKind": "query",
+      "signature": "export const listByProject = query({"
+    },
+    {
+      "file": "convex\\receipts.ts",
+      "line": 210,
+      "kind": "const",
+      "name": "listItems",
+      "exportKind": "query",
+      "signature": "export const listItems = query({"
+    },
+    {
+      "file": "convex\\receipts.ts",
+      "line": 220,
+      "kind": "const",
+      "name": "getReceiptWithFile",
+      "exportKind": "query",
+      "signature": "export const getReceiptWithFile = query({"
+    },
+    {
+      "file": "convex\\receipts.ts",
+      "line": 233,
+      "kind": "const",
+      "name": "updateReceipt",
+      "exportKind": "mutation",
+      "signature": "export const updateReceipt = mutation({"
+    },
+    {
+      "file": "convex\\receipts.ts",
+      "line": 262,
+      "kind": "const",
+      "name": "listLineOptions",
+      "exportKind": "query",
+      "signature": "export const listLineOptions = query({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 6,
+      "kind": "const",
+      "name": "generateQuote",
+      "exportKind": "mutation",
+      "signature": "export const generateQuote = mutation({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 72,
+      "kind": "const",
+      "name": "createDraftFromUi",
+      "exportKind": "mutation",
+      "signature": "export const createDraftFromUi = mutation({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 125,
+      "kind": "const",
+      "name": "saveDraftFromPayload",
+      "exportKind": "internalMutation",
+      "signature": "export const saveDraftFromPayload = internalMutation({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 166,
+      "kind": "const",
+      "name": "listApprovedElementVersions",
+      "exportKind": "query",
+      "signature": "export const listApprovedElementVersions = query({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 184,
+      "kind": "const",
+      "name": "getElementVersions",
+      "exportKind": "query",
+      "signature": "export const getElementVersions = query({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 198,
+      "kind": "const",
+      "name": "getQuote",
+      "exportKind": "query",
+      "signature": "export const getQuote = query({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 205,
+      "kind": "const",
+      "name": "updateQuote",
+      "exportKind": "mutation",
+      "signature": "export const updateQuote = mutation({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 231,
+      "kind": "const",
+      "name": "generateQuoteV2",
+      "exportKind": "action",
+      "signature": "export const generateQuoteV2 = action({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 508,
+      "kind": "const",
+      "name": "listQuotes",
+      "exportKind": "query",
+      "signature": "export const listQuotes = query({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 519,
+      "kind": "const",
+      "name": "getDiff",
+      "exportKind": "query",
+      "signature": "export const getDiff = query({"
+    },
+    {
+      "file": "convex\\quotes.ts",
+      "line": 847,
+      "kind": "const",
+      "name": "findLatestQuote",
+      "exportKind": "internalQuery",
+      "signature": "export const findLatestQuote = internalQuery({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 154,
+      "kind": "const",
+      "name": "listForProject",
+      "exportKind": "query",
+      "signature": "export const listForProject = query({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 177,
+      "kind": "const",
+      "name": "getActiveForProject",
+      "exportKind": "query",
+      "signature": "export const getActiveForProject = query({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 204,
+      "kind": "const",
+      "name": "getActiveTemplateForElement",
+      "exportKind": "query",
+      "signature": "export const getActiveTemplateForElement = query({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 234,
+      "kind": "const",
+      "name": "getRunbook",
+      "exportKind": "query",
+      "signature": "export const getRunbook = query({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 254,
+      "kind": "const",
+      "name": "createFromRunbookBlock",
+      "exportKind": "mutation",
+      "signature": "export const createFromRunbookBlock = mutation({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 348,
+      "kind": "const",
+      "name": "setActiveRunbook",
+      "exportKind": "mutation",
+      "signature": "export const setActiveRunbook = mutation({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 374,
+      "kind": "const",
+      "name": "setActiveElementTemplate",
+      "exportKind": "mutation",
+      "signature": "export const setActiveElementTemplate = mutation({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 401,
+      "kind": "const",
+      "name": "startExecution",
+      "exportKind": "mutation",
+      "signature": "export const startExecution = mutation({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 418,
+      "kind": "const",
+      "name": "toggleRunbookItemDone",
+      "exportKind": "mutation",
+      "signature": "export const toggleRunbookItemDone = mutation({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 442,
+      "kind": "const",
+      "name": "updateRunbookItemText",
+      "exportKind": "mutation",
+      "signature": "export const updateRunbookItemText = mutation({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 461,
+      "kind": "const",
+      "name": "toggleRunbookListItemChecked",
+      "exportKind": "mutation",
+      "signature": "export const toggleRunbookListItemChecked = mutation({"
+    },
+    {
+      "file": "convex\\runbooks.ts",
+      "line": 485,
+      "kind": "const",
+      "name": "signApproval",
+      "exportKind": "mutation",
+      "signature": "export const signApproval = mutation({"
+    },
+    {
+      "file": "convex\\reconciliation.ts",
+      "line": 71,
+      "kind": "async function",
+      "name": "runReconciliation",
+      "exportKind": "other",
+      "signature": "export async function runReconciliation("
+    },
+    {
+      "file": "convex\\sdk\\vnext\\artifacts.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "listStageArtifactsByRun",
+      "exportKind": "internalQuery",
+      "signature": "export const listStageArtifactsByRun = internalQuery({"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\artifacts.ts",
+      "line": 16,
+      "kind": "const",
+      "name": "getStageArtifactByRunStage",
+      "exportKind": "internalQuery",
+      "signature": "export const getStageArtifactByRunStage = internalQuery({"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\artifacts.ts",
+      "line": 29,
+      "kind": "const",
+      "name": "upsertStageArtifact",
+      "exportKind": "internalMutation",
+      "signature": "export const upsertStageArtifact = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\artifacts.ts",
+      "line": 82,
+      "kind": "const",
+      "name": "appendStageDecision",
+      "exportKind": "internalMutation",
+      "signature": "export const appendStageDecision = internalMutation({"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\artifacts.ts",
+      "line": 102,
+      "kind": "const",
+      "name": "listStageDecisionsByRun",
+      "exportKind": "internalQuery",
+      "signature": "export const listStageDecisionsByRun = internalQuery({"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\artifacts.ts",
+      "line": 115,
+      "kind": "const",
+      "name": "listAnsweredVnextQaPairs",
+      "exportKind": "internalQuery",
+      "signature": "export const listAnsweredVnextQaPairs = internalQuery({"
+    },
+    {
+      "file": "convex\\contextManager\\pull.ts",
+      "line": 15,
+      "kind": "const",
+      "name": "ctxPull",
+      "exportKind": "internalQuery",
+      "signature": "export const ctxPull = internalQuery({"
+    },
+    {
+      "file": "convex\\contextManager\\promptBuilder.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "buildContextPackPrompt",
+      "exportKind": "other",
+      "signature": "export function buildContextPackPrompt(args: {"
+    },
+    {
+      "file": "convex\\contextManager\\recipes.ts",
+      "line": 3,
+      "kind": "type",
+      "name": "ContextRecipe",
+      "exportKind": "other",
+      "signature": "export type ContextRecipe = {"
+    },
+    {
+      "file": "convex\\contextManager\\recipes.ts",
+      "line": 57,
+      "kind": "function",
+      "name": "getRecipeForSkill",
+      "exportKind": "other",
+      "signature": "export function getRecipeForSkill(args: {"
+    },
+    {
+      "file": "convex\\contextManager\\types.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "ContextView",
+      "exportKind": "other",
+      "signature": "export type ContextView = 'project_core_v1'"
+    },
+    {
+      "file": "convex\\contextManager\\types.ts",
+      "line": 3,
+      "kind": "type",
+      "name": "ContextPack",
+      "exportKind": "other",
+      "signature": "export type ContextPack = {"
+    },
+    {
+      "file": "convex\\contextManager\\types.ts",
+      "line": 10,
+      "kind": "type",
+      "name": "ContextPackManifest",
+      "exportKind": "other",
+      "signature": "export type ContextPackManifest = {"
+    },
+    {
+      "file": "convex\\contextManager\\types.ts",
+      "line": 19,
+      "kind": "type",
+      "name": "ContextPackEnvelope",
+      "exportKind": "other",
+      "signature": "export type ContextPackEnvelope = {"
+    },
+    {
+      "file": "convex\\lib\\normalize.ts",
+      "line": 1,
+      "kind": "function",
+      "name": "normalizeName",
+      "exportKind": "other",
+      "signature": "export function normalizeName(value: string) {"
+    },
+    {
+      "file": "convex\\lib\\normalize.ts",
+      "line": 5,
+      "kind": "function",
+      "name": "newBusinessId",
+      "exportKind": "other",
+      "signature": "export function newBusinessId(prefix: string) {"
+    },
+    {
+      "file": "convex\\lib\\webSearch.ts",
+      "line": 1,
+      "kind": "async function",
+      "name": "searchWeb",
+      "exportKind": "other",
+      "signature": "export async function searchWeb(query: string) {"
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 8,
+      "kind": "type",
+      "name": "LLMProvider",
+      "exportKind": "other",
+      "signature": "export type LLMProvider = \"openai\" | \"gemini\" | \"anthropic\";"
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 10,
+      "kind": "interface",
+      "name": "TracingParams",
+      "exportKind": "other",
+      "signature": "export interface TracingParams {"
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 16,
+      "kind": "const",
+      "name": "logTrace",
+      "exportKind": "internalMutation",
+      "signature": "export const logTrace = internalMutation({"
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 69,
+      "kind": "async function",
+      "name": "completionWithTracing",
+      "exportKind": "other",
+      "signature": "export async function completionWithTracing("
+    },
+    {
+      "file": "convex\\lib\\llm.ts",
+      "line": 312,
+      "kind": "function",
+      "name": "isUnsupportedTemperatureError",
+      "exportKind": "other",
+      "signature": "export function isUnsupportedTemperatureError(error: any): boolean {"
+    },
+    {
+      "file": "convex\\lib\\reasoning.ts",
+      "line": 1,
+      "kind": "function",
+      "name": "normalizeReasoningEffort",
+      "exportKind": "other",
+      "signature": "export function normalizeReasoningEffort(model: string, effort: unknown) {"
+    },
+    {
+      "file": "convex\\lib\\dates.ts",
+      "line": 1,
+      "kind": "function",
+      "name": "getTodayDateString",
+      "exportKind": "other",
+      "signature": "export function getTodayDateString() {"
+    },
+    {
+      "file": "convex\\lib\\dates.ts",
+      "line": 9,
+      "kind": "function",
+      "name": "withDefaultStartDate",
+      "exportKind": "other",
+      "signature": "export function withDefaultStartDate(startDate?: string | null) {"
+    },
+    {
+      "file": "convex\\lib\\pricing.ts",
+      "line": 2,
+      "kind": "const",
+      "name": "MODEL_PRICING",
+      "exportKind": "other",
+      "signature": "export const MODEL_PRICING = ["
+    },
+    {
+      "file": "convex\\lib\\pricing.ts",
+      "line": 25,
+      "kind": "const",
+      "name": "calculateCost",
+      "exportKind": "other",
+      "signature": "export const calculateCost = (params: {"
+    },
+    {
+      "file": "convex\\lib\\pricing.ts",
+      "line": 50,
+      "kind": "const",
+      "name": "calculateFormulaPrice",
+      "exportKind": "other",
+      "signature": "export const calculateFormulaPrice = ("
+    },
+    {
+      "file": "convex\\sdk\\vnext\\pipeline.ts",
+      "line": 659,
+      "kind": "async function",
+      "name": "runVNextStage",
+      "exportKind": "other",
+      "signature": "export async function runVNextStage(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 3,
+      "kind": "const",
+      "name": "VNEXT_STAGE_ORDER",
+      "exportKind": "other",
+      "signature": "export const VNEXT_STAGE_ORDER = ["
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 16,
+      "kind": "type",
+      "name": "VNextStageKey",
+      "exportKind": "other",
+      "signature": "export type VNextStageKey = (typeof VNEXT_STAGE_ORDER)[number]"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 18,
+      "kind": "type",
+      "name": "QuestionBlockOption",
+      "exportKind": "other",
+      "signature": "export type QuestionBlockOption = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 23,
+      "kind": "type",
+      "name": "QuestionBlock",
+      "exportKind": "other",
+      "signature": "export type QuestionBlock = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 33,
+      "kind": "type",
+      "name": "GateIssue",
+      "exportKind": "other",
+      "signature": "export type GateIssue = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 40,
+      "kind": "type",
+      "name": "GateResult",
+      "exportKind": "other",
+      "signature": "export type GateResult = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 46,
+      "kind": "type",
+      "name": "TargetPlanSpec",
+      "exportKind": "other",
+      "signature": "export type TargetPlanSpec = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 78,
+      "kind": "type",
+      "name": "PlannedTask",
+      "exportKind": "other",
+      "signature": "export type PlannedTask = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 99,
+      "kind": "type",
+      "name": "StageArtifactMap",
+      "exportKind": "other",
+      "signature": "export type StageArtifactMap = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 112,
+      "kind": "type",
+      "name": "VNextStageRunOutput",
+      "exportKind": "other",
+      "signature": "export type VNextStageRunOutput = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\contracts.ts",
+      "line": 120,
+      "kind": "type",
+      "name": "VNextStageProgressMeta",
+      "exportKind": "other",
+      "signature": "export type VNextStageProgressMeta = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\compiler.ts",
+      "line": 51,
+      "kind": "function",
+      "name": "compileDeterministicChangeSet",
+      "exportKind": "other",
+      "signature": "export function compileDeterministicChangeSet(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\auditBridge.ts",
+      "line": 3,
+      "kind": "async function",
+      "name": "runSemanticAudit",
+      "exportKind": "other",
+      "signature": "export async function runSemanticAudit(args: { findings: any[] }) {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\skillBridge.ts",
+      "line": 7,
+      "kind": "async function",
+      "name": "runStageSkills",
+      "exportKind": "other",
+      "signature": "export async function runStageSkills(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\progress.ts",
+      "line": 3,
+      "kind": "const",
+      "name": "MAX_NO_PROGRESS_CYCLES",
+      "exportKind": "other",
+      "signature": "export const MAX_NO_PROGRESS_CYCLES = 3"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\progress.ts",
+      "line": 5,
+      "kind": "function",
+      "name": "computeStageProgress",
+      "exportKind": "other",
+      "signature": "export function computeStageProgress(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\progress.ts",
+      "line": 44,
+      "kind": "function",
+      "name": "shouldTriggerNoProgressGuard",
+      "exportKind": "other",
+      "signature": "export function shouldTriggerNoProgressGuard(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\specBuilder.ts",
+      "line": 139,
+      "kind": "function",
+      "name": "buildTargetPlanSpec",
+      "exportKind": "other",
+      "signature": "export function buildTargetPlanSpec(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\stages.ts",
+      "line": 3,
+      "kind": "const",
+      "name": "VNEXT_STAGE_META",
+      "exportKind": "other",
+      "signature": "export const VNEXT_STAGE_META: Record<VNextStageKey, { titleEn: string; titleHe: string }> = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\stages.ts",
+      "line": 16,
+      "kind": "const",
+      "name": "VNEXT_STAGE_SKILLS",
+      "exportKind": "other",
+      "signature": "export const VNEXT_STAGE_SKILLS: Record<VNextStageKey, string[]> = {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\stages.ts",
+      "line": 29,
+      "kind": "function",
+      "name": "normalizeVNextStage",
+      "exportKind": "other",
+      "signature": "export function normalizeVNextStage(value: unknown): VNextStageKey {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\stages.ts",
+      "line": 37,
+      "kind": "function",
+      "name": "getNextVNextStage",
+      "exportKind": "other",
+      "signature": "export function getNextVNextStage(stageKey: VNextStageKey): VNextStageKey | null {"
+    },
+    {
+      "file": "convex\\flow\\clarificationPackBuilder.ts",
+      "line": 14,
+      "kind": "type",
+      "name": "QuestionsBlockV1",
+      "exportKind": "other",
+      "signature": "export type QuestionsBlockV1 = {"
+    },
+    {
+      "file": "convex\\flow\\clarificationPackBuilder.ts",
+      "line": 143,
+      "kind": "function",
+      "name": "buildQuestionsBlock",
+      "exportKind": "other",
+      "signature": "export function buildQuestionsBlock(args: {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "FlowNode",
+      "exportKind": "other",
+      "signature": "export type FlowNode = {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 6,
+      "kind": "type",
+      "name": "FlowGraph",
+      "exportKind": "other",
+      "signature": "export type FlowGraph = {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 12,
+      "kind": "const",
+      "name": "FLOW_GRAPH_V2",
+      "exportKind": "other",
+      "signature": "export const FLOW_GRAPH_V2: FlowGraph = {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 31,
+      "kind": "const",
+      "name": "FLOW_GRAPH_V3",
+      "exportKind": "other",
+      "signature": "export const FLOW_GRAPH_V3: FlowGraph = {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 43,
+      "kind": "function",
+      "name": "getNode",
+      "exportKind": "other",
+      "signature": "export function getNode(graph: FlowGraph, id: string): FlowNode | undefined {"
+    },
+    {
+      "file": "convex\\flow\\graph.ts",
+      "line": 47,
+      "kind": "function",
+      "name": "getReadyNodes",
+      "exportKind": "other",
+      "signature": "export function getReadyNodes("
+    },
+    {
+      "file": "convex\\flow\\chat.ts",
+      "line": 21,
+      "kind": "const",
+      "name": "listMessages",
+      "exportKind": "query",
+      "signature": "export const listMessages = query({"
+    },
+    {
+      "file": "convex\\flow\\chat.ts",
+      "line": 32,
+      "kind": "const",
+      "name": "sendUserMessage",
+      "exportKind": "mutation",
+      "signature": "export const sendUserMessage = mutation({"
+    },
+    {
+      "file": "convex\\flow\\chat.ts",
+      "line": 68,
+      "kind": "const",
+      "name": "emitAssistantBlocks",
+      "exportKind": "internalMutation",
+      "signature": "export const emitAssistantBlocks = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\chat.ts",
+      "line": 85,
+      "kind": "const",
+      "name": "emitUserSummary",
+      "exportKind": "internalMutation",
+      "signature": "export const emitUserSummary = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\chat.ts",
+      "line": 102,
+      "kind": "const",
+      "name": "findRecentBlock",
+      "exportKind": "internalQuery",
+      "signature": "export const findRecentBlock = internalQuery({"
+    },
+    {
+      "file": "convex\\flow\\chat.ts",
+      "line": 124,
+      "kind": "const",
+      "name": "submitBrainDump",
+      "exportKind": "action",
+      "signature": "export const submitBrainDump = action({"
+    },
+    {
+      "file": "convex\\flow\\gateActions.ts",
+      "line": 21,
+      "kind": "const",
+      "name": "submitGateAnswers",
+      "exportKind": "action",
+      "signature": "export const submitGateAnswers = action({"
+    },
+    {
+      "file": "convex\\flow\\gateActions.ts",
+      "line": 128,
+      "kind": "const",
+      "name": "satisfyClarifications",
+      "exportKind": "internalMutation",
+      "signature": "export const satisfyClarifications = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\brainDumpExtractor.ts",
+      "line": 111,
+      "kind": "function",
+      "name": "extractBrainDumpStructuredDraft",
+      "exportKind": "other",
+      "signature": "export function extractBrainDumpStructuredDraft(raw: string): BrainDumpStructuredDraftV1 | null {"
+    },
+    {
+      "file": "convex\\flow\\flowRunnerV3.ts",
+      "line": 134,
+      "kind": "const",
+      "name": "initV3Run",
+      "exportKind": "internalMutation",
+      "signature": "export const initV3Run = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\flowRunnerV3.ts",
+      "line": 153,
+      "kind": "const",
+      "name": "updateV3Stage",
+      "exportKind": "internalMutation",
+      "signature": "export const updateV3Stage = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\flowRunnerV3.ts",
+      "line": 172,
+      "kind": "const",
+      "name": "logV3TimelineEvent",
+      "exportKind": "internalMutation",
+      "signature": "export const logV3TimelineEvent = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\flowRunnerV3.ts",
+      "line": 190,
+      "kind": "const",
+      "name": "listQaPairsSince",
+      "exportKind": "internalQuery",
+      "signature": "export const listQaPairsSince = internalQuery({"
+    },
+    {
+      "file": "convex\\flow\\flowRunnerV3.ts",
+      "line": 210,
+      "kind": "const",
+      "name": "saveV3QuestionSet",
+      "exportKind": "internalMutation",
+      "signature": "export const saveV3QuestionSet = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\flowRunnerV3.ts",
+      "line": 292,
+      "kind": "const",
+      "name": "tickV3",
+      "exportKind": "internalAction",
+      "signature": "export const tickV3 = internalAction({"
+    },
+    {
+      "file": "convex\\flow\\flowRunnerV3.ts",
+      "line": 558,
+      "kind": "const",
+      "name": "submitV3Answers",
+      "exportKind": "internalAction",
+      "signature": "export const submitV3Answers = internalAction({"
+    },
+    {
+      "file": "convex\\flow\\batching.ts",
+      "line": 5,
+      "kind": "type",
+      "name": "BatchSelection",
+      "exportKind": "other",
+      "signature": "export type BatchSelection = {"
+    },
+    {
+      "file": "convex\\flow\\batching.ts",
+      "line": 12,
+      "kind": "function",
+      "name": "selectBatch",
+      "exportKind": "other",
+      "signature": "export function selectBatch("
+    },
+    {
+      "file": "convex\\flow\\flowRunner.ts",
+      "line": 125,
+      "kind": "const",
+      "name": "tick",
+      "exportKind": "internalAction",
+      "signature": "export const tick = internalAction({"
+    },
+    {
+      "file": "convex\\flow\\flowRunner.ts",
+      "line": 157,
+      "kind": "const",
+      "name": "tickLegacy",
+      "exportKind": "internalAction",
+      "signature": "export const tickLegacy = internalAction({"
+    },
+    {
+      "file": "convex\\flow\\audit.ts",
+      "line": 21,
+      "kind": "const",
+      "name": "run",
+      "exportKind": "action",
+      "signature": "export const run = action({"
+    },
+    {
+      "file": "convex\\flow\\audit.ts",
+      "line": 83,
+      "kind": "const",
+      "name": "getLatestByRun",
+      "exportKind": "query",
+      "signature": "export const getLatestByRun = query({"
+    },
+    {
+      "file": "convex\\flow\\audit.ts",
+      "line": 96,
+      "kind": "const",
+      "name": "getStaleness",
+      "exportKind": "query",
+      "signature": "export const getStaleness = query({"
+    },
+    {
+      "file": "convex\\flow\\audit.ts",
+      "line": 118,
+      "kind": "const",
+      "name": "createAuditRun",
+      "exportKind": "internalMutation",
+      "signature": "export const createAuditRun = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\audit.ts",
+      "line": 137,
+      "kind": "const",
+      "name": "finishAuditRun",
+      "exportKind": "internalMutation",
+      "signature": "export const finishAuditRun = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\questionSets.ts",
+      "line": 98,
+      "kind": "const",
+      "name": "generateAndEmit",
+      "exportKind": "internalMutation",
+      "signature": "export const generateAndEmit = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\artifactRevisions.ts",
+      "line": 38,
+      "kind": "async function",
+      "name": "createRevisionFromSnapshot",
+      "exportKind": "other",
+      "signature": "export async function createRevisionFromSnapshot("
+    },
+    {
+      "file": "convex\\flow\\artifactRevisions.ts",
+      "line": 61,
+      "kind": "async function",
+      "name": "createRevisionFromLive",
+      "exportKind": "other",
+      "signature": "export async function createRevisionFromLive("
+    },
+    {
+      "file": "convex\\flow\\artifactRevisions.ts",
+      "line": 80,
+      "kind": "async function",
+      "name": "applyChangeSetAndCreateRevision",
+      "exportKind": "other",
+      "signature": "export async function applyChangeSetAndCreateRevision("
+    },
+    {
+      "file": "convex\\flow\\artifactRevisions.ts",
+      "line": 141,
+      "kind": "const",
+      "name": "recordApplySuccess",
+      "exportKind": "internalMutation",
+      "signature": "export const recordApplySuccess = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\artifactRevisions.ts",
+      "line": 180,
+      "kind": "const",
+      "name": "recordApplyFailure",
+      "exportKind": "internalMutation",
+      "signature": "export const recordApplyFailure = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\orchestrator.ts",
+      "line": 145,
+      "kind": "const",
+      "name": "getNodeRuns",
+      "exportKind": "internalQuery",
+      "signature": "export const getNodeRuns = internalQuery({"
+    },
+    {
+      "file": "convex\\flow\\orchestrator.ts",
+      "line": 155,
+      "kind": "const",
+      "name": "insertNodeRun",
+      "exportKind": "internalMutation",
+      "signature": "export const insertNodeRun = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\orchestrator.ts",
+      "line": 182,
+      "kind": "const",
+      "name": "updateNodeRunStatus",
+      "exportKind": "internalMutation",
+      "signature": "export const updateNodeRunStatus = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\orchestrator.ts",
+      "line": 204,
+      "kind": "const",
+      "name": "updateRunCurrentGate",
+      "exportKind": "internalMutation",
+      "signature": "export const updateRunCurrentGate = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\orchestrator.ts",
+      "line": 224,
+      "kind": "const",
+      "name": "tick",
+      "exportKind": "internalAction",
+      "signature": "export const tick = internalAction({"
+    },
+    {
+      "file": "convex\\flow\\api.ts",
+      "line": 23,
+      "kind": "const",
+      "name": "createConversation",
+      "exportKind": "mutation",
+      "signature": "export const createConversation = mutation({"
+    },
+    {
+      "file": "convex\\flow\\api.ts",
+      "line": 40,
+      "kind": "const",
+      "name": "sendMessage",
+      "exportKind": "mutation",
+      "signature": "export const sendMessage = mutation({"
+    },
+    {
+      "file": "convex\\flow\\api.ts",
+      "line": 88,
+      "kind": "const",
+      "name": "listMessages",
+      "exportKind": "query",
+      "signature": "export const listMessages = query({"
+    },
+    {
+      "file": "convex\\flow\\api.ts",
+      "line": 99,
+      "kind": "const",
+      "name": "startProjectFlow",
+      "exportKind": "mutation",
+      "signature": "export const startProjectFlow = mutation({"
+    },
+    {
+      "file": "convex\\flow\\questionsUi.ts",
+      "line": 16,
+      "kind": "const",
+      "name": "getCurrentQuestionSet",
+      "exportKind": "query",
+      "signature": "export const getCurrentQuestionSet = query({"
+    },
+    {
+      "file": "convex\\flow\\questionsUi.ts",
+      "line": 45,
+      "kind": "const",
+      "name": "listQuestionHistory",
+      "exportKind": "query",
+      "signature": "export const listQuestionHistory = query({"
+    },
+    {
+      "file": "convex\\flow\\questionsUi.ts",
+      "line": 69,
+      "kind": "const",
+      "name": "getQuestionSetInternal",
+      "exportKind": "internalQuery",
+      "signature": "export const getQuestionSetInternal = internalQuery({"
+    },
+    {
+      "file": "convex\\flow\\questionsUi.ts",
+      "line": 79,
+      "kind": "const",
+      "name": "insertQuestionSetResponse",
+      "exportKind": "internalMutation",
+      "signature": "export const insertQuestionSetResponse = internalMutation({"
+    },
+    {
+      "file": "convex\\flow\\questionsUi.ts",
+      "line": 105,
+      "kind": "const",
+      "name": "submitQuestionSet",
+      "exportKind": "action",
+      "signature": "export const submitQuestionSet = action({"
+    },
+    {
+      "file": "convex\\flow\\answerState.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "getAnswerStateAtVersion",
+      "exportKind": "internalQuery",
+      "signature": "export const getAnswerStateAtVersion = internalQuery({"
+    },
+    {
+      "file": "convex\\flow\\replay.ts",
+      "line": 4,
+      "kind": "const",
+      "name": "exportRun",
+      "exportKind": "query",
+      "signature": "export const exportRun = query({"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateTasks.ts",
+      "line": 10,
+      "kind": "function",
+      "name": "validateTasks",
+      "exportKind": "other",
+      "signature": "export function validateTasks(args: { artifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateScope.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateScope",
+      "exportKind": "other",
+      "signature": "export function validateScope(args: { spec: TargetPlanSpec; artifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateQuote.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateQuote",
+      "exportKind": "other",
+      "signature": "export function validateQuote(args: { quoteArtifact?: any; scopeArtifact?: any; pricingArtifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validatePricing.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validatePricing",
+      "exportKind": "other",
+      "signature": "export function validatePricing(args: { pricingArtifact?: any; budgetArtifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateOps.ts",
+      "line": 10,
+      "kind": "function",
+      "name": "validateOps",
+      "exportKind": "other",
+      "signature": "export function validateOps(args: { opsArtifact?: any; coverageRules?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateConcept.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateConcept",
+      "exportKind": "other",
+      "signature": "export function validateConcept(): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateCompile.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateCompile",
+      "exportKind": "other",
+      "signature": "export function validateCompile(args: {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateBudget.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateBudget",
+      "exportKind": "other",
+      "signature": "export function validateBudget(args: { tasksArtifact?: any; budgetArtifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateBrief.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateBrief",
+      "exportKind": "other",
+      "signature": "export function validateBrief(args: { spec: TargetPlanSpec; artifact?: any }): GateResult {"
+    },
+    {
+      "file": "convex\\sdk\\vnext\\validators\\validateAudit.ts",
+      "line": 3,
+      "kind": "function",
+      "name": "validateAudit",
+      "exportKind": "other",
+      "signature": "export function validateAudit(args?: { findings?: any[]; acceptedRiskNote?: string }): GateResult {"
+    },
+    {
+      "file": "convex\\flow\\snapshotBuilder.ts",
+      "line": 5,
+      "kind": "type",
+      "name": "ProjectSnapshotV1",
+      "exportKind": "other",
+      "signature": "export type ProjectSnapshotV1 = {"
+    },
+    {
+      "file": "convex\\flow\\snapshotBuilder.ts",
+      "line": 94,
+      "kind": "async function",
+      "name": "buildProjectSnapshot",
+      "exportKind": "other",
+      "signature": "export async function buildProjectSnapshot("
+    },
+    {
+      "file": "convex\\flow\\snapshotBuilder.ts",
+      "line": 281,
+      "kind": "const",
+      "name": "getProjectSnapshot",
+      "exportKind": "internalQuery",
+      "signature": "export const getProjectSnapshot = internalQuery({"
+    },
+    {
+      "file": "convex\\flow\\ui.ts",
+      "line": 25,
+      "kind": "const",
+      "name": "getElementsHealth",
+      "exportKind": "query",
+      "signature": "export const getElementsHealth = query({"
+    },
+    {
+      "file": "convex\\flow\\ui.ts",
+      "line": 98,
+      "kind": "const",
+      "name": "getWorkflowGps",
+      "exportKind": "query",
+      "signature": "export const getWorkflowGps = query({"
+    },
+    {
+      "file": "convex\\contextManager\\views\\projectCore.ts",
+      "line": 3,
+      "kind": "async function",
+      "name": "buildProjectCorePacks",
+      "exportKind": "other",
+      "signature": "export async function buildProjectCorePacks("
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG0Brief.ts",
+      "line": 9,
+      "kind": "function",
+      "name": "validateG0Brief",
+      "exportKind": "other",
+      "signature": "export function validateG0Brief(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\types.ts",
+      "line": 1,
+      "kind": "type",
+      "name": "IssueSeverity",
+      "exportKind": "other",
+      "signature": "export type IssueSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'"
+    },
+    {
+      "file": "convex\\flow\\validation\\types.ts",
+      "line": 3,
+      "kind": "type",
+      "name": "ValidationStatus",
+      "exportKind": "other",
+      "signature": "export type ValidationStatus = 'pass' | 'fail'"
+    },
+    {
+      "file": "convex\\flow\\validation\\types.ts",
+      "line": 5,
+      "kind": "type",
+      "name": "IssueV1",
+      "exportKind": "other",
+      "signature": "export type IssueV1 = {"
+    },
+    {
+      "file": "convex\\flow\\validation\\types.ts",
+      "line": 12,
+      "kind": "type",
+      "name": "ValidationReportV1",
+      "exportKind": "other",
+      "signature": "export type ValidationReportV1 = {"
+    },
+    {
+      "file": "convex\\flow\\validation\\readiness.ts",
+      "line": 10,
+      "kind": "function",
+      "name": "computeReadiness",
+      "exportKind": "other",
+      "signature": "export function computeReadiness(report: ValidationReportV1): number {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG2Tasks.ts",
+      "line": 33,
+      "kind": "function",
+      "name": "validateG2Tasks",
+      "exportKind": "other",
+      "signature": "export function validateG2Tasks(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG1Elements.ts",
+      "line": 9,
+      "kind": "function",
+      "name": "validateG1Elements",
+      "exportKind": "other",
+      "signature": "export function validateG1Elements(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG3Accounting.ts",
+      "line": 35,
+      "kind": "function",
+      "name": "validateG3Accounting",
+      "exportKind": "other",
+      "signature": "export function validateG3Accounting(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG9Audit.ts",
+      "line": 13,
+      "kind": "function",
+      "name": "validateG9Audit",
+      "exportKind": "other",
+      "signature": "export function validateG9Audit(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG8Quote.ts",
+      "line": 13,
+      "kind": "function",
+      "name": "validateG8Quote",
+      "exportKind": "other",
+      "signature": "export function validateG8Quote(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG7PricingRecheck.ts",
+      "line": 32,
+      "kind": "function",
+      "name": "validateG7PricingRecheck",
+      "exportKind": "other",
+      "signature": "export function validateG7PricingRecheck(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG6OpsCompleteness.ts",
+      "line": 27,
+      "kind": "function",
+      "name": "validateG6OpsCompleteness",
+      "exportKind": "other",
+      "signature": "export function validateG6OpsCompleteness(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG5TasksEnrichment.ts",
+      "line": 13,
+      "kind": "function",
+      "name": "validateG5TasksEnrichment",
+      "exportKind": "other",
+      "signature": "export function validateG5TasksEnrichment(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    },
+    {
+      "file": "convex\\flow\\validation\\validateG4Pricing.ts",
+      "line": 39,
+      "kind": "function",
+      "name": "validateG4Pricing",
+      "exportKind": "other",
+      "signature": "export function validateG4Pricing(snapshot: ProjectSnapshotV1): ValidationReportV1 {"
+    }
+  ]
+}

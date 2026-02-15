@@ -1,0 +1,141 @@
+endpoint	routes
+accounting.addMaterialLine	/projects/[id]/accounting, /projects/[id]/elements
+accounting.addWorkLine	/projects/[id]/accounting, /projects/[id]/elements
+accounting.deleteMaterialLine	/projects/[id]/accounting, /projects/[id]/elements
+accounting.deleteWorkLine	/projects/[id]/accounting, /projects/[id]/elements
+accounting.updateMaterialLine	/projects/[id]/accounting, /projects/[id]/elements
+accounting.updateWorkLine	/projects/[id]/accounting, /projects/[id]/elements
+accountingStudio.getGlobalSummary	/accounting
+agent.agentRespond	/projects/[id]/studio
+agent.appendEventMessage	/projects/[id]/studio
+agent.appendUserMessage	/projects/[id]/studio
+agent.cancelRunningAgent	/projects/[id]/studio
+agent.createConversation	/projects/[id]/studio
+agent.createElementFromStructured	/projects/[id]/overview
+agent.listConversationMessages	/projects/[id]/studio
+agent.listConversations	/projects/[id]/studio
+agent.setConversationMode	/projects/[id]/studio
+agent.setConversationTitle	/projects/[id]/studio
+agent_tasks.runEstimator	/projects/[id]/tasks
+changeSets.applyChangeSet	/projects/[id]/studio
+changeSets.discardChangeSet	/projects/[id]/studio
+customers.addContact	/management/customers
+customers.findOrCreateByName	/management/customers
+customers.listWithContacts	/management/customers
+customersStudio.getCustomerStudio	/customers/[customerId]
+customersStudio.listCustomersStudio	/customers
+customersStudio.listProjectsByCustomer	/customers/[customerId]
+elements.deleteElement	/projects/[id]/elements
+elements.getComposite	/projects/[id]/elements
+elements.listByProject	/projects/[id]/agent, /projects/[id]/elements
+elements.updateElementMeta	/projects/[id]/elements
+featureFlags.getAll	/projects/[id]/flow-agent, /projects/[id]/sdk-agent
+featureFlags.setFlag	/projects/[id]/flow-agent
+files.deleteProjectFile	/projects/[id]/overview
+files.generateUploadUrl	/management/receipts, /projects/[id]/overview
+files.getFileUrl	/projects/[id]/quote
+files.listProjectFiles	/management/receipts, /projects/[id]/overview, /projects/[id]/quote, /projects/[id]/receipts
+filesActions.saveUploadedFile	/management/receipts, /projects/[id]/overview
+financials.approveQuoteAsBaseline	/projects/[id]/quote
+financials.getAccountingView	/management/receipts, /projects/[id]/accounting
+financials.getFinancialSummary	/projects/[id]/accounting
+flow.audit.getStaleness	/projects/[id]/flow-agent
+flow.audit.run	/projects/[id]/flow-agent
+flowChangeSetApplyLogs.listByRun	/projects/[id]/flow-agent
+flowNodeRuns.listByRun	/projects/[id]/flow-agent
+flowRuns.cancel	/projects/[id]/flow-agent
+flowRuns.getActiveByProject	/projects/[id]/flow-agent
+flowRuns.listByProject	/projects/[id]/flow-agent
+flowRuns.pause	/projects/[id]/flow-agent
+flowRuns.resume	/projects/[id]/flow-agent
+flowRuns.runNext	/projects/[id]/flow-agent
+flowRuns.setApprovalMode	/projects/[id]/flow-agent
+flowRuns.setToggles	/projects/[id]/flow-agent
+flowRuns.start	/projects/[id]/agent, /projects/[id]/flow-agent
+flowSteps.listByRun	/projects/[id]/flow-agent
+inventory.createInventoryItem	/management/inventory
+inventory.listInventoryItems	/management/inventory
+inventory.updateInventoryStock	/management/inventory
+management.acceptProposed	/management/proposed
+management.createCategory	/management/catalog
+management.createEmployee	/management/employees
+management.createPriceRecord	/management/prices
+management.createPricingFormula	/management/prices
+management.createPurchase	/management/purchases
+management.createSynonym	/management/catalog
+management.createTemplate	/management/catalog
+management.createUom	/management/catalog
+management.createVariant	/management/catalog
+management.createVendor	/management/vendors
+management.createVendorLocation	/management/vendors
+management.getFreshnessDefaults	/management/settings
+management.getProcurementPrefs	/management/settings
+management.listCategories	/management/catalog
+management.listEmployees	/management/employees, /projects/[id]/tasks
+management.listPriceRecords	/management, /management/prices, /management/web-prices
+management.listPricingFormulas	/management/prices
+management.listProposed	/management, /management/proposed
+management.listPurchases	/management/purchases
+management.listSynonyms	/management/catalog
+management.listUoms	/management/catalog, /management/purchases
+management.listVariantsAll	/management/catalog, /management/inventory, /management/prices, /management/purchases
+management.listVendorLocations	/management/vendors
+management.listVendors	/management, /management/prices, /management/purchases, /management/receipts, /management/vendors, /projects/[id]/receipts
+management.rejectProposed	/management/proposed
+management.searchTemplates	/management, /management/catalog, /management/inventory, /management/prices, /management/purchases
+management.setFreshnessDefaults	/management/settings
+management.setProcurementPrefs	/management/settings
+projects.deleteProject	/projects, /projects/[id]/overview
+projects.generateOverviewSummary	/projects/[id]/overview
+projects.generateProjectDigest	/projects/[id]/overview
+projects.getOverview	/projects/[id]/overview, /projects/[id]/quote, /projects/[id]/studio
+projects.getTaskOrder	/projects/[id]/tasks
+projects.linkProject	/projects/[id]/overview
+projects.list	/management/analytics, /management/receipts, /management/tracing, /projects, /tasks
+projects.listLinkedProjects	/projects/[id]/overview
+projects.listProjects	/projects/[id]/overview
+projects.resolveProjectId	/projects/[id]/agent, /projects/[id]/flow-agent, /projects/[id]/sdk-agent
+projects.retrySummary	/projects/[id]/overview
+projects.unlinkProject	/projects/[id]/overview
+projects.updateProjectDetails	/projects, /projects/[id]/overview
+projects.updateTaskOrder	/projects/[id]/tasks
+projectsCustomers.setProjectCustomerByName	/projects/[id]/overview
+projectsStage.resolveStage	/projects/[id]/studio
+quotePdf.generateQuotePdf	/projects/[id]/quote
+quotes.createDraftFromUi	/projects/[id]/quote
+quotes.generateQuoteV2	/projects/[id]/quote
+quotes.getDiff	/projects/[id]/quote
+quotes.getQuote	/projects/[id]/quote
+quotes.listQuotes	/projects/[id]/quote
+receipts.approveReceipt	/management/receipts, /projects/[id]/receipts
+receipts.createReceipt	/management/receipts, /projects/[id]/receipts
+receipts.listByProject	/management/receipts, /projects/[id]/receipts
+receipts.listItems	/management/receipts, /projects/[id]/receipts
+receipts.listLineOptions	/management/receipts, /projects/[id]/receipts
+receipts.updateReceipt	/management/receipts, /projects/[id]/receipts
+receipts.upsertReceiptItems	/management/receipts, /projects/[id]/receipts
+receiptsActions.analyzeReceipt	/management/receipts
+skills.runner.createAgentConversation	/projects/[id]/agent
+skills.runner.generateConversationTitle	/projects/[id]/agent
+skills.runner.listAgentConversations	/projects/[id]/agent
+skills.runner.renameConversation	/projects/[id]/agent
+suggestions.approveSuggestedElement	/projects/[id]/suggested
+suggestions.listSuggested	/projects/[id]/suggested
+suggestions.rejectSuggestedElement	/projects/[id]/suggested
+tasks.createTask	/projects/[id]/elements, /projects/[id]/tasks
+tasks.deleteTask	/projects/[id]/elements
+tasks.listForProject	/projects/[id]/accounting, /projects/[id]/tasks
+tasks.updateTask	/projects/[id]/elements, /projects/[id]/tasks
+tasksStudio.listGlobal	/tasks
+tracing.analyticsFiltered	/management/analytics
+tracing.get	/management/tracing
+tracing.list	/management/tracing
+tracing.listRunIds	/management/analytics, /management/tracing
+trelloSync.createBoard	/projects/[id]/tasks
+trelloSync.getConfig	/projects/[id]/tasks
+trelloSync.listBoards	/projects/[id]/tasks
+trelloSync.listLists	/projects/[id]/tasks
+trelloSync.saveConfig	/projects/[id]/tasks
+trelloSync.sync	/projects/[id]/tasks
+users.getViewer	/management/settings, /projects/[id]/studio
+users.updatePreferredModel	/management/settings

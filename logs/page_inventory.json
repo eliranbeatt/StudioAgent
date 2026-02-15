@@ -1,0 +1,748 @@
+{
+  "count": 32,
+  "pages": [
+    {
+      "route": "/",
+      "file": "src/app\\page.tsx",
+      "isClient": false,
+      "defaultFn": "Home",
+      "localImports": [],
+      "apiCalls": [],
+      "hooks": [],
+      "lineCount": 5
+    },
+    {
+      "route": "/accounting",
+      "file": "src/app\\accounting\\page.tsx",
+      "isClient": true,
+      "defaultFn": "GlobalAccountingPage",
+      "localImports": [
+        "../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "accountingStudio.getGlobalSummary"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 116
+    },
+    {
+      "route": "/customers",
+      "file": "src/app\\customers\\page.tsx",
+      "isClient": true,
+      "defaultFn": "CustomersPage",
+      "localImports": [
+        "../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "customersStudio.listCustomersStudio"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 98
+    },
+    {
+      "route": "/customers/[customerId]",
+      "file": "src/app\\customers\\[customerId]\\page.tsx",
+      "isClient": true,
+      "defaultFn": "CustomerDetailPage",
+      "localImports": [
+        "../../../../convex/_generated/api",
+        "../../../../convex/_generated/dataModel"
+      ],
+      "apiCalls": [
+        "customersStudio.getCustomerStudio",
+        "customersStudio.listProjectsByCustomer"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 123
+    },
+    {
+      "route": "/management",
+      "file": "src/app\\management\\page.tsx",
+      "isClient": false,
+      "defaultFn": "ManagementPage",
+      "localImports": [
+        "../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "management.listVendors",
+        "management.searchTemplates",
+        "management.listProposed",
+        "management.listPriceRecords"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 52
+    },
+    {
+      "route": "/management/analytics",
+      "file": "src/app\\management\\analytics\\page.tsx",
+      "isClient": true,
+      "defaultFn": "AnalyticsPage",
+      "localImports": [
+        "../../../../convex/_generated/api",
+        "../../../../convex/_generated/dataModel",
+        "../../../lib/llmPricing"
+      ],
+      "apiCalls": [
+        "projects.list",
+        "tracing.listRunIds",
+        "tracing.analyticsFiltered"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 357
+    },
+    {
+      "route": "/management/catalog",
+      "file": "src/app\\management\\catalog\\page.tsx",
+      "isClient": false,
+      "defaultFn": "CatalogPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "management.searchTemplates",
+        "management.listVariantsAll",
+        "management.listCategories",
+        "management.listUoms",
+        "management.listSynonyms",
+        "management.createTemplate",
+        "management.createVariant",
+        "management.createCategory",
+        "management.createUom",
+        "management.createSynonym"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 540
+    },
+    {
+      "route": "/management/customers",
+      "file": "src/app\\management\\customers\\page.tsx",
+      "isClient": false,
+      "defaultFn": "CustomersPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "customers.listWithContacts",
+        "customers.findOrCreateByName",
+        "customers.addContact"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 195
+    },
+    {
+      "route": "/management/employees",
+      "file": "src/app\\management\\employees\\page.tsx",
+      "isClient": true,
+      "defaultFn": "EmployeesPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "management.listEmployees",
+        "management.createEmployee"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 102
+    },
+    {
+      "route": "/management/inventory",
+      "file": "src/app\\management\\inventory\\page.tsx",
+      "isClient": false,
+      "defaultFn": "InventoryPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "inventory.listInventoryItems",
+        "management.searchTemplates",
+        "management.listVariantsAll",
+        "inventory.createInventoryItem",
+        "inventory.updateInventoryStock"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 199
+    },
+    {
+      "route": "/management/prices",
+      "file": "src/app\\management\\prices\\page.tsx",
+      "isClient": false,
+      "defaultFn": "PricesPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "management.listPriceRecords",
+        "management.listVendors",
+        "management.searchTemplates",
+        "management.listVariantsAll",
+        "management.createPriceRecord",
+        "management.listPricingFormulas",
+        "management.createPricingFormula"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 403
+    },
+    {
+      "route": "/management/proposed",
+      "file": "src/app\\management\\proposed\\page.tsx",
+      "isClient": true,
+      "defaultFn": "ProposedPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "management.listProposed",
+        "management.acceptProposed",
+        "management.rejectProposed"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 68
+    },
+    {
+      "route": "/management/purchases",
+      "file": "src/app\\management\\purchases\\page.tsx",
+      "isClient": false,
+      "defaultFn": "PurchasesPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "management.listPurchases",
+        "management.listVendors",
+        "management.searchTemplates",
+        "management.listVariantsAll",
+        "management.listUoms",
+        "management.createPurchase"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 234
+    },
+    {
+      "route": "/management/receipts",
+      "file": "src/app\\management\\receipts\\page.tsx",
+      "isClient": false,
+      "defaultFn": "ManagementReceiptsPage",
+      "localImports": [
+        "../../../../convex/_generated/api",
+        "../../../../convex/_generated/dataModel"
+      ],
+      "apiCalls": [
+        "projects.list",
+        "management.listVendors",
+        "receipts.listByProject",
+        "files.listProjectFiles",
+        "financials.getAccountingView",
+        "receipts.listLineOptions",
+        "files.generateUploadUrl",
+        "filesActions.saveUploadedFile",
+        "receipts.createReceipt",
+        "receipts.updateReceipt",
+        "receipts.upsertReceiptItems",
+        "receipts.approveReceipt",
+        "receiptsActions.analyzeReceipt",
+        "receipts.listItems"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation",
+        "Action"
+      ],
+      "lineCount": 800
+    },
+    {
+      "route": "/management/settings",
+      "file": "src/app\\management\\settings\\page.tsx",
+      "isClient": true,
+      "defaultFn": "SettingsPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "users.getViewer",
+        "users.updatePreferredModel",
+        "management.getFreshnessDefaults",
+        "management.setFreshnessDefaults",
+        "management.getProcurementPrefs",
+        "management.setProcurementPrefs"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 131
+    },
+    {
+      "route": "/management/tracing",
+      "file": "src/app\\management\\tracing\\page.tsx",
+      "isClient": true,
+      "defaultFn": "TracingPage",
+      "localImports": [
+        "../../../../convex/_generated/api",
+        "../../../../convex/_generated/dataModel",
+        "../../../lib/llmPricing"
+      ],
+      "apiCalls": [
+        "projects.list",
+        "tracing.listRunIds",
+        "tracing.list",
+        "tracing.get"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 426
+    },
+    {
+      "route": "/management/vendors",
+      "file": "src/app\\management\\vendors\\page.tsx",
+      "isClient": true,
+      "defaultFn": "VendorsPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "management.listVendors",
+        "management.createVendor",
+        "management.listVendorLocations",
+        "management.createVendorLocation"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 202
+    },
+    {
+      "route": "/management/web-prices",
+      "file": "src/app\\management\\web-prices\\page.tsx",
+      "isClient": false,
+      "defaultFn": "WebPriceResultsPage",
+      "localImports": [
+        "../../../../convex/_generated/api"
+      ],
+      "apiCalls": [
+        "management.listPriceRecords"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 91
+    },
+    {
+      "route": "/projects",
+      "file": "src/app\\projects\\page.tsx",
+      "isClient": true,
+      "defaultFn": "ProjectsPage",
+      "localImports": [
+        "../../../convex/_generated/api",
+        "./_components/NewProjectDialog"
+      ],
+      "apiCalls": [
+        "projects.list",
+        "projects.updateProjectDetails",
+        "projects.deleteProject"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 152
+    },
+    {
+      "route": "/projects/[id]/accounting",
+      "file": "src/app\\projects\\[id]\\accounting\\page.tsx",
+      "isClient": true,
+      "defaultFn": "AccountingPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel",
+        "../../../../lib/exportUtils",
+        "./AccountingSummaryBlock",
+        "./ApprovedBudgetRow",
+        "./ElementBreakdownTable"
+      ],
+      "apiCalls": [
+        "financials.getFinancialSummary",
+        "financials.getAccountingView",
+        "tasks.listForProject",
+        "accounting.addMaterialLine",
+        "accounting.updateMaterialLine",
+        "accounting.deleteMaterialLine",
+        "accounting.addWorkLine",
+        "accounting.updateWorkLine",
+        "accounting.deleteWorkLine"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 1909
+    },
+    {
+      "route": "/projects/[id]/agent",
+      "file": "src/app\\projects\\[id]\\agent\\page.tsx",
+      "isClient": true,
+      "defaultFn": "AgentPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel",
+        "./_components/SkillsDock",
+        "./_components/AgentChat",
+        "../_components/ConversationsSidebar",
+        "./_components/ElementsRail"
+      ],
+      "apiCalls": [
+        "projects.resolveProjectId",
+        "skills.runner.listAgentConversations",
+        "elements.listByProject",
+        "skills.runner.createAgentConversation",
+        "skills.runner.renameConversation",
+        "skills.runner.generateConversationTitle",
+        "flowRuns.start"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation",
+        "Action"
+      ],
+      "lineCount": 139
+    },
+    {
+      "route": "/projects/[id]/elements",
+      "file": "src/app\\projects\\[id]\\elements\\page.tsx",
+      "isClient": true,
+      "defaultFn": "ElementsPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel",
+        "../../../../lib/exportUtils",
+        "./ElementRunbookTemplatePanel"
+      ],
+      "apiCalls": [
+        "elements.listByProject",
+        "elements.updateElementMeta",
+        "elements.deleteElement",
+        "tasks.createTask",
+        "tasks.updateTask",
+        "tasks.deleteTask",
+        "accounting.addMaterialLine",
+        "accounting.updateMaterialLine",
+        "accounting.deleteMaterialLine",
+        "accounting.addWorkLine",
+        "accounting.updateWorkLine",
+        "accounting.deleteWorkLine",
+        "elements.getComposite"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 1340
+    },
+    {
+      "route": "/projects/[id]/flow-agent",
+      "file": "src/app\\projects\\[id]\\flow-agent\\page.tsx",
+      "isClient": false,
+      "defaultFn": "FlowAgentPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "./_components/FlowRunHeader",
+        "./_components/FlowTimeline",
+        "./_components/FlowDebugPanel",
+        "./_components/FlowQuestionsLane",
+        "./_components/FlowElementsHealthPanel",
+        "./_components/FlowWorkflowGpsPanel",
+        "../agent/_components/ChangeSetReviewDrawer"
+      ],
+      "apiCalls": [
+        "projects.resolveProjectId",
+        "featureFlags.getAll",
+        "flowRuns.getActiveByProject",
+        "flowRuns.listByProject",
+        "flowSteps.listByRun",
+        "flowNodeRuns.listByRun",
+        "flowChangeSetApplyLogs.listByRun",
+        "flowRuns.start",
+        "flowRuns.pause",
+        "flowRuns.resume",
+        "flowRuns.cancel",
+        "flowRuns.runNext",
+        "flowRuns.setToggles",
+        "flowRuns.setApprovalMode",
+        "flow.audit.run",
+        "featureFlags.setFlag",
+        "flow.audit.getStaleness"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation",
+        "Action"
+      ],
+      "lineCount": 390
+    },
+    {
+      "route": "/projects/[id]/knowledge",
+      "file": "src/app\\projects\\[id]\\knowledge\\page.tsx",
+      "isClient": false,
+      "defaultFn": "KnowledgePage",
+      "localImports": [],
+      "apiCalls": [],
+      "hooks": [],
+      "lineCount": 16
+    },
+    {
+      "route": "/projects/[id]/overview",
+      "file": "src/app\\projects\\[id]\\overview\\page.tsx",
+      "isClient": true,
+      "defaultFn": "OverviewPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel",
+        "./ProjectKnowledgePanel"
+      ],
+      "apiCalls": [
+        "projects.getOverview",
+        "files.listProjectFiles",
+        "projects.listProjects",
+        "projects.listLinkedProjects",
+        "files.generateUploadUrl",
+        "filesActions.saveUploadedFile",
+        "files.deleteProjectFile",
+        "agent.createElementFromStructured",
+        "projects.updateProjectDetails",
+        "projects.deleteProject",
+        "projectsCustomers.setProjectCustomerByName",
+        "projects.linkProject",
+        "projects.unlinkProject",
+        "projects.generateProjectDigest",
+        "projects.generateOverviewSummary",
+        "projects.retrySummary"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation",
+        "Action"
+      ],
+      "lineCount": 823
+    },
+    {
+      "route": "/projects/[id]/quote",
+      "file": "src/app\\projects\\[id]\\quote\\page.tsx",
+      "isClient": true,
+      "defaultFn": "QuotePage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel",
+        "./QuotePrintView",
+        "../../../../../shared/quotePrintTemplate"
+      ],
+      "apiCalls": [
+        "quotes.listQuotes",
+        "quotes.getQuote",
+        "quotes.getDiff",
+        "projects.getOverview",
+        "files.listProjectFiles",
+        "files.getFileUrl",
+        "quotes.createDraftFromUi",
+        "quotes.generateQuoteV2",
+        "financials.approveQuoteAsBaseline",
+        "quotePdf.generateQuotePdf"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation",
+        "Action"
+      ],
+      "lineCount": 552
+    },
+    {
+      "route": "/projects/[id]/receipts",
+      "file": "src/app\\projects\\[id]\\receipts\\page.tsx",
+      "isClient": false,
+      "defaultFn": "ReceiptsPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel"
+      ],
+      "apiCalls": [
+        "receipts.listByProject",
+        "management.listVendors",
+        "files.listProjectFiles",
+        "receipts.listLineOptions",
+        "receipts.createReceipt",
+        "receipts.updateReceipt",
+        "receipts.upsertReceiptItems",
+        "receipts.approveReceipt",
+        "receipts.listItems"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 532
+    },
+    {
+      "route": "/projects/[id]/sdk-agent",
+      "file": "src/app\\projects\\[id]\\sdk-agent\\page.tsx",
+      "isClient": true,
+      "defaultFn": "SdkAgentPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "./_components/ProjectPlanningTab",
+        "./_components/AgentTab"
+      ],
+      "apiCalls": [
+        "projects.resolveProjectId",
+        "featureFlags.getAll"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 106
+    },
+    {
+      "route": "/projects/[id]/studio",
+      "file": "src/app\\projects\\[id]\\studio\\page.tsx",
+      "isClient": true,
+      "defaultFn": "StudioAgentPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel",
+        "../../../../lib/agentPrompts"
+      ],
+      "apiCalls": [
+        "users.getViewer",
+        "agent.listConversations",
+        "agent.listConversationMessages",
+        "projects.getOverview",
+        "projectsStage.resolveStage",
+        "agent.createConversation",
+        "agent.setConversationMode",
+        "agent.setConversationTitle",
+        "agent.appendUserMessage",
+        "agent.appendEventMessage",
+        "changeSets.applyChangeSet",
+        "changeSets.discardChangeSet",
+        "agent.cancelRunningAgent",
+        "agent.agentRespond"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation",
+        "Action"
+      ],
+      "lineCount": 1076
+    },
+    {
+      "route": "/projects/[id]/suggested",
+      "file": "src/app\\projects\\[id]\\suggested\\page.tsx",
+      "isClient": true,
+      "defaultFn": "SuggestedPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel"
+      ],
+      "apiCalls": [
+        "suggestions.listSuggested",
+        "suggestions.approveSuggestedElement",
+        "suggestions.rejectSuggestedElement"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation"
+      ],
+      "lineCount": 121
+    },
+    {
+      "route": "/projects/[id]/tasks",
+      "file": "src/app\\projects\\[id]\\tasks\\page.tsx",
+      "isClient": true,
+      "defaultFn": "TasksPage",
+      "localImports": [
+        "../../../../../convex/_generated/api",
+        "../../../../../convex/_generated/dataModel",
+        "./_components/types",
+        "./_components/TasksTopBar",
+        "./_components/TaskControlsBar",
+        "./_components/KanbanBoard",
+        "./_components/GanttView",
+        "./_components/StudioBoard",
+        "./_components/ElementsGroupedList",
+        "./_components/InstallModeView",
+        "./_components/TaskModal",
+        "./_components/TrelloConfigModal",
+        "../../../../lib/dates"
+      ],
+      "apiCalls": [
+        "tasks.listForProject",
+        "tasks.updateTask",
+        "tasks.createTask",
+        "agent_tasks.runEstimator",
+        "projects.getTaskOrder",
+        "projects.updateTaskOrder",
+        "management.listEmployees",
+        "trelloSync.getConfig",
+        "trelloSync.saveConfig",
+        "trelloSync.sync",
+        "trelloSync.listBoards",
+        "trelloSync.listLists",
+        "trelloSync.createBoard"
+      ],
+      "hooks": [
+        "Query",
+        "Mutation",
+        "Action"
+      ],
+      "lineCount": 500
+    },
+    {
+      "route": "/tasks",
+      "file": "src/app\\tasks\\page.tsx",
+      "isClient": true,
+      "defaultFn": "GlobalTasksPage",
+      "localImports": [
+        "../../../convex/_generated/api",
+        "../../lib/exportUtils"
+      ],
+      "apiCalls": [
+        "projects.list",
+        "tasksStudio.listGlobal"
+      ],
+      "hooks": [
+        "Query"
+      ],
+      "lineCount": 226
+    }
+  ]
+}

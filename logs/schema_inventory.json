@@ -1,0 +1,6570 @@
+{
+  "file": "convex/schema.ts",
+  "tableCount": 83,
+  "tables": [
+    {
+      "tableName": "users",
+      "line": 240,
+      "fields": [
+        {
+          "name": "email",
+          "type": "v.string()",
+          "line": 241
+        },
+        {
+          "name": "name",
+          "type": "v.optional(v.string())",
+          "line": 242
+        },
+        {
+          "name": "displayName",
+          "type": "v.optional(v.string())",
+          "line": 243
+        },
+        {
+          "name": "trelloCredentials",
+          "type": "v.optional(v.object({\r\n      apiKey: v.string(),\r\n      token: v.string()\r\n    }))",
+          "line": 244
+        },
+        {
+          "name": "preferredModel",
+          "type": "v.optional(v.string())",
+          "line": 248
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 249
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 250
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_email",
+          "fields": "[\"email\"]",
+          "line": 240
+        }
+      ]
+    },
+    {
+      "tableName": "projects",
+      "line": 254,
+      "fields": [
+        {
+          "name": "name",
+          "type": "v.string()",
+          "line": 255
+        },
+        {
+          "name": "clientName",
+          "type": "v.optional(v.string())",
+          "line": 256
+        },
+        {
+          "name": "customerId",
+          "type": "v.optional(v.id(\"customers\"))",
+          "line": 257
+        },
+        {
+          "name": "customerName",
+          "type": "v.optional(v.string())",
+          "line": 258
+        },
+        {
+          "name": "customerNameRaw",
+          "type": "v.optional(v.string())",
+          "line": 259
+        },
+        {
+          "name": "types",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 260
+        },
+        {
+          "name": "eventDate",
+          "type": "v.optional(v.string())",
+          "line": 261
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 262
+        },
+        {
+          "name": "summary",
+          "type": "v.optional(v.string())",
+          "line": 263
+        },
+        {
+          "name": "summaryStatus",
+          "type": "v.optional(v.union(v.literal(\"empty\"), v.literal(\"queued\"), v.literal(\"generating\"), v.literal(\"ready\"), v.literal(\"failed\")))",
+          "line": 264
+        },
+        {
+          "name": "summaryUpdatedAt",
+          "type": "v.optional(v.number())",
+          "line": 265
+        },
+        {
+          "name": "summarySources",
+          "type": "v.optional(v.array(v.object({ title: v.string(), url: v.optional(v.string()) })))",
+          "line": 266
+        },
+        {
+          "name": "summaryError",
+          "type": "v.optional(v.string())",
+          "line": 267
+        },
+        {
+          "name": "status",
+          "type": "projectStatus",
+          "line": 268
+        },
+        {
+          "name": "currency",
+          "type": "v.string()",
+          "line": 269
+        },
+        {
+          "name": "description",
+          "type": "v.optional(v.string())",
+          "line": 270
+        },
+        {
+          "name": "overviewSummary",
+          "type": "v.optional(v.string())",
+          "line": 271
+        },
+        {
+          "name": "projectTypes",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 272
+        },
+        {
+          "name": "stage",
+          "type": "v.optional(v.union(v.literal(\"IDEATION\"), v.literal(\"QUOTE\"), v.literal(\"BREAKDOWN\")))",
+          "line": 273
+        },
+        {
+          "name": "counters",
+          "type": "v.optional(v.object({\r\n      nextElementNo: v.number(),\r\n    }))",
+          "line": 274
+        },
+        {
+          "name": "pricingDefaults",
+          "type": "v.optional(v.object({\r\n      profitPct: v.number(),\r\n      overheadPct: v.number(),\r\n      riskPct: v.number(),\r\n      excludeManagementLaborFromCost: v.boolean(),\r\n    }))",
+          "line": 277
+        },
+        {
+          "name": "details",
+          "type": "v.optional(\r\n      v.object({\r\n        eventDate: v.optional(v.number()),\r\n        budgetCap: v.optional(v.number()),\r\n        location: v.optional(v.string()),\r\n        notes: v.optional(v.string()),\r\n      })\r\n    )",
+          "line": 283
+        },
+        {
+          "name": "defaults",
+          "type": "v.object({\r\n      profitPct: v.number(),\r\n      overheadPct: v.number(),\r\n      riskPct: v.number(),\r\n      excludeManagementLaborFromCost: v.boolean(),\r\n    })",
+          "line": 291
+        },
+        {
+          "name": "projectCostContainerId",
+          "type": "v.optional(v.id(\"projectCostContainers\"))",
+          "line": 297
+        },
+        {
+          "name": "activeBudgetBaselineId",
+          "type": "v.optional(v.id(\"budgetBaselines\"))",
+          "line": 298
+        },
+        {
+          "name": "tasksConfiguration",
+          "type": "v.optional(v.object({\r\n      defaultView: v.optional(v.string()),\r\n      kanbanColumnOrder: v.optional(v.any()), // { todo: taskId[], ... }\r\n      filtersDefaults: v.optional(v.any()),\r\n      draftModeEnabled: v.optional(v.boolean()),\r\n      trelloConfig: v.optional(v.object({\r\n        boardId: v.optional(v.string()),\r\n        listMappings: v.optional(v.any()),\r\n        // Legacy fields - kept for migration or fallback, but ideally moved to users\r\n        apiKey: v.optional(v.string()),\r\n        token: v.optional(v.string())\r\n      })),\r\n    }))",
+          "line": 299
+        },
+        {
+          "name": "brainDumpRaw",
+          "type": "v.optional(v.string())",
+          "line": 314
+        },
+        {
+          "name": "brainDumpStructuredDraft",
+          "type": "v.optional(v.any())",
+          "line": 315
+        },
+        {
+          "name": "unknownAcceptedKeys",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 318
+        },
+        {
+          "name": "assumptionsAccepted",
+          "type": "v.optional(v.array(v.object({\r\n      key: v.string(),\r\n      valueHe: v.string(),\r\n      acceptedAt: v.number(),\r\n    })))",
+          "line": 319
+        },
+        {
+          "name": "dismissedOppKeys",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 324
+        },
+        {
+          "name": "createdBy",
+          "type": "v.optional(v.id(\"users\"))",
+          "line": 326
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 327
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 328
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_status",
+          "fields": "[\"status\"]",
+          "line": 254
+        },
+        {
+          "name": "by_customerId",
+          "fields": "[\"customerId\"]",
+          "line": 254
+        },
+        {
+          "name": "by_updatedAt",
+          "fields": "[\"updatedAt\"]",
+          "line": 254
+        }
+      ]
+    },
+    {
+      "tableName": "elements",
+      "line": 337,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 338
+        },
+        {
+          "name": "title",
+          "type": "v.string()",
+          "line": 339
+        },
+        {
+          "name": "description",
+          "type": "v.optional(v.string())",
+          "line": 340
+        },
+        {
+          "name": "type",
+          "type": "v.union(\r\n      v.literal(\"build\"),\r\n      v.literal(\"rent\"),\r\n      v.literal(\"buy\"),\r\n      v.literal(\"print\"),\r\n      v.literal(\"transport\"),\r\n      v.literal(\"install\"),\r\n      v.literal(\"subcontract\"),\r\n      v.literal(\"mixed\")\r\n    )",
+          "line": 341
+        },
+        {
+          "name": "status",
+          "type": "elementStatus",
+          "line": 351
+        },
+        {
+          "name": "order",
+          "type": "v.optional(v.number())",
+          "line": 352
+        },
+        {
+          "name": "rev",
+          "type": "v.optional(v.number())",
+          "line": 353
+        },
+        {
+          "name": "approvedVersionId",
+          "type": "v.optional(v.id(\"elementVersions\"))",
+          "line": 354
+        },
+        {
+          "name": "hasUnapprovedChanges",
+          "type": "v.optional(v.boolean())",
+          "line": 355
+        },
+        {
+          "name": "tags",
+          "type": "v.array(v.string())",
+          "line": 356
+        },
+        {
+          "name": "currentApprovedVersionId",
+          "type": "v.optional(v.id(\"elementVersions\"))",
+          "line": 357
+        },
+        {
+          "name": "currentDraftId",
+          "type": "v.optional(v.id(\"elementDrafts\"))",
+          "line": 358
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 359
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 360
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 337
+        },
+        {
+          "name": "by_project_status",
+          "fields": "[\"projectId\", \"status\"]",
+          "line": 337
+        },
+        {
+          "name": "by_project_updated",
+          "fields": "[\"projectId\", \"updatedAt\"]",
+          "line": 337
+        },
+        {
+          "name": "by_status",
+          "fields": "[\"status\"]",
+          "line": 337
+        }
+      ]
+    },
+    {
+      "tableName": "tasks",
+      "line": 368,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 369
+        },
+        {
+          "name": "elementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 370
+        },
+        {
+          "name": "title",
+          "type": "v.string()",
+          "line": 371
+        },
+        {
+          "name": "description",
+          "type": "v.optional(v.string())",
+          "line": 372
+        },
+        {
+          "name": "status",
+          "type": "v.optional(v.string())",
+          "line": 373
+        },
+        {
+          "name": "priority",
+          "type": "v.optional(v.string())",
+          "line": 374
+        },
+        {
+          "name": "category",
+          "type": "v.optional(v.string())",
+          "line": 375
+        },
+        {
+          "name": "startDate",
+          "type": "v.optional(v.string())",
+          "line": 376
+        },
+        {
+          "name": "endDate",
+          "type": "v.optional(v.string())",
+          "line": 377
+        },
+        {
+          "name": "dueDate",
+          "type": "v.optional(v.number())",
+          "line": 378
+        },
+        {
+          "name": "estimatedHours",
+          "type": "v.optional(v.number())",
+          "line": 379
+        },
+        {
+          "name": "estimatedMinutes",
+          "type": "v.optional(v.number())",
+          "line": 380
+        },
+        {
+          "name": "assignee",
+          "type": "v.optional(v.string())",
+          "line": 381
+        },
+        {
+          "name": "dependencies",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 382
+        },
+        {
+          "name": "stage",
+          "type": "v.optional(v.union(\r\n      v.literal(\"clarification\"),\r\n      v.literal(\"quote\"),\r\n      v.literal(\"procurement\"),\r\n      v.literal(\"build\"),\r\n      v.literal(\"install\"),\r\n      v.literal(\"teardown\"),\r\n      v.literal(\"accounting\")\r\n    ))",
+          "line": 385
+        },
+        {
+          "name": "workType",
+          "type": "v.optional(StudioWorkType)",
+          "line": 394
+        },
+        {
+          "name": "workTypeLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 395
+        },
+        {
+          "name": "plannedStartDate",
+          "type": "v.optional(v.string())",
+          "line": 396
+        },
+        {
+          "name": "plannedEndDate",
+          "type": "v.optional(v.string())",
+          "line": 397
+        },
+        {
+          "name": "durationBucket",
+          "type": "v.optional(v.union(v.literal(\"small\"), v.literal(\"large\")))",
+          "line": 398
+        },
+        {
+          "name": "checklist",
+          "type": "v.optional(v.array(TaskChecklistItem))",
+          "line": 399
+        },
+        {
+          "name": "accountingLinks",
+          "type": "v.optional(v.array(TaskAccountingLink))",
+          "line": 400
+        },
+        {
+          "name": "isDraft",
+          "type": "v.optional(v.boolean())",
+          "line": 403
+        },
+        {
+          "name": "draftOfTaskId",
+          "type": "v.optional(v.id(\"tasks\"))",
+          "line": 404
+        },
+        {
+          "name": "draftRevisionId",
+          "type": "v.optional(v.id(\"taskRevisions\"))",
+          "line": 405
+        },
+        {
+          "name": "elementSubtaskId",
+          "type": "v.optional(v.string())",
+          "line": 406
+        },
+        {
+          "name": "aiThreadId",
+          "type": "v.optional(v.id(\"conversations\"))",
+          "line": 407
+        },
+        {
+          "name": "assigneeIds",
+          "type": "v.optional(v.array(v.id(\"employees\")))",
+          "line": 408
+        },
+        {
+          "name": "createdBy",
+          "type": "v.optional(v.union(v.literal(\"human\"), v.literal(\"agent\")))",
+          "line": 411
+        },
+        {
+          "name": "createdByRunId",
+          "type": "v.optional(v.string())",
+          "line": 412
+        },
+        {
+          "name": "createdFromChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 414
+        },
+        {
+          "name": "dedupKey",
+          "type": "v.optional(v.string())",
+          "line": 415
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 416
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.optional(v.number())",
+          "line": 417
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 368
+        },
+        {
+          "name": "by_element",
+          "fields": "[\"elementId\"]",
+          "line": 368
+        },
+        {
+          "name": "by_project_status",
+          "fields": "[\"projectId\", \"status\"]",
+          "line": 368
+        },
+        {
+          "name": "by_project_element",
+          "fields": "[\"projectId\", \"elementId\"]",
+          "line": 368
+        },
+        {
+          "name": "by_project_assignee",
+          "fields": "[\"projectId\", \"assignee\"]",
+          "line": 368
+        },
+        {
+          "name": "by_project_updatedAt",
+          "fields": "[\"projectId\", \"updatedAt\"]",
+          "line": 368
+        },
+        {
+          "name": "by_project_dueDate",
+          "fields": "[\"projectId\", \"dueDate\"]",
+          "line": 368
+        },
+        {
+          "name": "by_project_workType",
+          "fields": "[\"projectId\", \"workType\"]",
+          "line": 368
+        },
+        {
+          "name": "by_project_plannedStart",
+          "fields": "[\"projectId\", \"plannedStartDate\"]",
+          "line": 368
+        },
+        {
+          "name": "by_status",
+          "fields": "[\"status\"]",
+          "line": 368
+        },
+        {
+          "name": "by_assignee",
+          "fields": "[\"assignee\"]",
+          "line": 368
+        },
+        {
+          "name": "by_dueDate",
+          "fields": "[\"dueDate\"]",
+          "line": 368
+        },
+        {
+          "name": "by_workType",
+          "fields": "[\"workType\"]",
+          "line": 368
+        }
+      ]
+    },
+    {
+      "tableName": "runbooks",
+      "line": 433,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 434
+        },
+        {
+          "name": "scope",
+          "type": "runbookScope",
+          "line": 435
+        },
+        {
+          "name": "elementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 436
+        },
+        {
+          "name": "titleHe",
+          "type": "v.string()",
+          "line": 437
+        },
+        {
+          "name": "summaryHe",
+          "type": "v.optional(v.string())",
+          "line": 438
+        },
+        {
+          "name": "status",
+          "type": "runbookStatus",
+          "line": 439
+        },
+        {
+          "name": "version",
+          "type": "v.number()",
+          "line": 440
+        },
+        {
+          "name": "source",
+          "type": "runbookSource",
+          "line": 441
+        },
+        {
+          "name": "executionStartedAt",
+          "type": "v.optional(v.number())",
+          "line": 444
+        },
+        {
+          "name": "orderingLocked",
+          "type": "v.optional(v.boolean())",
+          "line": 445
+        },
+        {
+          "name": "approvalsRequired",
+          "type": "v.optional(v.boolean())",
+          "line": 448
+        },
+        {
+          "name": "approvalStages",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 449
+        },
+        {
+          "name": "approvalRecords",
+          "type": "v.optional(v.array(v.object({\r\n      stage: v.string(),\r\n      signedBy: v.string(),\r\n      signedAt: v.number(),\r\n      note: v.optional(v.string()),\r\n    })))",
+          "line": 450
+        },
+        {
+          "name": "createdBy",
+          "type": "v.optional(v.string())",
+          "line": 457
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 458
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 459
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 433
+        },
+        {
+          "name": "by_project_scope",
+          "fields": "[\"projectId\", \"scope\"]",
+          "line": 433
+        },
+        {
+          "name": "by_project_scope_status",
+          "fields": "[\"projectId\", \"scope\", \"status\"]",
+          "line": 433
+        },
+        {
+          "name": "by_project_element",
+          "fields": "[\"projectId\", \"elementId\"]",
+          "line": 433
+        }
+      ]
+    },
+    {
+      "tableName": "runbookItems",
+      "line": 466,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 467
+        },
+        {
+          "name": "runbookId",
+          "type": "v.id(\"runbooks\")",
+          "line": 468
+        },
+        {
+          "name": "phaseId",
+          "type": "v.string()",
+          "line": 469
+        },
+        {
+          "name": "phaseOrder",
+          "type": "v.number()",
+          "line": 470
+        },
+        {
+          "name": "phaseNameHe",
+          "type": "v.string()",
+          "line": 471
+        },
+        {
+          "name": "orderIndex",
+          "type": "v.number()",
+          "line": 472
+        },
+        {
+          "name": "kind",
+          "type": "runbookItemKind",
+          "line": 473
+        },
+        {
+          "name": "textHe",
+          "type": "v.string()",
+          "line": 474
+        },
+        {
+          "name": "responsibleHe",
+          "type": "v.optional(v.string())",
+          "line": 475
+        },
+        {
+          "name": "durationMins",
+          "type": "v.optional(v.number())",
+          "line": 476
+        },
+        {
+          "name": "linkedTaskId",
+          "type": "v.optional(v.id(\"tasks\"))",
+          "line": 477
+        },
+        {
+          "name": "linkedElementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 478
+        },
+        {
+          "name": "status",
+          "type": "runbookItemStatus",
+          "line": 479
+        },
+        {
+          "name": "doneAt",
+          "type": "v.optional(v.number())",
+          "line": 480
+        },
+        {
+          "name": "doneBy",
+          "type": "v.optional(v.string())",
+          "line": 481
+        },
+        {
+          "name": "comment",
+          "type": "v.optional(v.string())",
+          "line": 482
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 483
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 484
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_runbook",
+          "fields": "[\"runbookId\"]",
+          "line": 466
+        },
+        {
+          "name": "by_runbook_phase",
+          "fields": "[\"runbookId\", \"phaseOrder\"]",
+          "line": 466
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 466
+        }
+      ]
+    },
+    {
+      "tableName": "runbookListItems",
+      "line": 490,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 491
+        },
+        {
+          "name": "runbookId",
+          "type": "v.id(\"runbooks\")",
+          "line": 492
+        },
+        {
+          "name": "listType",
+          "type": "runbookListType",
+          "line": 493
+        },
+        {
+          "name": "orderIndex",
+          "type": "v.number()",
+          "line": 494
+        },
+        {
+          "name": "textHe",
+          "type": "v.string()",
+          "line": 495
+        },
+        {
+          "name": "checked",
+          "type": "v.boolean()",
+          "line": 496
+        },
+        {
+          "name": "checkedAt",
+          "type": "v.optional(v.number())",
+          "line": 497
+        },
+        {
+          "name": "checkedBy",
+          "type": "v.optional(v.string())",
+          "line": 498
+        },
+        {
+          "name": "linkedMaterialLineId",
+          "type": "v.optional(v.id(\"materialLines\"))",
+          "line": 499
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 500
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 501
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_runbook",
+          "fields": "[\"runbookId\"]",
+          "line": 490
+        },
+        {
+          "name": "by_runbook_type",
+          "fields": "[\"runbookId\", \"listType\"]",
+          "line": 490
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 490
+        }
+      ]
+    },
+    {
+      "tableName": "taskRevisions",
+      "line": 508,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 509
+        },
+        {
+          "name": "taskId",
+          "type": "v.id(\"tasks\")",
+          "line": 510
+        },
+        {
+          "name": "baseVersionHash",
+          "type": "v.string()",
+          "line": 511
+        },
+        {
+          "name": "patch",
+          "type": "v.any()",
+          "line": 512
+        },
+        {
+          "name": "source",
+          "type": "v.union(v.literal(\"human\"), v.literal(\"agent\"))",
+          "line": 513
+        },
+        {
+          "name": "agentRunId",
+          "type": "v.optional(v.string())",
+          "line": 514
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"draft\"), v.literal(\"applied\"), v.literal(\"discarded\"))",
+          "line": 515
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 516
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 517
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_task",
+          "fields": "[\"taskId\"]",
+          "line": 508
+        },
+        {
+          "name": "by_project_status",
+          "fields": "[\"projectId\", \"status\"]",
+          "line": 508
+        }
+      ]
+    },
+    {
+      "tableName": "taskAccountingLinks",
+      "line": 522,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 523
+        },
+        {
+          "name": "taskId",
+          "type": "v.id(\"tasks\")",
+          "line": 524
+        },
+        {
+          "name": "lineType",
+          "type": "v.union(v.literal(\"labor\"), v.literal(\"material\"))",
+          "line": 525
+        },
+        {
+          "name": "workLineId",
+          "type": "v.id(\"workLines\")",
+          "line": 526
+        },
+        {
+          "name": "allocatedHours",
+          "type": "v.optional(v.number())",
+          "line": 527
+        },
+        {
+          "name": "createdBy",
+          "type": "v.union(v.literal(\"human\"), v.literal(\"ai\"))",
+          "line": 528
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 529
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 530
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 522
+        },
+        {
+          "name": "by_task",
+          "fields": "[\"taskId\"]",
+          "line": 522
+        },
+        {
+          "name": "by_workLine",
+          "fields": "[\"workLineId\"]",
+          "line": 522
+        },
+        {
+          "name": "by_project_task",
+          "fields": "[\"projectId\", \"taskId\"]",
+          "line": 522
+        },
+        {
+          "name": "by_project_workLine",
+          "fields": "[\"projectId\", \"workLineId\"]",
+          "line": 522
+        }
+      ]
+    },
+    {
+      "tableName": "trelloSyncRuns",
+      "line": 539,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 540
+        },
+        {
+          "name": "startedAt",
+          "type": "v.number()",
+          "line": 541
+        },
+        {
+          "name": "finishedAt",
+          "type": "v.optional(v.number())",
+          "line": 542
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"running\"), v.literal(\"success\"), v.literal(\"failed\"))",
+          "line": 543
+        },
+        {
+          "name": "summary",
+          "type": "v.optional(v.any())",
+          "line": 544
+        },
+        {
+          "name": "retryLog",
+          "type": "v.optional(v.array(v.any()))",
+          "line": 545
+        },
+        {
+          "name": "diffPlanPreview",
+          "type": "v.optional(v.any())",
+          "line": 546
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 539
+        }
+      ]
+    },
+    {
+      "tableName": "trelloMappings",
+      "line": 550,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 551
+        },
+        {
+          "name": "taskId",
+          "type": "v.id(\"tasks\")",
+          "line": 552
+        },
+        {
+          "name": "trelloCardId",
+          "type": "v.string()",
+          "line": 553
+        },
+        {
+          "name": "trelloListId",
+          "type": "v.optional(v.string())",
+          "line": 554
+        },
+        {
+          "name": "contentHash",
+          "type": "v.string()",
+          "line": 555
+        },
+        {
+          "name": "lastSyncedAt",
+          "type": "v.number()",
+          "line": 556
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 550
+        },
+        {
+          "name": "by_task",
+          "fields": "[\"taskId\"]",
+          "line": 550
+        },
+        {
+          "name": "by_card",
+          "fields": "[\"trelloCardId\"]",
+          "line": 550
+        }
+      ]
+    },
+    {
+      "tableName": "accountingLines",
+      "line": 563,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 564
+        },
+        {
+          "name": "elementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 565
+        },
+        {
+          "name": "taskId",
+          "type": "v.optional(v.id(\"tasks\"))",
+          "line": 566
+        },
+        {
+          "name": "sectionId",
+          "type": "v.optional(v.id(\"accountingSections\"))",
+          "line": 567
+        },
+        {
+          "name": "sectionKey",
+          "type": "v.optional(v.string())",
+          "line": 568
+        },
+        {
+          "name": "sectionLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 569
+        },
+        {
+          "name": "type",
+          "type": "v.union(v.literal(\"material\"), v.literal(\"labor\"), v.literal(\"subcontract\"), v.literal(\"other\"))",
+          "line": 570
+        },
+        {
+          "name": "title",
+          "type": "v.string()",
+          "line": 571
+        },
+        {
+          "name": "qty",
+          "type": "v.optional(v.number())",
+          "line": 572
+        },
+        {
+          "name": "unitCost",
+          "type": "v.optional(v.number())",
+          "line": 573
+        },
+        {
+          "name": "total",
+          "type": "v.number()",
+          "line": 574
+        },
+        {
+          "name": "billable",
+          "type": "v.optional(v.boolean())",
+          "line": 575
+        },
+        {
+          "name": "itemName",
+          "type": "v.optional(v.string())",
+          "line": 578
+        },
+        {
+          "name": "spec",
+          "type": "v.optional(v.string())",
+          "line": 579
+        },
+        {
+          "name": "unit",
+          "type": "v.optional(v.string())",
+          "line": 580
+        },
+        {
+          "name": "unitCostEstimate",
+          "type": "v.optional(v.number())",
+          "line": 581
+        },
+        {
+          "name": "wastePct",
+          "type": "v.optional(v.number())",
+          "line": 582
+        },
+        {
+          "name": "vendorId",
+          "type": "v.optional(v.id(\"vendors\"))",
+          "line": 583
+        },
+        {
+          "name": "vendorName",
+          "type": "v.optional(v.string())",
+          "line": 584
+        },
+        {
+          "name": "vendorSku",
+          "type": "v.optional(v.string())",
+          "line": 585
+        },
+        {
+          "name": "vendorUrl",
+          "type": "v.optional(v.string())",
+          "line": 586
+        },
+        {
+          "name": "leadTimeDays",
+          "type": "v.optional(v.number())",
+          "line": 587
+        },
+        {
+          "name": "workType",
+          "type": "v.optional(StudioWorkType)",
+          "line": 589
+        },
+        {
+          "name": "hours",
+          "type": "v.optional(v.number())",
+          "line": 590
+        },
+        {
+          "name": "crewSize",
+          "type": "v.optional(v.number())",
+          "line": 591
+        },
+        {
+          "name": "ratePerHour",
+          "type": "v.optional(v.number())",
+          "line": 592
+        },
+        {
+          "name": "source",
+          "type": "v.optional(v.string())",
+          "line": 594
+        },
+        {
+          "name": "confidence",
+          "type": "v.optional(v.number())",
+          "line": 595
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 596
+        },
+        {
+          "name": "actualTotalCost",
+          "type": "v.optional(v.number())",
+          "line": 597
+        },
+        {
+          "name": "receiptItemIds",
+          "type": "v.optional(v.array(v.id(\"receiptItems\")))",
+          "line": 598
+        },
+        {
+          "name": "createdFromChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 600
+        },
+        {
+          "name": "dedupKey",
+          "type": "v.optional(v.string())",
+          "line": 601
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 602
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.optional(v.number())",
+          "line": 603
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 563
+        },
+        {
+          "name": "by_element",
+          "fields": "[\"elementId\"]",
+          "line": 563
+        },
+        {
+          "name": "by_task",
+          "fields": "[\"taskId\"]",
+          "line": 563
+        },
+        {
+          "name": "by_project_updatedAt",
+          "fields": "[\"projectId\", \"updatedAt\"]",
+          "line": 563
+        }
+      ]
+    },
+    {
+      "tableName": "accountingSections",
+      "line": 610,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 611
+        },
+        {
+          "name": "key",
+          "type": "v.string()",
+          "line": 612
+        },
+        {
+          "name": "labelHe",
+          "type": "v.string()",
+          "line": 613
+        },
+        {
+          "name": "sortOrder",
+          "type": "v.number()",
+          "line": 614
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 615
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 616
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 610
+        },
+        {
+          "name": "by_project_key",
+          "fields": "[\"projectId\", \"key\"]",
+          "line": 610
+        }
+      ]
+    },
+    {
+      "tableName": "materialLines",
+      "line": 622,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 623
+        },
+        {
+          "name": "elementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 624
+        },
+        {
+          "name": "taskId",
+          "type": "v.optional(v.id(\"tasks\"))",
+          "line": 625
+        },
+        {
+          "name": "sectionId",
+          "type": "v.optional(v.id(\"accountingSections\"))",
+          "line": 626
+        },
+        {
+          "name": "sectionKey",
+          "type": "v.optional(v.string())",
+          "line": 627
+        },
+        {
+          "name": "sectionLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 628
+        },
+        {
+          "name": "workType",
+          "type": "v.optional(StudioWorkType)",
+          "line": 629
+        },
+        {
+          "name": "workTypeLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 630
+        },
+        {
+          "name": "itemName",
+          "type": "v.optional(v.string())",
+          "line": 631
+        },
+        {
+          "name": "spec",
+          "type": "v.optional(v.string())",
+          "line": 632
+        },
+        {
+          "name": "templateId",
+          "type": "v.optional(v.id(\"materialTemplates\"))",
+          "line": 633
+        },
+        {
+          "name": "variantId",
+          "type": "v.optional(v.id(\"materialVariants\"))",
+          "line": 634
+        },
+        {
+          "name": "priceRecordId",
+          "type": "v.optional(v.id(\"catalogPriceRecords\"))",
+          "line": 635
+        },
+        {
+          "name": "quantity",
+          "type": "v.optional(v.number())",
+          "line": 636
+        },
+        {
+          "name": "uomId",
+          "type": "v.optional(v.id(\"uoms\"))",
+          "line": 637
+        },
+        {
+          "name": "uomCode",
+          "type": "v.optional(UomCode)",
+          "line": 638
+        },
+        {
+          "name": "wastePct",
+          "type": "v.optional(v.number())",
+          "line": 639
+        },
+        {
+          "name": "plannedUnitCost",
+          "type": "v.optional(v.number())",
+          "line": 640
+        },
+        {
+          "name": "plannedTotalCost",
+          "type": "v.optional(v.number())",
+          "line": 641
+        },
+        {
+          "name": "vendorId",
+          "type": "v.optional(v.id(\"vendors\"))",
+          "line": 642
+        },
+        {
+          "name": "vendorName",
+          "type": "v.optional(v.string())",
+          "line": 643
+        },
+        {
+          "name": "leadTimeDays",
+          "type": "v.optional(v.number())",
+          "line": 644
+        },
+        {
+          "name": "procurementCode",
+          "type": "v.optional(\r\n      v.union(\r\n        v.literal(\"in_stock\"),\r\n        v.literal(\"local_buy\"),\r\n        v.literal(\"import\"),\r\n        v.literal(\"rental\")\r\n      )\r\n    )",
+          "line": 645
+        },
+        {
+          "name": "procurementLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 653
+        },
+        {
+          "name": "procurement",
+          "type": "v.optional(v.string())",
+          "line": 654
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 655
+        },
+        {
+          "name": "sourceCode",
+          "type": "v.optional(\r\n      v.union(\r\n        v.literal(\"agent_estimate\"),\r\n        v.literal(\"vendor_quote\"),\r\n        v.literal(\"invoice\"),\r\n        v.literal(\"manual\")\r\n      )\r\n    )",
+          "line": 656
+        },
+        {
+          "name": "sourceLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 664
+        },
+        {
+          "name": "source",
+          "type": "v.optional(v.string())",
+          "line": 665
+        },
+        {
+          "name": "pricingSourceCode",
+          "type": "v.optional(\r\n      v.union(\r\n        v.literal(\"catalog_manual\"),\r\n        v.literal(\"purchase_actual\"),\r\n        v.literal(\"web\"),\r\n        v.literal(\"estimate\"),\r\n        v.literal(\"override\")\r\n      )\r\n    )",
+          "line": 666
+        },
+        {
+          "name": "priceCheckedAt",
+          "type": "v.optional(v.number())",
+          "line": 675
+        },
+        {
+          "name": "priceUrl",
+          "type": "v.optional(v.string())",
+          "line": 676
+        },
+        {
+          "name": "confidence",
+          "type": "v.optional(v.number())",
+          "line": 677
+        },
+        {
+          "name": "actualUnitCost",
+          "type": "v.optional(v.number())",
+          "line": 678
+        },
+        {
+          "name": "actualTotalCost",
+          "type": "v.optional(v.number())",
+          "line": 679
+        },
+        {
+          "name": "receiptItemIds",
+          "type": "v.optional(v.array(v.id(\"receiptItems\")))",
+          "line": 680
+        },
+        {
+          "name": "checklistItemId",
+          "type": "v.optional(v.string())",
+          "line": 681
+        },
+        {
+          "name": "createdFromChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 682
+        },
+        {
+          "name": "dedupKey",
+          "type": "v.optional(v.string())",
+          "line": 683
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 684
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.optional(v.number())",
+          "line": 685
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 622
+        },
+        {
+          "name": "by_element",
+          "fields": "[\"elementId\"]",
+          "line": 622
+        },
+        {
+          "name": "by_task",
+          "fields": "[\"taskId\"]",
+          "line": 622
+        },
+        {
+          "name": "by_project_updatedAt",
+          "fields": "[\"projectId\", \"updatedAt\"]",
+          "line": 622
+        }
+      ]
+    },
+    {
+      "tableName": "workLines",
+      "line": 692,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 693
+        },
+        {
+          "name": "elementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 694
+        },
+        {
+          "name": "taskId",
+          "type": "v.optional(v.id(\"tasks\"))",
+          "line": 695
+        },
+        {
+          "name": "sectionId",
+          "type": "v.optional(v.id(\"accountingSections\"))",
+          "line": 696
+        },
+        {
+          "name": "sectionKey",
+          "type": "v.optional(v.string())",
+          "line": 697
+        },
+        {
+          "name": "sectionLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 698
+        },
+        {
+          "name": "workType",
+          "type": "v.optional(StudioWorkType)",
+          "line": 699
+        },
+        {
+          "name": "workTypeLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 700
+        },
+        {
+          "name": "roleHe",
+          "type": "v.optional(v.string())",
+          "line": 701
+        },
+        {
+          "name": "rateTypeCode",
+          "type": "v.optional(\r\n      v.union(v.literal(\"hour\"), v.literal(\"day\"), v.literal(\"flat\"))\r\n    )",
+          "line": 702
+        },
+        {
+          "name": "rateTypeLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 705
+        },
+        {
+          "name": "rateType",
+          "type": "v.optional(v.string())",
+          "line": 706
+        },
+        {
+          "name": "crewSize",
+          "type": "v.optional(v.number())",
+          "line": 707
+        },
+        {
+          "name": "plannedQuantity",
+          "type": "v.optional(v.number())",
+          "line": 708
+        },
+        {
+          "name": "plannedUnitCost",
+          "type": "v.optional(v.number())",
+          "line": 709
+        },
+        {
+          "name": "plannedTotalCost",
+          "type": "v.optional(v.number())",
+          "line": 710
+        },
+        {
+          "name": "isManagement",
+          "type": "v.optional(v.boolean())",
+          "line": 711
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 712
+        },
+        {
+          "name": "sourceCode",
+          "type": "v.optional(\r\n      v.union(\r\n        v.literal(\"agent_estimate\"),\r\n        v.literal(\"vendor_quote\"),\r\n        v.literal(\"invoice\"),\r\n        v.literal(\"manual\")\r\n      )\r\n    )",
+          "line": 713
+        },
+        {
+          "name": "sourceLabelHe",
+          "type": "v.optional(v.string())",
+          "line": 721
+        },
+        {
+          "name": "source",
+          "type": "v.optional(v.string())",
+          "line": 722
+        },
+        {
+          "name": "confidence",
+          "type": "v.optional(v.number())",
+          "line": 723
+        },
+        {
+          "name": "actualTotalCost",
+          "type": "v.optional(v.number())",
+          "line": 724
+        },
+        {
+          "name": "receiptItemIds",
+          "type": "v.optional(v.array(v.id(\"receiptItems\")))",
+          "line": 725
+        },
+        {
+          "name": "createdFromChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 726
+        },
+        {
+          "name": "dedupKey",
+          "type": "v.optional(v.string())",
+          "line": 727
+        },
+        {
+          "name": "status",
+          "type": "v.optional(v.string())",
+          "line": 728
+        },
+        {
+          "name": "assignee",
+          "type": "v.optional(v.string())",
+          "line": 729
+        },
+        {
+          "name": "assigneeId",
+          "type": "v.optional(v.id(\"employees\"))",
+          "line": 730
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 731
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.optional(v.number())",
+          "line": 732
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 692
+        },
+        {
+          "name": "by_element",
+          "fields": "[\"elementId\"]",
+          "line": 692
+        },
+        {
+          "name": "by_task",
+          "fields": "[\"taskId\"]",
+          "line": 692
+        },
+        {
+          "name": "by_project_updatedAt",
+          "fields": "[\"projectId\", \"updatedAt\"]",
+          "line": 692
+        }
+      ]
+    },
+    {
+      "tableName": "printParts",
+      "line": 740,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 741
+        },
+        {
+          "name": "elementId",
+          "type": "v.id(\"elements\")",
+          "line": 742
+        },
+        {
+          "name": "label",
+          "type": "v.string()",
+          "line": 743
+        },
+        {
+          "name": "substrate",
+          "type": "v.optional(v.string())",
+          "line": 744
+        },
+        {
+          "name": "finish",
+          "type": "v.optional(v.string())",
+          "line": 745
+        },
+        {
+          "name": "qty",
+          "type": "v.number()",
+          "line": 746
+        },
+        {
+          "name": "size",
+          "type": "v.optional(v.string())",
+          "line": 747
+        },
+        {
+          "name": "width",
+          "type": "v.optional(v.number())",
+          "line": 748
+        },
+        {
+          "name": "height",
+          "type": "v.optional(v.number())",
+          "line": 749
+        },
+        {
+          "name": "unit",
+          "type": "v.optional(v.union(v.literal(\"mm\"), v.literal(\"cm\"), v.literal(\"m\")))",
+          "line": 750
+        },
+        {
+          "name": "requiresProof",
+          "type": "v.optional(v.boolean())",
+          "line": 751
+        },
+        {
+          "name": "testPrintRequired",
+          "type": "v.optional(v.boolean())",
+          "line": 752
+        },
+        {
+          "name": "qaStatus",
+          "type": "v.optional(printQaStatus)",
+          "line": 753
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 754
+        },
+        {
+          "name": "createdFromChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 755
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 756
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_element",
+          "fields": "[\"elementId\"]",
+          "line": 740
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 740
+        }
+      ]
+    },
+    {
+      "tableName": "receipts",
+      "line": 762,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 763
+        },
+        {
+          "name": "purchaseId",
+          "type": "v.optional(v.id(\"purchases\"))",
+          "line": 764
+        },
+        {
+          "name": "fileId",
+          "type": "v.id(\"projectFiles\")",
+          "line": 765
+        },
+        {
+          "name": "fileIds",
+          "type": "v.optional(v.array(v.id(\"projectFiles\")))",
+          "line": 766
+        },
+        {
+          "name": "vendorId",
+          "type": "v.optional(v.id(\"vendors\"))",
+          "line": 767
+        },
+        {
+          "name": "status",
+          "type": "v.optional(receiptStatus)",
+          "line": 768
+        },
+        {
+          "name": "date",
+          "type": "v.optional(v.number())",
+          "line": 769
+        },
+        {
+          "name": "total",
+          "type": "v.optional(v.number())",
+          "line": 770
+        },
+        {
+          "name": "currency",
+          "type": "v.optional(v.string())",
+          "line": 771
+        },
+        {
+          "name": "extraction",
+          "type": "v.optional(v.any())",
+          "line": 772
+        },
+        {
+          "name": "createdFromChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 773
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 774
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.optional(v.number())",
+          "line": 775
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_purchase",
+          "fields": "[\"purchaseId\"]",
+          "line": 762
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 762
+        },
+        {
+          "name": "by_vendor",
+          "fields": "[\"vendorId\"]",
+          "line": 762
+        }
+      ]
+    },
+    {
+      "tableName": "elementDrafts",
+      "line": 782,
+      "fields": [
+        {
+          "name": "elementId",
+          "type": "v.id(\"elements\")",
+          "line": 783
+        },
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 784
+        },
+        {
+          "name": "baseVersionId",
+          "type": "v.optional(v.id(\"elementVersions\"))",
+          "line": 785
+        },
+        {
+          "name": "status",
+          "type": "draftStatus",
+          "line": 786
+        },
+        {
+          "name": "revisionNumber",
+          "type": "v.number()",
+          "line": 787
+        },
+        {
+          "name": "createdFrom",
+          "type": "v.any()",
+          "line": 788
+        },
+        {
+          "name": "workingSnapshot",
+          "type": "v.any()",
+          "line": 789
+        },
+        {
+          "name": "schemaVersion",
+          "type": "v.number()",
+          "line": 790
+        },
+        {
+          "name": "createdBy",
+          "type": "v.optional(v.id(\"users\"))",
+          "line": 791
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 792
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 793
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_element",
+          "fields": "[\"elementId\"]",
+          "line": 782
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 782
+        },
+        {
+          "name": "by_status",
+          "fields": "[\"status\"]",
+          "line": 782
+        }
+      ]
+    },
+    {
+      "tableName": "elementVersions",
+      "line": 800,
+      "fields": [
+        {
+          "name": "elementId",
+          "type": "v.id(\"elements\")",
+          "line": 801
+        },
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 802
+        },
+        {
+          "name": "versionNumber",
+          "type": "v.number()",
+          "line": 803
+        },
+        {
+          "name": "status",
+          "type": "v.literal(\"approved\")",
+          "line": 804
+        },
+        {
+          "name": "tags",
+          "type": "v.array(v.string())",
+          "line": 805
+        },
+        {
+          "name": "summary",
+          "type": "v.optional(v.string())",
+          "line": 806
+        },
+        {
+          "name": "snapshot",
+          "type": "v.any()",
+          "line": 807
+        },
+        {
+          "name": "schemaVersion",
+          "type": "v.number()",
+          "line": 808
+        },
+        {
+          "name": "approvedBy",
+          "type": "v.optional(v.id(\"users\"))",
+          "line": 809
+        },
+        {
+          "name": "approvedAt",
+          "type": "v.number()",
+          "line": 810
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 811
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_element",
+          "fields": "[\"elementId\"]",
+          "line": 800
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 800
+        },
+        {
+          "name": "by_element_version",
+          "fields": "[\"elementId\", \"versionNumber\"]",
+          "line": 800
+        }
+      ]
+    },
+    {
+      "tableName": "projectCostContainers",
+      "line": 818,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 819
+        },
+        {
+          "name": "currentDraftId",
+          "type": "v.optional(v.id(\"elementDrafts\"))",
+          "line": 820
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 821
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 822
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 818
+        }
+      ]
+    },
+    {
+      "tableName": "projectCostVersions",
+      "line": 827,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 828
+        },
+        {
+          "name": "status",
+          "type": "v.optional(v.string())",
+          "line": 829
+        },
+        {
+          "name": "snapshot",
+          "type": "v.optional(v.any())",
+          "line": 830
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 831
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 827
+        }
+      ]
+    },
+    {
+      "tableName": "quoteVersions",
+      "line": 836,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 837
+        },
+        {
+          "name": "status",
+          "type": "v.string()",
+          "line": 838
+        },
+        {
+          "name": "sourceElementVersionIds",
+          "type": "v.array(v.id(\"elementVersions\"))",
+          "line": 839
+        },
+        {
+          "name": "sourceProjectCostVersionId",
+          "type": "v.optional(v.id(\"projectCostVersions\"))",
+          "line": 840
+        },
+        {
+          "name": "language",
+          "type": "v.optional(v.string())",
+          "line": 841
+        },
+        {
+          "name": "sections",
+          "type": "v.optional(v.any())",
+          "line": 842
+        },
+        {
+          "name": "totals",
+          "type": "v.optional(v.any())",
+          "line": 843
+        },
+        {
+          "name": "version",
+          "type": "v.optional(v.number())",
+          "line": 844
+        },
+        {
+          "name": "customerId",
+          "type": "v.optional(v.id(\"customers\"))",
+          "line": 845
+        },
+        {
+          "name": "customerName",
+          "type": "v.optional(v.string())",
+          "line": 846
+        },
+        {
+          "name": "inputs",
+          "type": "v.optional(v.object({\r\n      projectDescription: v.optional(v.string()),\r\n      specs: v.optional(v.string()),\r\n      manualPriceNis: v.optional(v.number()),\r\n      includeFlags: v.optional(v.object({\r\n        includeElements: v.boolean(),\r\n        elementsMode: v.union(v.literal(\"bySection\"), v.literal(\"byElement\")),\r\n        includeTerms: v.boolean(),\r\n        includeDates: v.boolean(),\r\n        includeAgreements: v.boolean(),\r\n        includeOptions: v.boolean(),\r\n      })),\r\n      validUntil: v.optional(v.string()),\r\n      logoFileId: v.optional(v.id(\"projectFiles\")),\r\n    }))",
+          "line": 847
+        },
+        {
+          "name": "margins",
+          "type": "v.optional(v.object({\r\n      riskPct: v.number(),\r\n      overheadPct: v.number(),\r\n      profitPct: v.number(),\r\n    }))",
+          "line": 862
+        },
+        {
+          "name": "currency",
+          "type": "v.optional(v.string())",
+          "line": 867
+        },
+        {
+          "name": "priceSummary",
+          "type": "v.optional(v.any())",
+          "line": 868
+        },
+        {
+          "name": "sellBreakdown",
+          "type": "v.optional(v.any())",
+          "line": 869
+        },
+        {
+          "name": "quoteText_he",
+          "type": "v.optional(v.string())",
+          "line": 870
+        },
+        {
+          "name": "quoteBlocks",
+          "type": "v.optional(v.any())",
+          "line": 871
+        },
+        {
+          "name": "pdfFileId",
+          "type": "v.optional(v.id(\"projectFiles\"))",
+          "line": 872
+        },
+        {
+          "name": "contentHash",
+          "type": "v.optional(v.string())",
+          "line": 873
+        },
+        {
+          "name": "previousQuoteId",
+          "type": "v.optional(v.id(\"quoteVersions\"))",
+          "line": 874
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 875
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 836
+        }
+      ]
+    },
+    {
+      "tableName": "budgetBaselines",
+      "line": 880,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 881
+        },
+        {
+          "name": "quoteVersionId",
+          "type": "v.optional(v.id(\"quoteVersions\"))",
+          "line": 882
+        },
+        {
+          "name": "status",
+          "type": "v.string()",
+          "line": 883
+        },
+        {
+          "name": "sourceElementVersionIds",
+          "type": "v.optional(v.array(v.id(\"elementVersions\")))",
+          "line": 884
+        },
+        {
+          "name": "sourceProjectCostVersionId",
+          "type": "v.optional(v.id(\"projectCostVersions\"))",
+          "line": 885
+        },
+        {
+          "name": "planned",
+          "type": "v.optional(v.any())",
+          "line": 886
+        },
+        {
+          "name": "approvedAt",
+          "type": "v.optional(v.number())",
+          "line": 887
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 888
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 880
+        }
+      ]
+    },
+    {
+      "tableName": "changeOrders",
+      "line": 893,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 894
+        },
+        {
+          "name": "title",
+          "type": "v.string()",
+          "line": 895
+        },
+        {
+          "name": "status",
+          "type": "v.string()",
+          "line": 896
+        },
+        {
+          "name": "financials",
+          "type": "v.any()",
+          "line": 897
+        },
+        {
+          "name": "approvedAt",
+          "type": "v.optional(v.number())",
+          "line": 898
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 899
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 900
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 893
+        }
+      ]
+    },
+    {
+      "tableName": "budgetAdjustments",
+      "line": 905,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 906
+        },
+        {
+          "name": "baselineId",
+          "type": "v.id(\"budgetBaselines\")",
+          "line": 907
+        },
+        {
+          "name": "changeOrderId",
+          "type": "v.optional(v.id(\"changeOrders\"))",
+          "line": 908
+        },
+        {
+          "name": "delta",
+          "type": "v.any()",
+          "line": 909
+        },
+        {
+          "name": "approvedAt",
+          "type": "v.optional(v.number())",
+          "line": 910
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 911
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_baseline",
+          "fields": "[\"baselineId\"]",
+          "line": 905
+        }
+      ]
+    },
+    {
+      "tableName": "changeSets",
+      "line": 916,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 917
+        },
+        {
+          "name": "stage",
+          "type": "v.union(v.literal(\"IDEATION\"), v.literal(\"QUOTE\"), v.literal(\"BREAKDOWN\"))",
+          "line": 919
+        },
+        {
+          "name": "status",
+          "type": "v.union(\r\n      v.literal(\"PROPOSED\"),\r\n      v.literal(\"APPLIED\"),\r\n      v.literal(\"PARTIALLY_APPLIED\"),\r\n      v.literal(\"DISCARDED\")\r\n    )",
+          "line": 920
+        },
+        {
+          "name": "scope",
+          "type": "v.optional(v.union(\r\n      v.literal(\"tasks\"),\r\n      v.literal(\"accounting\"),\r\n      v.literal(\"elements\"),\r\n      v.literal(\"quote\"),\r\n      v.literal(\"knowledge\"),\r\n      v.literal(\"project\"),\r\n      v.literal(\"multi\")\r\n    ))",
+          "line": 928
+        },
+        {
+          "name": "baseSnapshot",
+          "type": "v.optional(v.object({\r\n      projectUpdatedAt: v.optional(v.number()),\r\n      elementsUpdatedAt: v.optional(v.number()),\r\n      tasksUpdatedAt: v.optional(v.number()),\r\n      accountingUpdatedAt: v.optional(v.number()),\r\n      quoteUpdatedAt: v.optional(v.number()),\r\n    }))",
+          "line": 937
+        },
+        {
+          "name": "artifactRevisionInId",
+          "type": "v.optional(v.id(\"flowArtifactRevisions\"))",
+          "line": 944
+        },
+        {
+          "name": "runConfig",
+          "type": "v.optional(v.object({\r\n      modelPreset: v.string(),\r\n      allowWeb: v.boolean(),\r\n      createImages: v.boolean(),\r\n      selectedModules: v.array(v.string()), // e.g. [\"critique\", \"risks\"]\r\n      tabContext: v.optional(v.string()),\r\n      applyMode: v.optional(v.string())\r\n    }))",
+          "line": 945
+        },
+        {
+          "name": "report_he",
+          "type": "v.optional(v.any())",
+          "line": 955
+        },
+        {
+          "name": "gaps",
+          "type": "v.optional(v.any())",
+          "line": 956
+        },
+        {
+          "name": "links",
+          "type": "v.optional(v.array(v.object({\r\n      title: v.string(),\r\n      url: v.string(),\r\n      domain: v.string(),\r\n      publishedAt: v.optional(v.string()),\r\n      usedFor_he: v.string()\r\n    })))",
+          "line": 957
+        },
+        {
+          "name": "generatedImages",
+          "type": "v.optional(v.array(v.object({\r\n      elementId: v.optional(v.string()),\r\n      kind: v.string(), // \"technical\" | \"client\"\r\n      imageRef: v.string(),\r\n      caption_he: v.string()\r\n    })))",
+          "line": 964
+        },
+        {
+          "name": "changeGroups",
+          "type": "v.optional(v.array(v.object({\r\n      id: v.string(),\r\n      title_he: v.string(),\r\n      scope: v.string(),\r\n      rationale_he: v.string(),\r\n      riskLevel: v.string(), // \"low\"|\"medium\"|\"high\"\r\n      requiresUserApproval: v.boolean(),\r\n      operations: v.array(v.any()) // The ops\r\n    })))",
+          "line": 972
+        },
+        {
+          "name": "appliedGroupIds",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 982
+        },
+        {
+          "name": "appliedOpIndices",
+          "type": "v.optional(v.array(v.number()))",
+          "line": 983
+        },
+        {
+          "name": "auditLogIds",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 984
+        },
+        {
+          "name": "userEdits",
+          "type": "v.optional(v.any())",
+          "line": 985
+        },
+        {
+          "name": "lifecycleStatus",
+          "type": "v.optional(v.union(v.literal(\"draft\"), v.literal(\"proposed\")))",
+          "line": 988
+        },
+        {
+          "name": "dependsOnIssueKeys",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 989
+        },
+        {
+          "name": "assumptionsUsed",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 990
+        },
+        {
+          "name": "reason_he",
+          "type": "v.optional(v.string())",
+          "line": 993
+        },
+        {
+          "name": "base",
+          "type": "v.optional(v.any())",
+          "line": 994
+        },
+        {
+          "name": "ops",
+          "type": "v.optional(v.array(v.object({\r\n      kind: v.string(),\r\n      payload: v.any(),\r\n    })))",
+          "line": 995
+        },
+        {
+          "name": "preview_he",
+          "type": "v.optional(v.any())",
+          "line": 999
+        },
+        {
+          "name": "sourceChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 1000
+        },
+        {
+          "name": "schemaVersion",
+          "type": "v.optional(v.number())",
+          "line": 1002
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1004
+        },
+        {
+          "name": "createdBy",
+          "type": "v.optional(v.object({\r\n      type: v.union(v.literal(\"agent\"), v.literal(\"user\")),\r\n      agentName: v.optional(v.string()),\r\n      userId: v.optional(v.string())\r\n    }))",
+          "line": 1005
+        },
+        {
+          "name": "createdBy_he",
+          "type": "v.optional(v.string())",
+          "line": 1010
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.optional(v.number())",
+          "line": 1012
+        },
+        {
+          "name": "appliedAt",
+          "type": "v.optional(v.number())",
+          "line": 1013
+        },
+        {
+          "name": "appliedBy_he",
+          "type": "v.optional(v.string())",
+          "line": 1014
+        },
+        {
+          "name": "discardedAt",
+          "type": "v.optional(v.number())",
+          "line": 1015
+        },
+        {
+          "name": "discardedBy_he",
+          "type": "v.optional(v.string())",
+          "line": 1016
+        },
+        {
+          "name": "sourceSkillRunId",
+          "type": "v.optional(v.id(\"skillRuns\"))",
+          "line": 1018
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 916
+        },
+        {
+          "name": "by_project_status",
+          "fields": "[\"projectId\", \"status\"]",
+          "line": 916
+        },
+        {
+          "name": "by_project_stage",
+          "fields": "[\"projectId\", \"stage\"]",
+          "line": 916
+        }
+      ]
+    },
+    {
+      "tableName": "auditLogs",
+      "line": 1025,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1026
+        },
+        {
+          "name": "changeSetId",
+          "type": "v.id(\"changeSets\")",
+          "line": 1027
+        },
+        {
+          "name": "groupId",
+          "type": "v.optional(v.string())",
+          "line": 1028
+        },
+        {
+          "name": "operation",
+          "type": "v.string()",
+          "line": 1029
+        },
+        {
+          "name": "entityRef",
+          "type": "v.string()",
+          "line": 1030
+        },
+        {
+          "name": "before",
+          "type": "v.optional(v.any())",
+          "line": 1031
+        },
+        {
+          "name": "after",
+          "type": "v.optional(v.any())",
+          "line": 1032
+        },
+        {
+          "name": "appliedBy",
+          "type": "v.optional(v.id(\"users\"))",
+          "line": 1033
+        },
+        {
+          "name": "appliedAt",
+          "type": "v.number()",
+          "line": 1034
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1025
+        },
+        {
+          "name": "by_changeSet",
+          "fields": "[\"changeSetId\"]",
+          "line": 1025
+        }
+      ]
+    },
+    {
+      "tableName": "suggestedElements",
+      "line": 1046,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1047
+        },
+        {
+          "name": "title",
+          "type": "v.string()",
+          "line": 1048
+        },
+        {
+          "name": "type",
+          "type": "v.optional(v.string())",
+          "line": 1049
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"pending\"), v.literal(\"approved\"), v.literal(\"rejected\"))",
+          "line": 1050
+        },
+        {
+          "name": "approvedElementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 1051
+        },
+        {
+          "name": "sourceMessageId",
+          "type": "v.optional(v.string())",
+          "line": 1052
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1053
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1054
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1046
+        },
+        {
+          "name": "by_project_status",
+          "fields": "[\"projectId\", \"status\"]",
+          "line": 1046
+        }
+      ]
+    },
+    {
+      "tableName": "customers",
+      "line": 1068,
+      "fields": [
+        {
+          "name": "customerId",
+          "type": "v.string()",
+          "line": 1069
+        },
+        {
+          "name": "name",
+          "type": "v.string()",
+          "line": 1070
+        },
+        {
+          "name": "nameNormalized",
+          "type": "v.string()",
+          "line": 1071
+        },
+        {
+          "name": "status",
+          "type": "customerStatus",
+          "line": 1072
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 1073
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1074
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1075
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_customerId",
+          "fields": "[\"customerId\"]",
+          "line": 1068
+        },
+        {
+          "name": "by_nameNormalized",
+          "fields": "[\"nameNormalized\"]",
+          "line": 1068
+        },
+        {
+          "name": "by_status",
+          "fields": "[\"status\"]",
+          "line": 1068
+        }
+      ]
+    },
+    {
+      "tableName": "customerContacts",
+      "line": 1081,
+      "fields": [
+        {
+          "name": "customerId",
+          "type": "v.id(\"customers\")",
+          "line": 1082
+        },
+        {
+          "name": "name",
+          "type": "v.string()",
+          "line": 1083
+        },
+        {
+          "name": "phone",
+          "type": "v.optional(v.string())",
+          "line": 1084
+        },
+        {
+          "name": "email",
+          "type": "v.optional(v.string())",
+          "line": 1085
+        },
+        {
+          "name": "role",
+          "type": "v.optional(v.string())",
+          "line": 1086
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 1087
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1088
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1089
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_customer",
+          "fields": "[\"customerId\"]",
+          "line": 1081
+        }
+      ]
+    },
+    {
+      "tableName": "shareLinks",
+      "line": 1093,
+      "fields": [
+        {
+          "name": "token",
+          "type": "v.string()",
+          "line": 1094
+        },
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1095
+        },
+        {
+          "name": "scope",
+          "type": "shareScope",
+          "line": 1096
+        },
+        {
+          "name": "quoteVersionId",
+          "type": "v.optional(v.id(\"quoteVersions\"))",
+          "line": 1097
+        },
+        {
+          "name": "pdfFileId",
+          "type": "v.optional(v.id(\"projectFiles\"))",
+          "line": 1098
+        },
+        {
+          "name": "expiresAt",
+          "type": "v.optional(v.number())",
+          "line": 1099
+        },
+        {
+          "name": "createdBy",
+          "type": "v.optional(v.union(v.literal(\"human\"), v.literal(\"agent\")))",
+          "line": 1100
+        },
+        {
+          "name": "createdByUserId",
+          "type": "v.optional(v.id(\"users\"))",
+          "line": 1101
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1102
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_token",
+          "fields": "[\"token\"]",
+          "line": 1093
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1093
+        }
+      ]
+    },
+    {
+      "tableName": "receiptItems",
+      "line": 1108,
+      "fields": [
+        {
+          "name": "receiptId",
+          "type": "v.id(\"receipts\")",
+          "line": 1109
+        },
+        {
+          "name": "nameRaw",
+          "type": "v.string()",
+          "line": 1110
+        },
+        {
+          "name": "qty",
+          "type": "v.optional(v.number())",
+          "line": 1111
+        },
+        {
+          "name": "unit",
+          "type": "v.optional(v.string())",
+          "line": 1112
+        },
+        {
+          "name": "unitPrice",
+          "type": "v.optional(v.number())",
+          "line": 1113
+        },
+        {
+          "name": "total",
+          "type": "v.optional(v.number())",
+          "line": 1114
+        },
+        {
+          "name": "vendorId",
+          "type": "v.optional(v.id(\"vendors\"))",
+          "line": 1115
+        },
+        {
+          "name": "mappedAccountingLineId",
+          "type": "v.optional(v.id(\"accountingLines\"))",
+          "line": 1116
+        },
+        {
+          "name": "mappedMaterialLineId",
+          "type": "v.optional(v.id(\"materialLines\"))",
+          "line": 1117
+        },
+        {
+          "name": "mappedDraftMaterialId",
+          "type": "v.optional(v.string())",
+          "line": 1118
+        },
+        {
+          "name": "mappedWorkLineId",
+          "type": "v.optional(v.id(\"workLines\"))",
+          "line": 1119
+        },
+        {
+          "name": "mappedDraftWorkId",
+          "type": "v.optional(v.string())",
+          "line": 1120
+        },
+        {
+          "name": "mappedTaskId",
+          "type": "v.optional(v.id(\"tasks\"))",
+          "line": 1121
+        },
+        {
+          "name": "mappedElementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 1122
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1123
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.optional(v.number())",
+          "line": 1124
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_receipt",
+          "fields": "[\"receiptId\"]",
+          "line": 1108
+        },
+        {
+          "name": "by_mappedMaterialLine",
+          "fields": "[\"mappedMaterialLineId\"]",
+          "line": 1108
+        }
+      ]
+    },
+    {
+      "tableName": "printFiles",
+      "line": 1130,
+      "fields": [
+        {
+          "name": "printPartId",
+          "type": "v.id(\"printParts\")",
+          "line": 1131
+        },
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1132
+        },
+        {
+          "name": "fileId",
+          "type": "v.id(\"projectFiles\")",
+          "line": 1133
+        },
+        {
+          "name": "kind",
+          "type": "v.union(\r\n      v.literal(\"source\"),\r\n      v.literal(\"printReady\"),\r\n      v.literal(\"mockup\")\r\n    )",
+          "line": 1134
+        },
+        {
+          "name": "originalFilename",
+          "type": "v.optional(v.string())",
+          "line": 1139
+        },
+        {
+          "name": "uploadedAt",
+          "type": "v.number()",
+          "line": 1140
+        },
+        {
+          "name": "warnings",
+          "type": "v.array(v.string())",
+          "line": 1141
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1142
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_printPart",
+          "fields": "[\"printPartId\"]",
+          "line": 1130
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1130
+        }
+      ]
+    },
+    {
+      "tableName": "printFileAnalyses",
+      "line": 1146,
+      "fields": [
+        {
+          "name": "printFileId",
+          "type": "v.id(\"printFiles\")",
+          "line": 1147
+        },
+        {
+          "name": "widthPx",
+          "type": "v.optional(v.number())",
+          "line": 1148
+        },
+        {
+          "name": "heightPx",
+          "type": "v.optional(v.number())",
+          "line": 1149
+        },
+        {
+          "name": "dpiX",
+          "type": "v.optional(v.number())",
+          "line": 1150
+        },
+        {
+          "name": "dpiY",
+          "type": "v.optional(v.number())",
+          "line": 1151
+        },
+        {
+          "name": "pageCount",
+          "type": "v.optional(v.number())",
+          "line": 1152
+        },
+        {
+          "name": "pageWidthMm",
+          "type": "v.optional(v.number())",
+          "line": 1153
+        },
+        {
+          "name": "pageHeightMm",
+          "type": "v.optional(v.number())",
+          "line": 1154
+        },
+        {
+          "name": "warnings",
+          "type": "v.array(v.string())",
+          "line": 1155
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1156
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_printFile",
+          "fields": "[\"printFileId\"]",
+          "line": 1146
+        }
+      ]
+    },
+    {
+      "tableName": "elementImages",
+      "line": 1160,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1161
+        },
+        {
+          "name": "elementId",
+          "type": "v.id(\"elements\")",
+          "line": 1162
+        },
+        {
+          "name": "fileId",
+          "type": "v.optional(v.id(\"projectFiles\"))",
+          "line": 1163
+        },
+        {
+          "name": "url",
+          "type": "v.optional(v.string())",
+          "line": 1164
+        },
+        {
+          "name": "type",
+          "type": "v.union(\r\n      v.literal(\"engineering\"),\r\n      v.literal(\"illustration\"),\r\n      v.literal(\"reference\")\r\n    )",
+          "line": 1165
+        },
+        {
+          "name": "caption",
+          "type": "v.optional(v.string())",
+          "line": 1170
+        },
+        {
+          "name": "createdFromChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 1171
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1172
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_element",
+          "fields": "[\"elementId\"]",
+          "line": 1160
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1160
+        }
+      ]
+    },
+    {
+      "tableName": "employees",
+      "line": 1178,
+      "fields": [
+        {
+          "name": "displayName",
+          "type": "v.string()",
+          "line": 1179
+        },
+        {
+          "name": "displayNameNormalized",
+          "type": "v.optional(v.string())",
+          "line": 1180
+        },
+        {
+          "name": "role",
+          "type": "v.string()",
+          "line": 1181
+        },
+        {
+          "name": "defaultDayRate",
+          "type": "v.number()",
+          "line": 1182
+        },
+        {
+          "name": "active",
+          "type": "v.boolean()",
+          "line": 1183
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1184
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1185
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_displayNameNormalized",
+          "fields": "[\"displayNameNormalized\"]",
+          "line": 1178
+        }
+      ]
+    },
+    {
+      "tableName": "vendors",
+      "line": 1189,
+      "fields": [
+        {
+          "name": "name",
+          "type": "v.string()",
+          "line": 1190
+        },
+        {
+          "name": "type",
+          "type": "v.string()",
+          "line": 1191
+        },
+        {
+          "name": "phone",
+          "type": "v.optional(v.string())",
+          "line": 1192
+        },
+        {
+          "name": "email",
+          "type": "v.optional(v.string())",
+          "line": 1193
+        },
+        {
+          "name": "address",
+          "type": "v.optional(v.string())",
+          "line": 1194
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 1195
+        },
+        {
+          "name": "active",
+          "type": "v.boolean()",
+          "line": 1196
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1197
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1198
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_name",
+          "fields": "[\"name\"]",
+          "line": 1189
+        }
+      ]
+    },
+    {
+      "tableName": "materialCategories",
+      "line": 1202,
+      "fields": [
+        {
+          "name": "nameHe",
+          "type": "v.string()",
+          "line": 1203
+        },
+        {
+          "name": "parentId",
+          "type": "v.optional(v.id(\"materialCategories\"))",
+          "line": 1204
+        },
+        {
+          "name": "sortOrder",
+          "type": "v.optional(v.number())",
+          "line": 1205
+        },
+        {
+          "name": "icon",
+          "type": "v.optional(v.string())",
+          "line": 1206
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1207
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1208
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_parent",
+          "fields": "[\"parentId\"]",
+          "line": 1202
+        }
+      ]
+    },
+    {
+      "tableName": "uoms",
+      "line": 1212,
+      "fields": [
+        {
+          "name": "code",
+          "type": "UomCode",
+          "line": 1213
+        },
+        {
+          "name": "labelHe",
+          "type": "v.string()",
+          "line": 1214
+        },
+        {
+          "name": "baseDimension",
+          "type": "v.union(\r\n      v.literal(\"count\"),\r\n      v.literal(\"length\"),\r\n      v.literal(\"area\"),\r\n      v.literal(\"volume\"),\r\n      v.literal(\"weight\")\r\n    )",
+          "line": 1215
+        },
+        {
+          "name": "toBaseFactor",
+          "type": "v.number()",
+          "line": 1222
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1223
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1224
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_code",
+          "fields": "[\"code\"]",
+          "line": 1212
+        }
+      ]
+    },
+    {
+      "tableName": "materialTemplates",
+      "line": 1228,
+      "fields": [
+        {
+          "name": "categoryId",
+          "type": "v.id(\"materialCategories\")",
+          "line": 1229
+        },
+        {
+          "name": "nameHe",
+          "type": "v.string()",
+          "line": 1230
+        },
+        {
+          "name": "kind",
+          "type": "CatalogItemKind",
+          "line": 1231
+        },
+        {
+          "name": "defaultUomCode",
+          "type": "UomCode",
+          "line": 1232
+        },
+        {
+          "name": "searchKeywords",
+          "type": "v.array(v.string())",
+          "line": 1233
+        },
+        {
+          "name": "attributeDefs",
+          "type": "v.array(CatalogAttributeDef)",
+          "line": 1234
+        },
+        {
+          "name": "notesHe",
+          "type": "v.optional(v.string())",
+          "line": 1235
+        },
+        {
+          "name": "active",
+          "type": "v.boolean()",
+          "line": 1236
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1237
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1238
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_category",
+          "fields": "[\"categoryId\"]",
+          "line": 1228
+        },
+        {
+          "name": "by_name",
+          "fields": "[\"nameHe\"]",
+          "line": 1228
+        }
+      ]
+    },
+    {
+      "tableName": "materialVariants",
+      "line": 1244,
+      "fields": [
+        {
+          "name": "templateId",
+          "type": "v.id(\"materialTemplates\")",
+          "line": 1245
+        },
+        {
+          "name": "labelHe",
+          "type": "v.string()",
+          "line": 1246
+        },
+        {
+          "name": "attributes",
+          "type": "v.any()",
+          "line": 1247
+        },
+        {
+          "name": "normalizedKey",
+          "type": "v.string()",
+          "line": 1248
+        },
+        {
+          "name": "thicknessMm",
+          "type": "v.optional(v.number())",
+          "line": 1249
+        },
+        {
+          "name": "widthMm",
+          "type": "v.optional(v.number())",
+          "line": 1250
+        },
+        {
+          "name": "heightMm",
+          "type": "v.optional(v.number())",
+          "line": 1251
+        },
+        {
+          "name": "lengthMm",
+          "type": "v.optional(v.number())",
+          "line": 1252
+        },
+        {
+          "name": "uomCode",
+          "type": "v.optional(UomCode)",
+          "line": 1253
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"active\"), v.literal(\"deprecated\"))",
+          "line": 1254
+        },
+        {
+          "name": "notesHe",
+          "type": "v.optional(v.string())",
+          "line": 1255
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1256
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1257
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_template",
+          "fields": "[\"templateId\"]",
+          "line": 1244
+        },
+        {
+          "name": "by_normalizedKey",
+          "fields": "[\"normalizedKey\"]",
+          "line": 1244
+        }
+      ]
+    },
+    {
+      "tableName": "vendorLocations",
+      "line": 1263,
+      "fields": [
+        {
+          "name": "vendorId",
+          "type": "v.id(\"vendors\")",
+          "line": 1264
+        },
+        {
+          "name": "nameHe",
+          "type": "v.string()",
+          "line": 1265
+        },
+        {
+          "name": "addressHe",
+          "type": "v.string()",
+          "line": 1266
+        },
+        {
+          "name": "geo",
+          "type": "v.optional(v.any())",
+          "line": 1267
+        },
+        {
+          "name": "pickupHoursHe",
+          "type": "v.optional(v.string())",
+          "line": 1268
+        },
+        {
+          "name": "pickupNotesHe",
+          "type": "v.optional(v.string())",
+          "line": 1269
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1270
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1271
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_vendor",
+          "fields": "[\"vendorId\"]",
+          "line": 1263
+        }
+      ]
+    },
+    {
+      "tableName": "catalogPriceRecords",
+      "line": 1275,
+      "fields": [
+        {
+          "name": "variantId",
+          "type": "v.optional(v.id(\"materialVariants\"))",
+          "line": 1276
+        },
+        {
+          "name": "templateId",
+          "type": "v.optional(v.id(\"materialTemplates\"))",
+          "line": 1277
+        },
+        {
+          "name": "vendorId",
+          "type": "v.optional(v.id(\"vendors\"))",
+          "line": 1278
+        },
+        {
+          "name": "sourceType",
+          "type": "PriceSourceType",
+          "line": 1279
+        },
+        {
+          "name": "checkedAt",
+          "type": "v.number()",
+          "line": 1280
+        },
+        {
+          "name": "validUntil",
+          "type": "v.optional(v.number())",
+          "line": 1281
+        },
+        {
+          "name": "currency",
+          "type": "v.string()",
+          "line": 1282
+        },
+        {
+          "name": "pricingModel",
+          "type": "PricingModel",
+          "line": 1283
+        },
+        {
+          "name": "amount",
+          "type": "v.optional(v.number())",
+          "line": 1284
+        },
+        {
+          "name": "minQty",
+          "type": "v.optional(v.number())",
+          "line": 1285
+        },
+        {
+          "name": "packSize",
+          "type": "v.optional(v.number())",
+          "line": 1286
+        },
+        {
+          "name": "setupFee",
+          "type": "v.optional(v.number())",
+          "line": 1287
+        },
+        {
+          "name": "availability",
+          "type": "v.optional(Availability)",
+          "line": 1288
+        },
+        {
+          "name": "leadTimeDays",
+          "type": "v.optional(v.number())",
+          "line": 1289
+        },
+        {
+          "name": "orderMethod",
+          "type": "v.optional(OrderMethod)",
+          "line": 1290
+        },
+        {
+          "name": "orderUrl",
+          "type": "v.optional(v.string())",
+          "line": 1291
+        },
+        {
+          "name": "shippingAvailable",
+          "type": "v.optional(v.boolean())",
+          "line": 1292
+        },
+        {
+          "name": "shippingCost",
+          "type": "v.optional(v.number())",
+          "line": 1293
+        },
+        {
+          "name": "pickupAvailable",
+          "type": "v.optional(v.boolean())",
+          "line": 1294
+        },
+        {
+          "name": "pickupLocationId",
+          "type": "v.optional(v.id(\"vendorLocations\"))",
+          "line": 1295
+        },
+        {
+          "name": "url",
+          "type": "v.optional(v.string())",
+          "line": 1296
+        },
+        {
+          "name": "title",
+          "type": "v.optional(v.string())",
+          "line": 1297
+        },
+        {
+          "name": "domain",
+          "type": "v.optional(v.string())",
+          "line": 1298
+        },
+        {
+          "name": "rawSnippet",
+          "type": "v.optional(v.string())",
+          "line": 1299
+        },
+        {
+          "name": "extractedFields",
+          "type": "v.optional(v.any())",
+          "line": 1300
+        },
+        {
+          "name": "confidence",
+          "type": "v.optional(PriceConfidence)",
+          "line": 1301
+        },
+        {
+          "name": "notesHe",
+          "type": "v.optional(v.string())",
+          "line": 1302
+        },
+        {
+          "name": "createdBy",
+          "type": "v.optional(v.union(v.literal(\"user\"), v.literal(\"agent\")))",
+          "line": 1303
+        },
+        {
+          "name": "sourceRef",
+          "type": "v.optional(v.any())",
+          "line": 1304
+        },
+        {
+          "name": "urlHash",
+          "type": "v.optional(v.string())",
+          "line": 1305
+        },
+        {
+          "name": "offerFingerprint",
+          "type": "v.optional(v.string())",
+          "line": 1306
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1307
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_variant_checkedAt",
+          "fields": "[\"variantId\", \"checkedAt\"]",
+          "line": 1275
+        },
+        {
+          "name": "by_template_checkedAt",
+          "fields": "[\"templateId\", \"checkedAt\"]",
+          "line": 1275
+        },
+        {
+          "name": "by_urlHash",
+          "fields": "[\"urlHash\"]",
+          "line": 1275
+        }
+      ]
+    },
+    {
+      "tableName": "pricingFormulas",
+      "line": 1314,
+      "fields": [
+        {
+          "name": "templateId",
+          "type": "v.id(\"materialTemplates\")",
+          "line": 1315
+        },
+        {
+          "name": "vendorId",
+          "type": "v.optional(v.id(\"vendors\"))",
+          "line": 1316
+        },
+        {
+          "name": "formulaType",
+          "type": "v.union(\r\n      v.literal(\"print_m2\"),\r\n      v.literal(\"cnc_cut\"),\r\n      v.literal(\"custom\")\r\n    )",
+          "line": 1317
+        },
+        {
+          "name": "params",
+          "type": "v.any()",
+          "line": 1322
+        },
+        {
+          "name": "currency",
+          "type": "v.string()",
+          "line": 1323
+        },
+        {
+          "name": "checkedAt",
+          "type": "v.number()",
+          "line": 1324
+        },
+        {
+          "name": "sourceType",
+          "type": "PriceSourceType",
+          "line": 1325
+        },
+        {
+          "name": "evidenceUrl",
+          "type": "v.optional(v.string())",
+          "line": 1326
+        },
+        {
+          "name": "notesHe",
+          "type": "v.optional(v.string())",
+          "line": 1327
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1328
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_template_vendor",
+          "fields": "[\"templateId\", \"vendorId\"]",
+          "line": 1314
+        }
+      ]
+    },
+    {
+      "tableName": "catalogSynonyms",
+      "line": 1332,
+      "fields": [
+        {
+          "name": "phrase",
+          "type": "v.string()",
+          "line": 1333
+        },
+        {
+          "name": "templateId",
+          "type": "v.id(\"materialTemplates\")",
+          "line": 1334
+        },
+        {
+          "name": "boost",
+          "type": "v.optional(v.number())",
+          "line": 1335
+        },
+        {
+          "name": "notesHe",
+          "type": "v.optional(v.string())",
+          "line": 1336
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1337
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_phrase",
+          "fields": "[\"phrase\"]",
+          "line": 1332
+        },
+        {
+          "name": "by_template",
+          "fields": "[\"templateId\"]",
+          "line": 1332
+        }
+      ]
+    },
+    {
+      "tableName": "procurementPrefs",
+      "line": 1343,
+      "fields": [
+        {
+          "name": "key",
+          "type": "v.string()",
+          "line": 1344
+        },
+        {
+          "name": "value",
+          "type": "v.any()",
+          "line": 1345
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_key",
+          "fields": "[\"key\"]",
+          "line": 1343
+        }
+      ]
+    },
+    {
+      "tableName": "purchases",
+      "line": 1348,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.optional(v.id(\"projects\"))",
+          "line": 1349
+        },
+        {
+          "name": "vendorId",
+          "type": "v.id(\"vendors\")",
+          "line": 1350
+        },
+        {
+          "name": "date",
+          "type": "v.number()",
+          "line": 1351
+        },
+        {
+          "name": "currency",
+          "type": "v.string()",
+          "line": 1352
+        },
+        {
+          "name": "totalAmount",
+          "type": "v.number()",
+          "line": 1353
+        },
+        {
+          "name": "status",
+          "type": "v.union(\r\n      v.literal(\"recorded\"),\r\n      v.literal(\"paid\"),\r\n      v.literal(\"cancelled\")\r\n    )",
+          "line": 1354
+        },
+        {
+          "name": "lineItems",
+          "type": "v.array(v.any())",
+          "line": 1359
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 1360
+        },
+        {
+          "name": "createdFromChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 1361
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1362
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1363
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_date",
+          "fields": "[\"date\"]",
+          "line": 1348
+        }
+      ]
+    },
+    {
+      "tableName": "projectFiles",
+      "line": 1366,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1367
+        },
+        {
+          "name": "storageId",
+          "type": "v.id(\"_storage\")",
+          "line": 1368
+        },
+        {
+          "name": "fileName",
+          "type": "v.string()",
+          "line": 1369
+        },
+        {
+          "name": "contentType",
+          "type": "v.string()",
+          "line": 1370
+        },
+        {
+          "name": "size",
+          "type": "v.number()",
+          "line": 1371
+        },
+        {
+          "name": "extractedText",
+          "type": "v.optional(v.string())",
+          "line": 1372
+        },
+        {
+          "name": "summary",
+          "type": "v.optional(v.string())",
+          "line": 1373
+        },
+        {
+          "name": "extractedInfo",
+          "type": "v.optional(v.object({\r\n      topics: v.optional(v.array(v.string())),\r\n      domain: v.optional(v.string()),\r\n      entities: v.optional(v.array(v.object({\r\n        name: v.string(),\r\n        type: v.optional(v.string()),\r\n      }))),\r\n      summary: v.optional(v.string()),\r\n      facts: v.optional(v.array(v.string())),\r\n      language: v.optional(v.string()),\r\n      model: v.optional(v.string()),\r\n      updatedAt: v.optional(v.number()),\r\n    }))",
+          "line": 1374
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1387
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\", \"createdAt\"]",
+          "line": 1366
+        }
+      ]
+    },
+    {
+      "tableName": "proposedUpdates",
+      "line": 1390,
+      "fields": [
+        {
+          "name": "entityType",
+          "type": "v.union(\r\n      v.literal(\"Vendor\"),\r\n      v.literal(\"Person\"),\r\n      v.literal(\"CatalogItem\"),\r\n      v.literal(\"PriceObservation\"),\r\n      v.literal(\"NormalizationMapping\")\r\n    )",
+          "line": 1391
+        },
+        {
+          "name": "payload",
+          "type": "v.any()",
+          "line": 1398
+        },
+        {
+          "name": "reason",
+          "type": "v.string()",
+          "line": 1399
+        },
+        {
+          "name": "createdFrom",
+          "type": "v.any()",
+          "line": 1400
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"pending\"), v.literal(\"accepted\"), v.literal(\"rejected\"))",
+          "line": 1401
+        },
+        {
+          "name": "resolution",
+          "type": "v.optional(v.any())",
+          "line": 1402
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1403
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1404
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_status",
+          "fields": "[\"status\"]",
+          "line": 1390
+        }
+      ]
+    },
+    {
+      "tableName": "inventoryItems",
+      "line": 1408,
+      "fields": [
+        {
+          "name": "templateId",
+          "type": "v.optional(v.id(\"materialTemplates\"))",
+          "line": 1409
+        },
+        {
+          "name": "variantId",
+          "type": "v.optional(v.id(\"materialVariants\"))",
+          "line": 1410
+        },
+        {
+          "name": "name",
+          "type": "v.string()",
+          "line": 1411
+        },
+        {
+          "name": "uomId",
+          "type": "v.optional(v.id(\"uoms\"))",
+          "line": 1412
+        },
+        {
+          "name": "uomCode",
+          "type": "UomCode",
+          "line": 1413
+        },
+        {
+          "name": "onHandQty",
+          "type": "v.number()",
+          "line": 1414
+        },
+        {
+          "name": "location",
+          "type": "v.optional(v.string())",
+          "line": 1415
+        },
+        {
+          "name": "notes",
+          "type": "v.optional(v.string())",
+          "line": 1416
+        },
+        {
+          "name": "active",
+          "type": "v.boolean()",
+          "line": 1417
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1418
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1419
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_name",
+          "fields": "[\"name\"]",
+          "line": 1408
+        }
+      ]
+    },
+    {
+      "tableName": "inventoryReservations",
+      "line": 1423,
+      "fields": [
+        {
+          "name": "inventoryItemId",
+          "type": "v.id(\"inventoryItems\")",
+          "line": 1424
+        },
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1425
+        },
+        {
+          "name": "elementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 1426
+        },
+        {
+          "name": "materialLineId",
+          "type": "v.optional(v.string())",
+          "line": 1427
+        },
+        {
+          "name": "qty",
+          "type": "v.number()",
+          "line": 1428
+        },
+        {
+          "name": "dateRange",
+          "type": "v.optional(v.any())",
+          "line": 1429
+        },
+        {
+          "name": "status",
+          "type": "inventoryResStatus",
+          "line": 1430
+        },
+        {
+          "name": "computedAvailableAfter",
+          "type": "v.optional(v.number())",
+          "line": 1431
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1432
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1433
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_item",
+          "fields": "[\"inventoryItemId\"]",
+          "line": 1423
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1423
+        }
+      ]
+    },
+    {
+      "tableName": "conversations",
+      "line": 1442,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1443
+        },
+        {
+          "name": "title",
+          "type": "v.optional(v.string())",
+          "line": 1444
+        },
+        {
+          "name": "title_he",
+          "type": "v.optional(v.string())",
+          "line": 1445
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"active\"), v.literal(\"archived\"))",
+          "line": 1446
+        },
+        {
+          "name": "mode",
+          "type": "v.optional(v.union(\r\n      v.literal(\"CHAT\"),\r\n      v.literal(\"QUESTIONS\"),\r\n      v.literal(\"SUGGESTIONS\")\r\n    ))",
+          "line": 1447
+        },
+        {
+          "name": "stage",
+          "type": "v.union(\r\n      v.literal(\"ideation\"),\r\n      v.literal(\"planning\"),\r\n      v.literal(\"solutioning\"),\r\n      v.literal(\"IDEATION\"),\r\n      v.literal(\"QUOTE\"),\r\n      v.literal(\"BREAKDOWN\")\r\n    )",
+          "line": 1452
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1460
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1461
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1442
+        },
+        {
+          "name": "by_project_updated",
+          "fields": "[\"projectId\", \"updatedAt\"]",
+          "line": 1442
+        }
+      ]
+    },
+    {
+      "tableName": "conversationMessages",
+      "line": 1466,
+      "fields": [
+        {
+          "name": "conversationId",
+          "type": "v.id(\"conversations\")",
+          "line": 1467
+        },
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1468
+        },
+        {
+          "name": "role",
+          "type": "v.union(v.literal(\"user\"), v.literal(\"assistant\"), v.literal(\"event\"))",
+          "line": 1469
+        },
+        {
+          "name": "text_he",
+          "type": "v.optional(v.string())",
+          "line": 1470
+        },
+        {
+          "name": "block",
+          "type": "v.optional(v.any())",
+          "line": 1471
+        },
+        {
+          "name": "eventType",
+          "type": "v.optional(v.string())",
+          "line": 1472
+        },
+        {
+          "name": "eventPayload",
+          "type": "v.optional(v.any())",
+          "line": 1473
+        },
+        {
+          "name": "changeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 1474
+        },
+        {
+          "name": "metadata",
+          "type": "v.optional(v.any())",
+          "line": 1475
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1476
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_conversation",
+          "fields": "[\"conversationId\"]",
+          "line": 1466
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1466
+        },
+        {
+          "name": "by_changeset",
+          "fields": "[\"changeSetId\"]",
+          "line": 1466
+        }
+      ]
+    },
+    {
+      "tableName": "skills",
+      "line": 1487,
+      "fields": [
+        {
+          "name": "skillId",
+          "type": "v.string()",
+          "line": 1488
+        },
+        {
+          "name": "labelHe",
+          "type": "v.string()",
+          "line": 1489
+        },
+        {
+          "name": "descriptionHe",
+          "type": "v.string()",
+          "line": 1490
+        },
+        {
+          "name": "category",
+          "type": "v.string()",
+          "line": 1491
+        },
+        {
+          "name": "flow",
+          "type": "v.optional(v.string())",
+          "line": 1492
+        },
+        {
+          "name": "scheduling",
+          "type": "v.optional(v.object({\r\n      suggestAfter: v.optional(v.array(v.string())),\r\n      suggestAtStage: v.optional(v.array(v.string())),\r\n    }))",
+          "line": 1493
+        },
+        {
+          "name": "config",
+          "type": "v.object({\r\n      requiresClarifications: v.boolean(),\r\n      clarificationsTargetSkillId: v.optional(v.string()),\r\n      allowedTools: v.object({\r\n        webSearch: v.boolean(),\r\n        ragSearch: v.boolean(),\r\n        fileInspect: v.boolean(),\r\n        runSkill: v.optional(v.boolean()),\r\n        generateQuote: v.optional(v.boolean()),\r\n        estimateTasks: v.optional(v.boolean()),\r\n        agentData: v.optional(v.boolean()),\r\n      }),\r\n      outputContract: v.string(), // \"blocks\", \"changeset\"\r\n    })",
+          "line": 1497
+        },
+        {
+          "name": "prompts",
+          "type": "v.object({\r\n      systemHeaderRef: v.string(),\r\n      promptAddon: v.string(),\r\n    })",
+          "line": 1511
+        },
+        {
+          "name": "model",
+          "type": "v.optional(v.string())",
+          "line": 1515
+        },
+        {
+          "name": "llmParams",
+          "type": "v.optional(v.any())",
+          "line": 1516
+        },
+        {
+          "name": "isEnabled",
+          "type": "v.boolean()",
+          "line": 1517
+        },
+        {
+          "name": "version",
+          "type": "v.optional(v.number())",
+          "line": 1518
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_skillId",
+          "fields": "[\"skillId\"]",
+          "line": 1487
+        }
+      ]
+    },
+    {
+      "tableName": "skillRuns",
+      "line": 1522,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1523
+        },
+        {
+          "name": "conversationId",
+          "type": "v.id(\"agentConversations\")",
+          "line": 1524
+        },
+        {
+          "name": "skillId",
+          "type": "v.string()",
+          "line": 1525
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"running\"), v.literal(\"succeeded\"), v.literal(\"failed\"))",
+          "line": 1526
+        },
+        {
+          "name": "phase",
+          "type": "v.optional(v.string())",
+          "line": 1527
+        },
+        {
+          "name": "phaseLabel",
+          "type": "v.optional(v.string())",
+          "line": 1528
+        },
+        {
+          "name": "phaseDetail",
+          "type": "v.optional(v.string())",
+          "line": 1529
+        },
+        {
+          "name": "inputParams",
+          "type": "v.any()",
+          "line": 1530
+        },
+        {
+          "name": "blocks",
+          "type": "v.optional(v.any())",
+          "line": 1531
+        },
+        {
+          "name": "webPriceOps",
+          "type": "v.optional(v.array(v.any()))",
+          "line": 1532
+        },
+        {
+          "name": "usage",
+          "type": "v.optional(v.any())",
+          "line": 1533
+        },
+        {
+          "name": "rawModelResponse",
+          "type": "v.optional(v.string())",
+          "line": 1534
+        },
+        {
+          "name": "startedAt",
+          "type": "v.optional(v.number())",
+          "line": 1535
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.optional(v.number())",
+          "line": 1536
+        },
+        {
+          "name": "finishedAt",
+          "type": "v.optional(v.number())",
+          "line": 1537
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1538
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1522
+        },
+        {
+          "name": "by_conversation",
+          "fields": "[\"conversationId\"]",
+          "line": 1522
+        }
+      ]
+    },
+    {
+      "tableName": "clarificationSessions",
+      "line": 1544,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1545
+        },
+        {
+          "name": "conversationId",
+          "type": "v.id(\"agentConversations\")",
+          "line": 1546
+        },
+        {
+          "name": "targetSkillId",
+          "type": "v.string()",
+          "line": 1547
+        },
+        {
+          "name": "questions",
+          "type": "v.array(v.any())",
+          "line": 1548
+        },
+        {
+          "name": "answers",
+          "type": "v.optional(v.any())",
+          "line": 1549
+        },
+        {
+          "name": "isSatisfied",
+          "type": "v.boolean()",
+          "line": 1550
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1551
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1552
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project_target",
+          "fields": "[\"projectId\", \"targetSkillId\"]",
+          "line": 1544
+        },
+        {
+          "name": "by_conversation",
+          "fields": "[\"conversationId\"]",
+          "line": 1544
+        }
+      ]
+    },
+    {
+      "tableName": "flowRuns",
+      "line": 1558,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1559
+        },
+        {
+          "name": "status",
+          "type": "v.union(\r\n      v.literal(\"running\"),\r\n      v.literal(\"blocked\"),\r\n      v.literal(\"awaiting_approval\"),\r\n      v.literal(\"paused\"),\r\n      v.literal(\"completed\"),\r\n      v.literal(\"failed\"),\r\n      v.literal(\"cancelled\")\r\n    )",
+          "line": 1560
+        },
+        {
+          "name": "currentGateId",
+          "type": "v.string()",
+          "line": 1569
+        },
+        {
+          "name": "graphVersion",
+          "type": "v.optional(v.string())",
+          "line": 1570
+        },
+        {
+          "name": "approvalMode",
+          "type": "v.optional(v.union(v.literal(\"auto\"), v.literal(\"manual\")))",
+          "line": 1571
+        },
+        {
+          "name": "approvalModeDefault",
+          "type": "v.optional(v.union(v.literal(\"auto\"), v.literal(\"manual\")))",
+          "line": 1572
+        },
+        {
+          "name": "approvalModeOverride",
+          "type": "v.optional(v.boolean())",
+          "line": 1573
+        },
+        {
+          "name": "scope",
+          "type": "v.optional(v.union(v.literal(\"project\"), v.literal(\"element\")))",
+          "line": 1574
+        },
+        {
+          "name": "readinessScore",
+          "type": "v.optional(v.number())",
+          "line": 1575
+        },
+        {
+          "name": "blockingIssueKeys",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 1576
+        },
+        {
+          "name": "forceQuestionGateId",
+          "type": "v.optional(v.string())",
+          "line": 1577
+        },
+        {
+          "name": "toggles",
+          "type": "v.optional(v.object({\n      autoRun: v.optional(v.boolean()),\n      autoApprove: v.optional(v.boolean()),\n      useWebSearch: v.optional(v.boolean()),\n      planningMode: v.optional(v.union(v.literal(\"separated\"), v.literal(\"combined\"))),\n    }))",
+          "line": 1578
+        },
+        {
+          "name": "currentArtifactRevisionId",
+          "type": "v.optional(v.id(\"flowArtifactRevisions\"))",
+          "line": 1584
+        },
+        {
+          "name": "answerVersionAtStart",
+          "type": "v.optional(v.number())",
+          "line": 1585
+        },
+        {
+          "name": "latestAnswerVersion",
+          "type": "v.optional(v.number())",
+          "line": 1586
+        },
+        {
+          "name": "debugModeEnabled",
+          "type": "v.optional(v.boolean())",
+          "line": 1587
+        },
+        {
+          "name": "conversationId",
+          "type": "v.optional(v.id(\"agentConversations\"))",
+          "line": 1588
+        },
+        {
+          "name": "v3StageKey",
+          "type": "v.optional(v.union(\r\n      v.literal(\"A\"), v.literal(\"B\"), v.literal(\"C\"), v.literal(\"D\"), v.literal(\"E\")\r\n    ))",
+          "line": 1590
+        },
+        {
+          "name": "v3Mode",
+          "type": "v.optional(v.union(v.literal(\"questions\"), v.literal(\"build\")))",
+          "line": 1593
+        },
+        {
+          "name": "v3RunStartedAtISO",
+          "type": "v.optional(v.string())",
+          "line": 1594
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1595
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1596
+        },
+        {
+          "name": "finishedAt",
+          "type": "v.optional(v.number())",
+          "line": 1597
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1558
+        },
+        {
+          "name": "by_project_status",
+          "fields": "[\"projectId\", \"status\"]",
+          "line": 1558
+        }
+      ]
+    },
+    {
+      "tableName": "flowSteps",
+      "line": 1602,
+      "fields": [
+        {
+          "name": "flowRunId",
+          "type": "v.id(\"flowRuns\")",
+          "line": 1603
+        },
+        {
+          "name": "gateId",
+          "type": "v.string()",
+          "line": 1604
+        },
+        {
+          "name": "status",
+          "type": "v.union(\r\n      v.literal(\"running\"),\r\n      v.literal(\"passed\"),\r\n      v.literal(\"failed\"),\r\n      v.literal(\"blocked\"),\r\n      v.literal(\"awaiting_approval\"),\r\n      v.literal(\"skipped\")\r\n    )",
+          "line": 1605
+        },
+        {
+          "name": "validationReport",
+          "type": "v.optional(v.any())",
+          "line": 1613
+        },
+        {
+          "name": "draftChangeSetIds",
+          "type": "v.optional(v.array(v.id(\"changeSets\")))",
+          "line": 1614
+        },
+        {
+          "name": "lastEmittedHash",
+          "type": "v.optional(v.string())",
+          "line": 1615
+        },
+        {
+          "name": "retryCount",
+          "type": "v.optional(v.number())",
+          "line": 1616
+        },
+        {
+          "name": "lastRetryAt",
+          "type": "v.optional(v.number())",
+          "line": 1617
+        },
+        {
+          "name": "error",
+          "type": "v.optional(v.string())",
+          "line": 1618
+        },
+        {
+          "name": "startedAt",
+          "type": "v.number()",
+          "line": 1619
+        },
+        {
+          "name": "finishedAt",
+          "type": "v.optional(v.number())",
+          "line": 1620
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"flowRunId\"]",
+          "line": 1602
+        },
+        {
+          "name": "by_run_gate",
+          "fields": "[\"flowRunId\", \"gateId\"]",
+          "line": 1602
+        }
+      ]
+    },
+    {
+      "tableName": "flowArtifactRevisions",
+      "line": 1625,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1626
+        },
+        {
+          "name": "runId",
+          "type": "v.optional(v.id(\"flowRuns\"))",
+          "line": 1627
+        },
+        {
+          "name": "snapshot",
+          "type": "v.any()",
+          "line": 1628
+        },
+        {
+          "name": "hash",
+          "type": "v.string()",
+          "line": 1629
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1630
+        },
+        {
+          "name": "source",
+          "type": "v.union(\r\n      v.literal(\"runStart\"),\r\n      v.literal(\"autoApply\"),\r\n      v.literal(\"manualApply\"),\r\n      v.literal(\"audit\"),\r\n      v.literal(\"replay\")\r\n    )",
+          "line": 1631
+        },
+        {
+          "name": "baseRevisionId",
+          "type": "v.optional(v.id(\"flowArtifactRevisions\"))",
+          "line": 1638
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1625
+        },
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1625
+        },
+        {
+          "name": "by_createdAt",
+          "fields": "[\"createdAt\"]",
+          "line": 1625
+        }
+      ]
+    },
+    {
+      "tableName": "flowNodeRuns",
+      "line": 1644,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"flowRuns\")",
+          "line": 1645
+        },
+        {
+          "name": "nodeId",
+          "type": "v.string()",
+          "line": 1646
+        },
+        {
+          "name": "attempt",
+          "type": "v.number()",
+          "line": 1647
+        },
+        {
+          "name": "status",
+          "type": "v.union(\r\n      v.literal(\"queued\"),\r\n      v.literal(\"running\"),\r\n      v.literal(\"done\"),\r\n      v.literal(\"failed\"),\r\n      v.literal(\"stale\")\r\n    )",
+          "line": 1648
+        },
+        {
+          "name": "dependsOn",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 1655
+        },
+        {
+          "name": "artifactRevisionInId",
+          "type": "v.optional(v.id(\"flowArtifactRevisions\"))",
+          "line": 1656
+        },
+        {
+          "name": "artifactRevisionOutId",
+          "type": "v.optional(v.id(\"flowArtifactRevisions\"))",
+          "line": 1657
+        },
+        {
+          "name": "answerVersionUsed",
+          "type": "v.optional(v.number())",
+          "line": 1658
+        },
+        {
+          "name": "inputsHash",
+          "type": "v.string()",
+          "line": 1659
+        },
+        {
+          "name": "assumptions",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 1660
+        },
+        {
+          "name": "confidence",
+          "type": "v.optional(v.number())",
+          "line": 1661
+        },
+        {
+          "name": "confidenceNotes",
+          "type": "v.optional(v.string())",
+          "line": 1662
+        },
+        {
+          "name": "changesetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 1663
+        },
+        {
+          "name": "logsRef",
+          "type": "v.optional(v.any())",
+          "line": 1664
+        },
+        {
+          "name": "startedAt",
+          "type": "v.number()",
+          "line": 1665
+        },
+        {
+          "name": "finishedAt",
+          "type": "v.optional(v.number())",
+          "line": 1666
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1667
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1644
+        },
+        {
+          "name": "by_run_node",
+          "fields": "[\"runId\", \"nodeId\"]",
+          "line": 1644
+        },
+        {
+          "name": "by_changeset",
+          "fields": "[\"changesetId\"]",
+          "line": 1644
+        },
+        {
+          "name": "by_createdAt",
+          "fields": "[\"createdAt\"]",
+          "line": 1644
+        }
+      ]
+    },
+    {
+      "tableName": "flowAnswerEvents",
+      "line": 1674,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"flowRuns\")",
+          "line": 1675
+        },
+        {
+          "name": "questionId",
+          "type": "v.optional(v.string())",
+          "line": 1676
+        },
+        {
+          "name": "fieldKey",
+          "type": "v.string()",
+          "line": 1677
+        },
+        {
+          "name": "answer",
+          "type": "v.any()",
+          "line": 1678
+        },
+        {
+          "name": "source",
+          "type": "v.union(v.literal(\"user\"), v.literal(\"system\"))",
+          "line": 1679
+        },
+        {
+          "name": "answerVersion",
+          "type": "v.number()",
+          "line": 1680
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1681
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1674
+        },
+        {
+          "name": "by_run_answerVersion",
+          "fields": "[\"runId\", \"answerVersion\"]",
+          "line": 1674
+        },
+        {
+          "name": "by_createdAt",
+          "fields": "[\"createdAt\"]",
+          "line": 1674
+        }
+      ]
+    },
+    {
+      "tableName": "flowQuestionSets",
+      "line": 1687,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"flowRuns\")",
+          "line": 1688
+        },
+        {
+          "name": "questionSetId",
+          "type": "v.string()",
+          "line": 1689
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1690
+        },
+        {
+          "name": "gateId",
+          "type": "v.optional(v.string())",
+          "line": 1691
+        },
+        {
+          "name": "titleHe",
+          "type": "v.optional(v.string())",
+          "line": 1692
+        },
+        {
+          "name": "basedOnArtifactRevisionId",
+          "type": "v.optional(v.id(\"flowArtifactRevisions\"))",
+          "line": 1693
+        },
+        {
+          "name": "basedOnAnswerVersion",
+          "type": "v.optional(v.number())",
+          "line": 1694
+        },
+        {
+          "name": "questions",
+          "type": "v.array(v.object({\r\n      questionId: v.string(),\r\n      fieldKey: v.string(),\r\n      prompt: v.string(),\r\n      choices: v.optional(v.array(v.string())),\r\n      type: v.optional(v.string()),\r\n      placeholderHe: v.optional(v.string()),\r\n      priority: v.optional(v.number()),\r\n      whyAsked: v.optional(v.string()),\r\n    }))",
+          "line": 1695
+        },
+        {
+          "name": "emittedToChatAt",
+          "type": "v.optional(v.number())",
+          "line": 1705
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1687
+        },
+        {
+          "name": "by_run_questionSet",
+          "fields": "[\"runId\", \"questionSetId\"]",
+          "line": 1687
+        },
+        {
+          "name": "by_createdAt",
+          "fields": "[\"createdAt\"]",
+          "line": 1687
+        }
+      ]
+    },
+    {
+      "tableName": "flowQuestionSetResponses",
+      "line": 1711,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"flowRuns\")",
+          "line": 1712
+        },
+        {
+          "name": "questionSetId",
+          "type": "v.id(\"flowQuestionSets\")",
+          "line": 1713
+        },
+        {
+          "name": "intent",
+          "type": "v.union(v.literal(\"answer\"), v.literal(\"ask_more\"), v.literal(\"skip\"))",
+          "line": 1714
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"answered\"), v.literal(\"skipped\"))",
+          "line": 1715
+        },
+        {
+          "name": "answersByKey",
+          "type": "v.optional(v.record(v.string(), v.string()))",
+          "line": 1716
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1717
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1711
+        },
+        {
+          "name": "by_questionSet",
+          "fields": "[\"questionSetId\"]",
+          "line": 1711
+        },
+        {
+          "name": "by_run_createdAt",
+          "fields": "[\"runId\", \"createdAt\"]",
+          "line": 1711
+        }
+      ]
+    },
+    {
+      "tableName": "flowChangeSetApplyLogs",
+      "line": 1723,
+      "fields": [
+        {
+          "name": "changeSetId",
+          "type": "v.id(\"changeSets\")",
+          "line": 1724
+        },
+        {
+          "name": "runId",
+          "type": "v.id(\"flowRuns\")",
+          "line": 1725
+        },
+        {
+          "name": "nodeId",
+          "type": "v.optional(v.string())",
+          "line": 1726
+        },
+        {
+          "name": "appliedBy",
+          "type": "v.union(v.literal(\"auto\"), v.literal(\"user\"), v.literal(\"system\"))",
+          "line": 1727
+        },
+        {
+          "name": "appliedAt",
+          "type": "v.number()",
+          "line": 1728
+        },
+        {
+          "name": "result",
+          "type": "v.union(v.literal(\"success\"), v.literal(\"failure\"))",
+          "line": 1729
+        },
+        {
+          "name": "error",
+          "type": "v.optional(v.string())",
+          "line": 1730
+        },
+        {
+          "name": "artifactRevisionOutId",
+          "type": "v.optional(v.id(\"flowArtifactRevisions\"))",
+          "line": 1731
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_changeSet",
+          "fields": "[\"changeSetId\"]",
+          "line": 1723
+        },
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1723
+        },
+        {
+          "name": "by_appliedAt",
+          "fields": "[\"appliedAt\"]",
+          "line": 1723
+        }
+      ]
+    },
+    {
+      "tableName": "flowAuditRuns",
+      "line": 1737,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"flowRuns\")",
+          "line": 1738
+        },
+        {
+          "name": "auditRunId",
+          "type": "v.string()",
+          "line": 1739
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1740
+        },
+        {
+          "name": "answerVersionUsed",
+          "type": "v.optional(v.number())",
+          "line": 1741
+        },
+        {
+          "name": "artifactRevisionUsed",
+          "type": "v.optional(v.id(\"flowArtifactRevisions\"))",
+          "line": 1742
+        },
+        {
+          "name": "status",
+          "type": "v.union(\r\n      v.literal(\"queued\"),\r\n      v.literal(\"running\"),\r\n      v.literal(\"done\"),\r\n      v.literal(\"failed\"),\r\n      v.literal(\"stale\")\r\n    )",
+          "line": 1743
+        },
+        {
+          "name": "validatorFindings",
+          "type": "v.optional(v.array(v.any()))",
+          "line": 1750
+        },
+        {
+          "name": "changeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 1751
+        },
+        {
+          "name": "verificationReport",
+          "type": "v.optional(v.any())",
+          "line": 1752
+        },
+        {
+          "name": "finishedAt",
+          "type": "v.optional(v.number())",
+          "line": 1753
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1737
+        },
+        {
+          "name": "by_changeSet",
+          "fields": "[\"changeSetId\"]",
+          "line": 1737
+        },
+        {
+          "name": "by_createdAt",
+          "fields": "[\"createdAt\"]",
+          "line": 1737
+        }
+      ]
+    },
+    {
+      "tableName": "agentConversations",
+      "line": 1760,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1761
+        },
+        {
+          "name": "title",
+          "type": "v.string()",
+          "line": 1762
+        },
+        {
+          "name": "mode",
+          "type": "v.union(v.literal(\"chat\"), v.literal(\"builder\"))",
+          "line": 1763
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1764
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1765
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1760
+        }
+      ]
+    },
+    {
+      "tableName": "agentMessages",
+      "line": 1769,
+      "fields": [
+        {
+          "name": "conversationId",
+          "type": "v.id(\"agentConversations\")",
+          "line": 1770
+        },
+        {
+          "name": "role",
+          "type": "v.union(v.literal(\"user\"), v.literal(\"assistant\"), v.literal(\"system\"))",
+          "line": 1771
+        },
+        {
+          "name": "text",
+          "type": "v.optional(v.string())",
+          "line": 1772
+        },
+        {
+          "name": "blocks",
+          "type": "v.optional(v.array(v.any()))",
+          "line": 1773
+        },
+        {
+          "name": "runId",
+          "type": "v.optional(v.union(v.id(\"skillRuns\"), v.id(\"sdkRuns\")))",
+          "line": 1774
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1775
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_conversation",
+          "fields": "[\"conversationId\"]",
+          "line": 1769
+        }
+      ]
+    },
+    {
+      "tableName": "messages",
+      "line": 1779,
+      "fields": [
+        {
+          "name": "conversationId",
+          "type": "v.id(\"conversations\")",
+          "line": 1780
+        },
+        {
+          "name": "role",
+          "type": "v.union(v.literal(\"user\"), v.literal(\"agent\"), v.literal(\"system\"))",
+          "line": 1781
+        },
+        {
+          "name": "content",
+          "type": "v.string()",
+          "line": 1782
+        },
+        {
+          "name": "type",
+          "type": "v.union(v.literal(\"text\"), v.literal(\"questions\"), v.literal(\"changeSet\"))",
+          "line": 1783
+        },
+        {
+          "name": "channel",
+          "type": "v.union(v.literal(\"free\"), v.literal(\"structured\"))",
+          "line": 1784
+        },
+        {
+          "name": "skillUsed",
+          "type": "v.optional(v.string())",
+          "line": 1785
+        },
+        {
+          "name": "metadata",
+          "type": "v.optional(v.any())",
+          "line": 1786
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1787
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_conversation",
+          "fields": "[\"conversationId\"]",
+          "line": 1779
+        }
+      ]
+    },
+    {
+      "tableName": "structuredAnswers",
+      "line": 1790,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1791
+        },
+        {
+          "name": "stage",
+          "type": "v.union(\r\n      v.literal(\"ideation\"),\r\n      v.literal(\"planning\"),\r\n      v.literal(\"solutioning\")\r\n    )",
+          "line": 1792
+        },
+        {
+          "name": "answers",
+          "type": "v.any()",
+          "line": 1797
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1798
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1799
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1790
+        },
+        {
+          "name": "by_project_stage",
+          "fields": "[\"projectId\", \"stage\"]",
+          "line": 1790
+        }
+      ]
+    },
+    {
+      "tableName": "memoryDocs",
+      "line": 1806,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1807
+        },
+        {
+          "name": "elementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 1808
+        },
+        {
+          "name": "kind",
+          "type": "v.union(\r\n      v.literal(\"SOURCE_DOC\"),\r\n      v.literal(\"RUNNING_MEMORY\"),\r\n      v.literal(\"QA_DIGEST\"),\r\n      v.literal(\"USER_INPUT_LOG\"),\r\n      v.literal(\"PROJECT_CONTEXT\")\r\n    )",
+          "line": 1809
+        },
+        {
+          "name": "title_he",
+          "type": "v.optional(v.string())",
+          "line": 1816
+        },
+        {
+          "name": "source",
+          "type": "v.optional(v.object({\r\n      sourceType: v.union(\r\n        v.literal(\"FILE\"),\r\n        v.literal(\"TEXT\"),\r\n        v.literal(\"URL\"),\r\n        v.literal(\"CHAT_EXPORT\"),\r\n        v.literal(\"OTHER\")\r\n      ),\r\n      fileId: v.optional(v.id(\"projectFiles\")),\r\n      url: v.optional(v.string()),\r\n    }))",
+          "line": 1817
+        },
+        {
+          "name": "rawText_he",
+          "type": "v.optional(v.string())",
+          "line": 1828
+        },
+        {
+          "name": "aiSummary",
+          "type": "v.optional(v.object({\r\n      model: v.string(),\r\n      summaryMd_he: v.string(),\r\n      facts_he: v.optional(v.array(v.string())),\r\n      updatedAt: v.number(),\r\n    }))",
+          "line": 1829
+        },
+        {
+          "name": "contentMd_he",
+          "type": "v.optional(v.string())",
+          "line": 1835
+        },
+        {
+          "name": "autoAppendEnabled",
+          "type": "v.optional(v.boolean())",
+          "line": 1836
+        },
+        {
+          "name": "schemaVersion",
+          "type": "v.optional(v.number())",
+          "line": 1837
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1838
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1839
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1806
+        },
+        {
+          "name": "by_project_kind",
+          "fields": "[\"projectId\", \"kind\"]",
+          "line": 1806
+        },
+        {
+          "name": "by_project_element_kind",
+          "fields": "[\"projectId\", \"elementId\", \"kind\"]",
+          "line": 1806
+        }
+      ]
+    },
+    {
+      "tableName": "qaPairs",
+      "line": 1845,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1846
+        },
+        {
+          "name": "elementId",
+          "type": "v.optional(v.id(\"elements\"))",
+          "line": 1847
+        },
+        {
+          "name": "question_he",
+          "type": "v.string()",
+          "line": 1848
+        },
+        {
+          "name": "questionKey",
+          "type": "v.optional(v.string())",
+          "line": 1849
+        },
+        {
+          "name": "answer_he",
+          "type": "v.optional(v.string())",
+          "line": 1850
+        },
+        {
+          "name": "status",
+          "type": "v.optional(qaPairStatus)",
+          "line": 1851
+        },
+        {
+          "name": "questionType",
+          "type": "v.optional(qaPairQuestionType)",
+          "line": 1852
+        },
+        {
+          "name": "options",
+          "type": "v.optional(v.array(v.object({\r\n      value: v.string(),\r\n      labelHe: v.optional(v.string()),\r\n    })))",
+          "line": 1853
+        },
+        {
+          "name": "answer",
+          "type": "v.optional(v.union(v.string(), v.number(), v.boolean(), v.array(v.string())))",
+          "line": 1857
+        },
+        {
+          "name": "answerText",
+          "type": "v.optional(v.string())",
+          "line": 1858
+        },
+        {
+          "name": "answerValue",
+          "type": "v.optional(v.string())",
+          "line": 1859
+        },
+        {
+          "name": "answerSource",
+          "type": "v.optional(v.union(\r\n      v.literal('typed'),\r\n      v.literal('option'),\r\n      v.literal('suggestion'),\r\n      v.literal('dont_know'),\r\n    ))",
+          "line": 1860
+        },
+        {
+          "name": "suggestedAnswers",
+          "type": "v.optional(v.array(v.object({\r\n      value: v.string(),\r\n      labelHe: v.optional(v.string()),\r\n    })))",
+          "line": 1866
+        },
+        {
+          "name": "allowDontKnow",
+          "type": "v.optional(v.boolean())",
+          "line": 1870
+        },
+        {
+          "name": "scopeType",
+          "type": "v.optional(qaPairScopeType)",
+          "line": 1871
+        },
+        {
+          "name": "scopeKey",
+          "type": "v.optional(v.string())",
+          "line": 1872
+        },
+        {
+          "name": "sectionPath",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 1873
+        },
+        {
+          "name": "blockingLevel",
+          "type": "v.optional(qaPairBlockingLevel)",
+          "line": 1874
+        },
+        {
+          "name": "orderKey",
+          "type": "v.optional(v.string())",
+          "line": 1875
+        },
+        {
+          "name": "createdFrom",
+          "type": "v.optional(qaPairCreatedFrom)",
+          "line": 1876
+        },
+        {
+          "name": "followUp",
+          "type": "v.optional(v.boolean())",
+          "line": 1877
+        },
+        {
+          "name": "triggeredBy",
+          "type": "v.optional(v.string())",
+          "line": 1878
+        },
+        {
+          "name": "dedupeKey",
+          "type": "v.optional(v.string())",
+          "line": 1879
+        },
+        {
+          "name": "createdOrdinal",
+          "type": "v.optional(v.number())",
+          "line": 1880
+        },
+        {
+          "name": "version",
+          "type": "v.optional(v.number())",
+          "line": 1881
+        },
+        {
+          "name": "source",
+          "type": "v.optional(v.object({\r\n      sourceType: v.union(\r\n        v.literal(\"CLARIFICATION_BLOCK\"),\r\n        v.literal(\"CHAT_PARSE\")\r\n      ),\r\n      conversationId: v.optional(\r\n        v.union(v.id(\"conversations\"), v.id(\"agentConversations\"), v.string())\r\n      ),\r\n      messageId: v.optional(v.id(\"conversationMessages\")),\r\n    }))",
+          "line": 1882
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1892
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1845
+        },
+        {
+          "name": "by_project_element",
+          "fields": "[\"projectId\", \"elementId\"]",
+          "line": 1845
+        },
+        {
+          "name": "by_project_questionKey",
+          "fields": "[\"projectId\", \"questionKey\"]",
+          "line": 1845
+        },
+        {
+          "name": "by_project_status",
+          "fields": "[\"projectId\", \"status\"]",
+          "line": 1845
+        },
+        {
+          "name": "by_project_blockingLevel",
+          "fields": "[\"projectId\", \"blockingLevel\"]",
+          "line": 1845
+        },
+        {
+          "name": "by_project_orderKey",
+          "fields": "[\"projectId\", \"orderKey\"]",
+          "line": 1845
+        },
+        {
+          "name": "by_project_scopeKey",
+          "fields": "[\"projectId\", \"scopeKey\"]",
+          "line": 1845
+        },
+        {
+          "name": "by_project_dedupeKey",
+          "fields": "[\"projectId\", \"dedupeKey\"]",
+          "line": 1845
+        },
+        {
+          "name": "by_project_createdOrdinal",
+          "fields": "[\"projectId\", \"createdOrdinal\"]",
+          "line": 1845
+        }
+      ]
+    },
+    {
+      "tableName": "sdkProjectState",
+      "line": 1904,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1905
+        },
+        {
+          "name": "nextQuestionOrdinal",
+          "type": "v.number()",
+          "line": 1906
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1907
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1908
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1904
+        }
+      ]
+    },
+    {
+      "tableName": "projectLinks",
+      "line": 1915,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1916
+        },
+        {
+          "name": "linkedProjectId",
+          "type": "v.id(\"projects\")",
+          "line": 1917
+        },
+        {
+          "name": "mode",
+          "type": "v.union(v.literal(\"contextOnly\"), v.literal(\"importSuggestions\"))",
+          "line": 1918
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1919
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1920
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1915
+        },
+        {
+          "name": "by_project_linked",
+          "fields": "[\"projectId\", \"linkedProjectId\"]",
+          "line": 1915
+        },
+        {
+          "name": "by_linked_project",
+          "fields": "[\"linkedProjectId\"]",
+          "line": 1915
+        }
+      ]
+    },
+    {
+      "tableName": "projectDigests",
+      "line": 1926,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1927
+        },
+        {
+          "name": "summary",
+          "type": "v.string()",
+          "line": 1928
+        },
+        {
+          "name": "keyElements",
+          "type": "v.optional(v.array(v.object({\r\n      id: v.id(\"elements\"),\r\n      title: v.string(),\r\n      type: v.string(),\r\n    })))",
+          "line": 1929
+        },
+        {
+          "name": "fileHighlights",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 1934
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1935
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 1936
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1926
+        }
+      ]
+    },
+    {
+      "tableName": "appSettings",
+      "line": 1939,
+      "fields": [
+        {
+          "name": "key",
+          "type": "v.string()",
+          "line": 1940
+        },
+        {
+          "name": "value",
+          "type": "v.any()",
+          "line": 1941
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_key",
+          "fields": "[\"key\"]",
+          "line": 1939
+        }
+      ]
+    },
+    {
+      "tableName": "agentDataLogs",
+      "line": 1944,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 1945
+        },
+        {
+          "name": "resource",
+          "type": "v.string()",
+          "line": 1946
+        },
+        {
+          "name": "filters",
+          "type": "v.optional(v.any())",
+          "line": 1947
+        },
+        {
+          "name": "fields",
+          "type": "v.optional(v.array(v.string()))",
+          "line": 1948
+        },
+        {
+          "name": "limit",
+          "type": "v.optional(v.number())",
+          "line": 1949
+        },
+        {
+          "name": "cursor",
+          "type": "v.optional(v.string())",
+          "line": 1950
+        },
+        {
+          "name": "resultCount",
+          "type": "v.number()",
+          "line": 1951
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"success\"), v.literal(\"error\"))",
+          "line": 1952
+        },
+        {
+          "name": "latencyMs",
+          "type": "v.number()",
+          "line": 1953
+        },
+        {
+          "name": "error",
+          "type": "v.optional(v.string())",
+          "line": 1954
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1955
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1944
+        },
+        {
+          "name": "by_project_resource",
+          "fields": "[\"projectId\", \"resource\"]",
+          "line": 1944
+        },
+        {
+          "name": "by_createdAt",
+          "fields": "[\"createdAt\"]",
+          "line": 1944
+        }
+      ]
+    },
+    {
+      "tableName": "skillToolLogs",
+      "line": 1961,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.optional(v.id(\"projects\"))",
+          "line": 1962
+        },
+        {
+          "name": "conversationId",
+          "type": "v.optional(v.union(v.id(\"conversations\"), v.id(\"agentConversations\"), v.string()))",
+          "line": 1963
+        },
+        {
+          "name": "skillRunId",
+          "type": "v.optional(v.id(\"skillRuns\"))",
+          "line": 1964
+        },
+        {
+          "name": "skillId",
+          "type": "v.optional(v.string())",
+          "line": 1965
+        },
+        {
+          "name": "toolName",
+          "type": "v.string()",
+          "line": 1966
+        },
+        {
+          "name": "argsHash",
+          "type": "v.string()",
+          "line": 1967
+        },
+        {
+          "name": "argsBytes",
+          "type": "v.number()",
+          "line": 1968
+        },
+        {
+          "name": "args",
+          "type": "v.optional(v.any())",
+          "line": 1969
+        },
+        {
+          "name": "resultBytes",
+          "type": "v.optional(v.number())",
+          "line": 1970
+        },
+        {
+          "name": "result",
+          "type": "v.optional(v.any())",
+          "line": 1971
+        },
+        {
+          "name": "latencyMs",
+          "type": "v.number()",
+          "line": 1972
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"success\"), v.literal(\"error\"))",
+          "line": 1973
+        },
+        {
+          "name": "error",
+          "type": "v.optional(v.string())",
+          "line": 1974
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1975
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1961
+        },
+        {
+          "name": "by_skill_run",
+          "fields": "[\"skillRunId\"]",
+          "line": 1961
+        },
+        {
+          "name": "by_conversation",
+          "fields": "[\"conversationId\"]",
+          "line": 1961
+        },
+        {
+          "name": "by_createdAt",
+          "fields": "[\"createdAt\"]",
+          "line": 1961
+        }
+      ]
+    },
+    {
+      "tableName": "flowRunTimelineEvents",
+      "line": 1982,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"flowRuns\")",
+          "line": 1983
+        },
+        {
+          "name": "stageKey",
+          "type": "v.optional(v.string())",
+          "line": 1984
+        },
+        {
+          "name": "eventType",
+          "type": "v.string()",
+          "line": 1985
+        },
+        {
+          "name": "detail",
+          "type": "v.optional(v.any())",
+          "line": 1986
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 1987
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1982
+        },
+        {
+          "name": "by_run_stage",
+          "fields": "[\"runId\", \"stageKey\"]",
+          "line": 1982
+        },
+        {
+          "name": "by_createdAt",
+          "fields": "[\"createdAt\"]",
+          "line": 1982
+        }
+      ]
+    },
+    {
+      "tableName": "llmTraces",
+      "line": 1994,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.optional(v.id(\"projects\"))",
+          "line": 1995
+        },
+        {
+          "name": "conversationId",
+          "type": "v.optional(v.union(v.id(\"conversations\"), v.string()))",
+          "line": 1996
+        },
+        {
+          "name": "runId",
+          "type": "v.optional(v.string())",
+          "line": 1997
+        },
+        {
+          "name": "provider",
+          "type": "v.string()",
+          "line": 1998
+        },
+        {
+          "name": "model",
+          "type": "v.string()",
+          "line": 1999
+        },
+        {
+          "name": "inputTokens",
+          "type": "v.number()",
+          "line": 2000
+        },
+        {
+          "name": "outputTokens",
+          "type": "v.number()",
+          "line": 2001
+        },
+        {
+          "name": "latencyMs",
+          "type": "v.number()",
+          "line": 2002
+        },
+        {
+          "name": "status",
+          "type": "v.union(v.literal(\"success\"), v.literal(\"failed\"))",
+          "line": 2003
+        },
+        {
+          "name": "request",
+          "type": "v.any()",
+          "line": 2004
+        },
+        {
+          "name": "response",
+          "type": "v.any()",
+          "line": 2005
+        },
+        {
+          "name": "cost",
+          "type": "v.optional(v.number())",
+          "line": 2006
+        },
+        {
+          "name": "error",
+          "type": "v.optional(v.string())",
+          "line": 2007
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 2008
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 1994
+        },
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 1994
+        },
+        {
+          "name": "by_conversation",
+          "fields": "[\"conversationId\"]",
+          "line": 1994
+        }
+      ]
+    },
+    {
+      "tableName": "sdkRuns",
+      "line": 2015,
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 2016
+        },
+        {
+          "name": "conversationId",
+          "type": "v.id(\"agentConversations\")",
+          "line": 2017
+        },
+        {
+          "name": "status",
+          "type": "v.union(\r\n      v.literal(\"running\"),\r\n      v.literal(\"paused\"),\r\n      v.literal(\"blocked\"),\r\n      v.literal(\"needs_input\"),\r\n      v.literal(\"awaiting_approval\"),\r\n      v.literal(\"completed\"),\r\n      v.literal(\"failed\"),\r\n      v.literal(\"cancelled\")\r\n    )",
+          "line": 2018
+        },
+        {
+          "name": "stageKey",
+          "type": "v.optional(v.string())",
+          "line": 2028
+        },
+        {
+          "name": "currentAgentName",
+          "type": "v.optional(v.string())",
+          "line": 2029
+        },
+        {
+          "name": "engine",
+          "type": "v.literal(\"sdk\")",
+          "line": 2030
+        },
+        {
+          "name": "parentRunId",
+          "type": "v.optional(v.id(\"sdkRuns\"))",
+          "line": 2031
+        },
+        {
+          "name": "pendingChangeSetId",
+          "type": "v.optional(v.id(\"changeSets\"))",
+          "line": 2032
+        },
+        {
+          "name": "approvalToken",
+          "type": "v.optional(v.string())",
+          "line": 2033
+        },
+        {
+          "name": "runMode",
+          "type": "v.optional(v.union(v.literal(\"PLANNING_FLOW\"), v.literal(\"CHAT_EDIT\")))",
+          "line": 2034
+        },
+        {
+          "name": "lastError",
+          "type": "v.optional(v.string())",
+          "line": 2035
+        },
+        {
+          "name": "progressKey",
+          "type": "v.optional(v.string())",
+          "line": 2036
+        },
+        {
+          "name": "progressCount",
+          "type": "v.optional(v.number())",
+          "line": 2037
+        },
+        {
+          "name": "noProgressCount",
+          "type": "v.optional(v.number())",
+          "line": 2038
+        },
+        {
+          "name": "lastProgressAt",
+          "type": "v.optional(v.number())",
+          "line": 2039
+        },
+        {
+          "name": "lastServedOrderKey",
+          "type": "v.optional(v.string())",
+          "line": 2040
+        },
+        {
+          "name": "lastServedAt",
+          "type": "v.optional(v.number())",
+          "line": 2041
+        },
+        {
+          "name": "dirtyAnswersCount",
+          "type": "v.optional(v.number())",
+          "line": 2042
+        },
+        {
+          "name": "regenStatus",
+          "type": "v.optional(v.union(v.literal(\"idle\"), v.literal(\"running\"), v.literal(\"failed\")))",
+          "line": 2043
+        },
+        {
+          "name": "regenRunId",
+          "type": "v.optional(v.string())",
+          "line": 2044
+        },
+        {
+          "name": "regenRequestedAt",
+          "type": "v.optional(v.number())",
+          "line": 2045
+        },
+        {
+          "name": "regenCompletedAt",
+          "type": "v.optional(v.number())",
+          "line": 2046
+        },
+        {
+          "name": "planDocVersion",
+          "type": "v.optional(v.number())",
+          "line": 2047
+        },
+        {
+          "name": "lastRegenPlanDocVersion",
+          "type": "v.optional(v.number())",
+          "line": 2048
+        },
+        {
+          "name": "shadowMode",
+          "type": "v.optional(v.boolean())",
+          "line": 2049
+        },
+        {
+          "name": "planningCurrentStep",
+          "type": "v.optional(v.union(\r\n      v.literal(\"start\"),\r\n      v.literal(\"braindump\"),\r\n      v.literal(\"questions\"),\r\n      v.literal(\"finalizing\"),\r\n      v.literal(\"report\")\r\n    ))",
+          "line": 2051
+        },
+        {
+          "name": "planningQuestionSetIndex",
+          "type": "v.optional(v.number())",
+          "line": 2058
+        },
+        {
+          "name": "planningFinalizationPhases",
+          "type": "v.optional(v.array(v.object({\n      phase: v.string(),\n      status: v.union(v.literal(\"pending\"), v.literal(\"running\"), v.literal(\"success\"), v.literal(\"failed\")),\n      error: v.optional(v.string()),\n      completedAt: v.optional(v.number()),\n    })))",
+          "line": 2059
+        },
+        {
+          "name": "planningFinalizeCheckpoint",
+          "type": "v.optional(v.any())",
+          "line": 2065
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 2066
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 2067
+        },
+        {
+          "name": "finishedAt",
+          "type": "v.optional(v.number())",
+          "line": 2068
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 2015
+        },
+        {
+          "name": "by_conversation",
+          "fields": "[\"conversationId\"]",
+          "line": 2015
+        },
+        {
+          "name": "by_project_status",
+          "fields": "[\"projectId\", \"status\"]",
+          "line": 2015
+        },
+        {
+          "name": "by_project_regenStatus",
+          "fields": "[\"projectId\", \"regenStatus\"]",
+          "line": 2015
+        }
+      ]
+    },
+    {
+      "tableName": "sdkRunEvents",
+      "line": 2075,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"sdkRuns\")",
+          "line": 2076
+        },
+        {
+          "name": "type",
+          "type": "v.string()",
+          "line": 2077
+        },
+        {
+          "name": "payload",
+          "type": "v.any()",
+          "line": 2078
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 2079
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 2075
+        },
+        {
+          "name": "by_run_type",
+          "fields": "[\"runId\", \"type\"]",
+          "line": 2075
+        }
+      ]
+    },
+    {
+      "tableName": "sdkStageArtifacts",
+      "line": 2084,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"sdkRuns\")",
+          "line": 2085
+        },
+        {
+          "name": "projectId",
+          "type": "v.id(\"projects\")",
+          "line": 2086
+        },
+        {
+          "name": "conversationId",
+          "type": "v.id(\"agentConversations\")",
+          "line": 2087
+        },
+        {
+          "name": "stageKey",
+          "type": "v.string()",
+          "line": 2088
+        },
+        {
+          "name": "artifact",
+          "type": "v.any()",
+          "line": 2089
+        },
+        {
+          "name": "specHash",
+          "type": "v.string()",
+          "line": 2090
+        },
+        {
+          "name": "artifactHash",
+          "type": "v.string()",
+          "line": 2091
+        },
+        {
+          "name": "status",
+          "type": "v.optional(v.string())",
+          "line": 2092
+        },
+        {
+          "name": "progress",
+          "type": "v.optional(v.object({\r\n      progressKey: v.string(),\r\n      progressCount: v.number(),\r\n      noProgressCount: v.number(),\r\n      lastProgressAt: v.optional(v.number()),\r\n    }))",
+          "line": 2093
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 2099
+        },
+        {
+          "name": "updatedAt",
+          "type": "v.number()",
+          "line": 2100
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 2084
+        },
+        {
+          "name": "by_run_stage",
+          "fields": "[\"runId\", \"stageKey\"]",
+          "line": 2084
+        },
+        {
+          "name": "by_project",
+          "fields": "[\"projectId\"]",
+          "line": 2084
+        }
+      ]
+    },
+    {
+      "tableName": "sdkStageDecisions",
+      "line": 2106,
+      "fields": [
+        {
+          "name": "runId",
+          "type": "v.id(\"sdkRuns\")",
+          "line": 2107
+        },
+        {
+          "name": "conversationId",
+          "type": "v.id(\"agentConversations\")",
+          "line": 2108
+        },
+        {
+          "name": "stageKey",
+          "type": "v.string()",
+          "line": 2109
+        },
+        {
+          "name": "decisionType",
+          "type": "v.string()",
+          "line": 2110
+        },
+        {
+          "name": "payload",
+          "type": "v.any()",
+          "line": 2111
+        },
+        {
+          "name": "createdAt",
+          "type": "v.number()",
+          "line": 2112
+        }
+      ],
+      "indexes": [
+        {
+          "name": "by_run",
+          "fields": "[\"runId\"]",
+          "line": 2106
+        },
+        {
+          "name": "by_run_stage",
+          "fields": "[\"runId\", \"stageKey\"]",
+          "line": 2106
+        },
+        {
+          "name": "by_run_stage_type",
+          "fields": "[\"runId\", \"stageKey\", \"decisionType\"]",
+          "line": 2106
+        }
+      ]
+    }
+  ]
+}
