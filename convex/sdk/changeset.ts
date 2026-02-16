@@ -374,6 +374,124 @@ export const compile = action({
 // Converts fully-structured plan.tasks_intent, plan.elements_intent,
 // and cost.budget_intent into changeset ops WITHOUT an LLM call.
 // Returns empty array if intents are not structured enough.
+function firstNonEmptyString(values: any[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed) return trimmed
+  }
+  return undefined
+}
+
+function toFiniteNumber(value: any): number | undefined {
+  if (value === null || value === undefined) return undefined
+  if (typeof value === 'string' && !value.trim()) return undefined
+  const n = Number(value)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function normalizeTaskDependencies(value: any): string[] | undefined {
+  const raw =
+    value?.afterTaskTempIds ??
+    value?.afterTaskIds ??
+    value?.dependsOn ??
+    value
+
+  if (Array.isArray(raw)) {
+    const list = raw.map((item: any) => String(item ?? '').trim()).filter(Boolean)
+    return list.length > 0 ? list : undefined
+  }
+
+  if (typeof raw === 'string') {
+    const list = raw.split(',').map((item) => item.trim()).filter(Boolean)
+    return list.length > 0 ? list : undefined
+  }
+
+  return undefined
+}
+
+function normalizeTaskWorkType(value: any): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (!value || typeof value !== 'object') return undefined
+  return firstNonEmptyString([value.key, value.code, value.value, value.id])
+}
+
+function normalizeTaskFieldsForSdk(task: any, fallbackTitle?: string) {
+  const fields: any = {}
+
+  const title = firstNonEmptyString([
+    task?.title,
+    task?.titleHe,
+    task?.name,
+    task?.nameHe,
+    fallbackTitle,
+  ])
+  if (title) fields.title = title
+
+  const titleHe = firstNonEmptyString([task?.titleHe, task?.title])
+  if (titleHe) fields.titleHe = titleHe
+
+  const description = firstNonEmptyString([
+    task?.description,
+    task?.descriptionHe,
+    task?.doneCriteriaHe,
+    task?.doneCriteria,
+    task?.doneCriteriaTextHe,
+  ])
+  if (description) fields.description = description
+
+  const descriptionHe = firstNonEmptyString([task?.descriptionHe, task?.description, task?.doneCriteriaHe])
+  if (descriptionHe) fields.descriptionHe = descriptionHe
+
+  const stage = firstNonEmptyString([task?.stage, task?.stageKey, task?.phase])
+  if (stage) fields.stage = stage
+
+  const status = firstNonEmptyString([task?.status])
+  if (status) fields.status = status
+
+  const workType = normalizeTaskWorkType(task?.workType ?? task?.workTypeKey)
+  if (workType) fields.workType = workType
+
+  const workTypeLabelHe = firstNonEmptyString([
+    task?.workTypeLabelHe,
+    task?.workType?.labelHe,
+    task?.workType?.label,
+  ])
+  if (workTypeLabelHe) fields.workTypeLabelHe = workTypeLabelHe
+
+  const estimatedHours = toFiniteNumber(task?.estimatedHours ?? task?.estimateHours)
+  if (estimatedHours !== undefined) fields.estimatedHours = estimatedHours
+
+  const checklist = Array.isArray(task?.checklist) ? task.checklist : undefined
+  if (checklist) fields.checklist = checklist
+
+  const dependencies = normalizeTaskDependencies(task?.dependencies)
+  if (dependencies) fields.dependencies = dependencies
+
+  for (const key of [
+    'notes',
+    'notesHe',
+    'priority',
+    'order',
+    'tags',
+    'dueDate',
+    'startDate',
+    'assignedTo',
+    'skills',
+    'materialRequirements',
+    'laborRequirements',
+    'plannedQuantity',
+    'plannedTotalCost',
+    'dedupKey',
+  ]) {
+    if (task?.[key] !== undefined && fields[key] === undefined) {
+      fields[key] = task[key]
+    }
+  }
+
+  return fields
+}
+
 function compileStructuredIntents(intents: any[]): any[] {
   const ops: any[] = [];
   let hasStructuredData = false;
@@ -434,22 +552,10 @@ function compileStructuredIntents(intents: any[]): any[] {
         }
       }
 
-      for (const task of payload.tasks) {
+      for (let index = 0; index < payload.tasks.length; index += 1) {
+        const task = payload.tasks[index]
         if (!task || typeof task !== 'object') continue;
-        const fields: any = {};
-        // Map all known task fields from LLM output
-        for (const key of [
-          'title', 'titleHe', 'description', 'descriptionHe',
-          'workType', 'workTypeLabelHe', 'status', 'stage',
-          'estimatedHours', 'checklist', 'notes', 'notesHe',
-          'priority', 'order', 'tags', 'dueDate', 'startDate',
-          'assignedTo', 'skills', 'dependencies',
-          'materialRequirements', 'laborRequirements',
-          'plannedQuantity', 'plannedTotalCost',
-          'dedupKey',
-        ]) {
-          if (task[key] !== undefined) fields[key] = task[key];
-        }
+        const fields = normalizeTaskFieldsForSdk(task, `Task ${index + 1}`)
         ops.push({
           kind: 'task.create',
           payload: {
@@ -545,13 +651,17 @@ function mapCompileOp(op: any) {
       return { kind: 'element.create', payload: { tempId, element: op.create ?? {} } };
     }
     if (entity === 'task') {
+      const createFields = normalizeTaskFieldsForSdk(
+        op.create ?? {},
+        op.create?.tempId ? `Task ${String(op.create.tempId).trim()}` : undefined,
+      )
       return {
         kind: 'task.create',
         payload: {
           tempId,
           elementTempOrId: op.create?.elementTempOrId ?? op.create?.elementId,
           elementId: op.create?.elementId,
-          fields: op.create ?? {},
+          fields: createFields,
         },
       };
     }
@@ -610,12 +720,13 @@ function mapCompileOp(op: any) {
       };
     }
     if (entity === 'task') {
+      const patchFields = normalizeTaskFieldsForSdk(op.patch ?? {})
       return {
         kind: 'task.patch',
         payload: {
           taskId: op.id ?? undefined,
           taskTempOrId: op.id ?? op.tempId ?? undefined,
-          fields: op.patch ?? {},
+          fields: patchFields,
         },
       };
     }
@@ -686,20 +797,92 @@ function normalizeWorkLineFieldsForSdk(fields: any) {
   const normalized = { ...(fields ?? {}) }
   delete normalized.assigneeId
 
+  const dedupKey = firstNonEmptyString([normalized.dedupKey])
+  if (dedupKey) normalized.dedupKey = dedupKey
+
+  const dedupParts = dedupKey ? dedupKey.split('::').map((part) => part.trim()) : []
+  const inferredWorkTypeFromDedup = dedupParts.length >= 3 ? dedupParts[2] : undefined
+  const workType = firstNonEmptyString([
+    normalized.workType,
+    normalized.workTypeKey,
+    inferredWorkTypeFromDedup,
+  ])
+  if (workType) normalized.workType = workType
+
+  const workTypeLabelByKey: Record<string, string> = {
+    carpentry: 'Carpentry',
+    metal_fab: 'Metal fabrication',
+    paint_finish: 'Paint and finish',
+    printing_graphics: 'Printing and graphics',
+    props_sculpt: 'Props and sculpt',
+    rigging_install: 'Rigging and install',
+    transport_logistics: 'Transport and logistics',
+    purchasing: 'Purchasing',
+    management: 'Management',
+  }
+  if (!firstNonEmptyString([normalized.workTypeLabelHe]) && workType && workTypeLabelByKey[workType]) {
+    normalized.workTypeLabelHe = workTypeLabelByKey[workType]
+  }
+
+  const roleHe = firstNonEmptyString([
+    normalized.roleHe,
+    normalized.titleHe,
+    normalized.title,
+    normalized.role,
+    normalized.workTypeLabelHe,
+    workType ? workTypeLabelByKey[workType] : undefined,
+  ])
+  if (roleHe) normalized.roleHe = roleHe
+
+  const plannedQuantity = toFiniteNumber(
+    normalized.plannedQuantity ??
+    normalized.plannedQuantityDays ??
+    normalized.days ??
+    normalized.qty ??
+    normalized.quantity
+  )
+  if (plannedQuantity !== undefined) {
+    normalized.plannedQuantity = plannedQuantity
+  }
+
+  const plannedUnitCost = toFiniteNumber(
+    normalized.plannedUnitCost ??
+    normalized.plannedDayRate ??
+    normalized.dayRate ??
+    normalized.rate ??
+    normalized.unitCost
+  )
+  if (plannedUnitCost !== undefined) {
+    normalized.plannedUnitCost = plannedUnitCost
+  }
+
+  const plannedTotalCost =
+    toFiniteNumber(normalized.plannedTotalCost ?? normalized.total) ??
+    (
+      plannedQuantity !== undefined && plannedUnitCost !== undefined
+        ? plannedQuantity * plannedUnitCost
+        : undefined
+    )
+  if (plannedTotalCost !== undefined) {
+    normalized.plannedTotalCost = plannedTotalCost
+  }
+
   const rateTypeCode = String(
     normalized.rateTypeCode ??
     normalized.rateType ??
     ''
   ).trim().toLowerCase()
+  const dayLike =
+    rateTypeCode === 'day' ||
+    normalized.plannedQuantityDays !== undefined ||
+    normalized.plannedDayRate !== undefined ||
+    normalized.dayRate !== undefined ||
+    normalized.days !== undefined
 
-  if (rateTypeCode === 'day' || Number.isFinite(normalized.days)) {
+  if (dayLike) {
     normalized.rateTypeCode = 'day'
-    if (!Number.isFinite(normalized.plannedQuantity) && Number.isFinite(normalized.days)) {
-      normalized.plannedQuantity = Number(normalized.days)
-    }
-    if (!Number.isFinite(normalized.plannedUnitCost) && Number.isFinite(normalized.dayRate)) {
-      normalized.plannedUnitCost = Number(normalized.dayRate)
-    }
+  } else if (rateTypeCode) {
+    normalized.rateTypeCode = rateTypeCode
   }
 
   return normalized

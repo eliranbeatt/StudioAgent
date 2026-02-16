@@ -201,8 +201,8 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       const hasBrainDumpRaw = typeof project.brainDumpRaw === 'string' && project.brainDumpRaw.trim().length > 0;
 
       // Check project context using query result
-      const hasContext = 
-        (checkContextQuery as any)?.elements?.length > 0 || 
+      const hasContext =
+        (checkContextQuery as any)?.elements?.length > 0 ||
         (checkContextQuery as any)?.tasks?.length > 0 ||
         textCandidates.length > 0;
 
@@ -263,7 +263,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       setConversationId((result as any).conversationId);
       setRunId((result as any).runId);
       setBrainDumpText('');
-      
+
       // Now start planning
       const planResult = await initiatePlanning({ projectId, conversationId: (result as any).conversationId });
       const planningRunId = ((planResult as any)?.runId ?? (result as any)?.runId) as Id<'sdkRuns'>;
@@ -276,14 +276,14 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       } catch {
         // Non-blocking; finalization call still carries planningMode explicitly.
       }
-      
+
       // Save state
       await savePlanningState({
         runId: planningRunId,
         currentStep: 'questions',
         questionSetIndex: 0,
       });
-      
+
       setCurrentStep('questions');
     } finally {
       setIsProcessing(false);
@@ -312,13 +312,13 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
         answers: payload,
         setNotes: setFreeText.trim() || undefined,
       });
-      
+
       setAnswers({});
       setSetFreeText('');
       if (hasMore) {
         setQuestionSetIndex(prev => prev + 1);
       }
-      
+
       await savePlanningState({
         runId,
         currentStep: 'questions',
@@ -343,14 +343,14 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
   const handleFinalizeNow = async () => {
     if (!runId) return;
     setIsProcessing(true);
-    
+
     // Save state
     await savePlanningState({
       runId,
       currentStep: 'finalizing',
     });
     setCurrentStep('finalizing');
-    
+
     try {
       await finalizeProject({
         projectId,
@@ -412,7 +412,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     try {
       await restartPlanning({ projectId, runId });
       setQuestionSetIndex(0);
-      
+
       // Save state
       await savePlanningState({
         runId,
@@ -491,6 +491,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
             value={brainDumpText}
             onChange={(e) => setBrainDumpText(e.target.value)}
             disabled={isProcessing}
+            dir="rtl"
           />
           <button
             onClick={handleBrainDumpSubmit}
@@ -582,7 +583,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
               )}
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-3xl mx-auto" dir="rtl">
               <div className="space-y-4">
                 {questionSet.questions.map((q) => {
                   const answerState = answers[q.id] ?? { selected: '', freeText: '' }
@@ -672,6 +673,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
                         value={answerState.freeText}
                         onChange={(e) => setQuestionFreeText(q.id, e.target.value)}
                         disabled={isProcessing}
+                        dir="rtl"
                       />
                     </div>
                   )
@@ -685,6 +687,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
                     value={setFreeText}
                     onChange={(e) => setSetFreeText(e.target.value)}
                     disabled={isProcessing}
+                    dir="rtl"
                   />
                 </div>
 
@@ -809,7 +812,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
           <div className="max-w-4xl mx-auto">
             <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm">
               <h3 className="text-xl font-bold text-slate-800 mb-6">Finalization Phases</h3>
-              
+
               <div className="space-y-4 mb-8">
                 <FinalizePhaseRow
                   label={isCombinedMode ? 'Planning Elements + Tasks + Budget (Combined)' : 'Planning Elements'}
@@ -874,7 +877,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
                       <CheckCircle className="text-emerald-600" size={32} />
                       <h3 className="text-2xl font-bold text-slate-800">Planning Complete!</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-3 gap-6 mb-8">
                       <div className="p-4 bg-blue-50 rounded-lg">
                         <div className="text-sm text-blue-600 font-medium mb-1">Elements</div>
@@ -895,7 +898,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
                     <div className="space-y-4">
                       <h4 className="text-lg font-semibold text-slate-800">Summary</h4>
                       <p className="text-slate-600">{finalReport?.summary ?? 'Project plan has been generated successfully.'}</p>
-                      
+
                       {finalReport?.elements && finalReport.elements.length > 0 && (
                         <>
                           <h4 className="text-lg font-semibold text-slate-800 pt-4">Elements Breakdown</h4>
@@ -961,19 +964,19 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
   return null;
 }
 
-function FinalizePhaseRow({ 
-  label, 
+function FinalizePhaseRow({
+  label,
   phase,
   status,
   wasCancelled,
   onRerun,
   onCancel,
   showRerun,
-  disabled 
-}: { 
-  label: string; 
+  disabled
+}: {
+  label: string;
   phase: string;
-  status: 'pending' | 'running' | 'success' | 'failed'; 
+  status: 'pending' | 'running' | 'success' | 'failed';
   wasCancelled: boolean;
   onRerun: () => void;
   onCancel: () => void;
@@ -988,12 +991,11 @@ function FinalizePhaseRow({
         {status === 'success' && <CheckCircle className="w-6 h-6 text-emerald-600" />}
         {status === 'failed' && <span className="w-6 h-6 text-red-600 font-bold text-xl flex items-center justify-center">✗</span>}
       </div>
-      <span className={`flex-1 text-sm font-medium ${
-        status === 'success' ? 'text-slate-800' : 
-        status === 'running' ? 'text-blue-600' : 
-        status === 'failed' ? 'text-red-600' :
-        'text-slate-400'
-      }`}>
+      <span className={`flex-1 text-sm font-medium ${status === 'success' ? 'text-slate-800' :
+          status === 'running' ? 'text-blue-600' :
+            status === 'failed' ? 'text-red-600' :
+              'text-slate-400'
+        }`}>
         {label}
       </span>
       {showRerun && (

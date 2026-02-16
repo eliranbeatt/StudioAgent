@@ -87,6 +87,106 @@ function normalizeStage(value?: string) {
   return taskStages.has(value) ? value : undefined;
 }
 
+function firstNonEmptyString(values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function inferWorkTypeFromDedupKey(dedupKey: unknown): string | undefined {
+  if (typeof dedupKey !== "string" || !dedupKey.trim()) return undefined;
+  const parts = dedupKey.split("::").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 3) return undefined;
+  return parts[2];
+}
+
+function humanizeWorkType(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const compact = value.trim();
+  if (!compact) return undefined;
+  const withSpaces = compact.replace(/[_-]+/g, " ");
+  return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
+}
+
+function normalizeWorkLineFieldsForApply(rawFields: any, taskTitle?: string) {
+  const fields = { ...(rawFields ?? {}) };
+  const dedupKey = firstNonEmptyString([fields.dedupKey]);
+  if (dedupKey) fields.dedupKey = dedupKey;
+
+  const workTypeRaw = firstNonEmptyString([
+    fields.workType,
+    fields.workTypeKey,
+    inferWorkTypeFromDedupKey(dedupKey),
+  ]);
+  const workType = workTypeRaw ? normalizeWorkType(workTypeRaw) : undefined;
+  if (workType) fields.workType = workType;
+
+  const roleHe = firstNonEmptyString([
+    fields.roleHe,
+    fields.titleHe,
+    fields.title,
+    fields.role,
+    fields.roleNameHe,
+    fields.workTypeLabelHe,
+    taskTitle,
+    workType ? humanizeWorkType(workType) : undefined,
+  ]);
+  if (roleHe) fields.roleHe = roleHe;
+
+  const plannedQuantity = toFiniteNumber(
+    fields.plannedQuantity ??
+    fields.plannedQuantityDays ??
+    fields.days ??
+    fields.qty ??
+    fields.quantity
+  );
+  if (plannedQuantity !== undefined) fields.plannedQuantity = plannedQuantity;
+
+  const plannedUnitCost = toFiniteNumber(
+    fields.plannedUnitCost ??
+    fields.plannedDayRate ??
+    fields.dayRate ??
+    fields.rate ??
+    fields.unitCost
+  );
+  if (plannedUnitCost !== undefined) fields.plannedUnitCost = plannedUnitCost;
+
+  const plannedTotalCost =
+    toFiniteNumber(fields.plannedTotalCost ?? fields.total) ??
+    (
+      plannedQuantity !== undefined && plannedUnitCost !== undefined
+        ? plannedQuantity * plannedUnitCost
+        : undefined
+    );
+  if (plannedTotalCost !== undefined) fields.plannedTotalCost = plannedTotalCost;
+
+  const rateTypeRaw = firstNonEmptyString([fields.rateTypeCode, fields.rateType]);
+  const normalizedRateType = rateTypeRaw ? rateTypeRaw.toLowerCase() : undefined;
+  const dayLike =
+    normalizedRateType === "day" ||
+    fields.plannedQuantityDays !== undefined ||
+    fields.plannedDayRate !== undefined ||
+    fields.dayRate !== undefined ||
+    fields.days !== undefined;
+  if (dayLike) {
+    fields.rateTypeCode = "day";
+  } else if (normalizedRateType) {
+    fields.rateTypeCode = normalizedRateType;
+  }
+
+  return fields;
+}
+
 function normalizeChecklist(list: any) {
   if (!Array.isArray(list)) return undefined;
   return list
@@ -708,7 +808,24 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (op.kind !== "task.create") continue;
     const { tempId, elementTempOrId, elementId: directElementId, fields } = op.payload ?? {};
 
-    const title = fields?.title ?? "Untitled Task";
+    const taskFields = fields && typeof fields === "object" ? fields : {};
+    const title =
+      String(taskFields?.title ?? taskFields?.titleHe ?? "").trim() || "Untitled Task";
+    const description = toOptional(taskFields?.description ?? taskFields?.descriptionHe);
+    const stageValue = taskFields?.stage ?? taskFields?.stageKey;
+    const workTypeValue =
+      typeof taskFields?.workType === "string"
+        ? taskFields.workType
+        : taskFields?.workType?.key;
+    const workTypeLabelHeValue =
+      taskFields?.workTypeLabelHe ??
+      (taskFields?.workType && typeof taskFields.workType === "object"
+        ? taskFields.workType.labelHe
+        : undefined);
+    const estimatedHoursValue = toOptional(
+      taskFields?.estimatedHours ?? taskFields?.estimateHours
+    );
+    const dedupKey = taskFields?.dedupKey;
 
     const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
 
@@ -720,43 +837,59 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         .collect();
 
       const cleanTitle = title.trim().toLowerCase();
-      const dedupKey = fields?.dedupKey;
-
-      existingTask = existingTasks.find(t =>
-        (dedupKey && t.dedupKey === dedupKey) ||
-        (t.title.trim().toLowerCase() === cleanTitle)
-      );
+      if (dedupKey) {
+        existingTask = existingTasks.find((t) => t.dedupKey === dedupKey) ?? null;
+      } else if (cleanTitle) {
+        existingTask =
+          existingTasks.find((t) => t.title.trim().toLowerCase() === cleanTitle) ?? null;
+      }
     }
 
     if (existingTask) {
       taskId = existingTask._id;
       const before = existingTask;
       const patch: any = {};
-      if ("title" in fields) patch.title = toOptional(fields.title);
-      if ("description" in fields) patch.description = toOptional(fields.description);
-      if ("status" in fields) patch.status = toOptional(fields.status);
-      if ("priority" in fields) patch.priority = toOptional(fields.priority);
-      if ("category" in fields) patch.category = toOptional(fields.category);
-      if ("startDate" in fields) patch.startDate = withDefaultStartDate(fields.startDate);
-      if ("endDate" in fields) patch.endDate = toOptional(fields.endDate);
-      if ("estimatedHours" in fields) patch.estimatedHours = toOptional(fields.estimatedHours);
-      if ("assignee" in fields) patch.assignee = toOptional(fields.assignee);
+      if ("title" in taskFields || "titleHe" in taskFields) patch.title = toOptional(title);
+      if ("description" in taskFields || "descriptionHe" in taskFields) {
+        patch.description = description;
+      }
+      if ("status" in taskFields) patch.status = toOptional(taskFields.status);
+      if ("priority" in taskFields) patch.priority = toOptional(taskFields.priority);
+      if ("category" in taskFields) patch.category = toOptional(taskFields.category);
+      if ("startDate" in taskFields) patch.startDate = withDefaultStartDate(taskFields.startDate);
+      if ("endDate" in taskFields) patch.endDate = toOptional(taskFields.endDate);
+      if ("estimatedHours" in taskFields || "estimateHours" in taskFields) {
+        patch.estimatedHours = estimatedHoursValue;
+      }
+      if ("assignee" in taskFields) patch.assignee = toOptional(taskFields.assignee);
       // New V3 fields
-      if ("stage" in fields) patch.stage = normalizeStage(fields?.stage);
-      if ("workType" in fields) patch.workType = normalizeWorkType(fields?.workType);
-      if ("workTypeLabelHe" in fields) patch.workTypeLabelHe = toOptional(fields?.workTypeLabelHe);
-      if ("plannedStartDate" in fields) patch.plannedStartDate = toOptional(fields?.plannedStartDate);
-      if ("plannedEndDate" in fields) patch.plannedEndDate = toOptional(fields?.plannedEndDate);
-      if ("durationBucket" in fields) patch.durationBucket = toOptional(fields?.durationBucket);
-      if ("checklist" in fields) patch.checklist = normalizeChecklist(fields?.checklist);
-      if ("accountingLinks" in fields) {
+      if ("stage" in taskFields || "stageKey" in taskFields) {
+        patch.stage = normalizeStage(stageValue);
+      }
+      if ("workType" in taskFields || "workTypeKey" in taskFields) {
+        patch.workType = normalizeWorkType(workTypeValue);
+      }
+      if ("workTypeLabelHe" in taskFields || "workType" in taskFields) {
+        patch.workTypeLabelHe = toOptional(workTypeLabelHeValue);
+      }
+      if ("plannedStartDate" in taskFields) {
+        patch.plannedStartDate = toOptional(taskFields?.plannedStartDate);
+      }
+      if ("plannedEndDate" in taskFields) {
+        patch.plannedEndDate = toOptional(taskFields?.plannedEndDate);
+      }
+      if ("durationBucket" in taskFields) {
+        patch.durationBucket = toOptional(taskFields?.durationBucket);
+      }
+      if ("checklist" in taskFields) patch.checklist = normalizeChecklist(taskFields?.checklist);
+      if ("accountingLinks" in taskFields) {
         patch.accountingLinks = normalizeAccountingLinks(
-          fields?.accountingLinks,
+          taskFields?.accountingLinks,
           materialLineTempMap,
           workLineTempMap
         );
       }
-      if ("dedupKey" in fields) patch.dedupKey = toOptional(fields?.dedupKey);
+      if ("dedupKey" in taskFields) patch.dedupKey = toOptional(taskFields?.dedupKey);
 
       await ctx.db.patch(taskId, {
         ...patch,
@@ -777,29 +910,29 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         projectId: cs.projectId,
         elementId,
         title,
-        description: toOptional(fields?.description),
-        status: fields?.status ?? "TODO",
-        priority: toOptional(fields?.priority),
-        category: toOptional(fields?.category),
-        startDate: withDefaultStartDate(fields?.startDate),
-        endDate: toOptional(fields?.endDate),
-        estimatedHours: toOptional(fields?.estimatedHours),
-        assignee: toOptional(fields?.assignee),
+        description,
+        status: taskFields?.status ?? "TODO",
+        priority: toOptional(taskFields?.priority),
+        category: toOptional(taskFields?.category),
+        startDate: withDefaultStartDate(taskFields?.startDate),
+        endDate: toOptional(taskFields?.endDate),
+        estimatedHours: estimatedHoursValue,
+        assignee: toOptional(taskFields?.assignee),
         dependencies: undefined,
         // New V3 fields
-        stage: normalizeStage(fields?.stage),
-        workType: normalizeWorkType(fields?.workType),
-        workTypeLabelHe: toOptional(fields?.workTypeLabelHe),
-        plannedStartDate: toOptional(fields?.plannedStartDate),
-        plannedEndDate: toOptional(fields?.plannedEndDate),
-        durationBucket: toOptional(fields?.durationBucket),
-        checklist: normalizeChecklist(fields?.checklist),
+        stage: normalizeStage(stageValue),
+        workType: normalizeWorkType(workTypeValue),
+        workTypeLabelHe: toOptional(workTypeLabelHeValue),
+        plannedStartDate: toOptional(taskFields?.plannedStartDate),
+        plannedEndDate: toOptional(taskFields?.plannedEndDate),
+        durationBucket: toOptional(taskFields?.durationBucket),
+        checklist: normalizeChecklist(taskFields?.checklist),
         accountingLinks: normalizeAccountingLinks(
-          fields?.accountingLinks,
+          taskFields?.accountingLinks,
           materialLineTempMap,
           workLineTempMap
         ),
-        dedupKey: toOptional(fields?.dedupKey),
+        dedupKey: toOptional(taskFields?.dedupKey),
 
         createdFromChangeSetId: sourceChangeSetId,
         createdAt: now,
@@ -821,7 +954,12 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (title && !taskTitleMap.has(title)) taskTitleMap.set(title, taskId);
     if (elementId) elementsToBump.add(elementId);
 
-    const deps = Array.isArray(fields?.dependencies) ? fields.dependencies : [];
+    const depsSource = Array.isArray(taskFields?.dependencies)
+      ? taskFields.dependencies
+      : Array.isArray(taskFields?.dependencies?.afterTaskTempIds)
+        ? taskFields.dependencies.afterTaskTempIds
+        : [];
+    const deps = depsSource.map((dep: any) => String(dep ?? "").trim()).filter(Boolean);
     if (deps.length > 0) {
       pendingDeps.push({ taskId, deps });
     }
@@ -1015,15 +1153,19 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
   for (const op of cs.ops) {
     if (op.kind !== "workLine.create") continue;
-    const { tempId, elementTempOrId, taskTempOrId, elementId: directElementId, fields } =
+    const { tempId, elementTempOrId, taskTempOrId, elementId: directElementId, fields: rawFields } =
       op.payload ?? {};
-    if (!fields?.roleHe) throw new Error("workLine.create requires fields.roleHe");
 
     const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
     const rawTaskId =
       resolveFromTemp(taskTempOrId, taskTempMap) ??
-      resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
+      resolveTaskRef(op.payload?.taskRef ?? rawFields?.taskRef, taskTempMap, taskTitleMap);
     const taskId = rawTaskId ? (ctx.db.normalizeId("tasks", rawTaskId) ?? undefined) : undefined;
+    const taskForRole = taskId ? await ctx.db.get(taskId) : null;
+    const fields = normalizeWorkLineFieldsForApply(rawFields, taskForRole?.title);
+    if (!fields?.roleHe && !fields?.dedupKey) {
+      throw new Error("workLine.create requires fields.roleHe or fields.dedupKey");
+    }
     const elementScope = op.payload?.elementScope ?? fields?.elementScope;
     const forceProjectLevel =
       elementScope === "project" ||
@@ -1055,21 +1197,28 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         .withIndex("by_element", (q) => q.eq("elementId", resolvedElementId))
         .collect();
       const cleanRole = normalizeKey(fields.roleHe);
-      existingLine = candidates.find((l: any) =>
-        (dedupKey && l.dedupKey === dedupKey) ||
-        (normalizeKey(l.roleHe) === cleanRole && String(l.taskId ?? "") === String(taskId ?? ""))
-      );
+      if (dedupKey) {
+        existingLine = candidates.find((l: any) => l.dedupKey === dedupKey) ?? null;
+      } else if (cleanRole) {
+        existingLine = candidates.find((l: any) =>
+          normalizeKey(l.roleHe) === cleanRole && String(l.taskId ?? "") === String(taskId ?? "")
+        ) ?? null;
+      }
     } else {
       const candidates = await ctx.db
         .query("workLines")
         .withIndex("by_project", (q) => q.eq("projectId", cs.projectId))
         .collect();
       const cleanRole = normalizeKey(fields.roleHe);
-      existingLine = candidates.find((l: any) =>
-        (!l.elementId) &&
-        ((dedupKey && l.dedupKey === dedupKey) ||
-        (normalizeKey(l.roleHe) === cleanRole && String(l.taskId ?? "") === String(taskId ?? "")))
-      );
+      if (dedupKey) {
+        existingLine = candidates.find((l: any) => !l.elementId && l.dedupKey === dedupKey) ?? null;
+      } else if (cleanRole) {
+        existingLine = candidates.find((l: any) =>
+          !l.elementId &&
+          normalizeKey(l.roleHe) === cleanRole &&
+          String(l.taskId ?? "") === String(taskId ?? "")
+        ) ?? null;
+      }
     }
 
     if (existingLine) {
@@ -1236,17 +1385,50 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (!fields || typeof fields !== "object") continue;
 
     const before = await ctx.db.get(resolved);
+    const normalizedFields = normalizeWorkLineFieldsForApply(fields);
     const patch: any = {};
-    if ("roleHe" in fields) patch.roleHe = toOptional(fields.roleHe);
+    if (
+      "roleHe" in fields ||
+      "titleHe" in fields ||
+      "title" in fields ||
+      "role" in fields ||
+      normalizedFields.roleHe !== undefined
+    ) {
+      patch.roleHe = toOptional(normalizedFields.roleHe);
+    }
     if ("notes" in fields) patch.notes = toOptional(fields.notes);
     if ("status" in fields) patch.status = toOptional(fields.status);
     if ("assignee" in fields) patch.assignee = toOptional(fields.assignee);
     if ("assigneeId" in fields) patch.assigneeId = toOptional(fields.assigneeId);
-    if ("plannedQuantity" in fields) patch.plannedQuantity = toOptional(fields.plannedQuantity);
-    if ("plannedUnitCost" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost);
-    if ("plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost);
+    if (
+      "plannedQuantity" in fields ||
+      "plannedQuantityDays" in fields ||
+      "days" in fields ||
+      "qty" in fields ||
+      normalizedFields.plannedQuantity !== undefined
+    ) {
+      patch.plannedQuantity = toOptional(normalizedFields.plannedQuantity);
+    }
+    if (
+      "plannedUnitCost" in fields ||
+      "plannedDayRate" in fields ||
+      "dayRate" in fields ||
+      "rate" in fields ||
+      normalizedFields.plannedUnitCost !== undefined
+    ) {
+      patch.plannedUnitCost = toOptional(normalizedFields.plannedUnitCost);
+    }
+    if (
+      "plannedTotalCost" in fields ||
+      "total" in fields ||
+      normalizedFields.plannedTotalCost !== undefined
+    ) {
+      patch.plannedTotalCost = toOptional(normalizedFields.plannedTotalCost);
+    }
     if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
-    if ("workType" in fields) patch.workType = normalizeWorkType(fields.workType);
+    if ("workType" in fields || "workTypeKey" in fields || normalizedFields.workType !== undefined) {
+      patch.workType = normalizedFields.workType ? normalizeWorkType(normalizedFields.workType) : undefined;
+    }
     if ("workTypeLabelHe" in fields) patch.workTypeLabelHe = toOptional(fields.workTypeLabelHe);
 
     await ctx.db.patch(resolved, { ...patch, updatedAt: now });
@@ -1620,10 +1802,16 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("actualTotalCost" in fields) patch.actualTotalCost = toOptional(fields.actualTotalCost);
       if ("dedupKey" in fields) patch.dedupKey = toOptional(fields.dedupKey);
     } else if (isLabor) {
-      if ("qty" in fields || "plannedQuantity" in fields) patch.plannedQuantity = toOptional(fields.plannedQuantity ?? fields.qty);
-      if ("unitCost" in fields || "plannedUnitCost" in fields || "rate" in fields) patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.rate ?? fields.unitCost);
+      if ("qty" in fields || "plannedQuantity" in fields || "plannedQuantityDays" in fields || "days" in fields) {
+        patch.plannedQuantity = toOptional(fields.plannedQuantity ?? fields.plannedQuantityDays ?? fields.days ?? fields.qty);
+      }
+      if ("unitCost" in fields || "plannedUnitCost" in fields || "plannedDayRate" in fields || "dayRate" in fields || "rate" in fields) {
+        patch.plannedUnitCost = toOptional(fields.plannedUnitCost ?? fields.plannedDayRate ?? fields.dayRate ?? fields.rate ?? fields.unitCost);
+      }
       if ("total" in fields || "plannedTotalCost" in fields) patch.plannedTotalCost = toOptional(fields.plannedTotalCost ?? fields.total);
-      if ("roleHe" in fields || "title" in fields) patch.roleHe = toOptional(fields.roleHe ?? fields.title);
+      if ("roleHe" in fields || "titleHe" in fields || "title" in fields || "role" in fields) {
+        patch.roleHe = toOptional(fields.roleHe ?? fields.titleHe ?? fields.title ?? fields.role);
+      }
       if ("dedupKey" in fields) patch.dedupKey = toOptional(fields.dedupKey);
       // ... match other workLines fields
     } else {

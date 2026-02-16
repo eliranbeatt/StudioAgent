@@ -2481,7 +2481,7 @@ export const runNext = action({
     let repeatedToolSignatureCount = 0;
     const maxToolLoops = isChatEditRun ? 2 : MAX_TOOL_LOOPS;
     const runtimeModel = isChatEditRun ? 'gpt-5-mini' : orchestrator.model;
-    const runtimeReasoningEffort = isChatEditRun ? 'minimal' : orchestrator.reasoningEffort;
+    const runtimeReasoningEffort = isChatEditRun ? 'low' : orchestrator.reasoningEffort;
     const runtimeMaxCompletionTokens = isChatEditRun
       ? undefined
       : orchestrator.maxCompletionTokens;
@@ -2886,7 +2886,7 @@ export const runNext = action({
           ctx,
           {
             model: repairModel,
-            reasoning_effort: 'minimal',
+            reasoning_effort: 'low',
             response_format: { type: 'json_object' },
             messages: [
               {
