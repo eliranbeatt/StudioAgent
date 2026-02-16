@@ -11,6 +11,7 @@ import { searchWeb } from '../lib/webSearch';
 import { completionWithTracing } from '../lib/llm';
 import { runVNextStage } from './vnext/pipeline';
 import { getNextVNextStage, normalizeVNextStage } from './vnext/stages';
+import { ensureSuggestionFooter } from './footer';
 import {
   allowedToolsForChatIntent,
   detectChatIntent,
@@ -119,6 +120,69 @@ function resolveQueuedExplicitAction(queuedInput: SanitizedQueuedInput | null): 
   return null;
 }
 
+function detectExplicitActionFromText(userText?: string): QueuedExplicitAction {
+  const text = String(userText ?? '').trim().toLowerCase();
+  if (!text) return null;
+  const normalized = text.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const compact = normalized.replace(/\s+/g, '');
+
+  const mentionsChangeSet =
+    normalized.includes('changeset') ||
+    normalized.includes('change set') ||
+    normalized.includes('chageset') ||
+    normalized.includes('chage set') ||
+    normalized.includes('chhange set') ||
+    normalized.includes('changset') ||
+    normalized.includes('chagneset');
+
+  const looksLikeChangeSetTypo =
+    /cha+n?g+e?\s*s+e+t/.test(normalized) ||
+    compact.includes('createchangeset');
+
+  const hasCreateChangesetIntent =
+    normalized.includes('create_changeset') ||
+    normalized.includes('changeset.compile') ||
+    normalized.includes('compile changeset') ||
+    mentionsChangeSet ||
+    looksLikeChangeSetTypo ||
+    ((normalized.includes('create') || normalized.includes('generate') || normalized.includes('build') || normalized.includes('make') || normalized.includes('compile')) &&
+      (mentionsChangeSet || looksLikeChangeSetTypo));
+
+  const hasNegationNearChangeset =
+    normalized.includes("don't create changeset") ||
+    normalized.includes('do not create changeset') ||
+    normalized.includes('without changeset') ||
+    normalized.includes('no changeset');
+
+  if (hasCreateChangesetIntent && !hasNegationNearChangeset) return 'create_changeset';
+  return null;
+}
+
+function isLikelyCompileConfirmation(userText?: string) {
+  const text = String(userText ?? '').trim().toLowerCase();
+  if (!text) return false;
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  const compact = normalized.replace(/\s+/g, '');
+
+  const exactSignals = new Set([
+    '1',
+    'a',
+    'a1',
+    'yes',
+    'approve',
+    'approved',
+    'ok',
+    'okay',
+    'go',
+    'y',
+  ]);
+
+  if (exactSignals.has(normalized) || exactSignals.has(compact)) return true;
+  if (/^(option|choose)\s*1$/.test(normalized)) return true;
+  if (/^(yes|approve|ok)\b/.test(normalized) && normalized.includes('change')) return true;
+  if (normalized.includes('create_changeset') || normalized.includes('changeset')) return true;
+  return false;
+}
 function asOptionalShortString(value: any, maxLen: number) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -161,7 +225,12 @@ function parseQueuedInputEnvelope(userMessage?: string): ParsedQueuedInputEnvelo
   const start = raw.indexOf(QUEUED_INPUT_OPEN);
   const end = raw.indexOf(QUEUED_INPUT_CLOSE);
   if (start === -1 || end === -1 || end <= start) {
-    return { text: raw.trim(), queuedInput: null, explicitAction: null };
+    const textOnly = raw.trim();
+    return {
+      text: textOnly,
+      queuedInput: null,
+      explicitAction: detectExplicitActionFromText(textOnly),
+    };
   }
 
   const payloadRaw = raw.slice(start + QUEUED_INPUT_OPEN.length, end).trim();
@@ -179,7 +248,7 @@ function parseQueuedInputEnvelope(userMessage?: string): ParsedQueuedInputEnvelo
   return {
     text: cleanedText,
     queuedInput,
-    explicitAction: resolveQueuedExplicitAction(queuedInput),
+    explicitAction: resolveQueuedExplicitAction(queuedInput) ?? detectExplicitActionFromText(cleanedText),
   };
 }
 
@@ -276,13 +345,116 @@ function buildReviewBlock(args: { titleHe: string; summaryHe?: string; risks?: a
   };
 }
 
-function collectIntentsFromResult(result: any): any[] {
-  const out: any[] = [];
-  if (result?.intent) out.push(result.intent);
-  if (Array.isArray(result?.intents)) out.push(...result.intents);
-  if (Array.isArray(result?.fixIntents)) out.push(...result.fixIntents);
-  if (Array.isArray(result?.repairIntents)) out.push(...result.repairIntents);
-  return out.filter(Boolean);
+function collectIntentsFromResult(result: any, sourceToolId?: string | null): any[] {
+  const mergePayloadFromResult = (intent: any) => {
+    if (!intent || typeof intent !== 'object') return intent
+    const type = String(intent?.type ?? '')
+    if (!type) return intent
+    const payload =
+      intent?.payload && typeof intent.payload === 'object' && !Array.isArray(intent.payload)
+        ? { ...intent.payload }
+        : {}
+    let changed = false
+    const setIfMissing = (key: string, value: any) => {
+      if (payload[key] !== undefined || value === undefined) return
+      payload[key] = value
+      changed = true
+    }
+
+    if (type === 'plan.tasks_intent') {
+      setIfMissing('tasks', Array.isArray(result?.tasks) ? result.tasks : undefined)
+      setIfMissing('elements', Array.isArray(result?.elements) ? result.elements : undefined)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'plan.elements_intent') {
+      setIfMissing('elements', Array.isArray(result?.elements) ? result.elements : undefined)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'cost.budget_intent') {
+      setIfMissing('materialLines', Array.isArray(result?.materialLines) ? result.materialLines : undefined)
+      setIfMissing('workLines', Array.isArray(result?.workLines) ? result.workLines : undefined)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'quote.intent') {
+      setIfMissing('quote', result?.quote)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'runbook.install_intent') {
+      setIfMissing('runbook', result?.runbook)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'ops.daily_plan_intent') {
+      setIfMissing('dailyPlan', Array.isArray(result?.dailyPlan) ? result.dailyPlan : undefined)
+      setIfMissing('meta', result?.meta)
+    }
+
+    if (!changed) return intent
+    return { ...intent, payload }
+  }
+
+  const out: any[] = []
+  if (result?.intent) out.push(mergePayloadFromResult(result.intent))
+  if (Array.isArray(result?.intents)) out.push(...result.intents.map((item: any) => mergePayloadFromResult(item)))
+  if (Array.isArray(result?.fixIntents)) out.push(...result.fixIntents.map((item: any) => mergePayloadFromResult(item)))
+  if (Array.isArray(result?.repairIntents)) out.push(...result.repairIntents.map((item: any) => mergePayloadFromResult(item)))
+
+  const source = String(sourceToolId ?? '').trim()
+  if (out.length === 0 && source) {
+    if (source === 'plan.tasks' && Array.isArray(result?.tasks) && result.tasks.length > 0) {
+      out.push({
+        type: 'plan.tasks_intent',
+        payload: {
+          tasks: result.tasks,
+          elements: Array.isArray(result?.elements) ? result.elements : undefined,
+          meta: result?.meta,
+        },
+      })
+    } else if (source === 'plan.elements' && Array.isArray(result?.elements) && result.elements.length > 0) {
+      out.push({
+        type: 'plan.elements_intent',
+        payload: {
+          elements: result.elements,
+          meta: result?.meta,
+        },
+      })
+    } else if (
+      source === 'cost.build_budget' &&
+      (
+        (Array.isArray(result?.materialLines) && result.materialLines.length > 0) ||
+        (Array.isArray(result?.workLines) && result.workLines.length > 0)
+      )
+    ) {
+      out.push({
+        type: 'cost.budget_intent',
+        payload: {
+          materialLines: Array.isArray(result?.materialLines) ? result.materialLines : [],
+          workLines: Array.isArray(result?.workLines) ? result.workLines : [],
+          meta: result?.meta,
+        },
+      })
+    } else if (source === 'quote.generate' && result?.quote) {
+      out.push({
+        type: 'quote.intent',
+        payload: {
+          quote: result.quote,
+          meta: result?.meta,
+        },
+      })
+    } else if (source === 'runbook.installation' && result?.runbook) {
+      out.push({
+        type: 'runbook.install_intent',
+        payload: {
+          runbook: result.runbook,
+          meta: result?.meta,
+        },
+      })
+    } else if (source === 'ops.daily_plan' && Array.isArray(result?.dailyPlan) && result.dailyPlan.length > 0) {
+      out.push({
+        type: 'ops.daily_plan_intent',
+        payload: {
+          dailyPlan: result.dailyPlan,
+          meta: result?.meta,
+        },
+      })
+    }
+  }
+
+  return out.filter(Boolean)
 }
 
 function normalizeReviewIssues(review: any): any[] {
@@ -976,6 +1148,25 @@ function normalizeAssistantBlock(raw: any): any[] {
   return [{ type: 'ChatBlock', markdownHe: JSON.stringify(raw) }];
 }
 
+function isTaskGenerationRequest(text: string) {
+  const value = String(text ?? '').toLowerCase()
+  if (!value.trim()) return false
+  return (
+    value.includes('task') ||
+    value.includes('tasks') ||
+    value.includes('plan.tasks') ||
+    value.includes('build_tasks') ||
+    value.includes('משימ')
+  )
+}
+
+function hasTasksIntent(intents: any[]) {
+  return (Array.isArray(intents) ? intents : []).some((intent: any) => {
+    if (String(intent?.type ?? '') !== 'plan.tasks_intent') return false
+    return Array.isArray(intent?.payload?.tasks) && intent.payload.tasks.length > 0
+  })
+}
+
 function hasWrapperShapeCoercion(raw: any) {
   if (!raw || typeof raw !== 'object') return false;
   const source = raw?.blocks ?? raw;
@@ -1461,6 +1652,9 @@ export const runNext = action({
     const userMessage = args.userMessage === '__continue__' ? '__continue__' : parsedInput.text;
     const queuedInputPrompt = buildQueuedInputPrompt(parsedInput.queuedInput);
     const explicitQueuedAction = parsedInput.explicitAction;
+    const compileConfirmedByText =
+      explicitQueuedAction === 'create_changeset' ||
+      (explicitQueuedAction === null && isLikelyCompileConfirmation(userMessage));
     if (parsedInput.queuedInput) {
       await ctx.runMutation(internal.sdk.telemetry.logEvent, {
         runId: args.runId,
@@ -1732,6 +1926,7 @@ export const runNext = action({
 
     const pendingIntents: any[] = [];
     let autoCompiled = false;
+    let taskIntentBackfillAttempted = false;
 
     const orchestrator = REGISTRY.orchestrator;
     if (!orchestrator) throw new Error('Agent orchestrator not found in registry');
@@ -1780,6 +1975,7 @@ export const runNext = action({
       })
       : null;
     const shouldForceTools = !isChatEditRun && isPlanningRequest(lastUserMsg);
+    const requiresTasksIntent = isChatEditRun && isTaskGenerationRequest(lastUserMsg);
     const strictFullPlanMode = !isChatEditRun && shouldForceTools;
 
     if (isChatEditRun) {
@@ -1852,12 +2048,13 @@ export const runNext = action({
           conversationId: args.conversationId,
         }),
       'changeset.compile': async (input: any) => {
-        if (isChatEditRun && explicitChangeSetOnly && explicitQueuedAction !== 'create_changeset') {
+        if (isChatEditRun && explicitChangeSetOnly && !compileConfirmedByText) {
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
             runId: args.runId,
             type: 'chat_compile_skipped_no_explicit_action',
             payload: {
               explicitAction: explicitQueuedAction,
+              compileConfirmedByText,
               hasQueuedInput: Boolean(parsedInput.queuedInput),
             },
           });
@@ -1868,7 +2065,89 @@ export const runNext = action({
           };
         }
 
-        const intents = Array.isArray(input?.intents) ? input.intents : [];
+        let intents =
+          Array.isArray(input?.intents) && input.intents.length > 0
+            ? input.intents
+            : pendingIntents;
+
+        if (
+          isChatEditRun &&
+          requiresTasksIntent &&
+          !hasTasksIntent(intents) &&
+          !taskIntentBackfillAttempted &&
+          allowedTools.includes('plan.tasks')
+        ) {
+          taskIntentBackfillAttempted = true;
+          const latestElementsIntent = [...pendingIntents]
+            .reverse()
+            .find(
+              (intent: any) =>
+                String(intent?.type ?? '') === 'plan.elements_intent' &&
+                Array.isArray(intent?.payload?.elements) &&
+                intent.payload.elements.length > 0
+            );
+          const backfillContext =
+            latestElementsIntent?.payload?.elements && latestElementsIntent.payload.elements.length > 0
+              ? { ...(bootstrapContext ?? {}), elements: latestElementsIntent.payload.elements }
+              : bootstrapContext;
+          let taskBackfillResult: any;
+          try {
+            taskBackfillResult = await runToolInternal({
+              ctx,
+              projectId: args.projectId,
+              toolId: 'plan.tasks',
+              input: {
+                userText: lastUserMsg,
+                context: backfillContext,
+              },
+              runId: args.runId,
+              conversationId: args.conversationId,
+            });
+          } catch (error: any) {
+            taskBackfillResult = { error: error?.message ?? String(error) };
+          }
+
+          const backfillIntents = collectIntentsFromResult(taskBackfillResult, 'plan.tasks');
+          if (backfillIntents.length > 0) {
+            pendingIntents.push(...backfillIntents);
+            if (Array.isArray(input?.intents) && input.intents.length > 0) {
+              intents = [...input.intents, ...backfillIntents];
+            } else {
+              intents = pendingIntents;
+            }
+          }
+
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'chat_tasks_intent_backfill',
+            payload: {
+              ok: !taskBackfillResult?.error,
+              intentsAdded: backfillIntents.length,
+              hasTasksIntent: hasTasksIntent(backfillIntents),
+              tasksCount: Array.isArray(taskBackfillResult?.tasks) ? taskBackfillResult.tasks.length : 0,
+              error: taskBackfillResult?.error ? String(taskBackfillResult.error) : null,
+            },
+          });
+        }
+
+        if (isChatEditRun && requiresTasksIntent && !hasTasksIntent(intents)) {
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'chat_compile_blocked_missing_tasks_intent',
+            payload: {
+              intent: chatIntent,
+              explicitAction: explicitQueuedAction,
+              pendingIntents: pendingIntents.length,
+              providedIntents: Array.isArray(input?.intents) ? input.intents.length : 0,
+            },
+          });
+          return {
+            skipped: true,
+            code: 'TASK_INTENT_REQUIRED',
+            reason: 'Task request requires a non-empty plan.tasks_intent before changeset.compile.',
+          };
+        }
+
         if (intents.length === 0) {
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
             runId: args.runId,
@@ -2095,7 +2374,7 @@ export const runNext = action({
           };
         }
 
-        const intents = collectIntentsFromResult(toolResult);
+        const intents = collectIntentsFromResult(toolResult, toolId);
         if (intents.length > 0) deterministicIntents.push(...intents);
       }
 
@@ -2284,7 +2563,7 @@ export const runNext = action({
             result = { error: error?.message ?? String(error) };
           }
 
-          const intentsFromResult = collectIntentsFromResult(result);
+          const intentsFromResult = collectIntentsFromResult(result, toolName);
           if (intentsFromResult.length > 0) {
             pendingIntents.push(...intentsFromResult);
           }
@@ -2296,21 +2575,106 @@ export const runNext = action({
           });
         }
 
+        if (
+          isChatEditRun &&
+          explicitChangeSetOnly &&
+          compileConfirmedByText &&
+          requiresTasksIntent &&
+          !hasTasksIntent(pendingIntents) &&
+          !taskIntentBackfillAttempted &&
+          allowedTools.includes('plan.tasks')
+        ) {
+          taskIntentBackfillAttempted = true;
+          const latestElementsIntent = [...pendingIntents]
+            .reverse()
+            .find(
+              (intent: any) =>
+                String(intent?.type ?? '') === 'plan.elements_intent' &&
+                Array.isArray(intent?.payload?.elements) &&
+                intent.payload.elements.length > 0
+            );
+          const backfillContext =
+            latestElementsIntent?.payload?.elements && latestElementsIntent.payload.elements.length > 0
+              ? { ...(bootstrapContext ?? {}), elements: latestElementsIntent.payload.elements }
+              : bootstrapContext;
+          let taskBackfillResult: any;
+          try {
+            taskBackfillResult = await runToolInternal({
+              ctx,
+              projectId: args.projectId,
+              toolId: 'plan.tasks',
+              input: {
+                userText: lastUserMsg,
+                context: backfillContext,
+              },
+              runId: args.runId,
+              conversationId: args.conversationId,
+            });
+          } catch (error: any) {
+            taskBackfillResult = { error: error?.message ?? String(error) };
+          }
+
+          const backfillIntents = collectIntentsFromResult(taskBackfillResult, 'plan.tasks');
+          if (backfillIntents.length > 0) {
+            pendingIntents.push(...backfillIntents);
+          }
+
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'chat_tasks_intent_backfill',
+            payload: {
+              ok: !taskBackfillResult?.error,
+              intentsAdded: backfillIntents.length,
+              hasTasksIntent: hasTasksIntent(backfillIntents),
+              tasksCount: Array.isArray(taskBackfillResult?.tasks) ? taskBackfillResult.tasks.length : 0,
+              error: taskBackfillResult?.error ? String(taskBackfillResult.error) : null,
+            },
+          });
+
+          messages.push({
+            role: 'system',
+            content: `AUTO TOOL RESULT (plan.tasks): ${JSON.stringify(taskBackfillResult)}`,
+          });
+        }
+
         const shouldCompileFromExplicitAction =
           isChatEditRun &&
           explicitChangeSetOnly &&
-          explicitQueuedAction === 'create_changeset' &&
+          (
+          compileConfirmedByText
+          ) &&
           !toolCalledCompile &&
           !autoCompiled &&
+          (!requiresTasksIntent || hasTasksIntent(pendingIntents)) &&
           hasChangeProducingIntents(pendingIntents);
 
         const shouldLogSkippedCompile =
           isChatEditRun &&
           explicitChangeSetOnly &&
-          explicitQueuedAction !== 'create_changeset' &&
+          !compileConfirmedByText &&
           !toolCalledCompile &&
           !autoCompiled &&
           hasChangeProducingIntents(pendingIntents);
+
+        if (
+          isChatEditRun &&
+          explicitChangeSetOnly &&
+          compileConfirmedByText &&
+          !toolCalledCompile &&
+          !autoCompiled &&
+          requiresTasksIntent &&
+          !hasTasksIntent(pendingIntents)
+        ) {
+          await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+            runId: args.runId,
+            type: 'chat_compile_blocked_missing_tasks_intent',
+            payload: {
+              intent: chatIntent,
+              explicitAction: explicitQueuedAction,
+              pendingIntents: pendingIntents.length,
+            },
+          });
+        }
 
         if ((!isChatEditRun || shouldCompileFromExplicitAction) && !toolCalledCompile && pendingIntents.length > 0 && !autoCompiled) {
           autoCompiled = true;
@@ -2417,6 +2781,55 @@ export const runNext = action({
 
     if (!finalContent) {
       finalContent = 'לא התקבלה תשובה. נסה שוב.';
+    }
+
+    if (isChatEditRun) {
+      let chatText = String(finalContent ?? '').trim()
+      if (chatText.startsWith('{')) {
+        try {
+          const parsedJson = JSON.parse(chatText)
+          const fromSummary = String(parsedJson?.summaryHe ?? parsedJson?.text ?? parsedJson?.contentHe ?? '').trim()
+          const fromChatBlock = Array.isArray(parsedJson?.blocks)
+            ? String(
+              parsedJson.blocks.find((block: any) => block?.type === 'ChatBlock')?.contentHe ??
+              parsedJson.blocks.find((block: any) => block?.type === 'ChatBlock')?.markdownHe ??
+              ''
+            ).trim()
+            : ''
+          chatText = fromSummary || fromChatBlock || chatText
+        } catch {
+          // keep raw assistant text
+        }
+      }
+
+      const textWithFooter = ensureSuggestionFooter(chatText)
+      const parsed = {
+        summaryHe: textWithFooter,
+        text: textWithFooter,
+        blocks: [],
+      }
+
+      await ctx.runMutation(internal.sdk.telemetry.appendMessage, {
+        conversationId: args.conversationId,
+        role: 'assistant',
+        text: textWithFooter,
+        blocks: [],
+        runId: args.runId,
+      })
+
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'chat_plain_text_emit',
+        payload: {
+          length: textWithFooter.length,
+          hadJsonEnvelope: String(finalContent ?? '').trim().startsWith('{'),
+        },
+      })
+
+      return {
+        status: 'success',
+        output: parsed,
+      }
     }
 
     let parsed: any;
@@ -2673,7 +3086,7 @@ Then call changeset.compile to create the ChangeSet.`
           const handler = toolHandlers[originalName];
           if (handler) {
             const result = await handler(toolArgs.input ?? toolArgs);
-            const intentsFromResult = collectIntentsFromResult(result);
+            const intentsFromResult = collectIntentsFromResult(result, originalName);
             if (intentsFromResult.length > 0) {
               pendingIntents.push(...intentsFromResult);
             }
@@ -2824,6 +3237,7 @@ Then call changeset.compile to create the ChangeSet.`
     };
   },
 });
+
 
 
 

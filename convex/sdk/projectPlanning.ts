@@ -56,12 +56,91 @@ function defaultFinalizePolicy() {
   }
 }
 
-function collectIntentsFromResult(result: any): any[] {
+function collectIntentsFromResult(result: any, sourceToolId?: string | null): any[] {
+  const mergePayloadFromResult = (intent: any) => {
+    if (!intent || typeof intent !== 'object') return intent
+    const type = String(intent?.type ?? '')
+    if (!type) return intent
+    const payload =
+      intent?.payload && typeof intent.payload === 'object' && !Array.isArray(intent.payload)
+        ? { ...intent.payload }
+        : {}
+    let changed = false
+    const setIfMissing = (key: string, value: any) => {
+      if (payload[key] !== undefined || value === undefined) return
+      payload[key] = value
+      changed = true
+    }
+
+    if (type === 'plan.tasks_intent') {
+      setIfMissing('tasks', Array.isArray(result?.tasks) ? result.tasks : undefined)
+      setIfMissing('elements', Array.isArray(result?.elements) ? result.elements : undefined)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'plan.elements_intent') {
+      setIfMissing('elements', Array.isArray(result?.elements) ? result.elements : undefined)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'cost.budget_intent') {
+      setIfMissing('materialLines', Array.isArray(result?.materialLines) ? result.materialLines : undefined)
+      setIfMissing('workLines', Array.isArray(result?.workLines) ? result.workLines : undefined)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'quote.intent') {
+      setIfMissing('quote', result?.quote)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'runbook.install_intent') {
+      setIfMissing('runbook', result?.runbook)
+      setIfMissing('meta', result?.meta)
+    } else if (type === 'ops.daily_plan_intent') {
+      setIfMissing('dailyPlan', Array.isArray(result?.dailyPlan) ? result.dailyPlan : undefined)
+      setIfMissing('meta', result?.meta)
+    }
+
+    if (!changed) return intent
+    return { ...intent, payload }
+  }
+
   const out: any[] = []
-  if (result?.intent) out.push(result.intent)
-  if (Array.isArray(result?.intents)) out.push(...result.intents)
-  if (Array.isArray(result?.fixIntents)) out.push(...result.fixIntents)
-  if (Array.isArray(result?.repairIntents)) out.push(...result.repairIntents)
+  if (result?.intent) out.push(mergePayloadFromResult(result.intent))
+  if (Array.isArray(result?.intents)) out.push(...result.intents.map((item: any) => mergePayloadFromResult(item)))
+  if (Array.isArray(result?.fixIntents)) out.push(...result.fixIntents.map((item: any) => mergePayloadFromResult(item)))
+  if (Array.isArray(result?.repairIntents)) out.push(...result.repairIntents.map((item: any) => mergePayloadFromResult(item)))
+
+  const source = String(sourceToolId ?? '').trim()
+  if (out.length === 0 && source) {
+    if (source === 'plan.tasks' && Array.isArray(result?.tasks) && result.tasks.length > 0) {
+      out.push({
+        type: 'plan.tasks_intent',
+        payload: {
+          tasks: result.tasks,
+          elements: Array.isArray(result?.elements) ? result.elements : undefined,
+          meta: result?.meta,
+        },
+      })
+    } else if (source === 'plan.elements' && Array.isArray(result?.elements) && result.elements.length > 0) {
+      out.push({
+        type: 'plan.elements_intent',
+        payload: {
+          elements: result.elements,
+          meta: result?.meta,
+        },
+      })
+    } else if (
+      source === 'cost.build_budget' &&
+      (
+        (Array.isArray(result?.materialLines) && result.materialLines.length > 0) ||
+        (Array.isArray(result?.workLines) && result.workLines.length > 0)
+      )
+    ) {
+      out.push({
+        type: 'cost.budget_intent',
+        payload: {
+          materialLines: Array.isArray(result?.materialLines) ? result.materialLines : [],
+          workLines: Array.isArray(result?.workLines) ? result.workLines : [],
+          meta: result?.meta,
+        },
+      })
+    }
+  }
+
   return out.filter(Boolean)
 }
 

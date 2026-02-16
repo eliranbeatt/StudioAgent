@@ -39,6 +39,15 @@ type BlocksV2State = {
   chatDraft: string
 }
 
+type TrayItem = {
+  _id: Id<'changeSets'>
+  status: 'PROPOSED' | 'APPLIED' | 'PARTIALLY_APPLIED' | 'DISCARDED'
+  stage: string
+  reason_he?: string
+  createdAt: number
+  opsCount: number
+}
+
 const EMPTY_BLOCKS_STATE: BlocksV2State = {
   suggestions: {
     items: [],
@@ -165,14 +174,83 @@ function normalizeQuestions(block: any): {
   }
 }
 
+type SseEvent =
+  | { event: 'token'; data: { delta?: string } }
+  | { event: 'done'; data: { text?: string } }
+  | { event: 'error'; data: { message?: string } }
+
+function parseSseEvents(buffer: string) {
+  const segments = buffer.split('\n\n')
+  const rest = segments.pop() ?? ''
+  const events: SseEvent[] = []
+
+  for (const segment of segments) {
+    const lines = segment.split('\n').map((line) => line.trim()).filter(Boolean)
+    if (lines.length === 0) continue
+    const event = lines.find((line) => line.startsWith('event:'))?.slice(6).trim()
+    const dataLine = lines.find((line) => line.startsWith('data:'))?.slice(5).trim()
+    if (!event || !dataLine) continue
+    try {
+      const data = JSON.parse(dataLine)
+      if (event === 'token' || event === 'done' || event === 'error') {
+        events.push({ event, data } as SseEvent)
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return { events, rest }
+}
+
+function shouldForceOrchestratorTurn(message: string, runStatus?: string) {
+  const text = String(message ?? '').trim().toLowerCase()
+  if (!text) return false
+  const normalized = text.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  const compact = normalized.replace(/\s+/g, '')
+
+  if (runStatus === 'awaiting_approval') return true
+
+  const mentionsChangeSet =
+    normalized.includes('changeset') ||
+    normalized.includes('change set') ||
+    normalized.includes('chageset') ||
+    normalized.includes('chage set') ||
+    normalized.includes('chhange set') ||
+    normalized.includes('changset') ||
+    normalized.includes('chagneset') ||
+    /cha+n?g+e?\s*s+e+t/.test(normalized) ||
+    compact.includes('createchangeset')
+
+  const asksForChangeSet =
+    normalized.includes('create_changeset') ||
+    normalized.includes('changeset.compile') ||
+    mentionsChangeSet ||
+    ((normalized.includes('create') || normalized.includes('generate') || normalized.includes('build') || normalized.includes('compile') || normalized.includes('make')) &&
+      mentionsChangeSet)
+
+  return asksForChangeSet
+}
+
+function extractChangeSetIdFromRunResult(value: any): Id<'changeSets'> | null {
+  const direct = value?.pendingChangeSetId ?? value?.changeSetId
+  const nested = value?.output?.pendingChangeSetId ?? value?.output?.changeSetId
+  const candidate = direct ?? nested
+  if (!candidate || typeof candidate !== 'string') return null
+  return candidate as Id<'changeSets'>
+}
+
 export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
   const sdkApi = (api as any)['sdk/api'] ?? (api as any).sdk?.api
   const listConversationsQuery = sdkApi?.listChatConversations ?? sdkApi?.listConversations
   const [conversationId, setConversationId] = useState<Id<'agentConversations'> | null>(null)
   const [reviewChangeSetId, setReviewChangeSetId] = useState<Id<'changeSets'> | null>(null)
   const [isDispatching, setIsDispatching] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingText, setStreamingText] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
   const [trayBusyId, setTrayBusyId] = useState<string | null>(null)
+  const [optimisticTrayItems, setOptimisticTrayItems] = useState<TrayItem[]>([])
   const [blocksState, setBlocksState] = useState<BlocksV2State>(EMPTY_BLOCKS_STATE)
   const creatingConversationRef = useRef(false)
   const creatingRunForRef = useRef<string | null>(null)
@@ -180,6 +258,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
 
   const featureFlags = useQuery(api.featureFlags.getAll)
   const blocksV2Enabled = Boolean(featureFlags?.ff_blocks_v2)
+  const chatStreamingEnabled = Boolean(featureFlags?.ff_sdk_chat_stream_v1)
 
   const conversations = useQuery(listConversationsQuery, projectId ? { projectId } : 'skip')
 
@@ -201,6 +280,13 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
   const runs = useQuery(api.sdk.api.listRuns, effectiveConversationId ? { conversationId: effectiveConversationId } : 'skip')
   const chatRuns = useMemo(() => (runs ?? []).filter((run: any) => run.runMode === 'CHAT_EDIT'), [runs])
   const activeRun = chatRuns[0] ?? null
+  const pendingApprovalRun = useMemo(
+    () =>
+      chatRuns.find(
+        (run: any) => run?.status === 'awaiting_approval' && run?.pendingChangeSetId && run?.approvalToken
+      ) ?? null,
+    [chatRuns]
+  )
 
   const messages = useQuery(
     api.sdk.api.listMessages,
@@ -208,6 +294,20 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
   )
 
   const trayItems = useQuery(listChangeSetsQuery ?? 'skip', projectId && listChangeSetsQuery ? { projectId, limit: 80 } : 'skip')
+  const mergedTrayItems = useMemo(() => {
+    const serverItems = Array.isArray(trayItems) ? (trayItems as TrayItem[]) : []
+    if (optimisticTrayItems.length === 0) return serverItems
+    const serverIds = new Set(serverItems.map((item) => String(item._id)))
+    const pendingOptimistic = optimisticTrayItems.filter((item) => !serverIds.has(String(item._id)))
+    return [...pendingOptimistic, ...serverItems]
+  }, [optimisticTrayItems, trayItems])
+
+  useEffect(() => {
+    if (!Array.isArray(trayItems) || optimisticTrayItems.length === 0) return
+    const serverIds = new Set((trayItems as TrayItem[]).map((item) => String(item._id)))
+    if (serverIds.size === 0) return
+    setOptimisticTrayItems((prev) => prev.filter((item) => !serverIds.has(String(item._id))))
+  }, [optimisticTrayItems.length, trayItems])
 
   /* scan history for the most recent interactive blocks instead of just the last message */
   const latestSuggestions = useMemo(() => {
@@ -337,7 +437,8 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
     setSendError(null)
     setIsDispatching(true)
     try {
-      if (blocksV2Enabled) {
+      const forceOrchestratorTurn = shouldForceOrchestratorTurn(trimmed, runStatus)
+      if (blocksV2Enabled && hasStagedSelections) {
         await withTimeout(
           submitTurn({
             projectId,
@@ -360,9 +461,55 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
           }),
           'submitTurn'
         )
+      } else if (chatStreamingEnabled && !forceOrchestratorTurn) {
+        setIsStreaming(true)
+        setStreamingText('')
+        const response = await withTimeout(
+          fetch('/api/chat/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              projectId,
+              conversationId: effectiveConversationId,
+              runId: activeRun._id,
+              userMessage: trimmed,
+            }),
+          }),
+          'chat/stream'
+        )
+        if (!response.ok || !response.body) {
+          const bodyText = await response.text().catch(() => '')
+          throw new Error(bodyText || `Stream failed (${response.status})`)
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let pending = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          pending += decoder.decode(value, { stream: true })
+          const parsed = parseSseEvents(pending)
+          pending = parsed.rest
+          for (const evt of parsed.events) {
+            if (evt.event === 'token') {
+              const delta = String(evt.data?.delta ?? '')
+              if (delta) setStreamingText((prev) => prev + delta)
+              continue
+            }
+            if (evt.event === 'done') {
+              setStreamingText('')
+              continue
+            }
+            if (evt.event === 'error') {
+              throw new Error(String(evt.data?.message ?? 'Stream failed'))
+            }
+          }
+        }
       } else {
         const messageWithQueued = buildMessageWithQueuedInput(trimmed || 'apply queued updates', blocksState)
-        await withTimeout(
+        const runResult = await withTimeout(
           runNext({
             projectId,
             conversationId: effectiveConversationId,
@@ -371,6 +518,21 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
           }),
           'runNext'
         )
+        const newChangeSetId = extractChangeSetIdFromRunResult(runResult)
+        if (newChangeSetId) {
+          setOptimisticTrayItems((prev) => {
+            if (prev.some((item) => item._id === newChangeSetId)) return prev
+            const optimistic: TrayItem = {
+              _id: newChangeSetId,
+              status: 'PROPOSED',
+              stage: String(activeRun?.stageKey ?? 'chat'),
+              reason_he: 'ChangeSet חדש מוכן לבדיקה',
+              createdAt: Date.now(),
+              opsCount: 0,
+            }
+            return [optimistic, ...prev]
+          })
+        }
       }
       resetStagedSelections()
     } catch (error) {
@@ -383,6 +545,8 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
         setSendError(details || 'Failed to send message. Please try again.')
       }
     } finally {
+      setIsStreaming(false)
+      setStreamingText('')
       setIsDispatching(false)
     }
   }
@@ -449,18 +613,21 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
   const handleApplyChangeSet = async (changeSetId: Id<'changeSets'>) => {
     setTrayBusyId(changeSetId)
     try {
-      const isPendingCurrent =
-        activeRun?.status === 'awaiting_approval' &&
-        activeRun?.pendingChangeSetId === changeSetId &&
-        Boolean(activeRun?.approvalToken)
-      if (isPendingCurrent) {
+      const pendingRunForChangeSet = chatRuns.find(
+        (run: any) =>
+          run?.status === 'awaiting_approval' &&
+          run?.pendingChangeSetId === changeSetId &&
+          Boolean(run?.approvalToken)
+      )
+      if (pendingRunForChangeSet) {
         await approveChangeSet({
-          runId: activeRun!._id,
-          approvalToken: activeRun!.approvalToken!,
+          runId: pendingRunForChangeSet._id,
+          approvalToken: pendingRunForChangeSet.approvalToken,
         })
         return
       }
       await applyChangeSet({ changeSetId })
+      setOptimisticTrayItems((prev) => prev.filter((item) => item._id !== changeSetId))
     } finally {
       setTrayBusyId(null)
     }
@@ -469,15 +636,17 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
   const handleDiscardChangeSet = async (changeSetId: Id<'changeSets'>) => {
     setTrayBusyId(changeSetId)
     try {
-      const isPendingCurrent = activeRun?.status === 'awaiting_approval' && activeRun?.pendingChangeSetId === changeSetId
-      if (isPendingCurrent) {
-        if (effectiveConversationId && activeRun) {
+      const pendingRunForChangeSet = chatRuns.find(
+        (run: any) => run?.status === 'awaiting_approval' && run?.pendingChangeSetId === changeSetId
+      )
+      if (pendingRunForChangeSet) {
+        if (effectiveConversationId) {
           setIsDispatching(true)
           try {
             await runNext({
               projectId,
               conversationId: effectiveConversationId,
-              runId: activeRun._id,
+              runId: pendingRunForChangeSet._id,
               userMessage: 'no',
             })
           } finally {
@@ -487,6 +656,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
         return
       }
       await discardChangeSet({ changeSetId })
+      setOptimisticTrayItems((prev) => prev.filter((item) => item._id !== changeSetId))
     } finally {
       setTrayBusyId(null)
     }
@@ -510,7 +680,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
           <div className='border-b border-slate-200 bg-white px-6 py-3 flex items-center justify-between'>
             <div>
               <div className='text-sm font-semibold text-slate-700'>Agent Orchestrator</div>
-              <div className='text-xs text-slate-500'>Free chat agent with SDK tools and structured blocks</div>
+              <div className='text-xs text-slate-500'>Free chat streaming with clarify/preview question blocks</div>
             </div>
             {activeRun ? (
               <div className='text-xs text-slate-500'>
@@ -538,29 +708,48 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
                     {msg.role === 'user' ? (
                       <div className='whitespace-pre-wrap'>{msg.text}</div>
                     ) : (
-                      <div className='space-y-4'>
-                        {(msg.blocks ?? []).map((rawBlock: any, idx: number) => {
-                          const block = normalizeBlock(rawBlock)
+                      (() => {
+                        const msgBlocks = Array.isArray(msg?.blocks) ? msg.blocks : []
+                        if (msgBlocks.length === 0) {
                           return (
-                            <BlockRenderer
-                              key={idx}
-                              block={block}
-                              blocksV2Enabled={blocksV2Enabled}
-                              onReviewChangeSet={(id) => setReviewChangeSetId(id)}
-                              onApplyChangeSet={(id) => id && void handleApplyChangeSet(id)}
-                              onDiscardChangeSet={(id) => id && void handleDiscardChangeSet(id)}
-                              blocksState={blocksState}
-                              onStateChange={setBlocksState}
-                              disabled={isDispatching || !canSend}
-                            />
+                            <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 whitespace-pre-wrap'>
+                              {msg.text}
+                            </div>
                           )
-                        })}
-                      </div>
+                        }
+                        return (
+                          <div className='space-y-4'>
+                            {msgBlocks.map((rawBlock: any, idx: number) => {
+                              const block = normalizeBlock(rawBlock)
+                              return (
+                                <BlockRenderer
+                                  key={idx}
+                                  block={block}
+                                  blocksV2Enabled={blocksV2Enabled}
+                                  onReviewChangeSet={(id) => setReviewChangeSetId(id)}
+                                  onApplyChangeSet={(id) => id && void handleApplyChangeSet(id)}
+                                  onDiscardChangeSet={(id) => id && void handleDiscardChangeSet(id)}
+                                  blocksState={blocksState}
+                                  onStateChange={setBlocksState}
+                                  disabled={isDispatching || !canSend}
+                                />
+                              )
+                            })}
+                          </div>
+                        )
+                      })()
                     )}
                   </div>
                 </div>
               ))
             )}
+            {isStreaming && streamingText ? (
+              <div className='flex justify-start'>
+                <div className='max-w-3xl bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 whitespace-pre-wrap'>
+                  {streamingText}
+                </div>
+              </div>
+            ) : null}
             {isDispatching ? (
               <div className='flex justify-start'>
                 <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm flex items-center gap-3 text-slate-600'>
@@ -595,6 +784,35 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
           ) : null}
 
           <div className='p-4 bg-white border-t border-slate-200'>
+            {pendingApprovalRun?.pendingChangeSetId ? (
+              <div className='mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3'>
+                <div className='text-[11px] font-semibold text-amber-700 uppercase tracking-wider mb-1'>Approval Required</div>
+                <div className='text-sm text-amber-900 mb-2'>
+                  ChangeSet {String(pendingApprovalRun.pendingChangeSetId).slice(-6)} is ready for approval.
+                </div>
+                <div className='flex gap-2'>
+                  <button
+                    onClick={() =>
+                      approveChangeSet({
+                        runId: pendingApprovalRun._id,
+                        approvalToken: pendingApprovalRun.approvalToken ?? '',
+                      })
+                    }
+                    disabled={!pendingApprovalRun.approvalToken}
+                    className='px-3 py-2 rounded bg-amber-600 text-white text-xs hover:bg-amber-700 disabled:opacity-50'
+                  >
+                    Approve & Apply
+                  </button>
+                  <button
+                    onClick={() => void handleDiscardChangeSet(pendingApprovalRun.pendingChangeSetId as Id<'changeSets'>)}
+                    className='px-3 py-2 rounded border border-amber-300 text-amber-900 text-xs hover:bg-amber-100'
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             {sendError ? (
               <div className='mb-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900'>
                 {sendError}
@@ -636,7 +854,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
           </div>
           <div className='flex-1 min-h-0 overflow-y-auto p-4'>
             <SdkChangeSetsTray
-              items={(trayItems ?? []) as any}
+              items={(mergedTrayItems ?? []) as any}
               busy={trayBusyId}
               onReview={(id) => setReviewChangeSetId(id)}
               onApply={handleApplyChangeSet}
@@ -653,27 +871,6 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
           changeSetId={reviewChangeSetId}
           projectId={projectId}
         />
-      ) : null}
-
-      {activeRun?.status === 'awaiting_approval' && activeRun.pendingChangeSetId ? (
-        <div className='absolute bottom-20 right-4 border rounded-lg p-4 bg-amber-50 border-amber-200 shadow-lg max-w-sm'>
-          <div className='text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2'>Approval Required</div>
-          <div className='text-sm text-amber-900 mb-3'>
-            ChangeSet {String(activeRun.pendingChangeSetId).slice(-6)} is awaiting approval.
-          </div>
-          <button
-            onClick={() =>
-              approveChangeSet({
-                runId: activeRun._id,
-                approvalToken: activeRun.approvalToken ?? '',
-              })
-            }
-            disabled={!activeRun.approvalToken}
-            className='w-full px-3 py-2 rounded bg-amber-600 text-white text-xs hover:bg-amber-700 disabled:opacity-50'
-          >
-            Approve & Apply
-          </button>
-        </div>
       ) : null}
     </div>
   )
@@ -839,14 +1036,7 @@ function BlockRenderer({
     )
   }
   if (block.type === 'ChangeSetBlock') {
-    return (
-      <ChangeSetBlock
-        block={block}
-        onApply={() => onApplyChangeSet(block.changeSetId)}
-        onDiscard={() => onDiscardChangeSet(block.changeSetId)}
-        onReview={() => block.changeSetId && onReviewChangeSet(block.changeSetId)}
-      />
-    )
+    return null
   }
   if (block.type === 'ReviewBlock') return <ReviewBlock block={block} />
 
@@ -857,4 +1047,5 @@ function BlockRenderer({
     </div>
   )
 }
+
 

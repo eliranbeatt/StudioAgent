@@ -32,3 +32,6 @@
 ## Security & Configuration Tips
 - Keep secrets in `.env.local` and never commit it.
 - Convex schema and backend logic live under `convex/`; review schema changes carefully.
+
+when ever you need to pull data from convext to analze logs use this format:
+Ran npx convex run sdk/api:listRunEvents "{runId:'xs7dpbrkkcy0x7082nctnvcag1818n8y'}"

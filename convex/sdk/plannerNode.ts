@@ -33,7 +33,7 @@ export const draftPlanAndQuestions = action({
       ctx,
       systemPrompt: FULL_PROMPTS.DRAFT_PLAN_AND_QUESTIONS_SYSTEM,
       userContent: JSON.stringify(payload),
-      model: 'gpt-5.2',
+      model: 'gpt-5-mini',
       temperature: 0.1,
       maxCompletionTokens: 18000,
       projectId: args.projectId,

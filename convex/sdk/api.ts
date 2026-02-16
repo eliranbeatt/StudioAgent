@@ -163,6 +163,112 @@ export const appendUserMessage = mutation({
   },
 });
 
+export const persistStreamedChatTurn = mutation({
+  args: {
+    projectId: v.id('projects'),
+    conversationId: v.id('agentConversations'),
+    runId: v.id('sdkRuns'),
+    userText: v.string(),
+    assistantText: v.string(),
+    mode: v.string(),
+    model: v.optional(v.string()),
+    delegatedAgents: v.optional(v.array(v.string())),
+    footerLine: v.optional(v.string()),
+    blocks: v.optional(v.array(v.any())),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    await ctx.db.insert('agentMessages', {
+      conversationId: args.conversationId,
+      role: 'user',
+      text: args.userText,
+      runId: args.runId,
+      createdAt: now,
+    })
+    await ctx.db.insert('agentMessages', {
+      conversationId: args.conversationId,
+      role: 'assistant',
+      text: args.assistantText,
+      blocks: args.blocks,
+      runId: args.runId,
+      createdAt: now + 1,
+    })
+    await ctx.db.patch(args.conversationId, {
+      updatedAt: now + 1,
+    })
+    await ctx.db.insert('sdkRunEvents', {
+      runId: args.runId,
+      type: 'stream_chat_turn_persisted',
+      payload: {
+        mode: args.mode,
+        model: args.model ?? null,
+        delegatedAgents: args.delegatedAgents ?? [],
+        footerLine: args.footerLine ?? null,
+        hasBlocks: Array.isArray(args.blocks) && args.blocks.length > 0,
+      },
+      createdAt: now + 1,
+    })
+    return { ok: true }
+  },
+})
+
+export const enqueueKnowledgeUpdateFromStream = mutation({
+  args: {
+    projectId: v.id('projects'),
+    conversationId: v.id('agentConversations'),
+    runId: v.id('sdkRuns'),
+    userText: v.string(),
+    assistantText: v.string(),
+    mode: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.scheduler.runAfter(0, internal.sdk.api.runKnowledgeUpdateFromStream, {
+      projectId: args.projectId,
+      conversationId: args.conversationId,
+      runId: args.runId,
+      userText: args.userText,
+      assistantText: args.assistantText,
+      mode: args.mode,
+    })
+    return { ok: true }
+  },
+})
+
+export const runKnowledgeUpdateFromStream = internalAction({
+  args: {
+    projectId: v.id('projects'),
+    conversationId: v.id('agentConversations'),
+    runId: v.id('sdkRuns'),
+    userText: v.string(),
+    assistantText: v.string(),
+    mode: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const text = `${args.userText}\n${args.assistantText}`
+    const durableSignal =
+      /(?:החלט|נחליט|סיכום|budget|תקציב|deadline|דדליין|materials|חומרים|element|אלמנט|task|משימה)/i.test(text)
+    if (!durableSignal) {
+      return { ok: true, skipped: true }
+    }
+
+    await ctx.runAction(api.sdk.knowledge.summarizeOrUpdate, {
+      projectId: args.projectId,
+      userText: args.userText,
+      newFacts: [args.userText, args.assistantText].filter(Boolean),
+      runId: args.runId,
+      conversationId: args.conversationId,
+    })
+    await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+      runId: args.runId,
+      type: 'stream_knowledge_update_completed',
+      payload: {
+        mode: args.mode,
+      },
+    })
+    return { ok: true }
+  },
+})
+
 export const listRuns = query({
   args: {
     conversationId: v.id('agentConversations'),
@@ -235,6 +341,55 @@ export const cleanupFinalizePlaceholders = mutation({
       deletedTasks: badTasks.length,
       deletedMaterialLines,
       deletedWorkLines,
+    }
+  },
+})
+
+function roundToHalf(value: number) {
+  return Math.round(value * 2) / 2
+}
+
+export const backfillLaborDaySemantics = mutation({
+  args: {
+    projectId: v.id('projects'),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const lines = await ctx.db
+      .query('workLines')
+      .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+      .collect()
+    const dryRun = args.dryRun ?? false
+    let updated = 0
+
+    for (const line of lines as any[]) {
+      const currentRateType = String(line.rateTypeCode ?? '').toLowerCase()
+      const currentQty = Number(line.plannedQuantity)
+      const hasDaySemantics = currentRateType === 'day' && Number.isFinite(currentQty) && currentQty > 0
+      if (hasDaySemantics) continue
+
+      const hours = Number(line.hours)
+      if (!Number.isFinite(hours) || hours <= 0) continue
+      const days = Math.max(0.5, roundToHalf(hours / 10))
+      const patch: Record<string, any> = {
+        rateTypeCode: 'day',
+        rateType: 'day',
+        plannedQuantity: days,
+      }
+      if (!Number.isFinite(Number(line.plannedUnitCost)) || Number(line.plannedUnitCost) <= 0) {
+        patch.plannedUnitCost = 1
+      }
+      if (!dryRun) {
+        await ctx.db.patch(line._id, patch)
+      }
+      updated += 1
+    }
+
+    return {
+      ok: true,
+      dryRun,
+      inspected: lines.length,
+      updated,
     }
   },
 })
@@ -1366,12 +1521,91 @@ export const finalizeNow = action({
       },
     })
 
-    const collectIntentsFromResult = (result: any): any[] => {
+    const collectIntentsFromResult = (result: any, sourceToolId?: string | null): any[] => {
+      const mergePayloadFromResult = (intent: any) => {
+        if (!intent || typeof intent !== 'object') return intent
+        const type = String(intent?.type ?? '')
+        if (!type) return intent
+        const payload =
+          intent?.payload && typeof intent.payload === 'object' && !Array.isArray(intent.payload)
+            ? { ...intent.payload }
+            : {}
+        let changed = false
+        const setIfMissing = (key: string, value: any) => {
+          if (payload[key] !== undefined || value === undefined) return
+          payload[key] = value
+          changed = true
+        }
+
+        if (type === 'plan.tasks_intent') {
+          setIfMissing('tasks', Array.isArray(result?.tasks) ? result.tasks : undefined)
+          setIfMissing('elements', Array.isArray(result?.elements) ? result.elements : undefined)
+          setIfMissing('meta', result?.meta)
+        } else if (type === 'plan.elements_intent') {
+          setIfMissing('elements', Array.isArray(result?.elements) ? result.elements : undefined)
+          setIfMissing('meta', result?.meta)
+        } else if (type === 'cost.budget_intent') {
+          setIfMissing('materialLines', Array.isArray(result?.materialLines) ? result.materialLines : undefined)
+          setIfMissing('workLines', Array.isArray(result?.workLines) ? result.workLines : undefined)
+          setIfMissing('meta', result?.meta)
+        } else if (type === 'quote.intent') {
+          setIfMissing('quote', result?.quote)
+          setIfMissing('meta', result?.meta)
+        } else if (type === 'runbook.install_intent') {
+          setIfMissing('runbook', result?.runbook)
+          setIfMissing('meta', result?.meta)
+        } else if (type === 'ops.daily_plan_intent') {
+          setIfMissing('dailyPlan', Array.isArray(result?.dailyPlan) ? result.dailyPlan : undefined)
+          setIfMissing('meta', result?.meta)
+        }
+
+        if (!changed) return intent
+        return { ...intent, payload }
+      }
+
       const out: any[] = []
-      if (result?.intent) out.push(result.intent)
-      if (Array.isArray(result?.intents)) out.push(...result.intents)
-      if (Array.isArray(result?.fixIntents)) out.push(...result.fixIntents)
-      if (Array.isArray(result?.repairIntents)) out.push(...result.repairIntents)
+      if (result?.intent) out.push(mergePayloadFromResult(result.intent))
+      if (Array.isArray(result?.intents)) out.push(...result.intents.map((item: any) => mergePayloadFromResult(item)))
+      if (Array.isArray(result?.fixIntents)) out.push(...result.fixIntents.map((item: any) => mergePayloadFromResult(item)))
+      if (Array.isArray(result?.repairIntents)) out.push(...result.repairIntents.map((item: any) => mergePayloadFromResult(item)))
+
+      const source = String(sourceToolId ?? '').trim()
+      if (out.length === 0 && source) {
+        if (source === 'plan.tasks' && Array.isArray(result?.tasks) && result.tasks.length > 0) {
+          out.push({
+            type: 'plan.tasks_intent',
+            payload: {
+              tasks: result.tasks,
+              elements: Array.isArray(result?.elements) ? result.elements : undefined,
+              meta: result?.meta,
+            },
+          })
+        } else if (source === 'plan.elements' && Array.isArray(result?.elements) && result.elements.length > 0) {
+          out.push({
+            type: 'plan.elements_intent',
+            payload: {
+              elements: result.elements,
+              meta: result?.meta,
+            },
+          })
+        } else if (
+          source === 'cost.build_budget' &&
+          (
+            (Array.isArray(result?.materialLines) && result.materialLines.length > 0) ||
+            (Array.isArray(result?.workLines) && result.workLines.length > 0)
+          )
+        ) {
+          out.push({
+            type: 'cost.budget_intent',
+            payload: {
+              materialLines: Array.isArray(result?.materialLines) ? result.materialLines : [],
+              workLines: Array.isArray(result?.workLines) ? result.workLines : [],
+              meta: result?.meta,
+            },
+          })
+        }
+      }
+
       return out.filter(Boolean)
     }
 
@@ -1462,7 +1696,7 @@ export const finalizeNow = action({
         try {
           const result = await runTool(toolId, toolInput)
           toolOutputs[toolId] = result
-          intents.push(...collectIntentsFromResult(result))
+          intents.push(...collectIntentsFromResult(result, toolId))
           workingContext = enrichFinalizeContext(workingContext, result)
           const stageArtifact = stageArtifactFromFinalizeTool(toolId, result, elementRefToKey)
           if (stageArtifact) {

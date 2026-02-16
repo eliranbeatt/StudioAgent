@@ -5,6 +5,7 @@ export type ChatIntent =
   | 'planning_request'
   | 'explicit_skill_run'
   | 'audit_request'
+  | 'deep_research'
 
 const SMALLTALK_PATTERNS = [
   'hi',
@@ -107,6 +108,16 @@ const AUDIT_PATTERNS = [
   '\u05d1\u05e7\u05e8\u05ea \u05d0\u05d9\u05db\u05d5\u05ea',
 ]
 
+const DEEP_RESEARCH_PATTERNS = [
+  'deep research',
+  'deep dive',
+  'think deeply',
+  'strategy',
+  'אסטרטגיה',
+  'מחקר עמוק',
+  'חשיבה עמוקה',
+]
+
 const WORKFLOW_REPLY_PATTERNS = [
   'yes',
   'no',
@@ -152,6 +163,7 @@ export function detectChatIntent(
   const text = String(userText ?? '').trim().toLowerCase()
   if (!text) return 'chat_smalltalk'
   if (options?.hasPendingAction && isWorkflowReply(text)) return 'project_write_change'
+  if (includesAny(text, DEEP_RESEARCH_PATTERNS)) return 'deep_research'
   if (includesAny(text, AUDIT_PATTERNS)) return 'audit_request'
   if (includesAny(text, EXPLICIT_SKILL_PATTERNS)) return 'explicit_skill_run'
   if (includesAny(text, PLANNING_PATTERNS)) return 'planning_request'
@@ -171,6 +183,7 @@ export function packsForIntent(intent: ChatIntent, userText: string): string[] {
     return ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa']
   }
   if (intent === 'audit_request') return ['project', 'elements', 'tasks', 'accounting', 'quote']
+  if (intent === 'deep_research') return ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge']
   if (intent === 'planning_request' || intent === 'project_write_change' || intent === 'explicit_skill_run') {
     return ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge']
   }
@@ -181,6 +194,7 @@ export function allowedToolsForChatIntent(intent: ChatIntent): string[] {
   if (intent === 'chat_smalltalk') return []
   if (intent === 'project_read_qna') return ['context.get']
   if (intent === 'audit_request') return ['context.get', 'audit.project']
+  if (intent === 'deep_research') return ['context.get', 'think.deep', 'knowledge.summarize_or_update']
   if (intent === 'planning_request') {
     return [
       'context.get',

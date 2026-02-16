@@ -3,6 +3,7 @@
 import { action } from '../_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import { FULL_PROMPTS } from './prompts';
 import { runJsonCompletion } from './llm';
 import { assertAsciiKeys, validateSdkOutput } from './schemas';
@@ -147,6 +148,27 @@ export const compile = action({
     const intents = Array.isArray(args.intents) ? args.intents : [];
     if (intents.length === 0) {
       throw new Error('changeset.compile requires at least one intent');
+    }
+    if (args.runId) {
+      const summaries = intents.slice(0, 30).map((intent: any) => {
+        const payload = intent?.payload && typeof intent.payload === 'object' ? intent.payload : {}
+        return {
+          type: String(intent?.type ?? ''),
+          payloadKeys: Object.keys(payload).slice(0, 20),
+          tasksCount: Array.isArray((payload as any)?.tasks) ? (payload as any).tasks.length : 0,
+          elementsCount: Array.isArray((payload as any)?.elements) ? (payload as any).elements.length : 0,
+          materialLinesCount: Array.isArray((payload as any)?.materialLines) ? (payload as any).materialLines.length : 0,
+          workLinesCount: Array.isArray((payload as any)?.workLines) ? (payload as any).workLines.length : 0,
+        }
+      })
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'changeset_compile_input_summary',
+        payload: {
+          intentsCount: intents.length,
+          intents: summaries,
+        },
+      })
     }
     const context =
       args.context ??
@@ -336,6 +358,7 @@ function mapCompileOp(op: any) {
       };
     }
     if (entity === 'workLine') {
+      const normalizedFields = normalizeWorkLineFieldsForSdk(op.create ?? {})
       return {
         kind: 'workLine.create',
         payload: {
@@ -343,7 +366,7 @@ function mapCompileOp(op: any) {
           elementTempOrId: op.create?.elementTempOrId ?? op.create?.elementId,
           taskTempOrId: op.create?.taskTempOrId ?? op.create?.taskId,
           elementId: op.create?.elementId,
-          fields: op.create ?? {},
+          fields: normalizedFields,
           dedupKey: op.dedupKey,
         },
       };
@@ -397,13 +420,14 @@ function mapCompileOp(op: any) {
       };
     }
     if (entity === 'workLine') {
+      const normalizedFields = normalizeWorkLineFieldsForSdk(op.patch ?? {})
       return {
         kind: 'workLine.patch',
         payload: {
           lineId: op.id ?? undefined,
           workLineId: op.id ?? undefined,
           tempId: op.tempId ?? undefined,
-          fields: op.patch ?? {},
+          fields: normalizedFields,
         },
       };
     }
@@ -445,6 +469,29 @@ function mapCompileOp(op: any) {
   }
 
   return null;
+}
+
+function normalizeWorkLineFieldsForSdk(fields: any) {
+  const normalized = { ...(fields ?? {}) }
+  delete normalized.assigneeId
+
+  const rateTypeCode = String(
+    normalized.rateTypeCode ??
+    normalized.rateType ??
+    ''
+  ).trim().toLowerCase()
+
+  if (rateTypeCode === 'day' || Number.isFinite(normalized.days)) {
+    normalized.rateTypeCode = 'day'
+    if (!Number.isFinite(normalized.plannedQuantity) && Number.isFinite(normalized.days)) {
+      normalized.plannedQuantity = Number(normalized.days)
+    }
+    if (!Number.isFinite(normalized.plannedUnitCost) && Number.isFinite(normalized.dayRate)) {
+      normalized.plannedUnitCost = Number(normalized.dayRate)
+    }
+  }
+
+  return normalized
 }
 
 export const review = action({

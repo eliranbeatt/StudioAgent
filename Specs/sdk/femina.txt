@@ -1,0 +1,587 @@
+Below is the **full dev plan** (English), implementing **everything you asked for** across domains, prompts, runtime flow, schemas, and UI—based on your prompt file + your answers:
+
+* **No “always ask questions”** rule.
+* **Only Clarification Agent asks questions (4–8)** when needed.
+* **Suggestions every turn (1–3)**, *not restricted to predefined skills*—any next action, route, prompt, or workflow.
+* **Assignments are name-only** (no employee IDs stored in tasks/lines).
+* **Migrate labor costing to days** (10 hours per day).
+* **Free chat is truly free**: short replies or deep research outputs, not restricted to short templates.
+* Add a **Deep Thinking / Research Agent skill** (GPT-5.2 medium + web search) that the chat (GPT-5-mini minimal) can invoke only when needed.
+* **External contractors are material lines** (service purchases), priced by Pricing Agent.
+* Add an **Audit+Fix Agent** that auto-fixes by calling other tools and compiles a ChangeSet proposal.
+
+---
+
+# 1) Updated Domain Map (clean, “proper”)
+
+## Domain A — Orchestration & Execution Runtime
+
+**Files**
+
+* `convex/sdk/dispatch.ts`
+* `convex/sdk/runner.ts`
+* `convex/skills/registry.ts`
+* `convex/sdk/prompts.ts`
+
+**Responsibilities**
+
+* Route user messages to the right mode (chat vs clarify vs preview+questions vs planning vs audit-fix).
+* Choose the correct model per step (GPT-5-mini vs GPT-5.2 medium).
+* Enforce: DB writes happen only through ChangeSets (compile → review optional → apply gated).
+
+---
+
+## Domain B — Context & Knowledge
+
+**Skills/Tools**
+
+* `context.get` (read)
+* `knowledge.summarize_or_update` (write-to-knowledge only)
+
+**Responsibilities**
+
+* Provide minimal context packs per call.
+* Maintain a “Working Knowledge” doc (facts, decisions, open questions, assumptions).
+
+---
+
+## Domain C — Interaction Modes (3 distinct)
+
+1. **Chat Mode (default)**: natural conversation, can be short or very long research answers.
+2. **Clarification Mode** (`clarify.next_questions`): 4–8 questions to unblock the next step.
+3. **Preview Plan + Full Open Questions** (`draft.plan_and_questions`): plan as much as possible + output the full open questions list for the entire project.
+
+> Clarify is *not* Preview+Questions. They serve different goals and both remain.
+
+---
+
+## Domain D — Planning Pipeline
+
+**Tools**
+
+* `intake.parse_brief`
+* `plan.elements`
+* `plan.tasks` (with checkpoints + dependencies + assignments)
+* `plan.execution_phases`
+* `cost.build_budget`
+* `quote.generate`
+* `runbook.installation`
+* `ops.daily_plan`
+
+**Rule**
+Planning outputs are **intents** → compiled to **ChangeSet** → user approves → apply.
+
+---
+
+## Domain E — Tasks (Studio-real execution objects)
+
+**Enhancements**
+
+* More detailed tasks (practical how-to description)
+* Atomic checkpoints (checkbox sub-items)
+* Dependencies (real blockers, not over-linked)
+* Assignment fields (name-only)
+
+---
+
+## Domain F — Accounting & Costing (Days-based labor)
+
+**Core rules (your exact requirements)**
+
+* Studio labor planning in **days**, day = **10 hours**.
+* Default employee: **ליאב**, **1000 ILS/day** (used when missing).
+* External contractors are **material lines** (service purchase), not labor.
+
+---
+
+## Domain G — Pricing (materials + services + labor)
+
+**Agent**
+
+* `pricing.resolve_lines`
+
+**Responsibilities**
+
+* Price material lines (including subcontract services).
+* Fill missing studio labor day rate if missing (from employees by name, else default ליאב 1000/day).
+* Must never output price=0.
+
+---
+
+## Domain H — Audit & Fix (auto-fix agent)
+
+**New agent**
+
+* `audit.fix_plan` (tool-using agent)
+
+**Responsibilities**
+
+* Detect issues **and fix automatically** by calling other tools.
+* Produce updated intents + compile a ChangeSet proposal.
+
+---
+
+## Domain I — Deep Thinking / Research
+
+**New skill agent**
+
+* `think.deep` (or `reasoning.deep`)
+
+**Responsibilities**
+
+* GPT-5.2 medium reasoning + web search.
+* Used only when needed (strategic analysis, deep research, long-form reasoning).
+* Returns structured findings + a user-facing answer block.
+
+---
+
+# 2) Updated Model Routing (fast chat + deep thinking agent)
+
+## Default chat model
+
+* **GPT-5-mini, minimal reasoning effort**
+* Used for:
+
+  * normal conversation
+  * quick answers
+  * lightweight guidance
+  * suggesting next actions
+  * deciding whether to invoke other tools/agents
+
+## Deep Thinking agent model
+
+* **GPT-5.2, medium reasoning + internet search**
+* Used for:
+
+  * deep research
+  * strategic planning/analysis
+  * long comparisons
+  * technical investigations
+  * anything you classify as “slow but high-value”
+
+## Builders (plan/cost/quote)
+
+* Continue using GPT-5.2 for structured generation tools where needed.
+* Clarify can remain cheaper/faster (mini) unless you want higher quality question design; either works.
+
+---
+
+# 3) Updated UX contract (what each turn returns)
+
+## Chat turns (Orchestrator / Free Chat)
+
+* **No mandatory questions.**
+* Always include:
+
+  * `ChatBlock` (can be short OR long, multi-paragraph, research-level)
+  * `SuggestionsBlock` (1–3 suggestions)
+* `QuestionsBlock` appears only if:
+
+  * user invoked Clarify agent or Preview+Questions output is being shown.
+
+## Suggestions are NOT limited to predefined skills
+
+Suggestions can be any “next action”, e.g.:
+
+* “Run Clarification set (4–8 questions)”
+* “Generate Preview Plan + full open questions list”
+* “Compile ChangeSet from latest intents”
+* “Open /management/employees”
+* “Run Deep Thinking research on X”
+* “Create task batch for element Y”
+* “Patch labor days for tasks in element Z”
+
+**Implementation detail:** suggestions should be typed actions in the UI (see §8).
+
+---
+
+# 4) Prompt changes (exactly what to implement in `convex/sdk/prompts.ts`)
+
+## 4.1 ORCHESTRATOR_SYSTEM — remove forced questions, free-form suggestions, deep-thinking wiring
+
+### Changes to make
+
+1. **Remove**: “Every chat turn must return exactly 1 QuestionsBlock with one question.”
+2. **Replace with**:
+
+   * Orchestrator **does not ask questions directly**.
+   * If blocked → call `clarify.next_questions`.
+   * If user wants big-picture gaps → suggest `draft.plan_and_questions`.
+3. Suggestions:
+
+   * Always output `SuggestionsBlock` with **1–3** suggestions.
+   * Suggestions can be any next step (not only tool calls).
+4. Deep Thinking wiring:
+
+   * Add a rule: if the user asks for deep research / strategy / analysis, call `think.deep`.
+   * Orchestrator stays fast; it delegates slow thinking.
+
+**Result:** Chat becomes natural and flexible, but still action-driven.
+
+---
+
+## 4.2 FREE_CHAT_SYSTEM — “free means free” + can trigger deep research
+
+### Changes to make
+
+* Remove “restricted short format” mindset.
+* Allow:
+
+  * short answers
+  * long answers
+  * deep research answers (by delegating to `think.deep`)
+* Free chat itself still should not start heavy plan/cost flows unless user asks.
+
+**New rule**
+
+* Free chat may respond fully. If the answer requires deep research, it should:
+
+  * invoke `think.deep`, then present the result in `ChatBlock`.
+* It should **not** ask questions directly. If info is needed, it suggests Clarify.
+
+---
+
+## 4.3 CLARIFY_SYSTEM — enforce 4–8 questions, include employee assignment questions
+
+### Changes to make
+
+1. Enforce: **4–8 questions per run** (prefer 4–6).
+2. Add assignment questions when labor planning is relevant:
+
+   * “Who will do carpentry tasks?” etc.
+   * Options list comes from `context.get employees[]` (names only).
+   * Default selected option: “ליאב”.
+   * Include “לא יודע כרגע” / “Unknown” option when needed.
+3. Output remains JSON-only, includes `blocks` with one QuestionsBlock.
+
+---
+
+## 4.4 PLAN_TASKS_SYSTEM — add assignment (name-only) + detailed tasks + checkpoints
+
+### Changes to schema output
+
+Add fields per task:
+
+* `assigneeNameHe: string | null` (default “ליאב” when reasonable, else null)
+* Keep existing `checklist` object array + `checklistHe` fallback (per your request)
+
+Strengthen prompt requirements:
+
+* Each task must include:
+
+  * practical `descriptionHe` (“how we’ll do it”)
+  * 3–8 atomic checklist items for execution-heavy tasks
+  * meaningful dependencies when real blockers exist
+
+---
+
+## 4.5 COST_BUDGET_SYSTEM — migrate labor from hours → days (10h/day), assign by name
+
+### Required changes
+
+1. Replace `workLines.hours` with:
+
+* `days: number` (allow 0.5 increments)
+* `dayHours: 10`
+* `assigneeNameHe: string | null`
+* `dayRateIls: number | null` (snapshot used for costing; can be updated later)
+
+2. Labor conversion rule (must be in prompt):
+
+* `days = roundToHalf(totalTaskHours / 10)`
+
+3. Default labor cost rule:
+
+* If `assigneeNameHe` is missing:
+
+  * assume “ליאב” unless clearly inappropriate
+* If rate missing:
+
+  * assume 1000 ILS/day (low/medium confidence with assumptions)
+
+4. External contractors rule:
+
+* Never create a `workLine` for subcontractors.
+* Create a **materialLine** for the service:
+
+  * `sectionKey: "subcontract_services"`
+  * `unitHe: "service"` or `"job"`
+  * price resolved by pricing agent
+
+---
+
+## 4.6 PRICING_SYSTEM — price materials + services + fill labor day rates
+
+### Changes to implement
+
+1. Expand mission:
+
+* Price material lines, including subcontractor service lines.
+* Fill missing studio labor dayRate (and/or compute labor line totals if needed).
+
+2. Labor pricing behavior:
+
+* If a `workLine` has missing `dayRateIls`:
+
+  * match by `assigneeNameHe` in employees list
+  * else default 1000/day
+* Never leave labor unpriced if it’s studio work.
+
+3. Keep same JSON structure but extend `intent.updates` to support:
+
+* material line updates (unitPrice)
+* work line updates (dayRateIls, currency, assumptions, confidence)
+
+---
+
+## 4.7 AUDIT_SYSTEM → add `AUDIT_FIX_SYSTEM` (auto-fix agent)
+
+### New prompt: `AUDIT_FIX_SYSTEM`
+
+Tools allowed:
+
+* `context.get`
+* `plan.tasks`
+* `cost.build_budget`
+* `pricing.resolve_lines`
+* `changeset.compile`
+* (optional) `changeset.review`
+
+Behavior:
+
+1. Detect issues (same checks as audit.project).
+2. Auto-fix deterministically by calling the appropriate tools:
+
+   * missing tasks structure → re-run `plan.tasks` with current context
+   * missing coverage in budget → re-run `cost.build_budget`
+   * missing prices → run `pricing.resolve_lines`
+3. Compile ChangeSet proposal.
+4. Return:
+
+   * summary of fixes
+   * compiled ChangeSet proposal (approval gated)
+   * remaining risks / assumptions
+
+---
+
+## 4.8 New Deep Thinking agent: `THINK_DEEP_SYSTEM`
+
+### Purpose
+
+A tool-using agent designed for “slow, high-quality reasoning + web research”.
+
+Tools allowed:
+
+* `web_search` (internet search)
+* `context.get` (optional; use if project context needed)
+* `knowledge.summarize_or_update` (optional, if you want to store key findings)
+
+Output contract (JSON):
+
+* `answerHe` (or `answer` if you want English output here; but your system is Hebrew-first—choose one consistently)
+* `keyFindings[]`
+* `sources[]` (URLs or citations if your web tool returns them)
+* `recommendedNextActions[]` (used by Orchestrator for suggestions)
+
+**Important:** `think.deep` does **not** mutate DB and does **not** create ChangeSets.
+
+---
+
+# 5) Registry & Runner implementation (so prompts become real behavior)
+
+## 5.1 `convex/skills/registry.ts`
+
+Add new agents/tools:
+
+* `think.deep` (agent)
+* `audit.fix_plan` (agent)
+
+Update configs:
+
+* model selection per skill:
+
+  * Orchestrator / free chat: `gpt-5-mini` minimal
+  * think.deep: `gpt-5.2` medium + web_search enabled
+  * audit.fix_plan: `gpt-5.2` medium (no web needed unless you want)
+* tool allow-lists:
+
+  * think.deep: `web_search`, optional `context.get`
+  * audit.fix_plan: `context.get`, `plan.tasks`, `cost.build_budget`, `pricing.resolve_lines`, `changeset.compile`
+
+---
+
+## 5.2 `convex/sdk/runner.ts`
+
+Implement model routing support:
+
+* per-skill model config
+* per-skill tool allow-list enforcement
+* timeouts and guardrails for `think.deep` (since it’s slow)
+
+---
+
+## 5.3 `convex/sdk/dispatch.ts`
+
+Update routing logic:
+
+* For normal chat:
+
+  * run Orchestrator (mini)
+* If user request is “deep research / strategic / analysis”:
+
+  * Orchestrator delegates to `think.deep` and returns result
+* If user request is “generate plan/tasks/cost/quote”:
+
+  * Orchestrator decides between:
+
+    * `clarify.next_questions` (if blocked), or
+    * direct tool run (if enough), or
+    * `draft.plan_and_questions` (if user asked for “full open questions list”)
+* If user request is “audit and fix”:
+
+  * run `audit.fix_plan` then propose ChangeSet
+
+---
+
+# 6) Schema & DB migration (hours → days)
+
+## 6.1 Add fields (WorkLines)
+
+* Add `days: number`
+* Add `dayHours: number` (always 10 for now)
+* Add `assigneeNameHe: string | null`
+* Add `dayRateIls: number | null`
+* Deprecate `hours` over time (keep temporarily for backward compatibility if needed)
+
+## 6.2 Migration script
+
+One-time migration:
+
+* For each existing `workLine`:
+
+  * if `hours` exists:
+
+    * `days = roundToHalf(hours / 10)`
+    * `dayHours = 10`
+  * else:
+
+    * `days = existing days if any else null/0.5`
+* Keep `hours` for a transition period to avoid breaking UI, then remove later.
+
+## 6.3 Task assignments (name-only)
+
+Task schema:
+
+* add `assigneeNameHe: string | null`
+
+No employee IDs stored anywhere.
+
+---
+
+# 7) Costing + Pricing rules (final behavior)
+
+## Studio labor
+
+* WorkLines are day-based.
+* Default:
+
+  * assigneeNameHe = “ליאב”
+  * dayRateIls = 1000
+* If user selects a different employee name:
+
+  * use that employee’s dayRate from employees table (during costing/pricing)
+* If employee later deleted:
+
+  * nothing changes; name stays as-is.
+
+## External contractors
+
+* Always represented as **materialLines** (“service purchase”).
+* Priced by Pricing Agent with:
+
+  * catalog → logged → web → fallback estimate.
+
+---
+
+# 8) UI changes (so your new UX contract works)
+
+## 8.1 SuggestionsBlock becomes “free-form action suggestions”
+
+Support suggestion action types beyond skills:
+
+* `runAgent`
+* `runTool`
+* `openRoute` (e.g., `/management/employees`)
+* `prefillPrompt`
+* `createChangeSet`, `reviewChangeSet`, `applyChangeSet`
+
+## 8.2 ChatBlock must allow long content
+
+Remove any UI truncation or “short description only” assumptions.
+
+* Allow multi-paragraph, bullet lists, deep research output.
+
+## 8.3 Questions appear only in Clarify / Preview+Questions
+
+* Only show Questions UI when output includes QuestionsBlock.
+* Orchestrator and free chat do not force QuestionsBlocks.
+
+---
+
+# 9) Acceptance Criteria (what “done” means)
+
+1. **No forced questions** in normal chat turns.
+2. Clarification runs produce **4–8 questions**, always.
+3. Chat responses can be **short or long**, including deep research.
+4. System can invoke **think.deep** only when needed.
+5. Labor is stored as **days** everywhere (10h/day).
+6. Tasks + workLines store **assigneeNameHe only**, no IDs.
+7. Deleting an employee does nothing to old records (names remain).
+8. External contractors never appear as workLines—only material/service lines.
+9. Pricing agent fills missing labor rates and prices services.
+10. Audit+Fix can auto-propose a ChangeSet that fixes issues and is approval-gated.
+
+---
+
+# 10) Concrete Implementation Backlog (ordered)
+
+## Phase 1 — Prompt updates (`convex/sdk/prompts.ts`)
+
+* Patch `ORCHESTRATOR_SYSTEM` (remove forced QuestionsBlock; add deep-think delegation; free suggestions)
+* Patch `FREE_CHAT_SYSTEM` (allow long answers; no direct questions; suggest clarify/preview)
+* Patch `CLARIFY_SYSTEM` (4–8 questions; add employee assignment questions)
+* Patch `PLAN_TASKS_SYSTEM` (assigneeNameHe; enforce detailed tasks/checkpoints)
+* Patch `COST_BUDGET_SYSTEM` (days + dayHours=10; assigneeNameHe; dayRateIls; contractors→material lines)
+* Patch `PRICING_SYSTEM` (labor day rate fill + services pricing)
+* Add `THINK_DEEP_SYSTEM`
+* Add `AUDIT_FIX_SYSTEM`
+* Register new prompts in `FULL_PROMPTS`
+
+## Phase 2 — Skill registry updates (`convex/skills/registry.ts`)
+
+* Add `think.deep` agent (GPT-5.2 medium, web_search enabled)
+* Add `audit.fix_plan` agent (GPT-5.2 medium, tool access to fix pipeline)
+
+## Phase 3 — Runner/Dispatch wiring
+
+* In `dispatch.ts`: detect deep requests → route to `think.deep`
+* In `dispatch.ts`: remove any “must ask question” behavior
+* In `runner.ts`: enforce tool allow-lists; support model selection per skill
+
+## Phase 4 — DB migration (hours → days)
+
+* Schema add: days/dayHours/assigneeNameHe/dayRateIls
+* Migration: hours → days using 10h/day rounding
+* UI update: display/edit days
+
+## Phase 5 — Pricing + Audit Fix end-to-end
+
+* Ensure pricing agent updates workLines dayRateIls + material line prices
+* Implement `audit.fix_plan` calling plan/cost/pricing then compiling ChangeSet
+
+## Phase 6 — UI
+
+* SuggestionsBlock supports typed actions (including openRoute/prefillPrompt)
+* ChatBlock supports long output
+* Questions UI only for Clarify/Preview outputs
+

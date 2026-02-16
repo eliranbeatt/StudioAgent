@@ -95,6 +95,7 @@ import type * as sdk_chatPolicy from "../sdk/chatPolicy.js";
 import type * as sdk_context from "../sdk/context.js";
 import type * as sdk_dispatch from "../sdk/dispatch.js";
 import type * as sdk_finalize from "../sdk/finalize.js";
+import type * as sdk_footer from "../sdk/footer.js";
 import type * as sdk_knowledge from "../sdk/knowledge.js";
 import type * as sdk_knowledgeMutations from "../sdk/knowledgeMutations.js";
 import type * as sdk_llm from "../sdk/llm.js";
@@ -242,6 +243,7 @@ declare const fullApi: ApiFromModules<{
   "sdk/context": typeof sdk_context;
   "sdk/dispatch": typeof sdk_dispatch;
   "sdk/finalize": typeof sdk_finalize;
+  "sdk/footer": typeof sdk_footer;
   "sdk/knowledge": typeof sdk_knowledge;
   "sdk/knowledgeMutations": typeof sdk_knowledgeMutations;
   "sdk/llm": typeof sdk_llm;

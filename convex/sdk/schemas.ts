@@ -127,10 +127,17 @@ export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {
   }).passthrough(),
   'chat.free': z.object({
     summaryHe: z.string().optional(),
+    text: z.string().optional(),
     captured: z.any().optional(),
     meta: zBasicMeta.optional(),
     knowledgeUpdate: z.any().optional(),
     blocks: zBlocks.optional(),
+  }).passthrough(),
+  'think.deep': z.object({
+    summaryHe: z.string().optional(),
+    text: z.string().optional(),
+    references: z.array(z.any()).optional(),
+    meta: z.any().optional(),
   }).passthrough(),
   'intake.parse_brief': z.object({
     brief: z.any(),
@@ -221,6 +228,11 @@ export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {
   'maint.sync_and_repair': z.object({
     summaryHe: z.string().optional(),
     passes: z.array(z.any()).optional(),
+    repairIntents: z.array(z.any()).optional(),
+    meta: z.any().optional(),
+  }).passthrough(),
+  'audit.fix_plan': z.object({
+    summaryHe: z.string().optional(),
     repairIntents: z.array(z.any()).optional(),
     meta: z.any().optional(),
   }).passthrough(),

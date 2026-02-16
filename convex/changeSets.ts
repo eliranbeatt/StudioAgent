@@ -849,7 +849,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const rawTaskId =
       resolveFromTemp(taskTempOrId, taskTempMap) ??
       resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
-    const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
+    const taskId = rawTaskId ? (ctx.db.normalizeId("tasks", rawTaskId) ?? undefined) : undefined;
     const elementScope = op.payload?.elementScope ?? fields?.elementScope;
     const forceProjectLevel =
       elementScope === "project" ||
@@ -863,7 +863,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       resolveFromTemp(fields.vendorTempOrId ?? fields.vendorId, vendorTempMap) ??
       fields.vendorId;
     const resolvedVendorId = rawVendorId
-      ? ctx.db.normalizeId("vendors", rawVendorId)
+      ? (ctx.db.normalizeId("vendors", rawVendorId) ?? undefined)
       : undefined;
     const sectionKey = normalizeSectionKey(
       fields.sectionKey ?? op.payload?.sectionKey,
@@ -1023,7 +1023,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const rawTaskId =
       resolveFromTemp(taskTempOrId, taskTempMap) ??
       resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
-    const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
+    const taskId = rawTaskId ? (ctx.db.normalizeId("tasks", rawTaskId) ?? undefined) : undefined;
     const elementScope = op.payload?.elementScope ?? fields?.elementScope;
     const forceProjectLevel =
       elementScope === "project" ||
@@ -1418,7 +1418,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     const rawTaskId =
       resolveFromTemp(taskTempOrId, taskTempMap) ??
       resolveTaskRef(op.payload?.taskRef ?? fields?.taskRef, taskTempMap, taskTitleMap);
-    const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
+    const taskId = rawTaskId ? (ctx.db.normalizeId("tasks", rawTaskId) ?? undefined) : undefined;
     let type = fields.type;
     const normalizedLineType = normalizeLineType(fields.lineType ?? fields.type);
     if (normalizedLineType === "material") type = "material";
@@ -1449,7 +1449,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
     // Validate that 'rawVendorId' is actually a valid ID for 'vendors'
     const resolvedVendorId = rawVendorId
-      ? ctx.db.normalizeId("vendors", rawVendorId)
+      ? (ctx.db.normalizeId("vendors", rawVendorId) ?? undefined)
       : undefined;
 
     let existing = null;
@@ -1592,7 +1592,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
     // Validate ID
     const resolvedVendorId = rawVendorId
-      ? ctx.db.normalizeId("vendors", rawVendorId)
+      ? (ctx.db.normalizeId("vendors", rawVendorId) ?? undefined)
       : undefined;
 
     const patch: any = {};
@@ -1846,11 +1846,11 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
 
     // Resolve Task ID (might be temp from this changeset)
     const rawTaskId = resolveFromTemp(fields.taskId ?? fields.taskTempOrId, taskTempMap) ?? fields.taskId;
-    const taskId = rawTaskId ? ctx.db.normalizeId("tasks", rawTaskId) : undefined;
+    const taskId = rawTaskId ? (ctx.db.normalizeId("tasks", rawTaskId) ?? undefined) : undefined;
 
     // Resolve WorkLine ID (usually existing, but support temp)
     const rawWorkLineId = resolveFromTemp(fields.workLineId, workLineTempMap) ?? fields.workLineId;
-    const workLineId = rawWorkLineId ? ctx.db.normalizeId("workLines", rawWorkLineId) : undefined;
+    const workLineId = rawWorkLineId ? (ctx.db.normalizeId("workLines", rawWorkLineId) ?? undefined) : undefined;
 
     if (!taskId || !workLineId) {
       console.warn("Skipping taskAccountingLink.create: Missing taskId or workLineId", fields);
