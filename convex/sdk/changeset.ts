@@ -149,6 +149,36 @@ export const compile = action({
     if (intents.length === 0) {
       throw new Error('changeset.compile requires at least one intent');
     }
+
+    // ── Deterministic structured-intent compiler ──────────────────
+    // When plan.tasks_intent carries fully-structured tasks array,
+    // compile ops directly without LLM to avoid hallucination.
+    const structuredOps = compileStructuredIntents(intents);
+    if (structuredOps.length > 0) {
+      if (args.runId) {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'changeset_compile_deterministic_structured',
+          payload: {
+            intentsCount: intents.length,
+            opsCount: structuredOps.length,
+          },
+        })
+      }
+      const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
+        projectId: args.projectId,
+        stage: 'BREAKDOWN',
+        ops: structuredOps,
+        createdBy: { type: 'agent', agentName: 'changeset.compile.structured' },
+      });
+      return {
+        changeSetId,
+        changeSet: { ops: structuredOps },
+        meta: { compiledBy: 'deterministic-structured', intentsCount: intents.length },
+      };
+    }
+    // ──────────────────────────────────────────────────────────────
+
     if (args.runId) {
       const summaries = intents.slice(0, 30).map((intent: any) => {
         const payload = intent?.payload && typeof intent.payload === 'object' ? intent.payload : {}
@@ -170,11 +200,21 @@ export const compile = action({
         },
       })
     }
+    // Determine which context packs are relevant for these intents.
+    // Task/element-only intents don't need the massive pricing catalog.
+    const intentTypes = new Set(intents.map((i: any) => String(i?.type ?? '')));
+    const needsPricing =
+      intentTypes.has('cost.budget_intent') ||
+      intentTypes.has('quote.intent') ||
+      intentTypes.has('cost.pricing_intent');
+    const basePacks = ['project', 'elements', 'tasks', 'accounting', 'quote', 'runbook', 'knowledge', 'qa', 'vendors', 'receipts'];
+    const packs = needsPricing ? [...basePacks, 'pricing'] : basePacks;
+
     const context =
       args.context ??
       (await ctx.runQuery(api['sdk/api'].contextGet, {
         projectId: args.projectId,
-        packs: ['project', 'elements', 'tasks', 'accounting', 'quote', 'runbook', 'knowledge', 'pricing', 'qa', 'vendors', 'receipts'],
+        packs,
       }));
 
     const payload = {
@@ -233,6 +273,34 @@ export const compile = action({
         if (mappedOps.length === 0) {
           throw new Error('changeset.compile produced zero ops');
         }
+
+        // ── Intent-coverage validation ──────────────────────────────
+        // If plan.tasks_intent had N tasks, we expect at least N task
+        // create/patch ops. If they're completely missing the compiler
+        // hallucinated workLine patches instead → retry with higher model.
+        const taskIntents = intents.filter(
+          (i: any) =>
+            i?.type === 'plan.tasks_intent' &&
+            Array.isArray(i?.payload?.tasks) &&
+            i.payload.tasks.length > 0,
+        );
+        if (taskIntents.length > 0) {
+          const expectedTasks = taskIntents.reduce(
+            (acc: number, i: any) => acc + i.payload.tasks.length,
+            0,
+          );
+          const taskOps = mappedOps.filter(
+            (op: any) =>
+              op.kind === 'task.create' ||
+              op.kind === 'task.patch',
+          );
+          if (taskOps.length === 0 && expectedTasks > 0) {
+            throw new Error(
+              `Intent-coverage failure: plan.tasks_intent had ${expectedTasks} tasks but compiler emitted 0 task ops (got ${mappedOps.length} ops of other kinds). Retrying.`,
+            );
+          }
+        }
+        // ────────────────────────────────────────────────────────────
 
         const changeSetId = await ctx.runMutation(api.changeSets.createChangeSet, {
           projectId: args.projectId,
@@ -301,6 +369,149 @@ export const compile = action({
     throw lastError instanceof Error ? lastError : new Error('changeset.compile failed');
   },
 });
+
+// ── Deterministic structured-intent compiler ────────────────────────
+// Converts fully-structured plan.tasks_intent, plan.elements_intent,
+// and cost.budget_intent into changeset ops WITHOUT an LLM call.
+// Returns empty array if intents are not structured enough.
+function compileStructuredIntents(intents: any[]): any[] {
+  const ops: any[] = [];
+  let hasStructuredData = false;
+
+  for (const intent of intents) {
+    const type = String(intent?.type ?? '');
+    const payload = intent?.payload;
+    if (!payload || typeof payload !== 'object') continue;
+
+    // ── plan.elements_intent ──
+    if (type === 'plan.elements_intent' && Array.isArray(payload.elements)) {
+      for (const el of payload.elements) {
+        if (!el || typeof el !== 'object') continue;
+        hasStructuredData = true;
+        ops.push({
+          kind: 'element.create',
+          payload: {
+            tempId: el.tempId ?? undefined,
+            element: {
+              title: el.title,
+              titleHe: el.titleHe ?? el.title,
+              description: el.description,
+              descriptionHe: el.descriptionHe ?? el.description,
+              scope: el.scope,
+              scopeHe: el.scopeHe ?? el.scope,
+              category: el.category,
+              ...el,
+            },
+          },
+        });
+      }
+    }
+
+    // ── plan.tasks_intent ──
+    if (type === 'plan.tasks_intent' && Array.isArray(payload.tasks) && payload.tasks.length > 0) {
+      hasStructuredData = true;
+
+      // Also emit companion elements if present
+      if (Array.isArray(payload.elements)) {
+        for (const el of payload.elements) {
+          if (!el || typeof el !== 'object') continue;
+          ops.push({
+            kind: 'element.create',
+            payload: {
+              tempId: el.tempId ?? undefined,
+              element: {
+                title: el.title,
+                titleHe: el.titleHe ?? el.title,
+                description: el.description,
+                descriptionHe: el.descriptionHe ?? el.description,
+                scope: el.scope,
+                scopeHe: el.scopeHe ?? el.scope,
+                category: el.category,
+                ...el,
+              },
+            },
+          });
+        }
+      }
+
+      for (const task of payload.tasks) {
+        if (!task || typeof task !== 'object') continue;
+        const fields: any = {};
+        // Map all known task fields from LLM output
+        for (const key of [
+          'title', 'titleHe', 'description', 'descriptionHe',
+          'workType', 'workTypeLabelHe', 'status', 'stage',
+          'estimatedHours', 'checklist', 'notes', 'notesHe',
+          'priority', 'order', 'tags', 'dueDate', 'startDate',
+          'assignedTo', 'skills', 'dependencies',
+          'materialRequirements', 'laborRequirements',
+          'plannedQuantity', 'plannedTotalCost',
+          'dedupKey',
+        ]) {
+          if (task[key] !== undefined) fields[key] = task[key];
+        }
+        ops.push({
+          kind: 'task.create',
+          payload: {
+            tempId: task.tempId ?? undefined,
+            elementTempOrId: task.elementTempOrId ?? task.elementId ?? undefined,
+            elementId: task.elementId ?? undefined,
+            fields,
+          },
+        });
+      }
+    }
+
+    // ── cost.budget_intent ──
+    if (type === 'cost.budget_intent') {
+      if (Array.isArray(payload.materialLines) && payload.materialLines.length > 0) {
+        hasStructuredData = true;
+        for (const ml of payload.materialLines) {
+          if (!ml || typeof ml !== 'object') continue;
+          ops.push({
+            kind: 'materialLine.create',
+            payload: {
+              tempId: ml.tempId ?? undefined,
+              elementTempOrId: ml.elementTempOrId ?? ml.elementId ?? undefined,
+              taskTempOrId: ml.taskTempOrId ?? ml.taskId ?? undefined,
+              elementId: ml.elementId ?? undefined,
+              fields: { ...ml },
+              dedupKey: ml.dedupKey ?? undefined,
+            },
+          });
+        }
+      }
+      if (Array.isArray(payload.workLines) && payload.workLines.length > 0) {
+        hasStructuredData = true;
+        for (const wl of payload.workLines) {
+          if (!wl || typeof wl !== 'object') continue;
+          const normalizedFields = normalizeWorkLineFieldsForSdk({ ...wl });
+          ops.push({
+            kind: 'workLine.create',
+            payload: {
+              tempId: wl.tempId ?? undefined,
+              elementTempOrId: wl.elementTempOrId ?? wl.elementId ?? undefined,
+              taskTempOrId: wl.taskTempOrId ?? wl.taskId ?? undefined,
+              elementId: wl.elementId ?? undefined,
+              fields: normalizedFields,
+              dedupKey: wl.dedupKey ?? undefined,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  if (!hasStructuredData) return [];
+
+  // ── Element reference ordering ──────────────────────────────────
+  // Ensure element.create ops come before task.create ops that
+  // reference them via elementTempOrId, so temp ID resolution works.
+  const elementCreates = ops.filter((op: any) => op.kind === 'element.create');
+  const rest = ops.filter((op: any) => op.kind !== 'element.create');
+  return [...elementCreates, ...rest];
+}
+// ────────────────────────────────────────────────────────────────────
 
 function normalizeCompileEntity(raw: any): 'element' | 'task' | 'materialLine' | 'workLine' | 'accountingLine' | null {
   const value = String(raw ?? '').trim().toLowerCase();

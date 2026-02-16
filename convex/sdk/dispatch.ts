@@ -1602,6 +1602,29 @@ function buildToolDefinitions(allowedTools: string[], nameMap: Map<string, strin
         },
       };
     }
+    // Explicit parameter schemas for planning/costing tools so the
+    // orchestrator LLM knows what to pass.
+    if (name === 'plan.tasks' || name === 'plan.elements' || name === 'cost.build_budget' || name === 'plan.execution_phases') {
+      return {
+        type: 'function',
+        function: {
+          name: openAiName,
+          description: TOOL_DESCRIPTIONS[name] ?? `Run tool ${name}`,
+          parameters: {
+            type: 'object',
+            properties: {
+              input: {
+                type: 'object',
+                description: 'Tool input. Context is auto-injected — just pass userText if needed.',
+                properties: {
+                  userText: { type: 'string', description: 'User request text' },
+                },
+              },
+            },
+          },
+        },
+      };
+    }
     return {
       type: 'function',
       function: {
@@ -2287,15 +2310,29 @@ export const runNext = action({
 
     for (const toolId of Object.keys(REGISTRY)) {
       if (!toolHandlers[toolId]) {
-        toolHandlers[toolId] = async (input: any) =>
-          runToolInternal({
+        toolHandlers[toolId] = async (input: any) => {
+          const rawInput = input?.input ?? input ?? {}
+          // Auto-inject bootstrapContext for planning/costing tools so they
+          // always receive project context even when the orchestrator LLM
+          // omits it from the tool-call arguments.
+          const needsContext =
+            toolId === 'plan.tasks' ||
+            toolId === 'plan.elements' ||
+            toolId === 'cost.build_budget' ||
+            toolId === 'plan.execution_phases'
+          const enrichedInput =
+            needsContext && !rawInput.context
+              ? { ...rawInput, context: bootstrapContext }
+              : rawInput
+          return runToolInternal({
             ctx,
             projectId: args.projectId,
             toolId,
-            input: input?.input ?? input ?? {},
+            input: enrichedInput,
             runId: args.runId,
             conversationId: args.conversationId,
-          });
+          })
+        }
       }
     }
 

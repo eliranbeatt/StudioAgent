@@ -54,6 +54,7 @@ export const get = query({
         .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
         .collect();
       res.tasks = tasks.map(t => ({
+        _entityType: 'task' as const,
         id: t._id,
         title: t.title,
         description: t.description,
@@ -75,6 +76,7 @@ export const get = query({
         .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
         .collect();
       res.materialLines = materialLines.map((line) => ({
+        _entityType: 'materialLine' as const,
         id: line._id,
         taskId: line.taskId,
         elementId: line.elementId,
@@ -99,6 +101,7 @@ export const get = query({
         .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
         .collect();
       res.workLines = workLines.map((line) => ({
+        _entityType: 'workLine' as const,
         id: line._id,
         taskId: line.taskId,
         elementId: line.elementId,
