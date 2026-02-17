@@ -6,7 +6,7 @@ import { api } from '../../../../../../convex/_generated/api'
 import { Id } from '../../../../../../convex/_generated/dataModel'
 import { Send } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+
 import { ChatBlock } from '../../agent/_components/Blocks/ChatBlock'
 import { ChangeSetBlock } from '../../agent/_components/Blocks/ChangeSetBlock'
 import { ReviewBlock } from '../../agent/_components/Blocks/ReviewBlock'
@@ -718,7 +718,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
                         if (msgBlocks.length === 0) {
                           return (
                             <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 prose prose-sm max-w-none' dir="rtl">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{String(msg.text ?? '')}</ReactMarkdown>
+                              <ReactMarkdown>{String(msg.text ?? '')}</ReactMarkdown>
                             </div>
                           )
                         }
@@ -751,7 +751,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
             {isStreaming && streamingText ? (
               <div className='flex justify-start'>
                 <div className='max-w-3xl bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 prose prose-sm max-w-none' dir="rtl">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{String(streamingText ?? '')}</ReactMarkdown>
+                  <ReactMarkdown>{String(streamingText ?? '')}</ReactMarkdown>
                 </div>
               </div>
             ) : null}

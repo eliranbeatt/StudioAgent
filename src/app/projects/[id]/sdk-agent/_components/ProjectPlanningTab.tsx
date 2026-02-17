@@ -115,6 +115,24 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     }
   }, [finalReportQuery]);
 
+  useEffect(() => {
+    if (currentStep !== 'questions') return;
+    if (!getQuestionSets) return;
+    const totalSets = Number(getQuestionSets.totalSets ?? 0);
+    if (totalSets <= 0) return;
+    if (getQuestionSets.currentSet) return;
+    const clampedIndex = Math.max(0, totalSets - 1);
+    if (questionSetIndex === clampedIndex) return;
+    setQuestionSetIndex(clampedIndex);
+    if (runId) {
+      void savePlanningState({
+        runId,
+        currentStep: 'questions',
+        questionSetIndex: clampedIndex,
+      });
+    }
+  }, [currentStep, getQuestionSets, questionSetIndex, runId, savePlanningState]);
+
   const applyPlanningMode = async (
     nextMode: 'separated' | 'combined',
     options?: { restartFinalizing?: boolean }
@@ -290,7 +308,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     }
   };
 
-  const handleAnswerSubmit = async (questionSet: QuestionSet | null, hasMore: boolean) => {
+  const handleAnswerSubmit = async (questionSet: QuestionSet | null) => {
     if (!runId) return;
     setIsProcessing(true);
     try {
@@ -315,14 +333,10 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
 
       setAnswers({});
       setSetFreeText('');
-      if (hasMore) {
-        setQuestionSetIndex(prev => prev + 1);
-      }
-
       await savePlanningState({
         runId,
         currentStep: 'questions',
-        questionSetIndex: hasMore ? questionSetIndex + 1 : questionSetIndex,
+        questionSetIndex,
       });
     } finally {
       setIsProcessing(false);
@@ -507,7 +521,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
 
   if (currentStep === 'questions') {
     const questionSet = getQuestionSets?.currentSet;
-    const hasMore = getQuestionSets?.hasMore ?? false;
     const totalSets = getQuestionSets?.totalSets ?? 0;
 
     return (
@@ -517,7 +530,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
             <div>
               <h2 className="text-lg font-semibold text-slate-800">Planning Questions</h2>
               <p className="text-xs text-slate-500">
-                Set {totalSets > 0 ? questionSetIndex + 1 : 0} of {totalSets} | {questionSet?.groupLabelHe ?? 'Loading...'}
+                Remaining sets: {totalSets} | {questionSet?.groupLabelHe ?? 'Loading...'}
               </p>
               <p className="text-xs text-slate-500 mt-1">
                 Finalization mode: {planningMode === 'combined' ? 'Combined B+C' : 'Separated'}
@@ -693,7 +706,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
 
                 <div className="mt-4 flex gap-2">
                   <button
-                    onClick={() => handleAnswerSubmit(questionSet as QuestionSet, hasMore)}
+                    onClick={() => handleAnswerSubmit(questionSet as QuestionSet)}
                     disabled={isProcessing}
                     className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                   >
