@@ -8,8 +8,15 @@ import { assertAsciiKeys, validateSdkOutput } from './schemas';
 import { api, internal } from '../_generated/api';
 import { completionWithTracing } from '../lib/llm';
 import { searchWeb } from '../lib/webSearch';
+import { buildMessageStats, summarizeToolResultCompact } from './messageCompression';
 
 const MAX_TOOL_LOOPS = 6;
+
+function resolveContextCompatMode() {
+  const raw = process.env.SDK_CONTEXT_COMPAT_MODE;
+  if (raw == null) return true;
+  return !['0', 'false', 'off', 'no'].includes(String(raw).trim().toLowerCase());
+}
 
 type ToolHandler = (args: any) => Promise<any>;
 
@@ -189,6 +196,7 @@ async function buildToolHandlers(args: {
         projectId: args.projectId,
         packs: input?.packs ?? ['project', 'knowledge'],
         filters: input?.filters,
+        compatMode: input?.compatMode ?? resolveContextCompatMode(),
       }),
     'knowledge.summarize_or_update': async (input: any) =>
       args.ctx.runAction(sdkKnowledge.summarizeOrUpdate, {
@@ -273,6 +281,18 @@ async function runAgentInternal(args: {
 
   let finalContent: string | null = null;
   for (let i = 0; i < MAX_TOOL_LOOPS; i++) {
+    if (args.runId) {
+      await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId as any,
+        type: 'llm_input_snapshot',
+        payload: {
+          scope: 'sdk.runner',
+          loop: i + 1,
+          ...buildMessageStats(messages),
+        },
+      });
+    }
+
     const response = await completionWithTracing(
       args.ctx,
       {
@@ -337,7 +357,7 @@ async function runAgentInternal(args: {
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
-          content: JSON.stringify(result),
+          content: summarizeToolResultCompact(toolName, result),
         });
       }
 

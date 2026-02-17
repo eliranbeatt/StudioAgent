@@ -7,10 +7,16 @@ export const get = query({
     projectId: v.id('projects'),
     packs: v.array(v.string()), // e.g. ["project", "elements", "tasks"]
     filters: v.optional(v.any()),
+    compatMode: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const res: any = {};
     const packs = new Set(args.packs);
+    const envCompatRaw = (globalThis as any)?.process?.env?.SDK_CONTEXT_COMPAT_MODE;
+    const envCompatMode = envCompatRaw == null
+      ? true
+      : !['0', 'false', 'off', 'no'].includes(String(envCompatRaw).trim().toLowerCase());
+    const compatMode = args.compatMode ?? envCompatMode;
 
     if (packs.has('project')) {
       const p = await ctx.db.get(args.projectId);
@@ -101,6 +107,12 @@ export const get = query({
         .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
         .collect();
       res.workLines = workLines.map((line) => ({
+        ...(compatMode
+          ? {
+              plannedQuantityDays: line.plannedQuantity,
+              plannedDayRate: line.plannedUnitCost,
+            }
+          : {}),
         _entityType: 'workLine' as const,
         id: line._id,
         taskId: line.taskId,
@@ -113,8 +125,6 @@ export const get = query({
         rateTypeCode: line.rateTypeCode,
         rateTypeLabelHe: line.rateTypeLabelHe,
         plannedQuantity: line.plannedQuantity,
-        plannedQuantityDays: line.plannedQuantity,
-        plannedDayRate: line.plannedUnitCost,
         plannedUnitCost: line.plannedUnitCost,
         plannedTotalCost: line.plannedTotalCost,
         pricingSourceCode: line.pricingSourceCode,
@@ -187,9 +197,12 @@ export const get = query({
       const pricingCatalog = await ctx.db
         .query('catalogPriceRecords')
         .order('desc')
-        .take(200);
+        .take(50);
       res.pricingCatalog = pricingCatalog;
-      res.pricingLogs = pricingCatalog;
+      if (compatMode) {
+        // TODO(2026-03-31): remove legacy alias after compatibility window.
+        res.pricingLogs = pricingCatalog;
+      }
     }
 
     if (packs.has('qa')) {
@@ -197,32 +210,20 @@ export const get = query({
         .query('qaPairs')
         .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
         .order('desc')
-        .take(50);
+        .collect();
       res.recentQA = qaPairs.map((qa) => ({
-        id: qa._id,
-        projectId: qa.projectId,
+        ...(compatMode
+          ? {
+              // TODO(2026-03-31): remove legacy aliases after compatibility window.
+              questionText: qa.question_he,
+              answerText: qa.answerText ?? qa.answer_he,
+            }
+          : {}),
         elementId: qa.elementId,
         questionHe: qa.question_he,
-        questionText: qa.question_he,
         questionKey: qa.questionKey,
         answerHe: qa.answerText ?? qa.answer_he,
-        answerText: qa.answerText ?? qa.answer_he,
         status: qa.status,
-        questionType: qa.questionType,
-        options: qa.options,
-        answer: qa.answer,
-        scopeType: qa.scopeType,
-        scopeKey: qa.scopeKey,
-        sectionPath: qa.sectionPath,
-        blockingLevel: qa.blockingLevel,
-        orderKey: qa.orderKey,
-        createdFrom: qa.createdFrom,
-        followUp: qa.followUp,
-        triggeredBy: qa.triggeredBy,
-        dedupeKey: qa.dedupeKey,
-        version: qa.version,
-        source: qa.source,
-        createdAt: qa.createdAt,
       }));
     }
 
@@ -230,8 +231,16 @@ export const get = query({
       const vendors = await ctx.db
         .query('vendors')
         .order('desc')
-        .take(200);
-      res.vendors = vendors;
+        .take(30);
+      res.vendors = vendors.map((vendor: any) => ({
+        id: vendor._id,
+        nameHe: vendor.nameHe,
+        name: vendor.name,
+        category: vendor.category,
+        contactName: vendor.contactName,
+        phone: vendor.phone,
+        email: vendor.email,
+      }));
     }
 
     if (packs.has('receipts')) {
@@ -254,6 +263,39 @@ export const get = query({
     }
 
     return res;
+  },
+});
+
+export const getCounts = query({
+  args: {
+    projectId: v.id('projects'),
+  },
+  handler: async (ctx, args) => {
+    const [tasks, materialLines, workLines, qaPairs] = await Promise.all([
+      ctx.db
+        .query('tasks')
+        .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+        .collect(),
+      ctx.db
+        .query('materialLines')
+        .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+        .collect(),
+      ctx.db
+        .query('workLines')
+        .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+        .collect(),
+      ctx.db
+        .query('qaPairs')
+        .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+        .collect(),
+    ]);
+
+    return {
+      tasks: tasks.length,
+      materialLines: materialLines.length,
+      workLines: workLines.length,
+      qaPairs: qaPairs.length,
+    };
   },
 });
 

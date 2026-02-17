@@ -12,6 +12,7 @@ import { completionWithTracing } from '../lib/llm';
 import { runVNextStage } from './vnext/pipeline';
 import { getNextVNextStage, normalizeVNextStage } from './vnext/stages';
 import { ensureSuggestionFooter } from './footer';
+import { buildMessageStats, summarizeToolResultCompact } from './messageCompression';
 import {
   allowedToolsForChatIntent,
   detectChatIntent,
@@ -23,6 +24,12 @@ import {
 const MAX_TOOL_LOOPS = 6;
 const QUEUED_INPUT_OPEN = '[SDK_QUEUED_INPUT_V1]';
 const QUEUED_INPUT_CLOSE = '[/SDK_QUEUED_INPUT_V1]';
+
+function resolveContextCompatMode() {
+  const raw = process.env.SDK_CONTEXT_COMPAT_MODE;
+  if (raw == null) return true;
+  return !['0', 'false', 'off', 'no'].includes(String(raw).trim().toLowerCase());
+}
 
 type ApprovalDecision = 'approve' | 'reject' | 'ambiguous';
 
@@ -866,11 +873,13 @@ function buildBootstrapPrompt(ctx: any): string {
 
   // Add compact entity counts
   const counts: string[] = []
+  if (ctx.counts && typeof ctx.counts === 'object') {
+    if (Number.isFinite(Number(ctx.counts.tasks))) counts.push(`Tasks: ${ctx.counts.tasks}`)
+    if (Number.isFinite(Number(ctx.counts.materialLines))) counts.push(`Material lines: ${ctx.counts.materialLines}`)
+    if (Number.isFinite(Number(ctx.counts.workLines))) counts.push(`Work lines: ${ctx.counts.workLines}`)
+    if (Number.isFinite(Number(ctx.counts.qaPairs))) counts.push(`QA pairs: ${ctx.counts.qaPairs}`)
+  }
   if (Array.isArray(ctx.elements)) counts.push(`Elements: ${ctx.elements.length}`)
-  if (Array.isArray(ctx.tasks)) counts.push(`Tasks: ${ctx.tasks.length}`)
-  if (Array.isArray(ctx.materialLines)) counts.push(`Material lines: ${ctx.materialLines.length}`)
-  if (Array.isArray(ctx.workLines)) counts.push(`Work lines: ${ctx.workLines.length}`)
-  if (Array.isArray(ctx.recentQA)) counts.push(`QA pairs: ${ctx.recentQA.length}`)
   if (counts.length > 0) {
     parts.push('ENTITY COUNTS:')
     parts.push(counts.join(' | '))
@@ -892,6 +901,7 @@ function buildBootstrapPrompt(ctx: any): string {
   }
 
   parts.push('USE context.get TO FETCH DETAIL. Do not rely on bootstrap for entity-level data.')
+  parts.push('CONTEXT STRATEGY: This is summary-only bootstrap. Call context.get with minimal packs for details (tasks/accounting/qa/quote/pricing/vendors/receipts/runbook).')
 
   return parts.join('\n')
 }
@@ -907,54 +917,7 @@ function clipText(value: any, maxLen: number) {
  * Keeps structured data for intents/changeSets but summarizes large payloads.
  */
 function summarizeToolResult(toolName: string, result: any): string {
-  if (!result || typeof result !== 'object') return String(result ?? '');
-
-  // Errors pass through as-is (short)
-  if (result.error) return JSON.stringify({ error: result.error });
-
-  // ChangeSet / intent results keep structure (orchestrator needs IDs)
-  if (result.changeSetId || result.intents || result.intent || result.blocks) {
-    return JSON.stringify(result);
-  }
-
-  // context.get — already handled by buildBootstrapPrompt, compress here
-  if (toolName === 'context.get') {
-    const parts: string[] = [];
-    if (result.project) parts.push(`Project: ${result.project.name ?? ''} (${result.project.stage ?? ''})`);
-    if (Array.isArray(result.elements)) parts.push(`Elements: ${result.elements.length} items`);
-    if (Array.isArray(result.tasks)) parts.push(`Tasks: ${result.tasks.length} items`);
-    if (result.knowledgeDoc) parts.push(`KnowledgeDoc: (loaded, ${String(result.knowledgeDoc).length} chars)`);
-    if (Array.isArray(result.recentQA)) parts.push(`QA pairs: ${result.recentQA.length}`);
-    // Include element/task titles for linking
-    if (Array.isArray(result.elements) && result.elements.length > 0) {
-      parts.push('Element titles: ' + result.elements.map((e: any) => `${e.title} [${e.id}]`).join(', '));
-    }
-    if (Array.isArray(result.tasks) && result.tasks.length > 0) {
-      parts.push('Task titles: ' + result.tasks.slice(0, 20).map((t: any) => `${t.title} [${t.id}]`).join(', '));
-    }
-    return parts.join('\n') || JSON.stringify(result);
-  }
-
-  // agent.data — summarize counts
-  if (toolName === 'agent.data') {
-    const parts: string[] = [];
-    for (const [key, val] of Object.entries(result)) {
-      if (Array.isArray(val)) parts.push(`${key}: ${val.length} items`);
-      else if (val && typeof val === 'object') parts.push(`${key}: ${JSON.stringify(val).slice(0, 200)}`);
-      else parts.push(`${key}: ${String(val)}`);
-    }
-    return parts.join('\n') || JSON.stringify(result);
-  }
-
-  // knowledge.summarize_or_update — just confirm
-  if (toolName === 'knowledge.summarize_or_update') {
-    return `Knowledge doc updated. ${result.meta?.didUpdate ? 'Changes applied.' : 'No changes.'}`;
-  }
-
-  // Default: clip large JSON
-  const raw = JSON.stringify(result);
-  if (raw.length <= 2000) return raw;
-  return raw.slice(0, 1800) + '\n... (truncated, use context.get for full data)';
+  return summarizeToolResultCompact(toolName, result)
 }
 
 function summarizeBlocksForPrompt(blocks: any[]) {
@@ -985,12 +948,9 @@ function summarizeBlocksForPrompt(blocks: any[]) {
   return lines.join('\n');
 }
 
-function toPromptMessage(m: any, isChatEditRun: boolean) {
+function toPromptMessage(m: any, _isChatEditRun: boolean) {
   const text = String(m?.text ?? '').trim();
   if (text) return { role: m.role, content: text };
-  if (!isChatEditRun && m?.blocks) {
-    return { role: m.role, content: JSON.stringify(m.blocks) };
-  }
   const blocks = Array.isArray(m?.blocks) ? m.blocks : [];
   const chatLike = summarizeBlocksForPrompt(blocks);
   return { role: m.role, content: chatLike || '' };
@@ -1987,7 +1947,8 @@ export const runNext = action({
       currentAgentName: 'orchestrator',
     });
 
-    const historyLimit = 50;
+    const isChatEditRun = runMode === 'CHAT_EDIT';
+    const historyLimit = isChatEditRun ? 15 : 20;
     const history = await ctx.runQuery(sdkApi.listMessages, {
       conversationId: args.conversationId,
       limit: historyLimit,
@@ -2014,7 +1975,6 @@ export const runNext = action({
 
     const lastUserMsg = userMessage ||
       history.filter((m: any) => m.role === 'user').slice(-1)[0]?.text || '';
-    const isChatEditRun = runMode === 'CHAT_EDIT';
     const chatIntent = isChatEditRun
       ? detectChatIntent(lastUserMsg, {
         hasPendingAction:
@@ -2038,12 +1998,18 @@ export const runNext = action({
 
     const bootstrapPacks = isChatEditRun
       ? packsForIntent(chatIntent ?? 'project_read_qna', lastUserMsg)
-      : ['project', 'elements', 'tasks', 'accounting', 'quote', 'knowledge', 'qa'];
+      : ['project', 'knowledge', 'elements'];
     const shouldBootstrapContext = bootstrapPacks.length > 0 && (!isChatEditRun || chatIntent !== 'chat_smalltalk');
     const bootstrapContext = shouldBootstrapContext
       ? await ctx.runQuery(sdkApi.contextGet, {
         projectId: args.projectId,
         packs: bootstrapPacks,
+        compatMode: resolveContextCompatMode(),
+      })
+      : null;
+    const bootstrapCounts = shouldBootstrapContext
+      ? await ctx.runQuery(sdkApi.contextGetCounts, {
+        projectId: args.projectId,
       })
       : null;
 
@@ -2059,22 +2025,40 @@ export const runNext = action({
       });
     }
 
-    const promptBootstrapContext = bootstrapContext;
+    const promptBootstrapContext = bootstrapContext
+      ? {
+          ...bootstrapContext,
+          counts: bootstrapCounts ?? undefined,
+        }
+      : null;
+
+    const modePolicyPrompt = isChatEditRun
+      ? 'Chat mode policy (internal instructions in English): discussion-first and clarification-first. User-facing content must stay Hebrew unless an English technical token is required. Always include a ChatBlock. Include QuestionsBlock only for truly blocking clarifications (do not repeat the same clarification after user answered). Include SuggestionsBlock only when actionable next steps exist. Suggestions for write/planning intents should include explicit create_changeset when relevant. Never create a ChangeSet unless explicit queued action resolves to create_changeset. Keep suggestions in timeline and avoid generic or repeated text.'
+      : 'Planning mode policy: progress the planning pipeline with structured outputs.';
+    const bootstrapPrompt = promptBootstrapContext ? buildBootstrapPrompt(promptBootstrapContext) : null;
+    const historyPromptMessages = history.map((m: any) => toPromptMessage(m, isChatEditRun));
+    const historyChars = historyPromptMessages.reduce(
+      (sum: number, message: any) => sum + String(message?.content ?? '').length,
+      0
+    );
+    const bootstrapChars = String(bootstrapPrompt ?? '').length;
+    const baseSystemChars =
+      String(orchestrator.systemPrompt ?? '').length +
+      String(modePolicyPrompt).length +
+      String(queuedInputPrompt ?? '').length;
 
     const messages: any[] = [
       { role: 'system', content: orchestrator.systemPrompt },
       {
         role: 'system',
-        content: isChatEditRun
-          ? 'Chat mode policy (internal instructions in English): discussion-first and clarification-first. User-facing content must stay Hebrew unless an English technical token is required. Always include a ChatBlock. Include QuestionsBlock only for truly blocking clarifications (do not repeat the same clarification after user answered). Include SuggestionsBlock only when actionable next steps exist. Suggestions for write/planning intents should include explicit create_changeset when relevant. Never create a ChangeSet unless explicit queued action resolves to create_changeset. Keep suggestions in timeline and avoid generic or repeated text.'
-          : 'Planning mode policy: progress the planning pipeline with structured outputs.',
+        content: modePolicyPrompt,
       },
-      ...(promptBootstrapContext ? [{
+      ...(bootstrapPrompt ? [{
         role: 'system',
-        content: buildBootstrapPrompt(promptBootstrapContext),
+        content: bootstrapPrompt,
       }] : []),
       ...(queuedInputPrompt ? [{ role: 'system', content: queuedInputPrompt }] : []),
-      ...history.map((m: any) => toPromptMessage(m, isChatEditRun)),
+      ...historyPromptMessages,
     ];
 
     const toolHandlers: Record<string, ToolHandler> = {
@@ -2087,6 +2071,7 @@ export const runNext = action({
               : ['project', 'knowledge']
           ),
           filters: input?.filters,
+          compatMode: input?.compatMode ?? resolveContextCompatMode(),
         }),
       'knowledge.summarize_or_update': async (input: any) =>
         ctx.runAction(sdkKnowledge.summarizeOrUpdate, {
@@ -2521,6 +2506,19 @@ export const runNext = action({
     for (let i = 0; i < maxToolLoops; i++) {
       const toolChoice = (i === 0 && shouldForceTools && tools.length > 0) ? 'required' : 'auto';
 
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'llm_input_snapshot',
+        payload: {
+          scope: 'sdk.dispatch.orchestrator',
+          loop: i + 1,
+          bootstrapChars,
+          historyChars,
+          baseSystemChars,
+          ...buildMessageStats(messages),
+        },
+      });
+
       const response = await completionWithTracing(
         ctx,
         {
@@ -2697,7 +2695,9 @@ export const runNext = action({
 
           messages.push({
             role: 'system',
-            content: `AUTO TOOL RESULT (plan.tasks): ${JSON.stringify(taskBackfillResult)}`,
+            content: `AUTO TOOL RESULT (plan.tasks): ${taskBackfillResult?.error
+              ? `Error: ${String(taskBackfillResult.error)}`
+              : `Generated ${Array.isArray(taskBackfillResult?.tasks) ? taskBackfillResult.tasks.length : 0} tasks. Intents collected.`}`,
           });
         }
 
@@ -2753,7 +2753,9 @@ export const runNext = action({
 
           messages.push({
             role: 'system',
-            content: `AUTO TOOL RESULT (changeset.compile): ${JSON.stringify(compileResult)}`,
+            content: `AUTO TOOL RESULT (changeset.compile): ${compileResult?.changeSetId
+              ? `ChangeSet created (${Array.isArray(compileResult?.changeSet?.ops) ? compileResult.changeSet.ops.length : 0} ops). ChangeSetId: ${compileResult.changeSetId}`
+              : `Error: ${compileResult?.error ?? 'unknown'}`}`,
           });
 
           if (shouldCompileFromExplicitAction) {
@@ -2795,6 +2797,21 @@ export const runNext = action({
     }
 
     if (!finalContent && isChatEditRun) {
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'llm_input_snapshot',
+        payload: {
+          scope: 'sdk.dispatch.rescue_text',
+          ...buildMessageStats([
+            ...messages,
+            {
+              role: 'system',
+              content: 'Return a short direct Hebrew answer as plain text now. Do not call tools.',
+            },
+          ]),
+        },
+      });
+
       const rescueResponse = await completionWithTracing(
         ctx,
         {
@@ -2909,6 +2926,24 @@ export const runNext = action({
     if (parseFailed) {
       const repairModel = String(process.env.SDK_CHAT_FORMAT_REPAIR_MODEL ?? runtimeModel);
       try {
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'llm_input_snapshot',
+          payload: {
+            scope: 'sdk.dispatch.format_repair',
+            ...buildMessageStats([
+              {
+                role: 'system',
+                content: 'Convert assistant output into strict JSON. Output one JSON object with ASCII keys only. Allowed block types: ChatBlock, QuestionsBlock, SuggestionBlock, SuggestionsBlock, ChangeSetBlock, ReviewBlock. Preserve meaning from input. If unsure, keep only ChatBlock text. Never invent actions, questions, or suggestions.',
+              },
+              {
+                role: 'user',
+                content: finalContent,
+              },
+            ]),
+          },
+        });
+
         const repairResponse = await completionWithTracing(
           ctx,
           {
@@ -3109,6 +3144,15 @@ Then call changeset.compile to create the ChangeSet.`
       });
 
       // Re-run LLM with tool_choice required to force tool usage
+      await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+        runId: args.runId,
+        type: 'llm_input_snapshot',
+        payload: {
+          scope: 'sdk.dispatch.recovery',
+          ...buildMessageStats(messages),
+        },
+      });
+
       const recoveryResponse = await completionWithTracing(
         ctx,
         {

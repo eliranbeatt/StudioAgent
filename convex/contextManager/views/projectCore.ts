@@ -107,8 +107,8 @@ export async function buildProjectCorePacks(
     : []
 
   const catalogPriceRecords = needsCatalog ? await ctx.db.query('catalogPriceRecords').order('desc').take(50) : []
-  const materialTemplates = needsCatalog ? await ctx.db.query('materialTemplates').take(200) : []
-  const materialVariants = needsCatalog ? await ctx.db.query('materialVariants').take(200) : []
+  const materialTemplates = needsCatalog ? await ctx.db.query('materialTemplates').take(30) : []
+  const materialVariants = needsCatalog ? await ctx.db.query('materialVariants').take(30) : []
 
   const scopedElements = Array.isArray(scopeElementIds)
     ? elements.filter((e: any) => scopeElementIds.includes(e._id))
@@ -157,7 +157,7 @@ export async function buildProjectCorePacks(
         t.estimatedHours ?? (t.estimatedMinutes !== undefined ? t.estimatedMinutes / 60 : undefined),
       elementId: t.elementId,
       category: t.category,
-      descriptionHe: t.description,
+      descriptionHe: t.description ? String(t.description).slice(0, 80) : undefined,
     })),
     qaPairs: qaPairs.map((qa: any) => ({
       questionHe: qa.question_he,

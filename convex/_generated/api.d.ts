@@ -99,6 +99,7 @@ import type * as sdk_footer from "../sdk/footer.js";
 import type * as sdk_knowledge from "../sdk/knowledge.js";
 import type * as sdk_knowledgeMutations from "../sdk/knowledgeMutations.js";
 import type * as sdk_llm from "../sdk/llm.js";
+import type * as sdk_messageCompression from "../sdk/messageCompression.js";
 import type * as sdk_planner from "../sdk/planner.js";
 import type * as sdk_plannerNode from "../sdk/plannerNode.js";
 import type * as sdk_projectPlanning from "../sdk/projectPlanning.js";
@@ -247,6 +248,7 @@ declare const fullApi: ApiFromModules<{
   "sdk/knowledge": typeof sdk_knowledge;
   "sdk/knowledgeMutations": typeof sdk_knowledgeMutations;
   "sdk/llm": typeof sdk_llm;
+  "sdk/messageCompression": typeof sdk_messageCompression;
   "sdk/planner": typeof sdk_planner;
   "sdk/plannerNode": typeof sdk_plannerNode;
   "sdk/projectPlanning": typeof sdk_projectPlanning;

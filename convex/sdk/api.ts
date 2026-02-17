@@ -9,6 +9,7 @@ import { completionWithTracing } from '../lib/llm';
 
 // Re-export context query (doesn't need Node.js)
 export { get as contextGet } from './context';
+export { getCounts as contextGetCounts } from './context';
 
 export const createConversation = mutation({
   args: {
