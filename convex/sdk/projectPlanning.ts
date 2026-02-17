@@ -680,8 +680,13 @@ export const submitAnswers = mutation({
   },
   handler: async (ctx, args) => {
     for (const { questionId, answer } of args.answers) {
+      const trimmed = String(answer ?? '').trim()
+      if (!trimmed) continue
       await ctx.db.patch(questionId, {
-        answerText: answer,
+        answerText: trimmed,
+        answer_he: trimmed,
+        answer: trimmed,
+        answerSource: 'typed',
         status: 'resolved',
       });
     }

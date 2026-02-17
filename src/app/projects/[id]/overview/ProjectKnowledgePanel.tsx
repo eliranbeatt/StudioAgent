@@ -10,13 +10,11 @@ import {
   BookOpen,
   ExternalLink,
   FileText,
-  Loader2,
-  RefreshCcw,
   Search,
   UploadCloud,
 } from 'lucide-react'
 
-type TabKey = 'files' | 'qa' | 'knowledge' | 'projectContext' | 'userInput'
+type TabKey = 'files' | 'qa' | 'projectContext'
 
 type TabConfig = {
   key: TabKey
@@ -31,37 +29,25 @@ type ProjectKnowledgePanelProps = {
 export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps) {
   const files = useQuery(api.files.listProjectFiles, { projectId })
   const qaPairs = useQuery(api.memory.listQAPairs, { projectId })
-  const runningMemory = useQuery(api.memory.getRunningMemory, { projectId })
   const projectContext = useQuery(api.memory.getProjectContextDoc, { projectId })
-  const userInputLog = useQuery(api.memory.getUserInputLog, { projectId })
 
   const generateUploadUrl = useMutation(api.files.generateUploadUrl)
   const saveUploadedFile = useAction(api.filesActions.saveUploadedFile)
-  const updateRunningMemory = useMutation(api.memory.updateRunningMemory)
   const updateProjectContextDoc = useMutation(api.memory.updateProjectContextDoc)
-  const setRunningMemoryAutoAppend = useMutation(api.memory.setRunningMemoryAutoAppend)
-  const regenerateRunningMemory = useAction(api.memory.regenerateRunningMemory)
   const generateProjectContextDoc = useAction(api.memory.generateProjectContextDoc)
 
-  const [activeTab, setActiveTab] = useState<TabKey>('files')
-  const [editorValue, setEditorValue] = useState('')
+  const [activeTab, setActiveTab] = useState<TabKey>('projectContext')
   const [contextEditorValue, setContextEditorValue] = useState('')
   const [contextFeedback, setContextFeedback] = useState('')
   const [qaSearch, setQaSearch] = useState('')
   const [openFileId, setOpenFileId] = useState<Id<'projectFiles'> | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
   const [isSavingContext, setIsSavingContext] = useState(false)
-  const [isRegenerating, setIsRegenerating] = useState(false)
   const [isGeneratingContext, setIsGeneratingContext] = useState(false)
 
   const fileUrl = useQuery(
     api.files.getFileUrl,
     openFileId ? { fileId: openFileId } : 'skip'
   )
-
-  useEffect(() => {
-    setEditorValue(runningMemory?.contentMd_he ?? '')
-  }, [runningMemory?.contentMd_he])
 
   useEffect(() => {
     setContextEditorValue(projectContext?.contentMd_he ?? '')
@@ -79,25 +65,21 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
     if (!needle) return qaPairs
     return qaPairs.filter((qa) => {
       const q = (qa.question_he ?? '').toLowerCase()
-      const a = (qa.answer_he ?? '').toLowerCase()
+      const a = (qa.answer_he ?? qa.answerText ?? qa.answer ?? '').toLowerCase()
       return q.includes(needle) || a.includes(needle)
     })
   }, [qaPairs, qaSearch])
 
-  const lastUpdated = runningMemory?.updatedAt
-    ? new Date(runningMemory.updatedAt).toLocaleString()
+  const lastUpdated = projectContext?.updatedAt
+    ? new Date(projectContext.updatedAt).toLocaleString()
     : 'Not updated yet'
 
-  const autoAppendEnabled = runningMemory?.autoAppendEnabled ?? true
-  const hasChanges = editorValue !== (runningMemory?.contentMd_he ?? '')
   const hasContextChanges = contextEditorValue !== (projectContext?.contentMd_he ?? '')
 
   const tabs: TabConfig[] = [
+    { key: 'projectContext', label: 'Project Context', icon: BookOpen },
     { key: 'files', label: 'Uploaded Files', icon: FileText },
     { key: 'qa', label: 'QA', icon: Search },
-    { key: 'knowledge', label: 'Current Knowledge', icon: BookOpen },
-    { key: 'projectContext', label: 'Project Context', icon: BookOpen },
-    { key: 'userInput', label: 'User Input', icon: FileText },
   ]
 
   if (!files || !qaPairs) {
@@ -115,34 +97,6 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
           <div className='px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold uppercase tracking-wider'>
             Updated: {lastUpdated}
           </div>
-          <button
-            onClick={async () => {
-              setIsRegenerating(true)
-              try {
-                await regenerateRunningMemory({ projectId })
-              } finally {
-                setIsRegenerating(false)
-              }
-            }}
-            className='px-3 py-2 rounded-lg border border-gray-200 text-gray-700 font-semibold uppercase tracking-wider hover:bg-gray-50 disabled:opacity-60'
-            disabled={isRegenerating}
-          >
-            {isRegenerating ? (
-              <span className='flex items-center gap-2'><Loader2 className='animate-spin' size={14} /> Regenerating</span>
-            ) : (
-              <span className='flex items-center gap-2'><RefreshCcw size={14} /> Regenerate</span>
-            )}
-          </button>
-          <label className='inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 font-semibold uppercase tracking-wider cursor-pointer'>
-            <input
-              type='checkbox'
-              checked={autoAppendEnabled}
-              onChange={async (e) => {
-                await setRunningMemoryAutoAppend({ projectId, enabled: e.target.checked })
-              }}
-            />
-            Auto-append
-          </label>
         </div>
       </div>
 
@@ -260,7 +214,9 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
                   </div>
                   <div>
                     <div className='text-xs font-semibold uppercase tracking-wider text-gray-400'>Answer</div>
-                    <div className='mt-1 text-sm text-gray-700 whitespace-pre-wrap'>{qa.answer_he}</div>
+                    <div className='mt-1 text-sm text-gray-700 whitespace-pre-wrap'>
+                      {qa.answer_he ?? qa.answerText ?? qa.answer ?? ''}
+                    </div>
                   </div>
                   <div className='text-xs text-gray-400'>
                     {qa.createdAt ? `Saved ${new Date(qa.createdAt).toLocaleString()}` : ''}
@@ -270,50 +226,6 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
             ) : (
               <div className='p-8 text-center text-gray-500'>No QA pairs yet.</div>
             )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'knowledge' && (
-        <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
-          <div className='bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden flex flex-col'>
-            <div className='px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between'>
-              <h3 className='font-semibold text-gray-900'>Current Knowledge (Markdown)</h3>
-              <button
-                className='px-3 py-2 rounded-lg bg-black text-white text-xs font-semibold uppercase tracking-wider disabled:opacity-60'
-                onClick={async () => {
-                  setIsSaving(true)
-                  try {
-                    await updateRunningMemory({ projectId, contentMd_he: editorValue })
-                  } finally {
-                    setIsSaving(false)
-                  }
-                }}
-                disabled={isSaving || !hasChanges}
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-            <textarea
-              className='flex-1 p-6 text-sm text-gray-800 outline-none resize-none min-h-[320px]'
-              value={editorValue}
-              onChange={(e) => setEditorValue(e.target.value)}
-              placeholder='Summarized knowledge will appear here. You can edit freely.'
-            />
-          </div>
-          <div className='bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden'>
-            <div className='px-6 py-4 border-b border-gray-100 bg-gray-50/50'>
-              <h3 className='font-semibold text-gray-900'>Preview</h3>
-            </div>
-            <div className='p-6 text-sm text-gray-700'>
-              {editorValue.trim() ? (
-                <div className='prose prose-sm max-w-none'>
-                  <ReactMarkdown>{editorValue}</ReactMarkdown>
-                </div>
-              ) : (
-                <div className='text-gray-400 italic'>Nothing to preview yet.</div>
-              )}
-            </div>
           </div>
         </div>
       )}
@@ -408,19 +320,6 @@ export function ProjectKnowledgePanel({ projectId }: ProjectKnowledgePanelProps)
         </div>
       )}
 
-      {activeTab === 'userInput' && (
-        <div className='bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden flex flex-col'>
-          <div className='px-6 py-4 border-b border-gray-100 bg-gray-50/50'>
-            <h3 className='font-semibold text-gray-900'>User Input Log (append-only)</h3>
-          </div>
-          <textarea
-            className='flex-1 p-6 text-sm text-gray-800 outline-none resize-none min-h-[320px] bg-white'
-            value={userInputLog?.contentMd_he ?? ''}
-            readOnly
-            placeholder='User input will appear here as it is submitted in the context gate.'
-          />
-        </div>
-      )}
     </div>
   )
 }

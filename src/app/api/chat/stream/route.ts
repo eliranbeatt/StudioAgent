@@ -223,16 +223,10 @@ export async function POST(req: NextRequest) {
           blocks,
         }))
 
-        if (mode === 'chat.free' || mode === 'think.deep') {
-          void convex.mutation(api.sdk.api.enqueueKnowledgeUpdateFromStream, {
-            projectId: body.projectId,
-            conversationId: body.conversationId,
-            runId: body.runId,
-            userText: userMessage,
-            assistantText,
-            mode,
-          }).catch(() => {})
-        }
+        // DISABLED: streaming auto-knowledge update removed — single source of truth is PROJECT_CONTEXT via CONTEXT_GENERATION skill
+        // if (mode === 'chat.free' || mode === 'think.deep') {
+        //   void convex.mutation(api.sdk.api.enqueueKnowledgeUpdateFromStream, { ... }).catch(() => {})
+        // }
 
         controller.close()
       } catch (error: any) {

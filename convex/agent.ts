@@ -494,10 +494,63 @@ export const appendEventMessage = mutation({
       eventPayload: args.eventPayload,
       createdAt: Date.now(),
     });
+    if (args.eventType === "clarification_submitted") {
+      await persistClarificationQaPairs({
+        ctx,
+        projectId: conversation.projectId,
+        conversationId: args.conversationId,
+        payload: args.eventPayload,
+      });
+    }
     await ctx.db.patch(args.conversationId, { updatedAt: Date.now() });
     return messageId;
   },
 });
+
+async function persistClarificationQaPairs({
+  ctx,
+  projectId,
+  conversationId,
+  payload,
+}: {
+  ctx: any;
+  projectId: Id<"projects">;
+  conversationId: Id<"conversations">;
+  payload: any;
+}) {
+  const answersById: Record<string, string> | undefined = payload?.answersById ?? payload?.answers_by_id;
+  const questions: Array<any> | undefined = payload?.questions;
+  if (!answersById || !Array.isArray(questions)) return;
+
+  for (let i = 0; i < questions.length; i += 1) {
+    const question = questions[i] ?? {};
+    const questionId = question.id ?? question.questionId ?? `q${i}`;
+    const answer = answersById?.[questionId];
+    if (!answer || !String(answer).trim()) continue;
+
+    const questionText =
+      question.text_he ??
+      question.textHe ??
+      question.question_he ??
+      question.questionHe ??
+      question.text ??
+      question.question ??
+      question.label_he ??
+      question.labelHe ??
+      question.label ??
+      question.prompt;
+
+    if (!questionText || !String(questionText).trim()) continue;
+
+    await ctx.runMutation(api.memory.upsertQAPairs, {
+      projectId,
+      question_he: String(questionText),
+      answer_he: String(answer),
+      sourceType: "CLARIFICATION_BLOCK",
+      conversationId,
+    });
+  }
+}
 
 export const appendAssistantMessage = mutation({
   args: {

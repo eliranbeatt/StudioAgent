@@ -848,86 +848,113 @@ function buildContextAwareQuestionsBlock(args: {
     ],
   };
 }
+
+/**
+ * Build the bootstrap prompt from project context.
+ * If the context includes a knowledgeDoc (Hebrew markdown), use it as the primary context.
+ * Only include a compact entity summary alongside it.
+ */
+function buildBootstrapPrompt(ctx: any): string {
+  const parts: string[] = []
+
+  // If we have the knowledge doc (markdown), use it as primary context
+  if (ctx.knowledgeDoc && typeof ctx.knowledgeDoc === 'string') {
+    parts.push('PROJECT KNOWLEDGE DOCUMENT:')
+    parts.push(ctx.knowledgeDoc)
+    parts.push('')
+  }
+
+  // Add compact entity counts
+  const counts: string[] = []
+  if (Array.isArray(ctx.elements)) counts.push(`Elements: ${ctx.elements.length}`)
+  if (Array.isArray(ctx.tasks)) counts.push(`Tasks: ${ctx.tasks.length}`)
+  if (Array.isArray(ctx.materialLines)) counts.push(`Material lines: ${ctx.materialLines.length}`)
+  if (Array.isArray(ctx.workLines)) counts.push(`Work lines: ${ctx.workLines.length}`)
+  if (Array.isArray(ctx.recentQA)) counts.push(`QA pairs: ${ctx.recentQA.length}`)
+  if (counts.length > 0) {
+    parts.push('ENTITY COUNTS:')
+    parts.push(counts.join(' | '))
+    parts.push('')
+  }
+
+  // Add project basics if no knowledge doc
+  if (!ctx.knowledgeDoc && ctx.project) {
+    parts.push('PROJECT:')
+    parts.push(JSON.stringify(ctx.project, null, 2))
+    parts.push('')
+  }
+
+  // Always include element titles for linking
+  if (Array.isArray(ctx.elements) && ctx.elements.length > 0) {
+    parts.push('ELEMENTS:')
+    parts.push(ctx.elements.map((e: any) => `- ${e.id}: ${e.title} (${e.status})`).join('\n'))
+    parts.push('')
+  }
+
+  parts.push('USE context.get TO FETCH DETAIL. Do not rely on bootstrap for entity-level data.')
+
+  return parts.join('\n')
+}
+
 function clipText(value: any, maxLen: number) {
   const text = String(value ?? '').trim();
   if (!text) return undefined;
   return text.length > maxLen ? `${text.slice(0, maxLen - 3)}...` : text;
 }
 
-function compactBootstrapForChat(intent: string | null, context: any) {
-  if (!context || typeof context !== 'object') return context;
-  const compact: any = {};
-  const maxElements = Number(process.env.SDK_CHAT_BOOTSTRAP_MAX_ELEMENTS ?? 8);
-  const maxTasks = Number(process.env.SDK_CHAT_BOOTSTRAP_MAX_TASKS ?? 18);
-  const maxLines = Number(process.env.SDK_CHAT_BOOTSTRAP_MAX_LINES ?? 12);
+/**
+ * Compress a tool result into a compact text summary for the messages array.
+ * Keeps structured data for intents/changeSets but summarizes large payloads.
+ */
+function summarizeToolResult(toolName: string, result: any): string {
+  if (!result || typeof result !== 'object') return String(result ?? '');
 
-  if (context.project) {
-    compact.project = {
-      id: context.project.id,
-      name: context.project.name,
-      stage: context.project.stage,
-      eventDate: context.project.eventDate,
-      status: context.project.status,
-      summary: clipText(context.project.summary, 500),
-      notes: clipText(context.project.notes, 350),
-    };
+  // Errors pass through as-is (short)
+  if (result.error) return JSON.stringify({ error: result.error });
+
+  // ChangeSet / intent results keep structure (orchestrator needs IDs)
+  if (result.changeSetId || result.intents || result.intent || result.blocks) {
+    return JSON.stringify(result);
   }
 
-  if (Array.isArray(context.elements)) {
-    compact.elements = context.elements.slice(0, maxElements).map((e: any) => ({
-      id: e.id,
-      title: e.title,
-      status: e.status,
-      type: e.type,
-      description: clipText(e.description, 220),
-    }));
-  }
-
-  if (Array.isArray(context.tasks)) {
-    compact.tasks = context.tasks.slice(0, maxTasks).map((t: any) => ({
-      id: t.id,
-      title: t.title,
-      elementId: t.elementId,
-      status: t.status,
-      workType: t.workType,
-      estimatedHours: t.estimatedHours,
-      description: clipText(t.description, 200),
-    }));
-  }
-
-  if (intent === 'project_read_qna' || intent === 'project_write_change' || intent === 'planning_request') {
-    if (Array.isArray(context.materialLines)) {
-      compact.materialLines = context.materialLines.slice(0, maxLines).map((line: any) => ({
-        id: line.id,
-        taskId: line.taskId,
-        elementId: line.elementId,
-        title: line.title,
-        sectionKey: line.sectionKey,
-        plannedTotalCost: line.plannedTotalCost,
-      }));
+  // context.get — already handled by buildBootstrapPrompt, compress here
+  if (toolName === 'context.get') {
+    const parts: string[] = [];
+    if (result.project) parts.push(`Project: ${result.project.name ?? ''} (${result.project.stage ?? ''})`);
+    if (Array.isArray(result.elements)) parts.push(`Elements: ${result.elements.length} items`);
+    if (Array.isArray(result.tasks)) parts.push(`Tasks: ${result.tasks.length} items`);
+    if (result.knowledgeDoc) parts.push(`KnowledgeDoc: (loaded, ${String(result.knowledgeDoc).length} chars)`);
+    if (Array.isArray(result.recentQA)) parts.push(`QA pairs: ${result.recentQA.length}`);
+    // Include element/task titles for linking
+    if (Array.isArray(result.elements) && result.elements.length > 0) {
+      parts.push('Element titles: ' + result.elements.map((e: any) => `${e.title} [${e.id}]`).join(', '));
     }
-    if (Array.isArray(context.workLines)) {
-      compact.workLines = context.workLines.slice(0, maxLines).map((line: any) => ({
-        id: line.id,
-        taskId: line.taskId,
-        elementId: line.elementId,
-        title: line.title,
-        workType: line.workType,
-        hours: line.hours,
-        plannedTotalCost: line.plannedTotalCost,
-      }));
+    if (Array.isArray(result.tasks) && result.tasks.length > 0) {
+      parts.push('Task titles: ' + result.tasks.slice(0, 20).map((t: any) => `${t.title} [${t.id}]`).join(', '));
     }
+    return parts.join('\n') || JSON.stringify(result);
   }
 
-  if (context.quote) {
-    compact.quote = {
-      id: context.quote.id,
-      titleHe: clipText(context.quote.titleHe, 160),
-      createdAt: context.quote.createdAt,
-    };
+  // agent.data — summarize counts
+  if (toolName === 'agent.data') {
+    const parts: string[] = [];
+    for (const [key, val] of Object.entries(result)) {
+      if (Array.isArray(val)) parts.push(`${key}: ${val.length} items`);
+      else if (val && typeof val === 'object') parts.push(`${key}: ${JSON.stringify(val).slice(0, 200)}`);
+      else parts.push(`${key}: ${String(val)}`);
+    }
+    return parts.join('\n') || JSON.stringify(result);
   }
 
-  return compact;
+  // knowledge.summarize_or_update — just confirm
+  if (toolName === 'knowledge.summarize_or_update') {
+    return `Knowledge doc updated. ${result.meta?.didUpdate ? 'Changes applied.' : 'No changes.'}`;
+  }
+
+  // Default: clip large JSON
+  const raw = JSON.stringify(result);
+  if (raw.length <= 2000) return raw;
+  return raw.slice(0, 1800) + '\n... (truncated, use context.get for full data)';
 }
 
 function summarizeBlocksForPrompt(blocks: any[]) {
@@ -2044,7 +2071,7 @@ export const runNext = action({
       },
       ...(promptBootstrapContext ? [{
         role: 'system',
-        content: `PROJECT CONTEXT (bootstrap, may be partial):\n${JSON.stringify(promptBootstrapContext, null, 2)}`,
+        content: buildBootstrapPrompt(promptBootstrapContext),
       }] : []),
       ...(queuedInputPrompt ? [{ role: 'system', content: queuedInputPrompt }] : []),
       ...history.map((m: any) => toPromptMessage(m, isChatEditRun)),
@@ -2608,7 +2635,7 @@ export const runNext = action({
           messages.push({
             role: 'tool',
             tool_call_id: call.id,
-            content: JSON.stringify(result),
+            content: summarizeToolResult(toolName, result),
           });
         }
 
@@ -3130,7 +3157,7 @@ Then call changeset.compile to create the ChangeSet.`
             messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-              content: typeof result === 'string' ? result : JSON.stringify(result),
+              content: typeof result === 'string' ? result : summarizeToolResult(originalName, result),
             });
 
             // If tool returned structured output, use it

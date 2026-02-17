@@ -967,6 +967,23 @@ export const apply = action({
       runId: args.runId,
       status: 'running',
     });
+
+    // Post-apply hook: trigger knowledge doc refresh so PROJECT_CONTEXT
+    // stays current with actual entity state after mutations.
+    try {
+      const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
+      if (sdkKnowledge?.summarizeOrUpdate) {
+        await ctx.runAction(sdkKnowledge.summarizeOrUpdate, {
+          projectId: run.projectId,
+          newFacts: [`ChangeSet ${run.pendingChangeSetId} applied`],
+          runId: args.runId,
+        });
+      }
+    } catch (err) {
+      // Non-fatal — don't block apply if knowledge refresh fails
+      console.warn('Post-apply knowledge refresh failed:', err);
+    }
+
     return { ok: true, applied: run.pendingChangeSetId };
   },
 });
