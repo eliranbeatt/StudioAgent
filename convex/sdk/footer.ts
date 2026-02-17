@@ -16,6 +16,8 @@ function looksLikeSuggestionFooter(line: string) {
   if (value.startsWith('האם אתה רוצה ש')) return true
   if (value.startsWith('אם תרצה')) return true
   if (value.startsWith('אפשר להמשיך')) return true
+  if (value.startsWith('בחר')) return true
+  if (/^\d+[\).]/.test(value)) return true
   if (value.includes('1)') && value.includes('2)')) return true
   return false
 }

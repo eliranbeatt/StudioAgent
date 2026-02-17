@@ -55,7 +55,7 @@ export function SdkQuestionsBlock({
   const isLocked = Boolean(disabled)
 
   return (
-    <div className='rounded-xl border border-blue-200 bg-white p-4 shadow-sm' dir='auto'>
+    <div className='rounded-xl border border-blue-200 bg-white p-4 shadow-sm' dir='rtl'>
       <div className='text-xs font-semibold text-gray-900 mb-3'>{title}</div>
 
       <div className='space-y-4 mb-4'>
@@ -66,22 +66,20 @@ export function SdkQuestionsBlock({
               <button
                 disabled={isLocked}
                 onClick={() => onSetYesNo('yes')}
-                className={`px-3 py-1 rounded border text-xs ${
-                  yesNo === 'yes'
+                className={`px-3 py-1 rounded border text-xs ${yesNo === 'yes'
                     ? 'border-blue-600 bg-blue-50 text-blue-700'
                     : 'border-gray-200 text-gray-700 hover:border-blue-300'
-                } disabled:opacity-50`}
+                  } disabled:opacity-50`}
               >
                 Yes
               </button>
               <button
                 disabled={isLocked}
                 onClick={() => onSetYesNo('no')}
-                className={`px-3 py-1 rounded border text-xs ${
-                  yesNo === 'no'
+                className={`px-3 py-1 rounded border text-xs ${yesNo === 'no'
                     ? 'border-blue-600 bg-blue-50 text-blue-700'
                     : 'border-gray-200 text-gray-700 hover:border-blue-300'
-                } disabled:opacity-50`}
+                  } disabled:opacity-50`}
               >
                 No
               </button>
@@ -98,11 +96,10 @@ export function SdkQuestionsBlock({
                   key={option}
                   disabled={isLocked}
                   onClick={() => onToggleMulti(option)}
-                  className={`px-3 py-1 rounded border text-xs ${
-                    multiSelectedIds.includes(option)
+                  className={`px-3 py-1 rounded border text-xs ${multiSelectedIds.includes(option)
                       ? 'border-blue-600 bg-blue-50 text-blue-700'
                       : 'border-gray-200 text-gray-700 hover:border-blue-300'
-                  } disabled:opacity-50`}
+                    } disabled:opacity-50`}
                 >
                   {option}
                 </button>

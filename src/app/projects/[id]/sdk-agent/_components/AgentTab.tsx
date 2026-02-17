@@ -712,7 +712,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
                         const msgBlocks = Array.isArray(msg?.blocks) ? msg.blocks : []
                         if (msgBlocks.length === 0) {
                           return (
-                            <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 whitespace-pre-wrap'>
+                            <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 whitespace-pre-wrap' dir="rtl">
                               {msg.text}
                             </div>
                           )
@@ -745,7 +745,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
             )}
             {isStreaming && streamingText ? (
               <div className='flex justify-start'>
-                <div className='max-w-3xl bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 whitespace-pre-wrap'>
+                <div className='max-w-3xl bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 whitespace-pre-wrap' dir="rtl">
                   {streamingText}
                 </div>
               </div>
@@ -836,6 +836,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
                     void sendUserTurn()
                   }
                 }}
+                dir="rtl"
               />
               <button
                 onClick={() => void sendUserTurn()}
