@@ -154,10 +154,7 @@ export const upsertQAPairs = mutation({
                 messageId: args.messageId,
             }
         });
-        await ctx.scheduler.runAfter(0, api.memory.appendRunningMemory, {
-          projectId: args.projectId,
-          userText: `Q: ${args.question_he}\nA: ${args.answer_he}`,
-        });
+        // DISABLED: appendRunningMemory removed — single source of truth is PROJECT_CONTEXT
         return existing._id;
     }
 
@@ -173,10 +170,14 @@ export const upsertQAPairs = mutation({
         },
         createdAt: Date.now(),
     });
-    await ctx.scheduler.runAfter(0, api.memory.appendRunningMemory, {
-      projectId: args.projectId,
-      userText: `Q: ${args.question_he}\nA: ${args.answer_he}`,
-    });
+    // Trigger A: schedule knowledge doc refresh after new QA pair
+    const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
+    if (sdkKnowledge?.summarizeOrUpdate) {
+      await ctx.scheduler.runAfter(2000, sdkKnowledge.summarizeOrUpdate, {
+        projectId: args.projectId,
+        newFacts: [`QA: ${args.question_he} → ${args.answer_he}`],
+      });
+    }
     return qaId;
   },
 });
@@ -284,38 +285,16 @@ export const ingestSourceDoc = action({
   },
 });
 
+// DEPRECATED: appendRunningMemory is disabled.
+// Single source of truth is PROJECT_CONTEXT via CONTEXT_GENERATION skill.
 export const appendRunningMemory = action({
   args: {
     projectId: v.id("projects"),
     userText: v.string(),
   },
-  handler: async (ctx, args) => {
-     if (!process.env.OPENAI_API_KEY) return;
-     
-     // 1. Get current memory
-     const currentDoc = await ctx.runQuery(internal.memory.getRunningMemory, { projectId: args.projectId });
-     if (currentDoc && currentDoc.autoAppendEnabled === false) {
-        return;
-     }
-     const currentText = currentDoc?.contentMd_he || "";
-
-     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-     const model = "gpt-4o-mini";
-
-     const completion = await client.chat.completions.create({
-        model,
-        messages: [
-            { role: "system", content: "Update the project running memory (Hebrew) with the new user input. Keep it concise. Return the full updated text." },
-            { role: "user", content: `Current Memory:\n${currentText}\n\nNew Input:\n${args.userText}` }
-        ],
-     });
-     
-     const newText = completion.choices[0]?.message?.content ?? currentText;
-     
-     await ctx.runMutation(internal.memory.saveRunningMemory, {
-         projectId: args.projectId,
-         contentMd_he: newText,
-     });
+  handler: async (_ctx, _args) => {
+    // No-op: RUNNING_MEMORY updates disabled.
+    return
   },
 });
 
@@ -411,10 +390,6 @@ export const generateProjectContextDoc = action({
     feedback: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const snapshot = await ctx.runQuery(internal.flow.snapshotBuilder.getProjectSnapshot, { projectId: args.projectId });
-
-    let contentMd_he = buildFallbackProjectContext(snapshot);
-
     const feedback = typeof args.feedback === "string" ? args.feedback.trim() : "";
     if (feedback) {
       await ctx.runMutation(internal.memory.appendUserInput, {
@@ -423,51 +398,21 @@ export const generateProjectContextDoc = action({
       });
     }
 
-    if (process.env.OPENAI_API_KEY) {
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const model = "gpt-4o-mini";
-
-      const summaryPayload = {
-        project: snapshot.project,
-        counts: snapshot.counts,
-        elements: snapshot.elements?.slice(0, 50),
-        tasks: snapshot.tasks?.slice(0, 80),
-        materialLines: snapshot.materialLines?.slice(0, 80),
-        workLines: snapshot.workLines?.slice(0, 80),
-        quoteVersions: snapshot.quoteVersions?.slice(0, 2),
-      };
-
-      const messages = [
-        {
-          role: "system",
-          content:
-            "You are generating a project context document in Hebrew. Output concise markdown with sections: Overview, Scope/Elements, Tasks/Work plan, Materials & Costs, Labor/Overhead, Quote Summary, Risks/Gaps, Assumptions. Keep it practical and ready for execution.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify(summaryPayload),
-        },
-      ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
-
-      if (feedback) {
-        messages.push({
-          role: "user",
-          content: `Feedback to incorporate:\n${feedback}`,
-        });
-      }
-
-      const completion = await client.chat.completions.create({
-        model,
-        messages,
-      });
-
-      const text = completion.choices[0]?.message?.content ?? "";
-      if (text.trim()) contentMd_he = text;
+    // Delegate to the single-source-of-truth knowledge updater
+    const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
+    if (!sdkKnowledge?.summarizeOrUpdate) {
+      throw new Error('sdk/knowledge module not available');
     }
 
-    await ctx.runMutation(internal.memory.saveProjectContextDoc, {
+    const newFacts: string[] = [];
+    if (feedback) {
+      newFacts.push(`User feedback: ${feedback}`);
+    }
+
+    await ctx.runAction(sdkKnowledge.summarizeOrUpdate, {
       projectId: args.projectId,
-      contentMd_he,
+      newFacts,
+      userText: feedback || undefined,
     });
 
     return { ok: true };

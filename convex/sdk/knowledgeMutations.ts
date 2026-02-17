@@ -1,5 +1,5 @@
 // Internal mutations for SDK knowledge module
-// Split from knowledge.ts because mutations cannot use "use node"
+// Single source of truth: PROJECT_CONTEXT memoryDoc stores Hebrew markdown.
 
 import { internalMutation } from '../_generated/server';
 import { v } from 'convex/values';
@@ -10,6 +10,12 @@ export const saveKnowledgeDoc = internalMutation({
         doc: v.any(),
     },
     handler: async (ctx, args) => {
+        // doc can be a string (markdown) or an object (legacy JSON).
+        // Always store as string in contentMd_he.
+        const content = typeof args.doc === 'string'
+            ? args.doc
+            : JSON.stringify(args.doc);
+
         const existing = await ctx.db
             .query('memoryDocs')
             .withIndex('by_project_kind', (q) =>
@@ -19,15 +25,15 @@ export const saveKnowledgeDoc = internalMutation({
 
         if (existing) {
             await ctx.db.patch(existing._id, {
-                contentMd_he: JSON.stringify(args.doc),
+                contentMd_he: content,
                 updatedAt: Date.now(),
             });
         } else {
             await ctx.db.insert('memoryDocs', {
                 projectId: args.projectId,
                 kind: 'PROJECT_CONTEXT',
-                title_he: args.doc.titleHe ?? 'מסמך ידע פרויקט',
-                contentMd_he: JSON.stringify(args.doc),
+                title_he: 'מסמך ידע פרויקט',
+                contentMd_he: content,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             });

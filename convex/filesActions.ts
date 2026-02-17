@@ -40,10 +40,18 @@ export const saveUploadedFile = action({
         });
         const knowledgeSnippet = extractedInfo?.summary ?? summary;
         if (knowledgeSnippet) {
-            await ctx.runAction(api.memory.appendRunningMemory, {
-                projectId: args.projectId,
-                userText: `Uploaded file: ${args.fileName}\nSummary: ${knowledgeSnippet}`,
-            });
+            // Trigger D: schedule knowledge doc refresh after file upload/parse
+            const sdkKnowledge = (api as any)['sdk/knowledge'] ?? (api as any).sdk?.knowledge;
+            if (sdkKnowledge?.summarizeOrUpdate) {
+                try {
+                    await ctx.runAction(sdkKnowledge.summarizeOrUpdate, {
+                        projectId: args.projectId,
+                        newFacts: [`Uploaded file: ${args.fileName}`, `Summary: ${knowledgeSnippet}`],
+                    });
+                } catch (err) {
+                    console.warn('Post-upload knowledge refresh failed:', err);
+                }
+            }
         }
         return { fileId };
     },

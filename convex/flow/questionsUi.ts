@@ -134,6 +134,38 @@ export const submitQuestionSet = action({
 
     const hasAnswers = Object.keys(answers).length > 0
 
+    if (hasAnswers) {
+      const questions = Array.isArray(questionSet?.questions) ? questionSet.questions : []
+      for (let i = 0; i < questions.length; i += 1) {
+        const question = questions[i] ?? {}
+        const questionKey = String(question?.fieldKey ?? question?.questionId ?? `q${i}`)
+        const answer = answers[questionKey]
+        if (!answer || !String(answer).trim()) continue
+
+        const questionText =
+          question.prompt ??
+          question.textHe ??
+          question.text_he ??
+          question.text ??
+          question.questionHe ??
+          question.question_he ??
+          question.question ??
+          question.labelHe ??
+          question.label ??
+          question.label_he
+
+        if (!questionText || !String(questionText).trim()) continue
+
+        await ctx.runMutation(api.memory.upsertQAPairs, {
+          projectId: run.projectId,
+          question_he: String(questionText),
+          answer_he: String(answer),
+          sourceType: 'CLARIFICATION_BLOCK',
+          conversationId: String(args.flowRunId),
+        })
+      }
+    }
+
     if (hasAnswers && !isV3) {
       await ctx.runMutation(api.flowAnswers.submitAnswers, {
         flowRunId: args.flowRunId,

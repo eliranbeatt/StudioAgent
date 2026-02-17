@@ -738,7 +738,10 @@ function ClarificationBlock({
 
       answers[q.id] = parts.join(" ");
     });
-    onSubmit({ answersById: answers });
+    onSubmit({
+      answersById: answers,
+      questions: block.questions ?? [],
+    });
   };
 
   return (

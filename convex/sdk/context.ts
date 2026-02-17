@@ -171,19 +171,16 @@ export const get = query({
     }
 
     if (packs.has('knowledge')) {
-       const k = await ctx.db
+      const k = await ctx.db
         .query('memoryDocs')
-        .withIndex('by_project_kind', (q) => 
+        .withIndex('by_project_kind', (q) =>
           q.eq('projectId', args.projectId).eq('kind', 'PROJECT_CONTEXT')
         )
         .first();
-       if (k && k.contentMd_he) {
-         try {
-           res.knowledgeDoc = JSON.parse(k.contentMd_he);
-         } catch {
-           res.knowledgeDoc = { raw: k.contentMd_he };
-         }
-       }
+      if (k && k.contentMd_he) {
+        // Return the markdown string directly as the knowledge doc
+        res.knowledgeDoc = k.contentMd_he;
+      }
     }
 
     if (packs.has('pricing')) {
@@ -260,7 +257,9 @@ export const get = query({
   },
 });
 
-// Add knowledge/context to a project
+// DEPRECATED: brainDumpRaw is no longer written to.
+// Single source of truth is memoryDocs(kind='PROJECT_CONTEXT') via CONTEXT_GENERATION skill.
+// This mutation is kept as a no-op to avoid breaking callers.
 export const addKnowledge = mutation({
   args: {
     projectId: v.id('projects'),
@@ -268,18 +267,9 @@ export const addKnowledge = mutation({
     source: v.string(),
     priority: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
-    // Persist lightweight knowledge on the project record using schema-safe fields.
-    const project = await ctx.db.get(args.projectId);
-    if (!project) return;
-
-    const existing = (project.brainDumpRaw ?? '').trim();
-    const nextEntry = `[${args.source}]: ${args.text}`.trim();
-    const newNotes = existing ? `${existing}\n\n${nextEntry}` : nextEntry;
-    
-    await ctx.db.patch(args.projectId, {
-      brainDumpRaw: newNotes,
-      updatedAt: Date.now(),
-    });
+  handler: async (_ctx, _args) => {
+    // No-op: brainDumpRaw writes disabled.
+    // All knowledge flows through CONTEXT_GENERATION -> PROJECT_CONTEXT memoryDoc.
+    return
   },
 });
