@@ -103,6 +103,41 @@ function toFiniteNumber(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function normalizeConfidence(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  // If already a number, validate it's in range [0, 1]
+  if (typeof value === "number") {
+    return value >= 0 && value <= 1 ? value : undefined;
+  }
+  // If string, try to map "high"/"medium"/"low" or parse as number
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed === "high") return 0.9;
+    if (trimmed === "medium") return 0.6;
+    if (trimmed === "low") return 0.3;
+    const n = Number(trimmed);
+    return Number.isFinite(n) && n >= 0 && n <= 1 ? n : undefined;
+  }
+  return undefined;
+}
+
+function normalizePriceConfidence(value: unknown): "high" | "medium" | "low" | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed === "high") return "high";
+    if (trimmed === "medium") return "medium";
+    if (trimmed === "low") return "low";
+  }
+  // If it's a number, map ranges back to string
+  if (typeof value === "number") {
+    if (value >= 0.7) return "high";
+    if (value >= 0.4) return "medium";
+    return "low";
+  }
+  return undefined;
+}
+
 function inferWorkTypeFromDedupKey(dedupKey: unknown): string | undefined {
   if (typeof dedupKey !== "string" || !dedupKey.trim()) return undefined;
   const parts = dedupKey.split("::").map((part) => part.trim()).filter(Boolean);
@@ -981,7 +1016,14 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if (op.kind !== "materialLine.create") continue;
     const { tempId, elementTempOrId, taskTempOrId, elementId: directElementId, fields } =
       op.payload ?? {};
-    if (!fields?.itemName) throw new Error("materialLine.create requires fields.itemName");
+    const itemName = firstNonEmptyString([
+      fields?.itemName,
+      fields?.itemHe,
+      fields?.titleHe,
+      fields?.title,
+      fields?.name,
+    ]);
+    if (!itemName) throw new Error("materialLine.create requires fields.itemName");
 
     const elementId = resolveElementId(elementTempOrId ?? directElementId) ?? undefined;
     const rawTaskId =
@@ -1024,7 +1066,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         .query("materialLines")
         .withIndex("by_element", (q) => q.eq("elementId", resolvedElementId))
         .collect();
-      const cleanName = normalizeKey(fields.itemName);
+      const cleanName = normalizeKey(itemName);
       existingLine = candidates.find((l: any) =>
         (dedupKey && l.dedupKey === dedupKey) ||
         (normalizeKey(l.itemName) === cleanName && String(l.taskId ?? "") === String(taskId ?? ""))
@@ -1034,7 +1076,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         .query("materialLines")
         .withIndex("by_project", (q) => q.eq("projectId", cs.projectId))
         .collect();
-      const cleanName = normalizeKey(fields.itemName);
+      const cleanName = normalizeKey(itemName);
       existingLine = candidates.find((l: any) =>
         (!l.elementId) &&
         ((dedupKey && l.dedupKey === dedupKey) ||
@@ -1052,7 +1094,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         sectionLabelHe,
         workType: normalizeWorkType(fields.workType),
         workTypeLabelHe: fields.workTypeLabelHe ?? undefined,
-        itemName: fields.itemName ?? undefined,
+        itemName: itemName ?? undefined,
         spec: fields.spec ?? undefined,
         templateId: fields.templateId ? ctx.db.normalizeId("materialTemplates", fields.templateId) : undefined,
         variantId: fields.variantId ? ctx.db.normalizeId("materialVariants", fields.variantId) : undefined,
@@ -1075,7 +1117,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         pricingSourceCode: fields.pricingSourceCode ?? undefined,
         priceCheckedAt: fields.priceCheckedAt ?? undefined,
         priceUrl: fields.priceUrl ?? undefined,
-        confidence: fields.confidence ?? undefined,
+        confidence: normalizeConfidence(fields.confidence),
         checklistItemId: fields.checklistItemId ?? undefined,
         dedupKey: toOptional(fields.dedupKey),
         updatedAt: now,
@@ -1105,7 +1147,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       sectionLabelHe,
       workType: normalizeWorkType(fields.workType),
       workTypeLabelHe: fields.workTypeLabelHe ?? undefined,
-      itemName: fields.itemName ?? undefined,
+      itemName: itemName ?? undefined,
       spec: fields.spec ?? undefined,
       templateId: fields.templateId ? ctx.db.normalizeId("materialTemplates", fields.templateId) : undefined,
       variantId: fields.variantId ? ctx.db.normalizeId("materialVariants", fields.variantId) : undefined,
@@ -1128,7 +1170,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       pricingSourceCode: fields.pricingSourceCode ?? undefined,
       priceCheckedAt: fields.priceCheckedAt ?? undefined,
       priceUrl: fields.priceUrl ?? undefined,
-      confidence: fields.confidence ?? undefined,
+      confidence: normalizeConfidence(fields.confidence),
       checklistItemId: fields.checklistItemId ?? undefined,
       createdFromChangeSetId: sourceChangeSetId,
       dedupKey: toOptional(fields.dedupKey),
@@ -1244,7 +1286,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         sourceCode: fields.sourceCode ?? undefined,
         sourceLabelHe: fields.sourceLabelHe ?? undefined,
         source: fields.source ?? undefined,
-        confidence: fields.confidence ?? undefined,
+        confidence: normalizeConfidence(fields.confidence),
         status: fields.status ?? undefined,
         assignee: fields.assignee ?? undefined,
         assigneeId: fields.assigneeId ?? undefined,
@@ -1289,7 +1331,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       sourceCode: fields.sourceCode ?? undefined,
       sourceLabelHe: fields.sourceLabelHe ?? undefined,
       source: fields.source ?? undefined,
-      confidence: fields.confidence ?? undefined,
+      confidence: normalizeConfidence(fields.confidence),
       status: fields.status ?? undefined,
       assignee: fields.assignee ?? undefined,
       assigneeId: fields.assigneeId ?? undefined,
@@ -1425,7 +1467,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     ) {
       patch.plannedTotalCost = toOptional(normalizedFields.plannedTotalCost);
     }
-    if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
+    if ("confidence" in fields) patch.confidence = normalizeConfidence(fields.confidence);
     if ("workType" in fields || "workTypeKey" in fields || normalizedFields.workType !== undefined) {
       patch.workType = normalizedFields.workType ? normalizeWorkType(normalizedFields.workType) : undefined;
     }
@@ -1470,7 +1512,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
     if ("pricingSourceCode" in fields) patch.pricingSourceCode = toOptional(fields.pricingSourceCode);
     if ("priceCheckedAt" in fields) patch.priceCheckedAt = toOptional(fields.priceCheckedAt);
     if ("priceUrl" in fields) patch.priceUrl = toOptional(fields.priceUrl);
-    if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
+    if ("confidence" in fields) patch.confidence = normalizeConfidence(fields.confidence);
 
     await ctx.db.patch(resolved, { ...patch, updatedAt: now });
     const after = await ctx.db.get(resolved);
@@ -1688,7 +1730,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("crewSize" in fields) patch.crewSize = fields.crewSize === null ? undefined : fields.crewSize;
       if ("ratePerHour" in fields) patch.ratePerHour = fields.ratePerHour === null ? undefined : fields.ratePerHour;
       if ("source" in fields) patch.source = fields.source === null ? undefined : fields.source;
-      if ("confidence" in fields) patch.confidence = fields.confidence === null ? undefined : fields.confidence;
+      if ("confidence" in fields) patch.confidence = normalizeConfidence(fields.confidence);
       if ("notes" in fields) patch.notes = fields.notes === null ? undefined : fields.notes;
       if ("dedupKey" in fields) patch.dedupKey = toOptional(fields?.dedupKey);
 
@@ -1736,7 +1778,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
         crewSize: fields.crewSize === null ? undefined : fields.crewSize,
         ratePerHour: fields.ratePerHour === null ? undefined : fields.ratePerHour,
         source: fields.source === null ? undefined : fields.source,
-        confidence: fields.confidence === null ? undefined : fields.confidence,
+        confidence: normalizeConfidence(fields.confidence),
         notes: fields.notes === null ? undefined : fields.notes,
         dedupKey: toOptional(fields?.dedupKey),
 
@@ -1856,7 +1898,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       if ("crewSize" in fields) patch.crewSize = toOptional(fields.crewSize);
       if ("ratePerHour" in fields) patch.ratePerHour = toOptional(fields.ratePerHour);
       if ("source" in fields) patch.source = toOptional(fields.source);
-      if ("confidence" in fields) patch.confidence = toOptional(fields.confidence);
+      if ("confidence" in fields) patch.confidence = normalizeConfidence(fields.confidence);
       if ("dedupKey" in fields) patch.dedupKey = toOptional(fields.dedupKey);
     }
 
@@ -1982,7 +2024,7 @@ export async function applyChangeSetInternalLogic(ctx: any, args: { changeSetId:
       domain: fields.domain ?? undefined,
       rawSnippet: fields.rawSnippet ?? undefined,
       extractedFields: fields.extractedFields ?? undefined,
-      confidence: fields.confidence ?? undefined,
+      confidence: normalizePriceConfidence(fields.confidence),
       notesHe: fields.notesHe ?? undefined,
       createdBy: fields.createdBy ?? "agent",
       sourceRef: fields.sourceRef ?? undefined,

@@ -538,6 +538,12 @@ CRITICAL RULES
    - Write naturally, like a helpful expert.
    - Do not wait to “structure output” — just answer.
 
+READABILITY (REQUIRED)
+- Use short paragraphs (1-3 sentences each).
+- Prefer bullet points for lists and tradeoffs.
+- Use numbered sections for distinct options or methods.
+- Insert blank lines between sections.
+
 TOOLS YOU MAY USE
 - context.get (read): only if needed to ground the response.
 - knowledge.summarize_or_update (optional): use only if user text contains durable project facts/decisions worth saving.
@@ -552,6 +558,7 @@ OUTPUT FORMAT (STRICT)
 - No JSON.
 - No blocks.
 - Final line MUST be a single actionable next-step footer line in plain text, using numbered options per the rule above.
+- The final line must stand alone (no extra sentences after it).
 END SYSTEM
 `;
 

@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../../../../../convex/_generated/api'
 import { Id } from '../../../../../../convex/_generated/dataModel'
 import { Send } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { ChatBlock } from '../../agent/_components/Blocks/ChatBlock'
 import { ChangeSetBlock } from '../../agent/_components/Blocks/ChangeSetBlock'
 import { ReviewBlock } from '../../agent/_components/Blocks/ReviewBlock'
@@ -436,6 +438,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
 
     setSendError(null)
     setIsDispatching(true)
+    let keepThinking = false
     try {
       const forceOrchestratorTurn = shouldForceOrchestratorTurn(trimmed, runStatus)
       if (blocksV2Enabled && hasStagedSelections) {
@@ -537,7 +540,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
       resetStagedSelections()
     } catch (error) {
       if (isRequestTimeoutError(error)) {
-        setSendError('The request is taking too long. The backend run may still be processing; check for a new assistant message or retry once.')
+        keepThinking = true
       } else if (isInFlightDisconnectError(error)) {
         setSendError('Connection dropped while the request was in flight. The action may still complete; wait a moment before retrying.')
       } else {
@@ -545,9 +548,11 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
         setSendError(details || 'Failed to send message. Please try again.')
       }
     } finally {
-      setIsStreaming(false)
-      setStreamingText('')
-      setIsDispatching(false)
+      if (!keepThinking) {
+        setIsStreaming(false)
+        setStreamingText('')
+        setIsDispatching(false)
+      }
     }
   }
 
@@ -712,8 +717,8 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
                         const msgBlocks = Array.isArray(msg?.blocks) ? msg.blocks : []
                         if (msgBlocks.length === 0) {
                           return (
-                            <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 whitespace-pre-wrap' dir="rtl">
-                              {msg.text}
+                            <div className='bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 prose prose-sm max-w-none' dir="rtl">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{String(msg.text ?? '')}</ReactMarkdown>
                             </div>
                           )
                         }
@@ -745,8 +750,8 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
             )}
             {isStreaming && streamingText ? (
               <div className='flex justify-start'>
-                <div className='max-w-3xl bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 whitespace-pre-wrap' dir="rtl">
-                  {streamingText}
+                <div className='max-w-3xl bg-white rounded-lg p-3 text-sm border border-slate-100 shadow-sm text-slate-800 prose prose-sm max-w-none' dir="rtl">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{String(streamingText ?? '')}</ReactMarkdown>
                 </div>
               </div>
             ) : null}

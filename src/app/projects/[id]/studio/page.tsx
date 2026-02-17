@@ -5,6 +5,8 @@ import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Pencil, Plus, Send } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ACTIVE_AGENT_PROMPT_ID } from "../../../../lib/agentPrompts";
 
 type Stage = "IDEATION" | "QUOTE" | "BREAKDOWN";
@@ -478,11 +480,11 @@ function MessageBubble({
 
       {displayText ? (
         <div
-          className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${bubble} whitespace-pre-wrap`}
+          className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${bubble} prose prose-sm max-w-none`}
           dir="auto"
           style={{ textAlign: "start" }}
         >
-          <RichTextRenderer text={displayText} />
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{String(displayText)}</ReactMarkdown>
         </div>
       ) : null}
 

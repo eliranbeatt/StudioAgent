@@ -11,6 +11,7 @@ function nonEmptyLines(text: string) {
 function looksLikeSuggestionFooter(line: string) {
   const value = String(line ?? '').trim()
   if (!value) return false
+  if (value.startsWith('הצעד הבא:')) return true
   if (value.startsWith('אפשרויות המשך:')) return true
   if (value.startsWith('אפשרות המשך:')) return true
   if (value.startsWith('האם אתה רוצה ש')) return true
@@ -23,8 +24,10 @@ function looksLikeSuggestionFooter(line: string) {
 export function extractSuggestionFooter(text: string): string | null {
   const lines = nonEmptyLines(text)
   if (lines.length === 0) return null
-  const last = lines[lines.length - 1]
-  return looksLikeSuggestionFooter(last) ? last : null
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (looksLikeSuggestionFooter(lines[i])) return lines[i]
+  }
+  return null
 }
 
 export function ensureSuggestionFooter(text: string) {
@@ -39,5 +42,5 @@ export function ensureSuggestionFooter(text: string) {
     }
     return raw
   }
-  return `${raw}\n${FALLBACK_FOOTER}`
+  return raw
 }

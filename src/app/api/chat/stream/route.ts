@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         const delegatedAgents: string[] = []
         let assistantText = ''
         let blocks: any[] = []
-        let model = 'gpt-5-mini'
+        let model = 'gpt-5.2'
         let mode = 'chat.free'
 
         if (route === 'preview' || route === 'clarify' || route === 'deep') {
@@ -180,7 +180,7 @@ export async function POST(req: NextRequest) {
           })
 
           const modelMessages = [
-            { role: 'system', content: 'You are chat.free. Output plain Hebrew-first text only. Do not output JSON or blocks. Do not ask clarification questions directly. If missing details, suggest running clarify.next_questions or draft.plan_and_questions. End with exactly one final next-step line in natural Hebrew: if multiple paths exist, provide exactly 2 numbered options (1,2); if only one path exists, provide exactly 1 numbered option. Phrase it so the user can reply with a number. Do not force a fixed opening phrase.' },
+            { role: 'system', content: 'You are chat.free. Output plain Hebrew-first text only. Do not output JSON or blocks. Do not ask clarification questions directly. If missing details, suggest running clarify.next_questions or draft.plan_and_questions. Make the response easy to scan: short paragraphs (1-3 sentences), numbered sections for methods/options, and bullet points for lists; add blank lines between sections. End with exactly one final next-step line in natural Hebrew: if multiple paths exist, provide exactly 2 numbered options (1,2); if only one path exists, provide exactly 1 numbered option. Phrase it so the user can reply with a number. The final line must stand alone with no extra sentences after it. Do not force a fixed opening phrase.' },
             ...toPromptHistory(history),
             { role: 'user', content: userMessage },
           ] as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>

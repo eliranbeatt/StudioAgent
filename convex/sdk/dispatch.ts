@@ -2480,8 +2480,8 @@ export const runNext = action({
     let lastToolSignature: string | null = null;
     let repeatedToolSignatureCount = 0;
     const maxToolLoops = isChatEditRun ? 2 : MAX_TOOL_LOOPS;
-    const runtimeModel = isChatEditRun ? 'gpt-5-mini' : orchestrator.model;
-    const runtimeReasoningEffort = isChatEditRun ? 'low' : orchestrator.reasoningEffort;
+    const runtimeModel = isChatEditRun ? 'gpt-5.2' : orchestrator.model;
+    const runtimeReasoningEffort = isChatEditRun ? 'none' : orchestrator.reasoningEffort;
     const runtimeMaxCompletionTokens = isChatEditRun
       ? undefined
       : orchestrator.maxCompletionTokens;
