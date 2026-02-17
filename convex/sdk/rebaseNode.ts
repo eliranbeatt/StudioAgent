@@ -61,7 +61,6 @@ export const regenerateQuestionsManual = action({
         userContent: JSON.stringify(modelPayload),
         model: 'gpt-5-mini',
         temperature: 0.1,
-        maxCompletionTokens: 10000,
         projectId: args.projectId,
         conversationId: args.conversationId,
         runId: args.runId,
@@ -140,4 +139,3 @@ export const regenerateQuestionsManual = action({
     }
   },
 })
-

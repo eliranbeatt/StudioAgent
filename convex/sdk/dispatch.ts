@@ -2493,13 +2493,6 @@ export const runNext = action({
     let repeatedToolSignatureCount = 0;
     const maxToolLoops = isChatEditRun ? 2 : MAX_TOOL_LOOPS;
     const runtimeModel = isChatEditRun ? 'gpt-5.2' : orchestrator.model;
-    const runtimeReasoningEffort = isChatEditRun ? 'none' : orchestrator.reasoningEffort;
-    const runtimeMaxCompletionTokens = isChatEditRun
-      ? undefined
-      : orchestrator.maxCompletionTokens;
-    const runtimeMaxTokens = isChatEditRun
-      ? undefined
-      : orchestrator.maxTokens;
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('Missing OPENAI_API_KEY');
     }
@@ -2523,10 +2516,7 @@ export const runNext = action({
         ctx,
         {
           model: runtimeModel,
-          reasoning_effort: runtimeReasoningEffort,
           temperature: orchestrator.temperature,
-          ...(typeof runtimeMaxTokens === 'number' ? { max_tokens: runtimeMaxTokens } : {}),
-          ...(typeof runtimeMaxCompletionTokens === 'number' ? { max_completion_tokens: runtimeMaxCompletionTokens } : {}),
           messages,
           tools,
           tool_choice: toolChoice,
@@ -2816,8 +2806,6 @@ export const runNext = action({
         ctx,
         {
           model: runtimeModel,
-          reasoning_effort: runtimeReasoningEffort,
-          ...(typeof runtimeMaxTokens === 'number' ? { max_tokens: runtimeMaxTokens } : {}),
           messages: [
             ...messages,
             {
@@ -2948,7 +2936,6 @@ export const runNext = action({
           ctx,
           {
             model: repairModel,
-            reasoning_effort: 'low',
             response_format: { type: 'json_object' },
             messages: [
               {
@@ -3157,10 +3144,7 @@ Then call changeset.compile to create the ChangeSet.`
         ctx,
         {
           model: runtimeModel,
-          reasoning_effort: runtimeReasoningEffort,
           temperature: orchestrator.temperature ? Math.min(orchestrator.temperature + 0.1, 0.5) : undefined,
-          ...(typeof runtimeMaxTokens === 'number' ? { max_tokens: runtimeMaxTokens } : {}),
-          ...(typeof runtimeMaxCompletionTokens === 'number' ? { max_completion_tokens: runtimeMaxCompletionTokens } : {}),
           messages,
           tools,
           tool_choice: 'required',

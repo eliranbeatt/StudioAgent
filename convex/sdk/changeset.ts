@@ -224,9 +224,9 @@ export const compile = action({
     };
 
     const compileAttempts = [
-      { model: 'gpt-4o-mini', maxTokens: 2600 },
-      { model: 'gpt-4o-mini', maxTokens: 4200 },
-      { model: 'gpt-4o', maxTokens: 5600 },
+      { model: 'gpt-4o-mini' },
+      { model: 'gpt-4o-mini' },
+      { model: 'gpt-4o' },
     ] as const;
 
     let lastError: unknown = null;
@@ -245,7 +245,6 @@ export const compile = action({
           userContent: `${JSON.stringify(payload)}${retryHint}`,
           model: attempt.model,
           temperature: 0.1,
-          maxCompletionTokens: attempt.maxTokens,
           projectId: args.projectId,
           conversationId: args.conversationId as any,
           runId: args.runId as any,
@@ -908,7 +907,6 @@ export const review = action({
       userContent: JSON.stringify({ projectId: args.projectId, changeSet }),
       model: 'gpt-4o-mini',
       temperature: 0.1,
-      maxTokens: 1600,
       projectId: args.projectId,
       conversationId: args.conversationId as any,
       runId: args.runId as any,

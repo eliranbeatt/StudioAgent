@@ -62,7 +62,6 @@ export const summarizeOrUpdate = action({
       ctx,
       {
         model: 'gpt-5-mini',
-        max_tokens: 3000,
         messages: [
           { role: 'system', content: FULL_PROMPTS.KNOWLEDGE_UPDATE_SYSTEM },
           { role: 'user', content: userPayload },

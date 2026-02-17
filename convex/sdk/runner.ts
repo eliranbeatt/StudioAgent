@@ -166,14 +166,28 @@ function coerceToJson(input: any) {
   return JSON.stringify(input ?? {}, null, 2);
 }
 
+function formatSchemaErrors(errors: any): string {
+  if (!Array.isArray(errors) || errors.length === 0) {
+    // Never swallow errors — stringify whatever we got as a last resort
+    if (errors && typeof errors === 'object') {
+      return `schema_error: ${JSON.stringify(errors).substring(0, 500)}`
+    }
+    return `schema_error: ${String(errors ?? 'no error details available')}`
+  }
+  return errors
+    .slice(0, 6)
+    .map((err: any) => {
+      const path = Array.isArray(err?.path) ? err.path.join('.') : 'root'
+      const message = String(err?.message ?? 'invalid')
+      return `${path}: ${message}`
+    })
+    .join(' | ')
+}
+
 function resolveRuntimeLlm(input: any, toolDef: any) {
   const llm = input && typeof input === 'object' ? (input as any).llm : undefined
   const model = typeof llm?.model === 'string' && llm.model.trim() ? llm.model.trim() : toolDef.model
-  const reasoningEffort =
-    typeof llm?.reasoningEffort === 'string' && llm.reasoningEffort.trim()
-      ? llm.reasoningEffort.trim()
-      : toolDef.reasoningEffort
-  return { model, reasoningEffort }
+  return { model }
 }
 
 async function buildToolHandlers(args: {
@@ -297,10 +311,7 @@ async function runAgentInternal(args: {
       args.ctx,
       {
         model: runtimeLlm.model,
-        reasoning_effort: runtimeLlm.reasoningEffort,
         temperature: toolDef.temperature,
-        max_tokens: toolDef.maxTokens,
-        max_completion_tokens: toolDef.maxCompletionTokens,
         messages,
         tools,
         tool_choice: 'auto',
@@ -382,7 +393,8 @@ async function runAgentInternal(args: {
 
   const validated = validateSdkOutput(toolDef.schemaName, parsed);
   if (!validated.ok) {
-    throw new Error(`Tool ${args.toolId} failed schema validation`);
+    console.error(`[runAgentInternal] Tool ${args.toolId} schema validation failed. Raw output keys:`, parsed && typeof parsed === 'object' ? Object.keys(parsed) : typeof parsed);
+    throw new Error(`Tool ${args.toolId} failed schema validation: ${formatSchemaErrors((validated as any).errors)}`);
   }
 
   return validated.data;
@@ -412,10 +424,7 @@ export async function runToolInternal(args: {
       systemPrompt: toolDef.systemPrompt,
       userContent: userMessage,
       model: runtimeLlm.model,
-      reasoningEffort: runtimeLlm.reasoningEffort,
       temperature: toolDef.temperature,
-      maxTokens: toolDef.maxTokens,
-      maxCompletionTokens: toolDef.maxCompletionTokens,
       projectId: args.projectId,
       conversationId: args.conversationId,
       runId: args.runId,
@@ -428,7 +437,8 @@ export async function runToolInternal(args: {
     assertAsciiKeys(parsed);
     const validated = validateSdkOutput(toolDef.schemaName, parsed);
     if (!validated.ok) {
-      throw new Error(`Tool ${args.toolId} failed schema validation`);
+      console.error(`[runToolInternal] Tool ${args.toolId} schema validation failed. Raw output keys:`, parsed && typeof parsed === 'object' ? Object.keys(parsed) : typeof parsed);
+      throw new Error(`Tool ${args.toolId} failed schema validation: ${formatSchemaErrors((validated as any).errors)}`);
     }
     result = validated.data;
   }

@@ -11,7 +11,7 @@ import { Id } from '../_generated/dataModel';
 const FINALIZE_PHASES = ['elements', 'tasks', 'budget', 'pricing', 'audit', 'repair', 'package'] as const
 type FinalizePhase = typeof FINALIZE_PHASES[number]
 type PlanningMode = 'separated' | 'combined'
-type PlanningLlmConfig = { model: 'gpt-5-mini' | 'gpt-5.2'; reasoningEffort: 'medium' }
+type PlanningLlmConfig = { model: 'gpt-5-mini' | 'gpt-5.2' }
 
 const TOOL_BY_PHASE: Record<Exclude<FinalizePhase, 'audit' | 'repair' | 'package'>, string> = {
   elements: 'plan.elements',
@@ -42,9 +42,9 @@ function nextFinalizePhaseForMode(phase: FinalizePhase | null | undefined, mode:
 
 function planningLlmConfigForMode(mode: PlanningMode): PlanningLlmConfig {
   if (mode === 'combined') {
-    return { model: 'gpt-5.2', reasoningEffort: 'medium' }
+    return { model: 'gpt-5.2' }
   }
-  return { model: 'gpt-5-mini', reasoningEffort: 'medium' }
+  return { model: 'gpt-5.2' }
 }
 
 function defaultFinalizePolicy() {
@@ -144,6 +144,40 @@ function collectIntentsFromResult(result: any, sourceToolId?: string | null): an
   return out.filter(Boolean)
 }
 
+function normalizePlanningQuestionType(value: unknown): 'text' | 'number' | 'date' | 'single' | 'multi' | 'toggle' {
+  const key = String(value ?? '').trim().toLowerCase()
+  if (key === 'number') return 'number'
+  if (key === 'date') return 'date'
+  if (key === 'single' || key === 'choice' || key === 'select' || key === 'single_select') return 'single'
+  if (key === 'multi' || key === 'multiple' || key === 'multi_select' || key === 'checkbox') return 'multi'
+  if (key === 'toggle' || key === 'boolean' || key === 'bool' || key === 'yesno') return 'toggle'
+  return 'text'
+}
+
+function normalizePlanningOptions(value: unknown): Array<{ value: string; labelHe: string }> | undefined {
+  if (!Array.isArray(value)) return undefined
+  const out = value
+    .map((item) => {
+      if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+        const text = String(item).trim()
+        if (!text) return null
+        return { value: text, labelHe: text }
+      }
+      if (!item || typeof item !== 'object') return null
+      const source = item as Record<string, unknown>
+      const normalizedValue = String(source.value ?? source.labelHe ?? '').trim()
+      if (!normalizedValue) return null
+      const normalizedLabel = String(source.labelHe ?? source.value ?? '').trim() || normalizedValue
+      return { value: normalizedValue, labelHe: normalizedLabel }
+    })
+    .filter(Boolean) as Array<{ value: string; labelHe: string }>
+  return out.length > 0 ? out : undefined
+}
+
+function normalizePlanningQuestionText(question: any): string {
+  return String(question?.textHe ?? question?.questionHe ?? question?.questionText ?? '').trim()
+}
+
 
 function normalizeQuestionGroups(result: any): Array<{ key: string; labelHe: string; questions: any[] }> {
   const grouped = Array.isArray(result?.questionGroups) ? result.questionGroups : []
@@ -154,16 +188,16 @@ function normalizeQuestionGroups(result: any): Array<{ key: string; labelHe: str
       questions: Array.isArray(group?.questions)
         ? group.questions.map((q: any) => ({
           questionKey: q?.questionKey,
-          textHe: q?.textHe ?? q?.questionHe ?? '',
-          questionHe: q?.questionHe ?? q?.textHe ?? '',
-          questionType: q?.questionType ?? q?.type ?? 'text',
+          textHe: normalizePlanningQuestionText(q),
+          questionHe: normalizePlanningQuestionText(q),
+          questionType: normalizePlanningQuestionType(q?.questionType ?? q?.type),
           sectionPath: Array.isArray(q?.sectionPath) ? q.sectionPath : [],
           blockingLevel: q?.blockingLevel ?? 'helpful',
           scopeType: q?.scopeType,
           scopeKey: q?.scopeKey,
           orderKey: q?.orderKey,
           followUp: q?.followUp,
-          options: q?.options,
+          options: normalizePlanningOptions(q?.options),
           suggestedAnswers: q?.suggestedAnswers,
           allowDontKnow: q?.allowDontKnow,
           allowFreeText: q?.allowFreeText,
@@ -200,16 +234,16 @@ function normalizeQuestionGroups(result: any): Array<{ key: string; labelHe: str
     }
     buckets.get(key)!.push({
       questionKey: q?.questionKey,
-      textHe: q?.textHe ?? q?.questionHe ?? '',
-      questionHe: q?.questionHe ?? q?.textHe ?? '',
-      questionType: q?.questionType ?? q?.type ?? 'text',
+      textHe: normalizePlanningQuestionText(q),
+      questionHe: normalizePlanningQuestionText(q),
+      questionType: normalizePlanningQuestionType(q?.questionType ?? q?.type),
       sectionPath,
       blockingLevel: q?.blockingLevel ?? 'helpful',
       scopeType: q?.scopeType,
       scopeKey: q?.scopeKey,
       orderKey: q?.orderKey,
       followUp: q?.followUp,
-      options: q?.options,
+      options: normalizePlanningOptions(q?.options),
       suggestedAnswers: q?.suggestedAnswers,
       allowDontKnow: q?.allowDontKnow,
       allowFreeText: q?.allowFreeText,
@@ -251,7 +285,7 @@ async function insertQuestionGroups(args: {
     const groupLabel = group.labelHe ?? 'General'
     const questions = Array.isArray(group.questions) ? group.questions : []
     for (const q of questions) {
-      const questionHe = q.textHe ?? q.questionHe ?? ''
+      const questionHe = normalizePlanningQuestionText(q)
       if (!String(questionHe).trim()) continue
       await args.ctx.runMutation(internal.sdk.questions.createQuestion, {
         projectId: args.projectId,
@@ -260,14 +294,14 @@ async function insertQuestionGroups(args: {
         groupKey,
         groupLabelHe: groupLabel,
         questionKey: typeof q?.questionKey === 'string' ? q.questionKey : undefined,
-        questionType: q.questionType ?? q.type ?? 'text',
+        questionType: normalizePlanningQuestionType(q.questionType ?? q.type),
         sectionPath: Array.isArray(q.sectionPath) ? q.sectionPath : [groupKey],
         blockingLevel: q.blockingLevel ?? 'helpful',
         scopeType: q.scopeType,
         scopeKey: q.scopeKey,
         orderKey: q.orderKey,
         followUp: typeof q.followUp === 'boolean' ? q.followUp : undefined,
-        options: q.options,
+        options: normalizePlanningOptions(q.options),
         suggestedAnswers: q.suggestedAnswers,
         allowDontKnow: typeof q.allowDontKnow === 'boolean' ? q.allowDontKnow : true,
       })
@@ -320,7 +354,7 @@ export const getPlanningSession = query({
       finalizationPhases: existingRun.planningFinalizationPhases ?? [],
       planningMode:
         (existingRun as any)?.planningFinalizeCheckpoint?.planningMode === 'combined' ||
-        (existingRun as any)?.planningFinalizeCheckpoint?.planningMode === 'separated'
+          (existingRun as any)?.planningFinalizeCheckpoint?.planningMode === 'separated'
           ? (existingRun as any).planningFinalizeCheckpoint.planningMode
           : undefined,
     };
@@ -658,7 +692,6 @@ export const setPlanningModePreference = mutation({
         ...existingCheckpoint,
         planningMode: args.planningMode,
         planningModel: planningLlm.model,
-        planningReasoningEffort: planningLlm.reasoningEffort,
         updatedAt: Date.now(),
       },
       updatedAt: Date.now(),
@@ -820,7 +853,6 @@ export const startFinalizePhases = action({
       updatedAt: Date.now(),
       planningMode,
       planningModel: planningLlm.model,
-      planningReasoningEffort: planningLlm.reasoningEffort,
       nextPhase: startPhase,
       lastCompletedPhase: null as string | null,
       latestUserText: '',
@@ -888,7 +920,6 @@ export const runFinalizePhase = internalAction({
       updatedAt: Date.now(),
       planningMode: checkpointMode,
       planningModel: String(rawCheckpoint?.planningModel ?? defaultPlanningLlm.model),
-      planningReasoningEffort: String(rawCheckpoint?.planningReasoningEffort ?? defaultPlanningLlm.reasoningEffort),
       nextPhase: String(rawCheckpoint?.nextPhase ?? FINALIZE_PHASES[0]),
       lastCompletedPhase: rawCheckpoint?.lastCompletedPhase ?? null,
       latestUserText: String(rawCheckpoint?.latestUserText ?? ''),
@@ -963,7 +994,6 @@ export const runFinalizePhase = internalAction({
       }
       const planningLlm = {
         model: String(checkpoint.planningModel ?? 'gpt-5.2'),
-        reasoningEffort: String(checkpoint.planningReasoningEffort ?? 'medium'),
       }
 
       if (phase === 'elements' || phase === 'tasks' || phase === 'budget' || phase === 'pricing') {
@@ -1004,35 +1034,35 @@ export const runFinalizePhase = internalAction({
         } else if (planningMode === 'combined' && (phase === 'tasks' || phase === 'budget')) {
           // Combined mode already generated tasks+budget during elements phase.
         } else {
-        const runBeforeTool = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
-        if (String((runBeforeTool as any)?.planningFinalizeCheckpoint?.status ?? '') === 'cancelled') {
-          await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
-            runId: args.runId,
-            phase,
-            status: 'failed',
-            error: 'Cancelled by user',
+          const runBeforeTool = await ctx.runQuery(internal.sdk.queries.getRun, { runId: args.runId })
+          if (String((runBeforeTool as any)?.planningFinalizeCheckpoint?.status ?? '') === 'cancelled') {
+            await ctx.runMutation(api.sdk.projectPlanning.updatePhaseStatus, {
+              runId: args.runId,
+              phase,
+              status: 'failed',
+              error: 'Cancelled by user',
+            })
+            return { ok: false, cancelled: true, phase }
+          }
+          const toolId = TOOL_BY_PHASE[phase]
+          const result = await runTool(toolId, {
+            ...baseInput,
+            context: checkpoint.context,
+            llm: phase === 'pricing' ? undefined : planningLlm,
           })
-          return { ok: false, cancelled: true, phase }
-        }
-        const toolId = TOOL_BY_PHASE[phase]
-        const result = await runTool(toolId, {
-          ...baseInput,
-          context: checkpoint.context,
-          llm: phase === 'pricing' ? undefined : planningLlm,
-        })
-        checkpoint.toolOutputs[toolId] = result
-        await ctx.runAction(internal.sdk.api.persistFinalizeStageCheckpoint, {
-          projectId: args.projectId,
-          conversationId: args.conversationId,
-          runId: args.runId,
-          stageKey: phase,
-          toolOutputs: { ...checkpoint.toolOutputs },
-          source: toolId,
-        })
-        checkpoint.context = await ctx.runQuery(api.sdk.api.contextGet, {
-          projectId: args.projectId,
-          packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
-        })
+          checkpoint.toolOutputs[toolId] = result
+          await ctx.runAction(internal.sdk.api.persistFinalizeStageCheckpoint, {
+            projectId: args.projectId,
+            conversationId: args.conversationId,
+            runId: args.runId,
+            stageKey: phase,
+            toolOutputs: { ...checkpoint.toolOutputs },
+            source: toolId,
+          })
+          checkpoint.context = await ctx.runQuery(api.sdk.api.contextGet, {
+            projectId: args.projectId,
+            packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
+          })
         }
       } else if (phase === 'audit') {
         const auditResult = await runTool('audit.project', {
@@ -1229,7 +1259,7 @@ export const getFinalizationProgress = query({
     const events = await ctx.db
       .query('sdkRunEvents')
       .withIndex('by_run', (q) => q.eq('runId', args.runId))
-      .filter((q) => 
+      .filter((q) =>
         q.or(
           q.eq(q.field('type'), 'project_planning_finalize_started'),
           q.eq(q.field('type'), 'project_planning_finalize_completed'),
@@ -1251,7 +1281,7 @@ export const getFinalizationProgress = query({
     if (latest.type === 'sdk_finalize_stage_update') {
       const stage = String(latest.payload?.stage ?? '');
       const status = String(latest.payload?.status ?? '');
-      
+
       const stagePercents: Record<string, number> = {
         elements: 20,
         tasks: 40,
@@ -1262,7 +1292,7 @@ export const getFinalizationProgress = query({
         package: 98,
       };
 
-      const percent = status === 'completed' 
+      const percent = status === 'completed'
         ? stagePercents[stage] ?? 0
         : (stagePercents[stage] ?? 0) - 5;
 
@@ -1348,10 +1378,6 @@ export const getFinalizeCheckpointInfo = query({
       mode,
       status: typeof checkpoint?.status === 'string' ? checkpoint.status : undefined,
       model: typeof checkpoint?.planningModel === 'string' ? checkpoint.planningModel : undefined,
-      reasoningEffort:
-        typeof checkpoint?.planningReasoningEffort === 'string'
-          ? checkpoint.planningReasoningEffort
-          : undefined,
     }
   },
 })

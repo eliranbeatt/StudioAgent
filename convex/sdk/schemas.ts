@@ -58,31 +58,107 @@ export const zQaPairOption = z.object({
   labelHe: z.string().optional(),
 });
 
+function normalizePlanningQuestionType(value: unknown) {
+  if (typeof value !== 'string') return value
+  const key = value.trim().toLowerCase()
+  if (!key) return undefined
+  if (['single', 'choice', 'select', 'radio', 'single_select'].includes(key)) return 'single'
+  if (['multi', 'multiple', 'multi_select', 'checkbox'].includes(key)) return 'multi'
+  if (['toggle', 'boolean', 'bool', 'yesno'].includes(key)) return 'toggle'
+  if (['text', 'shorttext', 'longtext', 'string', 'freetext', 'textarea'].includes(key)) return 'text'
+  if (['number', 'numeric', 'int', 'float'].includes(key)) return 'number'
+  if (['date', 'datetime'].includes(key)) return 'date'
+  return value
+}
+
+const zPlanningOption = z.preprocess((value) => {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    const text = String(value).trim()
+    if (!text) return { value: '' }
+    return { value: text, labelHe: text }
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const item = value as Record<string, unknown>
+    const normalizedValue = String(item.value ?? item.labelHe ?? item.label ?? item.name ?? item.text ?? '').trim()
+    const normalizedLabel = String(item.labelHe ?? item.label ?? item.name ?? item.text ?? item.value ?? '').trim()
+    return {
+      value: normalizedValue,
+      labelHe: normalizedLabel || undefined,
+    }
+  }
+  return value
+}, z.object({
+  value: z.string().min(1),
+  labelHe: z.string().optional(),
+}))
+
+function normalizeBlockingLevel(value: unknown): string | undefined {
+  if (value == null) return undefined
+  const key = String(value).trim().toLowerCase()
+  if (!key) return undefined
+  if (['blocker', 'critical', 'high', 'must', 'blocking', 'required'].includes(key)) return 'blocker'
+  if (['helpful', 'medium', 'important', 'nice', 'recommended'].includes(key)) return 'helpful'
+  if (['optional', 'low', 'nice_to_have', 'suggestion', 'minor'].includes(key)) return 'optional'
+  return 'helpful'
+}
+
+function coerceToBooleanOptional(value: unknown): boolean | undefined {
+  if (value == null) return undefined
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    const key = value.trim().toLowerCase()
+    if (['true', 'yes', '1'].includes(key)) return true
+    if (['false', 'no', '0', ''].includes(key)) return false
+  }
+  if (typeof value === 'number') return value !== 0
+  return undefined
+}
+
 const zPlanningQuestion = z.object({
-  questionKey: z.string(),
-  questionHe: z.string(),
-  questionType: z.enum(['text', 'number', 'date', 'single', 'multi', 'toggle']).optional(),
-  options: z.array(z.object({
-    value: z.string(),
-    labelHe: z.string().optional(),
-  })).optional(),
-  blockingLevel: z.enum(['blocker', 'helpful', 'optional']).optional(),
+  questionKey: z.string().optional(),
+  questionHe: z.string().optional(),
+  textHe: z.string().optional(),
+  questionText: z.string().optional(),
+  questionType: z.preprocess(
+    normalizePlanningQuestionType,
+    z.enum(['text', 'number', 'date', 'single', 'multi', 'toggle']).optional()
+  ),
+  options: z.array(zPlanningOption).optional(),
+  blockingLevel: z.preprocess(
+    normalizeBlockingLevel,
+    z.enum(['blocker', 'helpful', 'optional']).optional()
+  ),
   scopeType: z.enum(['global', 'project', 'element', 'task', 'section']).optional(),
   scopeKey: z.string().optional(),
-  sectionPath: z.array(z.string()).optional(),
+  sectionPath: z.preprocess((value) => {
+    if (typeof value === 'string') return [value]
+    if (Array.isArray(value)) return value.map((item) => String(item ?? '').trim()).filter(Boolean)
+    return value
+  }, z.array(z.string()).optional()),
   orderKey: z.string().optional(),
-  followUp: z.boolean().optional(),
-  triggeredBy: z.string().optional(),
-  allowDontKnow: z.boolean().optional(),
-  allowFreeText: z.boolean().optional(),
-}).passthrough();
+  followUp: z.preprocess(coerceToBooleanOptional, z.boolean().optional()),
+  triggeredBy: z.union([z.string(), z.array(z.string())]).optional(),
+  allowDontKnow: z.preprocess(coerceToBooleanOptional, z.boolean().optional()),
+  allowFreeText: z.preprocess(coerceToBooleanOptional, z.boolean().optional()),
+}).passthrough().refine((value) => {
+  const text = String(value.questionHe ?? value.textHe ?? value.questionText ?? '').trim()
+  return text.length > 0
+}, {
+  message: 'planning question must include questionHe/textHe/questionText',
+});
 
 const zPlanningQuestionGroup = z.object({
-  key: z.string(),
+  key: z.string().optional(),
   labelHe: z.string().optional(),
   phase: z.enum(['blockers', 'per_element', 'project_level', 'suggestions']).optional(),
-  phaseOrder: z.number().optional(),
-  setOrder: z.number().optional(),
+  phaseOrder: z.preprocess((value) => {
+    if (typeof value === 'string' && value.trim()) return Number(value)
+    return value
+  }, z.number().optional()),
+  setOrder: z.preprocess((value) => {
+    if (typeof value === 'string' && value.trim()) return Number(value)
+    return value
+  }, z.number().optional()),
   questions: z.array(zPlanningQuestion),
 }).passthrough();
 
@@ -145,19 +221,24 @@ export const SDK_SCHEMAS: Record<string, z.ZodTypeAny> = {
     intent: zIntent.optional(),
   }).passthrough(),
   'draft.plan_and_questions': z.object({
-    planMd: z.string(),
+    planMd: z.string().optional(),
+    planText: z.string().optional(),
     summaryHe: z.string().optional(),
-    assumptionsHe: z.array(z.string()).optional(),
+    assumptionsHe: z.preprocess((value) => {
+      if (typeof value === 'string') return [value]
+      return value
+    }, z.array(z.string()).optional()),
     planningAnalysis: z.any().optional(),
     questionGroups: z.array(zPlanningQuestionGroup).optional(),
     questions: z.array(zPlanningQuestion).optional(),
     meta: z.any().optional(),
   }).passthrough().refine((value) => {
+    const hasPlan = String(value.planMd ?? value.planText ?? '').trim().length > 0
     const groupsCount = Array.isArray(value.questionGroups) ? value.questionGroups.length : 0
     const questionsCount = Array.isArray(value.questions) ? value.questions.length : 0
-    return groupsCount > 0 || questionsCount > 0
+    return hasPlan && (groupsCount > 0 || questionsCount > 0)
   }, {
-    message: 'draft.plan_and_questions must include questionGroups or questions',
+    message: 'draft.plan_and_questions must include planMd/planText and questionGroups or questions',
   }),
   'plan.elements': z.object({
     elements: z.array(z.any()),
@@ -302,7 +383,20 @@ export function validateSdkOutput(schemaName: string, payload: unknown) {
   }
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
-    return { ok: false, errors: parsed.error.errors };
+    // Use .issues (canonical Zod property) with .errors as fallback
+    const issues = parsed.error.issues ?? parsed.error.errors ?? [];
+    // Log full error details for debugging
+    console.error(
+      `[validateSdkOutput] Schema "${schemaName}" validation failed.`,
+      `Issues count: ${issues.length}.`,
+      `Full error: ${JSON.stringify(parsed.error, null, 2).substring(0, 2000)}`,
+      `Payload keys: ${payload && typeof payload === 'object' ? Object.keys(payload as any).join(', ') : typeof payload}`,
+    );
+    // Ensure we always return a non-empty errors array
+    const errors = issues.length > 0
+      ? issues
+      : [{ path: [], message: parsed.error.message || 'Schema validation failed', code: 'custom' }];
+    return { ok: false, errors };
   }
   return { ok: true, data: parsed.data };
 }
