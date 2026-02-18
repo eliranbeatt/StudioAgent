@@ -22,7 +22,7 @@ export default function SdkAgentPage() {
     return (
       <div className="flex items-center justify-center h-full bg-slate-50">
         <div className="p-8 bg-white rounded-lg shadow-sm border border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-700 mb-2">SDK Agent Tab</h2>
+          <h2 className="text-lg font-semibold text-slate-700 mb-2">Agent Tab</h2>
           <p className="text-slate-600">This feature is currently disabled via Feature Flags.</p>
           <p className="text-xs text-slate-400 mt-2">Enable ff_sdk_agent_tab to access this feature.</p>
         </div>
