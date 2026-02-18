@@ -21,6 +21,7 @@ import { exportToExcel } from "../../../../lib/exportUtils";
 import { AccountingSummaryBlock } from "./AccountingSummaryBlock";
 import { ApprovedBudgetRow } from "./ApprovedBudgetRow";
 import { ElementBreakdownTable } from "./ElementBreakdownTable";
+import { PriceEvidenceDrawer } from "./_components/PriceEvidenceDrawer";
 
 type TabKey = "summary" | "materials" | "labor";
 type SortKey = "default" | "planned" | "actual" | "gap";
@@ -128,6 +129,7 @@ export default function AccountingPage({
 
   const [tab, setTab] = useState<TabKey>("summary");
   const [savingLineId, setSavingLineId] = useState<string | null>(null);
+  const [activeEvidenceLineId, setActiveEvidenceLineId] = useState<string | null>(null);
 
   const taskOptions: TaskOption[] = tasksData?.tasks ?? [];
 
@@ -299,6 +301,7 @@ export default function AccountingPage({
           onUpdate={updateMaterialLine}
           onDelete={deleteMaterialLine}
           elements={accounting.elements}
+          onOpenEvidence={(lineId) => setActiveEvidenceLineId(lineId)}
         />
       ) : null}
 
@@ -315,6 +318,13 @@ export default function AccountingPage({
           elements={accounting.elements}
         />
       ) : null}
+
+      <PriceEvidenceDrawer
+        open={!!activeEvidenceLineId}
+        onClose={() => setActiveEvidenceLineId(null)}
+        lineId={activeEvidenceLineId}
+        projectId={projectId}
+      />
     </div>
   );
 }
@@ -360,6 +370,7 @@ function MaterialsTab({
   onUpdate,
   onDelete,
   elements,
+  onOpenEvidence,
 }: {
   projectId: Id<"projects">;
   accounting: any;
@@ -370,6 +381,7 @@ function MaterialsTab({
   onUpdate: (args: any) => Promise<any>;
   onDelete: (args: any) => Promise<any>;
   elements: any[];
+  onOpenEvidence: (lineId: string) => void;
 }) {
 
   const [collapsedByElement, setCollapsedByElement] = useState<Record<string, boolean>>({});
@@ -619,6 +631,7 @@ function MaterialsTab({
                           }
                         }}
                         elements={elements}
+                        onOpenEvidence={() => onOpenEvidence(line.id)}
                       />
                     ))
                   )}
@@ -710,6 +723,7 @@ function MaterialsTab({
                         }
                       }}
                       elements={elements}
+                      onOpenEvidence={() => onOpenEvidence(line.id)}
                     />
                   )
                 )
@@ -1102,6 +1116,7 @@ function MaterialLineRow({
   onDelete,
   onSave,
   elements,
+  onOpenEvidence,
 }: {
   line: MaterialLine;
   tasks: TaskOption[];
@@ -1114,6 +1129,7 @@ function MaterialLineRow({
   onDelete: () => void;
   onSave: (next: MaterialLine) => Promise<void>;
   elements?: any[];
+  onOpenEvidence: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<MaterialLine>(line);
@@ -1368,6 +1384,12 @@ function MaterialLineRow({
           </>
         ) : (
           <>
+            <button
+              onClick={onOpenEvidence}
+              className="text-xs font-semibold text-blue-600"
+            >
+              Evidence
+            </button>
             <button
               onClick={() => {
                 setDraft(line);

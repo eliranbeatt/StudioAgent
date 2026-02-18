@@ -112,7 +112,7 @@ export default function NewProjectDialog({ isOpen, onClose }: NewProjectDialogPr
             });
 
             onClose();
-            router.push(`/projects/${projectId}/agent`);
+            router.push(`/projects/${projectId}`);
         } catch (error) {
             console.error("Failed to create project:", error);
             alert("Failed to create project. See console for details.");

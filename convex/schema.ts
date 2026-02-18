@@ -213,6 +213,19 @@ const PriceConfidence = v.union(
   v.literal("low")
 );
 
+const WebPriceCandidateSourceType = v.union(
+  v.literal("web"),
+  v.literal("logged"),
+  v.literal("catalog"),
+  v.literal("fallback")
+);
+
+const PriceCurrency = v.union(
+  v.literal("ILS"),
+  v.literal("USD"),
+  v.literal("EUR")
+);
+
 const CatalogAttributeDef = v.object({
   key: v.string(),
   labelHe: v.string(),
@@ -675,6 +688,8 @@ export default defineSchema({
     priceCheckedAt: v.optional(v.number()),
     priceUrl: v.optional(v.string()),
     confidence: v.optional(v.number()),
+    latestPriceSnapshotId: v.optional(v.id("materialLinePriceSnapshots")),
+    latestWebPriceRunId: v.optional(v.id("webPriceRuns")),
     actualUnitCost: v.optional(v.number()),
     actualTotalCost: v.optional(v.number()),
     receiptItemIds: v.optional(v.array(v.id("receiptItems"))),
@@ -1309,6 +1324,94 @@ export default defineSchema({
     .index("by_variant_checkedAt", ["variantId", "checkedAt"])
     .index("by_template_checkedAt", ["templateId", "checkedAt"])
     .index("by_urlHash", ["urlHash"]),
+
+  webPriceRuns: defineTable({
+    projectId: v.optional(v.id("projects")),
+    itemHe: v.string(),
+    normalizedKey: v.string(),
+    constraintsHash: v.string(),
+    constraints: v.optional(v.object({
+      region: v.optional(v.string()),
+      maxDeliveryDays: v.optional(v.number()),
+      unitHe: v.optional(v.string()),
+      qtyBand: v.optional(v.string()),
+      dimensionsKey: v.optional(v.string()),
+    })),
+    meta: v.optional(v.object({
+      usedSources: v.object({
+        catalog: v.boolean(),
+        logged: v.boolean(),
+        web: v.boolean(),
+        fallback: v.boolean(),
+      }),
+      sourceDomains: v.optional(v.array(v.string())),
+    })),
+    recommended: v.object({
+      unitPrice: v.number(),
+      currency: PriceCurrency,
+      unitHe: v.optional(v.string()),
+      priceBasisHe: v.optional(v.string()),
+    }),
+    confidence: PriceConfidence,
+    candidates: v.array(v.object({
+      sourceType: WebPriceCandidateSourceType,
+      title: v.optional(v.string()),
+      unitPrice: v.optional(v.number()),
+      currency: v.optional(v.string()),
+      unitHe: v.optional(v.string()),
+      link: v.optional(v.string()),
+      notesHe: v.optional(v.string()),
+      capturedAt: v.optional(v.number()),
+      raw: v.optional(v.any()),
+    })),
+    assumptionsHe: v.optional(v.array(v.string())),
+    summaryHe: v.optional(v.string()),
+    staleAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_normalized_constraints", ["projectId", "normalizedKey", "constraintsHash"])
+    .index("by_normalized_constraints", ["normalizedKey", "constraintsHash"])
+    .index("by_project_updatedAt", ["projectId", "updatedAt"])
+    .index("by_updatedAt", ["updatedAt"])
+    .index("by_staleAt", ["staleAt"]),
+
+  materialLinePriceSnapshots: defineTable({
+    projectId: v.id("projects"),
+    materialLineId: v.id("materialLines"),
+    webPriceRunId: v.optional(v.id("webPriceRuns")),
+    itemHe: v.string(),
+    recommended: v.object({
+      unitPrice: v.number(),
+      currency: PriceCurrency,
+      unitHe: v.optional(v.string()),
+      priceBasisHe: v.optional(v.string()),
+    }),
+    confidence: PriceConfidence,
+    assumptionsHe: v.array(v.string()),
+    candidates: v.array(v.object({
+      sourceType: WebPriceCandidateSourceType,
+      title: v.optional(v.string()),
+      unitPrice: v.optional(v.number()),
+      currency: v.optional(v.string()),
+      unitHe: v.optional(v.string()),
+      link: v.optional(v.string()),
+      notesHe: v.optional(v.string()),
+      capturedAt: v.optional(v.number()),
+      raw: v.optional(v.any()),
+    })),
+    selectedCandidateIndex: v.optional(v.number()),
+    selectedSourceType: v.optional(WebPriceCandidateSourceType),
+    appliedBy: v.union(
+      v.literal("agent"),
+      v.literal("user"),
+      v.literal("reuse_attach"),
+      v.literal("reuse_create")
+    ),
+    savedAt: v.number(),
+  })
+    .index("by_line_savedAt", ["materialLineId", "savedAt"])
+    .index("by_project_savedAt", ["projectId", "savedAt"]),
 
   // Pricing Formulas (prints and services)
   pricingFormulas: defineTable({

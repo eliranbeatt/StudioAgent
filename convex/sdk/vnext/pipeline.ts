@@ -535,6 +535,114 @@ function mergeArtifact(
   return next
 }
 
+function normalizePricingKey(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\u0590-\u05ff]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120)
+}
+
+function buildCachedRecommendation(item: PricingQueueItem, run: any) {
+  return {
+    lineRef: {
+      lineId: item.lineId,
+      lineTempOrId: item.lineTempOrId,
+    },
+    lineKey: item.lineKey,
+    itemHe: run?.itemHe ?? item.itemName,
+    recommended: {
+      unitPrice: Number(run?.recommended?.unitPrice ?? 0),
+      currency: String(run?.recommended?.currency ?? 'ILS'),
+      unitHe: run?.recommended?.unitHe,
+      priceBasisHe: run?.recommended?.priceBasisHe ?? 'Reused from cached web price run',
+    },
+    confidence: String(run?.confidence ?? 'low'),
+    assumptionsHe: Array.isArray(run?.assumptionsHe)
+      ? run.assumptionsHe
+      : ['Reused cached pricing run'],
+    candidates: Array.isArray(run?.candidates) ? run.candidates : [],
+    _cache: {
+      reused: true,
+      runId: String(run?._id ?? ''),
+    },
+  }
+}
+
+async function persistPricingEvidenceFromRecommendations(args: {
+  ctx: any
+  projectId: any
+  recommendations: any[]
+  runId?: any
+}) {
+  const recommendations = Array.isArray(args.recommendations) ? args.recommendations : []
+  for (const rec of recommendations) {
+    const itemHe = String(rec?.itemHe ?? '').trim()
+    const unitPrice = Number(rec?.recommended?.unitPrice)
+    if (!itemHe || !Number.isFinite(unitPrice) || unitPrice <= 0) continue
+
+    const lineRef = rec?.lineRef ?? {}
+    const lineIdRaw = String(lineRef?.lineId ?? '').trim()
+    const lineId = lineIdRaw.length > 0 ? lineIdRaw : undefined
+
+    try {
+      const upsert = await args.ctx.runMutation(
+        internal.pricingEvidence.upsertWebPriceRunFromRecommendation,
+        {
+          projectId: args.projectId,
+          itemHe,
+          normalizedKey: normalizePricingKey(itemHe),
+          constraints: {
+            region: 'IL',
+            maxDeliveryDays: 7,
+            unitHe: rec?.recommended?.unitHe,
+          },
+          recommended: {
+            unitPrice,
+            currency: rec?.recommended?.currency,
+            unitHe: rec?.recommended?.unitHe,
+            priceBasisHe: rec?.recommended?.priceBasisHe,
+          },
+          confidence: rec?.confidence,
+          assumptionsHe: Array.isArray(rec?.assumptionsHe) ? rec.assumptionsHe : [],
+          candidates: Array.isArray(rec?.candidates) ? rec.candidates : [],
+          summaryHe: rec?.summaryHe,
+        }
+      )
+
+      if (!lineId) continue
+      await args.ctx.runMutation(api.pricingEvidence.applyRecommendationToMaterialLine, {
+        materialLineId: lineId as any,
+        webPriceRunId: upsert?.runId,
+        itemHe,
+        recommended: {
+          unitPrice,
+          currency: rec?.recommended?.currency,
+          unitHe: rec?.recommended?.unitHe,
+          priceBasisHe: rec?.recommended?.priceBasisHe,
+        },
+        confidence: rec?.confidence,
+        assumptionsHe: Array.isArray(rec?.assumptionsHe) ? rec.assumptionsHe : [],
+        candidates: Array.isArray(rec?.candidates) ? rec.candidates : [],
+        appliedBy: 'agent',
+      })
+    } catch (error: any) {
+      if (args.runId) {
+        await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'pricing_evidence_persist_error',
+          payload: {
+            itemHe,
+            lineId: lineId ?? '',
+            message: String(error?.message ?? 'unknown'),
+          },
+        })
+      }
+    }
+  }
+}
+
 function toChecklistItems(task: any) {
   const explicitChecklist = Array.isArray(task?.checklist) ? task.checklist : []
   if (explicitChecklist.length > 0) {
@@ -777,6 +885,8 @@ export async function runVNextStage(args: {
     artifacts,
     context: projectContext,
   }
+  let cachedPricingRecommendations: any[] = []
+  let unresolvedPricingBatch: PricingQueueItem[] | null = null
   if (stageKey === 'pricing') {
     const pricingQueue = normalizePricingQueue(currentArtifact, artifacts)
     const pendingItems = pricingQueue.filter((item) => item.status === 'pending')
@@ -784,8 +894,33 @@ export async function runVNextStage(args: {
       ? adaptivePricingBatchSize(pricingQueue.length)
       : Math.max(1, pendingItems.length)
     const activeBatch = pendingItems.slice(0, batchSize)
+    cachedPricingRecommendations = []
+    unresolvedPricingBatch = []
+    for (const item of activeBatch) {
+      try {
+        const hit = await args.ctx.runQuery(api.pricingEvidence.findBestReusableRun, {
+          projectId: args.projectId,
+          itemHe: item.itemName,
+          constraints: {
+            region: 'IL',
+            maxDeliveryDays: 7,
+            unitHe: undefined,
+            quantity: Number(item.qty ?? 0),
+          },
+        })
+        if (hit?.isFresh && hit?.run) {
+          cachedPricingRecommendations.push(buildCachedRecommendation(item, hit.run))
+        } else {
+          unresolvedPricingBatch.push(item)
+        }
+      } catch {
+        unresolvedPricingBatch.push(item)
+      }
+    }
+
     stageInput.pricingWorkQueue = pricingQueue
-    stageInput.pricingBatch = activeBatch
+    stageInput.pricingBatch = unresolvedPricingBatch
+    stageInput.cachedRecommendations = cachedPricingRecommendations
     stageInput.pricingBatchSize = batchSize
     stageInput.queueSummary = {
       total: pricingQueue.length,
@@ -794,14 +929,14 @@ export async function runVNextStage(args: {
     }
     stageInput.artifact = {
       ...currentArtifact,
-      activeBatchKeys: activeBatch.map((item) => item.itemKey),
+      activeBatchKeys: unresolvedPricingBatch.map((item) => item.itemKey),
       queueSummary: {
         total: pricingQueue.length,
         pending: pendingItems.length,
         priced: pricingQueue.filter((item) => item.status === 'priced').length,
         estimated: pricingQueue.filter((item) => item.status === 'estimated').length,
         failed: pricingQueue.filter((item) => item.status === 'failed').length,
-        activeBatchSize: activeBatch.length,
+        activeBatchSize: unresolvedPricingBatch.length,
       },
     }
   }
@@ -815,15 +950,40 @@ export async function runVNextStage(args: {
     },
   })
 
-  const skillOutputs = await runStageSkills({
-    ctx: args.ctx,
-    projectId: args.projectId,
-    conversationId: args.conversationId,
-    runId: args.runId,
-    stageKey,
-    input: stageInput,
-    stageBudgetsEnabled: args.options?.stageBudgets,
-  })
+  let skillOutputs: Record<string, any>
+  if (
+    stageKey === 'pricing' &&
+    Array.isArray(unresolvedPricingBatch) &&
+    unresolvedPricingBatch.length === 0
+  ) {
+    skillOutputs = {
+      'pricing.resolve_lines': {
+        recommendations: cachedPricingRecommendations,
+        summaryHe: `Reused ${cachedPricingRecommendations.length} cached pricing runs`,
+      },
+    }
+  } else {
+    skillOutputs = await runStageSkills({
+      ctx: args.ctx,
+      projectId: args.projectId,
+      conversationId: args.conversationId,
+      runId: args.runId,
+      stageKey,
+      input: stageInput,
+      stageBudgetsEnabled: args.options?.stageBudgets,
+    })
+    if (stageKey === 'pricing' && cachedPricingRecommendations.length > 0) {
+      const raw = skillOutputs['pricing.resolve_lines'] ?? {}
+      const mergedRecommendations = [
+        ...cachedPricingRecommendations,
+        ...(Array.isArray(raw?.recommendations) ? raw.recommendations : []),
+      ]
+      skillOutputs['pricing.resolve_lines'] = {
+        ...raw,
+        recommendations: mergedRecommendations,
+      }
+    }
+  }
 
   const mergedArtifact = stageKey === 'compile'
     ? currentArtifact
@@ -971,6 +1131,15 @@ export async function runVNextStage(args: {
           progress: progressMeta,
         },
       }
+  }
+
+  if (stageKey === 'pricing') {
+    await persistPricingEvidenceFromRecommendations({
+      ctx: args.ctx,
+      projectId: args.projectId,
+      recommendations: Array.isArray(mergedArtifact?.recommendations) ? mergedArtifact.recommendations : [],
+      runId: args.runId,
+    })
   }
 
   if (stageKey !== 'compile') {

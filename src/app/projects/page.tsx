@@ -76,7 +76,7 @@ export default function ProjectsPage() {
         {projects?.map((project) => (
           <Link
             key={project._id}
-            href={`/projects/${project._id}/agent`}
+            href={`/projects/${project._id}`}
             className="group block bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-200 relative"
           >
             <div className="flex justify-between items-start mb-4">

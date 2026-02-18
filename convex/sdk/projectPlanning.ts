@@ -455,12 +455,13 @@ export const submitBrainDump = mutation({
       runId,
     });
 
-    // Save brain dump to project context 
-    await ctx.runMutation(internal.sdk.context.addKnowledge, {
+    await ctx.runMutation(internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
       projectId: args.projectId,
-      text: args.brainDump,
-      source: 'brain_dump',
-      priority: 10,
+      reason: 'planning.brain_dump_submitted',
+      newFacts: ['Planning brain dump submitted.'],
+      userText: args.brainDump,
+      runId,
+      conversationId,
     });
 
     return { conversationId, runId };
@@ -544,16 +545,18 @@ export const initiatePlanning = action({
     }
     await insertQuestionGroups({ ctx, projectId: args.projectId, runId, groups: questionGroups })
 
-    // Step 3: Save plan to project context
+    // Step 3: Queue project context refresh with the generated draft
     const planText = (planResult as any)?.planMd ?? (planResult as any)?.planText ?? (planResult as any)?.summary ?? '';
-    if (planText) {
-      await ctx.runMutation(internal.sdk.context.addKnowledge, {
-        projectId: args.projectId,
-        text: planText,
-        source: 'planning_session',
-        priority: 9,
-      });
-    }
+    await ctx.runMutation(internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
+      projectId: args.projectId,
+      reason: 'planning.initial_draft_generated',
+      newFacts: [
+        `Planning draft generated. Questions inserted: ${validation.questionsCount}.`,
+      ],
+      userText: planText || undefined,
+      runId,
+      conversationId,
+    });
 
     return { conversationId, runId };
   },
@@ -712,9 +715,11 @@ export const submitAnswers = mutation({
     setNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const answeredFacts: string[] = [];
     for (const { questionId, answer } of args.answers) {
       const trimmed = String(answer ?? '').trim()
       if (!trimmed) continue
+      const qa = await ctx.db.get(questionId)
       await ctx.db.patch(questionId, {
         answerText: trimmed,
         answer_he: trimmed,
@@ -722,18 +727,20 @@ export const submitAnswers = mutation({
         answerSource: 'typed',
         status: 'resolved',
       });
+      const questionText = String((qa as any)?.question_he ?? '').trim()
+      answeredFacts.push(questionText ? `Q: ${questionText} -> A: ${trimmed}` : `Answer submitted: ${trimmed}`)
     }
     const notes = String(args.setNotes ?? '').trim();
-    if (notes) {
-      const run = await ctx.db.get(args.runId);
-      if (run) {
-        await ctx.runMutation(internal.sdk.context.addKnowledge, {
-          projectId: run.projectId,
-          text: notes,
-          source: 'planning_set_notes',
-          priority: 7,
-        });
-      }
+    const run = await ctx.db.get(args.runId);
+    if (run) {
+      await ctx.runMutation(internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
+        projectId: run.projectId,
+        reason: 'planning.question_set_submitted',
+        newFacts: answeredFacts.length > 0 ? answeredFacts : ['Planning question set submitted.'],
+        userText: notes || undefined,
+        runId: args.runId,
+        conversationId: run.conversationId ? (run.conversationId as Id<'agentConversations'>) : undefined,
+      });
     }
   },
 });
@@ -802,6 +809,15 @@ export const regenerateQuestions = action({
         qaPairId: qa.id as Id<'qaPairs'>,
       })
     }
+
+    await ctx.runMutation(internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
+      projectId: args.projectId,
+      reason: 'planning.questions_regenerated',
+      newFacts: [
+        `Questions regenerated. Groups: ${questionGroups.length}, inserted: ${inserted}.`,
+      ],
+      runId: args.runId,
+    });
 
     return { ok: true, groupsCount: questionGroups.length, inserted };
   },
@@ -1186,6 +1202,18 @@ export const runFinalizePhase = internalAction({
           runId: args.runId,
           type: 'project_planning_finalize_completed',
           payload: { stage: 'completed', percent: 100, mode: 'checkpointed' },
+        })
+        const finalCounts = (checkpoint as any)?.finalReport?.counts ?? {}
+        const finalSummary = String((checkpoint as any)?.finalReport?.summary ?? '').trim()
+        await ctx.runMutation(internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
+          projectId: args.projectId,
+          reason: 'planning.finalize_completed',
+          newFacts: [
+            `Planning finalization completed. Elements: ${Number(finalCounts.elements ?? 0)}, tasks: ${Number(finalCounts.tasks ?? 0)}, material lines: ${Number(finalCounts.materialLines ?? 0)}, work lines: ${Number(finalCounts.workLines ?? 0)}.`,
+            finalSummary ? `Final report summary: ${finalSummary}` : 'Final report generated.',
+          ],
+          runId: args.runId,
+          conversationId: args.conversationId,
         })
         return { ok: true, phase, completed: true }
       }

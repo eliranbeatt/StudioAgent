@@ -1091,6 +1091,87 @@ function stableHash(input: string) {
   return `h${(h >>> 0).toString(16)}`
 }
 
+function normalizePricingKey(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\u0590-\u05ff]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120)
+}
+
+async function persistPricingEvidenceFromToolResult(args: {
+  ctx: any
+  projectId: any
+  result: any
+  runId?: any
+}) {
+  const recommendations = Array.isArray(args.result?.recommendations)
+    ? args.result.recommendations
+    : Array.isArray(args.result?.output?.recommendations)
+      ? args.result.output.recommendations
+      : []
+  for (const rec of recommendations) {
+    const itemHe = String(rec?.itemHe ?? '').trim()
+    const unitPrice = Number(rec?.recommended?.unitPrice)
+    if (!itemHe || !Number.isFinite(unitPrice) || unitPrice <= 0) continue
+    try {
+      const upsert = await args.ctx.runMutation(
+        internal.pricingEvidence.upsertWebPriceRunFromRecommendation,
+        {
+          projectId: args.projectId,
+          itemHe,
+          normalizedKey: normalizePricingKey(itemHe),
+          constraints: {
+            region: 'IL',
+            maxDeliveryDays: 7,
+            unitHe: rec?.recommended?.unitHe,
+          },
+          recommended: {
+            unitPrice,
+            currency: rec?.recommended?.currency,
+            unitHe: rec?.recommended?.unitHe,
+            priceBasisHe: rec?.recommended?.priceBasisHe,
+          },
+          confidence: rec?.confidence,
+          assumptionsHe: Array.isArray(rec?.assumptionsHe) ? rec.assumptionsHe : [],
+          candidates: Array.isArray(rec?.candidates) ? rec.candidates : [],
+          summaryHe: rec?.summaryHe,
+        }
+      )
+      const lineId = String(rec?.lineRef?.lineId ?? '').trim()
+      if (!lineId) continue
+      await args.ctx.runMutation(api.pricingEvidence.applyRecommendationToMaterialLine, {
+        materialLineId: lineId as any,
+        webPriceRunId: upsert?.runId,
+        itemHe,
+        recommended: {
+          unitPrice,
+          currency: rec?.recommended?.currency,
+          unitHe: rec?.recommended?.unitHe,
+          priceBasisHe: rec?.recommended?.priceBasisHe,
+        },
+        confidence: rec?.confidence,
+        assumptionsHe: Array.isArray(rec?.assumptionsHe) ? rec.assumptionsHe : [],
+        candidates: Array.isArray(rec?.candidates) ? rec.candidates : [],
+        appliedBy: 'agent',
+      })
+    } catch (error: any) {
+      if (args.runId) {
+        await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'pricing_evidence_persist_error',
+          payload: {
+            itemHe,
+            lineId: String(rec?.lineRef?.lineId ?? ''),
+            message: String(error?.message ?? 'unknown'),
+          },
+        })
+      }
+    }
+  }
+}
+
 function toFinalizeElementKey(value: unknown) {
   return normalizeKeyPart(value) || 'element'
 }
@@ -1739,6 +1820,15 @@ export const finalizeNow = action({
           await emitFinalizeStage(stageKey, 'completed')
 
           if (toolId === 'pricing.resolve_lines') {
+            await persistPricingEvidenceFromToolResult({
+              ctx,
+              projectId: args.projectId,
+              result,
+              runId: args.runId,
+            })
+          }
+
+          if (toolId === 'pricing.resolve_lines') {
             if (await isFinalizeCancelled()) {
               cancelled = true
               break
@@ -1817,6 +1907,12 @@ export const finalizeNow = action({
                   const pricingRetry = await runTool('pricing.resolve_lines', {
                     ...buildInputBase,
                     context: workingContext,
+                  })
+                  await persistPricingEvidenceFromToolResult({
+                    ctx,
+                    projectId: args.projectId,
+                    result: pricingRetry,
+                    runId: args.runId,
                   })
                   toolOutputs['pricing.resolve_lines.retry'] = pricingRetry
                   workingContext = enrichFinalizeContext(workingContext, pricingRetry)

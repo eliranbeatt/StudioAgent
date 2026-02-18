@@ -287,37 +287,12 @@ export const updateProjectDetails = mutation({
 export const generateOverviewSummary = action({
   args: { id: v.id("projects") },
   handler: async (ctx, args) => {
-    const overview = await ctx.runQuery(api.projects.getOverview, { id: args.id });
-    if (!overview?.project) {
-      throw new Error("Project not found.");
-    }
-
-    const files = await ctx.runQuery(api.files.listProjectFiles, {
+    await ctx.runMutation(internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
       projectId: args.id,
+      reason: "overview.regenerate",
+      newFacts: ["Manual project context refresh requested from overview."],
     });
-
-    const tasksRes = await ctx.runQuery(api.tasks.listForProject, {
-      projectId: args.id,
-    });
-
-    const financials = await ctx.runQuery(api.financials.getFinancialSummary, {
-      projectId: args.id,
-    });
-
-    const summary = await buildOverviewSummary({
-      project: overview.project,
-      elements: overview.elements ?? [],
-      files: files ?? [],
-      tasks: tasksRes?.tasks ?? [],
-      financials,
-    });
-
-    await ctx.runMutation(api.projects.updateProjectSummary, {
-      id: args.id,
-      overviewSummary: summary,
-    });
-
-    return { summary };
+    return { queued: true };
   },
 });
 
@@ -778,6 +753,17 @@ async function buildOverviewSummary({
   }
 }
 
+export const hasTasks = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const task = await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+    return !!task;
+  },
+});
+
 // ------------------------------------------------------------
 // New Project Modal & AI Summary Implementation
 // ------------------------------------------------------------
@@ -893,14 +879,30 @@ export const createProjectFromModal = mutation({
       });
     }
 
-    // 5. Schedule Summary Generation
-    await ctx.scheduler.runAfter(0, internal.projects.generateInitialSummary, { projectId });
+    // 5. Queue initial project context generation
+    const brainDumpSnippet = brainDumpText
+      ? (brainDumpText.length > 4000 ? `${brainDumpText.slice(0, 4000)}\n\n[...truncated...]` : brainDumpText)
+      : undefined;
+    const initialFacts = [
+      "Project created from wizard.",
+      `Name: ${finalName}`,
+      customerName ? `Customer: ${customerName}` : "",
+      args.eventDate ? `Event date: ${args.eventDate}` : "",
+      args.types.length > 0 ? `Project types: ${args.types.join(", ")}` : "",
+      args.notes ? `Wizard notes: ${args.notes}` : "",
+      args.elements.length > 0 ? `Elements: ${args.elements.filter((name) => String(name).trim()).join(", ")}` : "",
+    ].filter(Boolean);
+    await ctx.scheduler.runAfter(0, internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
+      projectId,
+      reason: "wizard.initial_summary",
+      newFacts: initialFacts,
+      userText: brainDumpSnippet,
+    });
 
     if (brainDumpText) {
-      const snippet = brainDumpText.length > 4000 ? `${brainDumpText.slice(0, 4000)}\n\n[...truncated...]` : brainDumpText;
       await ctx.scheduler.runAfter(0, internal.memory.appendUserInput, {
         projectId,
-        text: `Brain dump (wizard)\n\n${snippet}`,
+        text: `Brain dump (wizard)\n\n${brainDumpSnippet}`,
       });
     }
 
@@ -911,137 +913,41 @@ export const createProjectFromModal = mutation({
 export const generateInitialSummary = internalAction({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    // 1. Update status to generating
-    await ctx.runMutation(internal.projects.updateSummaryStatus, {
-      projectId: args.projectId,
-      status: "generating"
-    });
-
-    try {
-      // 2. Load Data
-      const project = await ctx.runQuery(api.projects.getProjectInternal, { id: args.projectId });
-      if (!project) throw new Error("Project not found");
-
-      const elements = await ctx.runQuery(api.projects.getElementsInternal, { projectId: args.projectId });
-
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
-
-      // 2.1 AI Reasoning for Search Query
-      const projectDataStr = `
-Project Name: ${project.name}
-Customer: ${project.customerName || "N/A"}
-Event Date: ${project.eventDate || "N/A"}
-Types: ${(project.projectTypes || []).join(", ")}
-Notes: ${project.notes || project.description || "None"}
-Elements: ${(elements || []).map((e: any) => e.title).join(", ")}
-`;
-
-      let searchContext = "";
-      let sources: { title: string; url: string }[] = [];
-
-      try {
-        // Step 1: Ask AI if we need to search and what for
-        const searchReasoningRes = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({
-            model: "gpt-5-mini",
-            messages: [
-              { role: "system", content: "You are an expert researcher. You have project details. Your goal is to find external context (event details, customer visual style, technical specs) to help write a summary. Return a SINGLE Google search query that would be most helpful. If the project description is self-contained or generic (e.g. 'Build a box'), return 'EMPTY'." },
-              { role: "user", content: projectDataStr }
-            ],
-            temperature: 0.2, // Low temp for decision making
-            max_tokens: 50
-          })
-        });
-
-        const reasoningData = await searchReasoningRes.json();
-        const aiSuggestedQuery = reasoningData.choices?.[0]?.message?.content?.trim() || "EMPTY";
-
-        console.log("AI Search Decision:", aiSuggestedQuery);
-
-        if (aiSuggestedQuery !== "EMPTY" && aiSuggestedQuery.length > 5) {
-          const { searchWeb } = await import("./lib/webSearch");
-          const searchResult = await searchWeb(aiSuggestedQuery);
-          if (searchResult && !searchResult.error && searchResult.results) {
-            searchContext = `Extracted Web Knowledge (Query: "${aiSuggestedQuery}"):\n${searchResult.results.map((r: any) => `- ${r.title}: ${r.content}`).join("\n")}\n\n`;
-            sources = searchResult.results.map((r: any) => ({ title: r.title, url: r.url }));
-          }
-        }
-      } catch (err) {
-        console.error("AI search reasoning failed", err);
-      }
-
-      // 3. Prepare AI Prompt
-      const systemPrompt = `You are a professional project coordinator for a set design studio (Output language: Hebrew).
-Write a concise project summary based on the details provided.
-Do not add fluff.
-Sections:
-- **מה זה הפרויקט**
-- **דדליין / אירוע**
-- **סוגי עבודה (Workstreams)**
-- **אלמנטים**
-- **דגשים / מגבלות**
-- **מה חסר (שאלות פתוחות קצרות)**`;
-
-      const userPrompt = `Project: ${project.name}
-Customer: ${project.customerName || "N/A"}
-Event Date: ${project.eventDate || "N/A"}
-Types: ${(project.projectTypes || []).join(", ")}
-Notes: ${project.notes || project.description || "None"}
-Elements: ${(elements || []).map((e: any) => e.title).join(", ")}
-
-${searchContext}`;
-
-
-
-      // 4. Call AI
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-5-mini", // Strong model for reasoning
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ]
-        })
-      });
-
-      if (!response.ok) throw new Error("AI call failed");
-      const data = await response.json();
-      const summary = data.choices[0].message.content;
-
-      // 5. Save Result
-      await ctx.runMutation(internal.projects.saveSummary, {
-        projectId: args.projectId,
-        summary,
-        status: "ready",
-        sources
-      });
-
-    } catch (error: any) {
-      console.error("Summary generation failed:", error);
-      await ctx.runMutation(internal.projects.saveSummary, {
-        projectId: args.projectId,
-        summary: "",
-        status: "failed",
-        error: error.message
-      });
+    const project = await ctx.runQuery(api.projects.getProjectInternal, { id: args.projectId });
+    if (!project) {
+      throw new Error("Project not found");
     }
+    const elements = await ctx.runQuery(api.projects.getElementsInternal, { projectId: args.projectId });
+    const firstFacts = [
+      "Initial summary generation requested.",
+      `Project: ${project.name}`,
+      project.customerName ? `Customer: ${project.customerName}` : "",
+      project.eventDate ? `Event date: ${project.eventDate}` : "",
+      Array.isArray(project.projectTypes) && project.projectTypes.length > 0
+        ? `Project types: ${project.projectTypes.join(", ")}`
+        : "",
+      Array.isArray(elements) && elements.length > 0
+        ? `Elements: ${elements.map((e: any) => e.title).join(", ")}`
+        : "",
+    ].filter(Boolean);
+
+    return await ctx.runMutation(internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
+      projectId: args.projectId,
+      reason: "wizard.initial_summary",
+      newFacts: firstFacts,
+      userText: String(project.brainDumpRaw ?? "").trim() || undefined,
+    });
   },
 });
 
 export const retrySummary = mutation({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    // @ts-ignore
-    await ctx.db.patch(args.projectId, { summaryStatus: "queued", summaryError: undefined });
-    await ctx.scheduler.runAfter(0, internal.projects.generateInitialSummary, { projectId: args.projectId });
+    return await ctx.runMutation(internal.sdk.knowledgeRefresh.queueProjectContextRefresh, {
+      projectId: args.projectId,
+      reason: "summary.retry",
+      newFacts: ["Project context refresh retried by user."],
+    });
   }
 });
 
@@ -1093,3 +999,4 @@ export const getElementsInternal = query({
     return await ctx.db.query("elements").withIndex("by_project", q => q.eq("projectId", args.projectId)).collect();
   }
 });
+

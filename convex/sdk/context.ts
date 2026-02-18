@@ -198,7 +198,13 @@ export const get = query({
         .query('catalogPriceRecords')
         .order('desc')
         .take(50);
+      const webPriceRuns = await ctx.db
+        .query('webPriceRuns')
+        .withIndex('by_updatedAt', (q) => q)
+        .order('desc')
+        .take(30);
       res.pricingCatalog = pricingCatalog;
+      res.webPriceRuns = webPriceRuns;
       if (compatMode) {
         // TODO(2026-03-31): remove legacy alias after compatibility window.
         res.pricingLogs = pricingCatalog;

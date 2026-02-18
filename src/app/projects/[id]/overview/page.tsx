@@ -14,6 +14,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const projectId = id as Id<"projects">;
   const router = useRouter();
   const overview = useQuery(api.projects.getOverview, { id: projectId });
+  const projectContext = useQuery(api.memory.getProjectContextDoc, { projectId });
   const files = useQuery(api.files.listProjectFiles, { projectId });
   const allProjects = useQuery(api.projects.listProjects, { excludeId: projectId });
   const linkedProjects = useQuery(api.projects.listLinkedProjects, { projectId });
@@ -114,8 +115,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
   const approvedCO = Number(overview.approvedCO?.sellPrice ?? 0);
   const effectiveBudget = baselineSell + approvedCO;
 
-  // Use new 'summary' field if available, fallback to old overviewSummary
-  const summaryText = (overview.project as any).summary || overview.project.overviewSummary;
+  const summaryText = projectContext?.contentMd_he ?? "";
 
   return (
     <div className="p-8 max-w-6xl mx-auto text-black">
@@ -160,7 +160,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
             <div className="mb-8 bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center gap-3 text-blue-700 animate-in fade-in slide-in-from-top-2">
               <Loader2 className="animate-spin" size={20} />
               <div>
-                <div className="font-semibold">AI is generating project summary...</div>
+                <div className="font-semibold">AI is generating project context...</div>
                 <div className="text-xs opacity-80">This might take a minute. It will appear below automatically.</div>
               </div>
             </div>
@@ -171,7 +171,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
               <div className="flex items-center gap-3">
                 <AlertTriangle size={20} />
                 <div>
-                  <div className="font-semibold">Summary generation failed</div>
+                  <div className="font-semibold">Project context generation failed</div>
                   <div className="text-xs opacity-80">{(overview.project as any).summaryError || "Unknown error"}</div>
                 </div>
               </div>
@@ -205,7 +205,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
             <div className="lg:col-span-2 bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-                <h3 className="font-semibold text-gray-900">Project Summary</h3>
+                <h3 className="font-semibold text-gray-900">Project Context</h3>
                 <button
                   className="text-xs font-semibold uppercase tracking-wider text-gray-600 hover:text-gray-900"
                   onClick={async () => {
@@ -218,7 +218,7 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
                   }}
                   disabled={isGeneratingSummary}
                 >
-                  {overview.project.overviewSummary ? "Regenerate summary" : "Generate summary"}
+                  {projectContext?.contentMd_he ? "Regenerate context" : "Generate context"}
                 </button>
               </div>
               <div className="p-6 text-sm text-gray-700">
@@ -226,23 +226,9 @@ export default function OverviewPage({ params }: { params: Promise<{ id: string 
                   <div className="prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700" dir="auto">
                     <ReactMarkdown>{summaryText}</ReactMarkdown>
 
-                    {(overview.project as any).summarySources && (overview.project as any).summarySources.length > 0 && (
-                      <div className="mt-6 pt-4 border-t border-gray-100">
-                        <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Sources</div>
-                        <ul className="space-y-1">
-                          {(overview.project as any).summarySources.map((s: any, idx: number) => (
-                            <li key={idx} className="text-xs">
-                              <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
-                                {s.title}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
                   </div>
                 ) : (
-                  <div className="text-gray-500 italic">No project summary yet. Generate one from elements and knowledge.</div>
+                  <div className="text-gray-500 italic">No project context yet. Generate one to populate this card.</div>
                 )}
               </div>
             </div>
