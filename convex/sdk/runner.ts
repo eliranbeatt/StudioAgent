@@ -9,6 +9,7 @@ import { api, internal } from '../_generated/api';
 import { completionWithTracing } from '../lib/llm';
 import { searchWeb } from '../lib/webSearch';
 import { buildMessageStats, summarizeToolResultCompact } from './messageCompression';
+import { postProcessToolOutput } from './postprocess';
 
 const MAX_TOOL_LOOPS = 6;
 
@@ -391,7 +392,9 @@ async function runAgentInternal(args: {
     parsed = { summaryHe: finalContent };
   }
 
-  const validated = validateSdkOutput(toolDef.schemaName, parsed);
+  const normalizedParsed = postProcessToolOutput(args.toolId, parsed);
+  assertAsciiKeys(normalizedParsed);
+  const validated = validateSdkOutput(toolDef.schemaName, normalizedParsed);
   if (!validated.ok) {
     console.error(`[runAgentInternal] Tool ${args.toolId} schema validation failed. Raw output keys:`, parsed && typeof parsed === 'object' ? Object.keys(parsed) : typeof parsed);
     throw new Error(`Tool ${args.toolId} failed schema validation: ${formatSchemaErrors((validated as any).errors)}`);
@@ -434,8 +437,9 @@ export async function runToolInternal(args: {
       },
     });
 
-    assertAsciiKeys(parsed);
-    const validated = validateSdkOutput(toolDef.schemaName, parsed);
+    const normalizedParsed = postProcessToolOutput(args.toolId, parsed);
+    assertAsciiKeys(normalizedParsed);
+    const validated = validateSdkOutput(toolDef.schemaName, normalizedParsed);
     if (!validated.ok) {
       console.error(`[runToolInternal] Tool ${args.toolId} schema validation failed. Raw output keys:`, parsed && typeof parsed === 'object' ? Object.keys(parsed) : typeof parsed);
       throw new Error(`Tool ${args.toolId} failed schema validation: ${formatSchemaErrors((validated as any).errors)}`);

@@ -244,7 +244,7 @@ export const backfillFlowRunToggles = mutation({
         autoRun: typeof toggles.autoRun === 'boolean' ? toggles.autoRun : true,
         autoApprove: typeof toggles.autoApprove === 'boolean' ? toggles.autoApprove : true,
         useWebSearch: typeof toggles.useWebSearch === 'boolean' ? toggles.useWebSearch : false,
-        planningMode: toggles.planningMode === 'combined' ? 'combined' : 'separated',
+        planningMode: (toggles.planningMode === 'combined' ? 'combined' : 'separated') as "separated" | "combined",
       };
 
       const changed =

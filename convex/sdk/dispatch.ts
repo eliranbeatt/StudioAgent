@@ -50,6 +50,10 @@ type SanitizedQueuedInput = {
 
 type QueuedExplicitAction =
   | 'create_changeset'
+  | 'update_plan'
+  | 'update_tasks'
+  | 'update_budget'
+  | 'update_procurement_pricing'
   | 'build_tasks'
   | 'build_elements'
   | 'build_budget'
@@ -78,9 +82,80 @@ function normalizeActionToken(value: any) {
     .replace(/\s+/g, '_');
 }
 
+function normalizeIntentText(value: any) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function detectUpdateActionFromText(
+  value: any
+): 'update_plan' | 'update_tasks' | 'update_budget' | 'update_procurement_pricing' | null {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return null;
+  const compact = normalized.replace(/\s+/g, '');
+
+  const hasUpdateVerb =
+    compact.includes('\u05e2\u05d3\u05db') ||
+    compact.includes('\u05ea\u05e2\u05d3\u05db') ||
+    compact.includes('\u05dc\u05e2\u05d3\u05db');
+
+  const hasPlanStem = compact.includes('\u05ea\u05d5\u05db\u05e0');
+  const hasTasksStem = compact.includes('\u05de\u05e9\u05d9\u05de');
+  const hasBudgetStem = compact.includes('\u05ea\u05e7\u05e6\u05d9\u05d1');
+  const hasProcurementStem =
+    compact.includes('\u05e8\u05db\u05e9') ||
+    compact.includes('\u05de\u05d7\u05d9\u05e8');
+
+  if (normalized.includes('update plan') || (hasUpdateVerb && hasPlanStem)) return 'update_plan';
+  if (normalized.includes('update tasks') || (hasUpdateVerb && hasTasksStem)) return 'update_tasks';
+  if (normalized.includes('update budget') || (hasUpdateVerb && hasBudgetStem)) return 'update_budget';
+  if (
+    normalized.includes('update procurement') ||
+    normalized.includes('update pricing') ||
+    (hasUpdateVerb && hasProcurementStem)
+  ) return 'update_procurement_pricing';
+
+  return null;
+}
+
+function isWebResearchOrPricingRequest(value: any) {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return false;
+  const compact = normalized.replace(/\s+/g, '');
+  return (
+    normalized.includes('search') ||
+    normalized.includes('web search') ||
+    normalized.includes('internet') ||
+    normalized.includes('online') ||
+    normalized.includes('price research') ||
+    normalized.includes('search prices') ||
+    normalized.includes('amazon') ||
+    normalized.includes('aliexpress') ||
+    normalized.includes('ebay') ||
+    normalized.includes('google') ||
+    compact.includes('\u05d7\u05e4\u05e9') ||
+    compact.includes('\u05d7\u05d9\u05e4\u05d5\u05e9') ||
+    compact.includes('\u05d1\u05e8\u05e9\u05ea') ||
+    compact.includes('\u05d0\u05d5\u05e0\u05dc\u05d9\u05d9\u05df') ||
+    compact.includes('\u05d0\u05d9\u05e0\u05d8\u05e8\u05e0\u05d8') ||
+    compact.includes('\u05de\u05d7\u05d9\u05e8')
+  );
+}
+
 function resolveQueuedActionToken(value: any): QueuedExplicitAction {
+  const raw = String(value ?? '').trim().toLowerCase();
   const token = normalizeActionToken(value);
   if (!token) return null;
+  const detectedUpdate = detectUpdateActionFromText(raw);
+  if (detectedUpdate) return detectedUpdate;
+  if (token === 'update_plan' || token === 's_update_plan') return 'update_plan';
+  if (token === 'update_tasks' || token === 's_update_tasks') return 'update_tasks';
+  if (token === 'update_budget' || token === 's_update_budget') return 'update_budget';
+  if (token === 'update_procurement_pricing' || token === 's_update_procurement_pricing') return 'update_procurement_pricing';
   if (
     token === 'create_changeset' ||
     token === 'compile_and_review_changeset' ||
@@ -130,9 +205,10 @@ function resolveQueuedExplicitAction(queuedInput: SanitizedQueuedInput | null): 
 function detectExplicitActionFromText(userText?: string): QueuedExplicitAction {
   const text = String(userText ?? '').trim().toLowerCase();
   if (!text) return null;
-  const normalized = text.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const normalized = normalizeIntentText(text);
   const compact = normalized.replace(/\s+/g, '');
-
+  const detectedUpdate = detectUpdateActionFromText(normalized);
+  if (detectedUpdate) return detectedUpdate;
   const mentionsChangeSet =
     normalized.includes('changeset') ||
     normalized.includes('change set') ||
@@ -141,11 +217,9 @@ function detectExplicitActionFromText(userText?: string): QueuedExplicitAction {
     normalized.includes('chhange set') ||
     normalized.includes('changset') ||
     normalized.includes('chagneset');
-
   const looksLikeChangeSetTypo =
     /cha+n?g+e?\s*s+e+t/.test(normalized) ||
     compact.includes('createchangeset');
-
   const hasCreateChangesetIntent =
     normalized.includes('create_changeset') ||
     normalized.includes('changeset.compile') ||
@@ -154,13 +228,11 @@ function detectExplicitActionFromText(userText?: string): QueuedExplicitAction {
     looksLikeChangeSetTypo ||
     ((normalized.includes('create') || normalized.includes('generate') || normalized.includes('build') || normalized.includes('make') || normalized.includes('compile')) &&
       (mentionsChangeSet || looksLikeChangeSetTypo));
-
   const hasNegationNearChangeset =
     normalized.includes("don't create changeset") ||
     normalized.includes('do not create changeset') ||
     normalized.includes('without changeset') ||
     normalized.includes('no changeset');
-
   if (hasCreateChangesetIntent && !hasNegationNearChangeset) return 'create_changeset';
   return null;
 }
@@ -168,9 +240,8 @@ function detectExplicitActionFromText(userText?: string): QueuedExplicitAction {
 function isLikelyCompileConfirmation(userText?: string) {
   const text = String(userText ?? '').trim().toLowerCase();
   if (!text) return false;
-  const normalized = text.replace(/\s+/g, ' ').trim();
+  const normalized = normalizeIntentText(text);
   const compact = normalized.replace(/\s+/g, '');
-
   const exactSignals = new Set([
     '1',
     'a',
@@ -183,11 +254,11 @@ function isLikelyCompileConfirmation(userText?: string) {
     'go',
     'y',
   ]);
-
   if (exactSignals.has(normalized) || exactSignals.has(compact)) return true;
   if (/^(option|choose)\s*1$/.test(normalized)) return true;
   if (/^(yes|approve|ok)\b/.test(normalized) && normalized.includes('change')) return true;
   if (normalized.includes('create_changeset') || normalized.includes('changeset')) return true;
+  if (detectUpdateActionFromText(normalized)) return true;
   return false;
 }
 function asOptionalShortString(value: any, maxLen: number) {
@@ -543,7 +614,7 @@ function extractLabeledBlocksFromText(text: string) {
   const questionsText = questionsMatch?.[1] ?? '';
   const suggestionsText = suggestionsMatch?.[1] ?? '';
   const extractedQuestions = parseListLikeItems(questionsText, 3);
-  const extractedSuggestions = parseListLikeItems(suggestionsText, 3);
+  const extractedSuggestions = parseListLikeItems(suggestionsText, 4);
 
   const blocks: any[] = [];
   if (extractedQuestions.length > 0) {
@@ -563,7 +634,7 @@ function extractLabeledBlocksFromText(text: string) {
     blocks.push({
       type: 'SuggestionsBlock',
       titleHe: 'צעדים מומלצים להמשך',
-      suggestions: extractedSuggestions.slice(0, 3).map((label: string, index: number) => ({
+      suggestions: extractedSuggestions.slice(0, 4).map((label: string, index: number) => ({
         id: `s_from_labeled_text_${index + 1}`,
         actionKey: `text_suggestion_${index + 1}`,
         labelHe: label,
@@ -691,13 +762,54 @@ function buildContextAwareSuggestionBlock(args: {
   const recent = Array.isArray(args.recentBlockTexts) ? args.recentBlockTexts : [];
   const signals = summarizeContextSignals(args.context);
 
+  if (writeLike) {
+    const fixedSuggestions = [
+      {
+        id: 's_update_plan',
+        actionKey: 'update_plan',
+        labelHe: '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05d5\u05db\u05e0\u05d9\u05ea',
+        whyHe: 'Compiles plan updates into a reviewable ChangeSet immediately.',
+        payload: { action: 'update_plan', forceCompile: true },
+      },
+      {
+        id: 's_update_tasks',
+        actionKey: 'update_tasks',
+        labelHe: '\u05e2\u05d3\u05db\u05d5\u05df \u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+        whyHe: 'Applies task updates and compiles them for approval.',
+        payload: { action: 'update_tasks', forceCompile: true },
+      },
+      {
+        id: 's_update_budget',
+        actionKey: 'update_budget',
+        labelHe: '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05e7\u05e6\u05d9\u05d1',
+        whyHe: 'Updates budget/cost lines and compiles for review.',
+        payload: { action: 'update_budget', forceCompile: true },
+      },
+      {
+        id: 's_update_procurement_pricing',
+        actionKey: 'update_procurement_pricing',
+        labelHe: '\u05e2\u05d3\u05db\u05d5\u05df \u05e8\u05db\u05e9 / \u05de\u05d7\u05d9\u05e8\u05d9\u05dd',
+        whyHe: 'Updates procurement and pricing with web research when needed.',
+        payload: { action: 'update_procurement_pricing', forceCompile: true },
+      },
+    ]
+      .filter((candidate) => !isRepeatedText(String(candidate?.labelHe ?? ''), recent))
+      .slice(0, 4);
+
+    return {
+      type: 'SuggestionsBlock',
+      titleHe: `Next recommended actions${projectName ? ` - ${projectName}` : ''}${userText ? `: ${clipText(userText, 56)}` : ''}`,
+      suggestions: fixedSuggestions,
+    };
+  }
+
   const candidates: any[] = [];
   if (signals.openTaskTitle) {
     candidates.push({
       id: 's_task_focus',
       actionKey: 'focus_task',
-      labelHe: `לקדם עכשיו את המשימה: ${signals.openTaskTitle}`,
-      whyHe: 'זו המשימה הפתוחה עם ההשפעה הגבוהה ביותר כרגע.',
+      labelHe: `Focus now on task: ${signals.openTaskTitle}`,
+      whyHe: 'This is the highest-impact open task right now.',
       payload: { action: 'focus_task', focusTaskTitle: signals.openTaskTitle },
     });
   }
@@ -705,8 +817,8 @@ function buildContextAwareSuggestionBlock(args: {
     candidates.push({
       id: 's_build_tasks',
       actionKey: 'build_tasks',
-      labelHe: `לייצר משימות לביצוע עבור ${signals.openElementTitle || 'האלמנטים שהוגדרו'}`,
-      whyHe: 'יש אלמנטים, אבל עדיין אין פירוק ביצועי למשימות.',
+      labelHe: `Generate execution tasks for ${signals.openElementTitle || 'the defined elements'}`,
+      whyHe: 'Elements exist, but there is no execution task breakdown yet.',
       payload: { action: 'build_tasks' },
     });
   }
@@ -714,8 +826,8 @@ function buildContextAwareSuggestionBlock(args: {
     candidates.push({
       id: 's_define_elements',
       actionKey: 'build_elements',
-      labelHe: 'להגדיר עכשיו 2-4 אלמנטים מרכזיים',
-      whyHe: 'בלי מבנה אלמנטים אי אפשר להתקדם לתכנון אמין.',
+      labelHe: 'Define 2-4 core elements now',
+      whyHe: 'Without element structure, planning cannot proceed reliably.',
       payload: { action: 'build_elements' },
     });
   }
@@ -723,8 +835,8 @@ function buildContextAwareSuggestionBlock(args: {
     candidates.push({
       id: 's_budget_lines',
       actionKey: 'build_budget',
-      labelHe: 'לבנות שורות חומר + עבודה למשימות הפעילות',
-      whyHe: 'המשימות קיימות, אבל חסרה כרגע תמונת עלות.',
+      labelHe: 'Create material + labor budget lines for active tasks',
+      whyHe: 'Tasks exist, but cost visibility is still missing.',
       payload: { action: 'build_budget' },
     });
   }
@@ -732,8 +844,8 @@ function buildContextAwareSuggestionBlock(args: {
     candidates.push({
       id: 's_quote_first',
       actionKey: 'build_quote',
-      labelHe: 'להפיק טיוטת הצעת מחיר ראשונה מהעלויות הקיימות',
-      whyHe: 'כבר קיימות שורות עלות, אז אפשר לייצר בסיס להצעה ללקוח.',
+      labelHe: 'Generate a first quote draft from existing costs',
+      whyHe: 'Cost lines already exist, so a client quote baseline is possible.',
       payload: { action: 'build_quote' },
     });
   }
@@ -741,27 +853,18 @@ function buildContextAwareSuggestionBlock(args: {
     id: 's_context_gap',
     actionKey: 'clarify',
     labelHe: signals.focusTitle
-      ? `לחדד חסם אחד שחוסם את ${signals.focusTitle}`
-      : 'לחדד את החסם המרכזי הבא',
-    whyHe: 'החלטה אחת נכונה עכשיו תפתח את הצעד המעשי הבא.',
+      ? `Clarify one blocker for ${signals.focusTitle}`
+      : 'Clarify the next key blocker',
+    whyHe: 'One good decision now unlocks the next practical step.',
     payload: { action: 'clarify' },
   });
-  if (writeLike) {
-    candidates.push({
-      id: 's_changeset',
-      actionKey: 'create_changeset',
-      labelHe: 'לייצר ChangeSet לאישור',
-      whyHe: 'להכין עדכונים לבדיקה ואישור בלי החלה אוטומטית.',
-      payload: { action: 'create_changeset' },
-    });
-  }
 
   const suggestions = candidates
     .filter((candidate) => !isGenericText(candidate?.labelHe))
     .filter((candidate) => !isRepeatedText(String(candidate?.labelHe ?? ''), recent))
     .slice(0, 3);
 
-  while (suggestions.length < (writeLike ? 3 : 2) && suggestions.length < candidates.length) {
+  while (suggestions.length < 2 && suggestions.length < candidates.length) {
     const next = candidates[suggestions.length];
     if (!next) break;
     if (!suggestions.some((item) => String(item?.actionKey ?? '') === String(next?.actionKey ?? ''))) {
@@ -771,7 +874,7 @@ function buildContextAwareSuggestionBlock(args: {
 
   return {
     type: 'SuggestionsBlock',
-    titleHe: `צעדים מומלצים להמשך${projectName ? ` - ${projectName}` : ''}${userText ? `: ${clipText(userText, 56)}` : ''}`,
+    titleHe: `Next recommended actions${projectName ? ` - ${projectName}` : ''}${userText ? `: ${clipText(userText, 56)}` : ''}`,
     suggestions: suggestions.slice(0, 3),
   };
 }
@@ -896,7 +999,7 @@ function buildBootstrapPrompt(ctx: any): string {
   // Always include element titles for linking
   if (Array.isArray(ctx.elements) && ctx.elements.length > 0) {
     parts.push('ELEMENTS:')
-    parts.push(ctx.elements.map((e: any) => `- ${e.id}: ${e.title} (${e.status})`).join('\n'))
+    parts.push(ctx.elements.map((e: any) => `- ${e.title} (${e.status})`).join('\n'))
     parts.push('')
   }
 
@@ -918,6 +1021,140 @@ function clipText(value: any, maxLen: number) {
  */
 function summarizeToolResult(toolName: string, result: any): string {
   return summarizeToolResultCompact(toolName, result)
+}
+
+function normalizePricingKey(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\u0590-\u05ff]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120)
+}
+
+async function persistPricingEvidenceFromToolResult(args: {
+  ctx: any
+  projectId: any
+  result: any
+  runId?: any
+}) {
+  const recommendations = Array.isArray(args.result?.recommendations)
+    ? args.result.recommendations
+    : Array.isArray(args.result?.output?.recommendations)
+      ? args.result.output.recommendations
+      : []
+  for (const rec of recommendations) {
+    const itemHe = String(rec?.itemHe ?? '').trim()
+    const unitPrice = Number(rec?.recommended?.unitPrice)
+    if (!itemHe || !Number.isFinite(unitPrice) || unitPrice <= 0) continue
+    try {
+      const upsert = await args.ctx.runMutation(
+        internal.pricingEvidence.upsertWebPriceRunFromRecommendation,
+        {
+          projectId: args.projectId,
+          itemHe,
+          normalizedKey: normalizePricingKey(itemHe),
+          constraints: {
+            region: 'IL',
+            maxDeliveryDays: 7,
+            unitHe: rec?.recommended?.unitHe,
+            quantity: Number(rec?.quantity ?? rec?.recommended?.quantity ?? 1),
+          },
+          recommended: {
+            unitPrice,
+            currency: rec?.recommended?.currency,
+            unitHe: rec?.recommended?.unitHe,
+            priceBasisHe: rec?.recommended?.priceBasisHe,
+          },
+          confidence: rec?.confidence,
+          assumptionsHe: Array.isArray(rec?.assumptionsHe) ? rec.assumptionsHe : [],
+          candidates: Array.isArray(rec?.candidates) ? rec.candidates : [],
+          summaryHe: rec?.summaryHe,
+        }
+      )
+      const lineId = String(rec?.lineRef?.lineId ?? '').trim()
+      if (!lineId) continue
+      await args.ctx.runMutation(api.pricingEvidence.applyRecommendationToMaterialLine, {
+        materialLineId: lineId as any,
+        webPriceRunId: upsert?.runId,
+        itemHe,
+        recommended: {
+          unitPrice,
+          currency: rec?.recommended?.currency,
+          unitHe: rec?.recommended?.unitHe,
+          priceBasisHe: rec?.recommended?.priceBasisHe,
+        },
+        confidence: rec?.confidence,
+        assumptionsHe: Array.isArray(rec?.assumptionsHe) ? rec.assumptionsHe : [],
+        candidates: Array.isArray(rec?.candidates) ? rec.candidates : [],
+        appliedBy: 'agent',
+      })
+    } catch (error: any) {
+      if (args.runId) {
+        await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'pricing_evidence_persist_error',
+          payload: {
+            itemHe,
+            lineId: String(rec?.lineRef?.lineId ?? ''),
+            message: String(error?.message ?? 'unknown'),
+          },
+        })
+      }
+    }
+  }
+}
+
+function buildMinimalClarificationTaskIntent(args: { userMessage?: string; action?: QueuedExplicitAction }) {
+  const contextLabelByAction: Record<string, string> = {
+    update_plan: '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05d5\u05db\u05e0\u05d9\u05ea',
+    update_tasks: '\u05e2\u05d3\u05db\u05d5\u05df \u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+    update_budget: '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05e7\u05e6\u05d9\u05d1',
+    update_procurement_pricing: '\u05e2\u05d3\u05db\u05d5\u05df \u05e8\u05db\u05e9/\u05de\u05d7\u05d9\u05e8\u05d9\u05dd',
+    create_changeset: '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05d5\u05db\u05e0\u05d9\u05ea',
+  }
+  const actionLabel = contextLabelByAction[String(args.action ?? 'create_changeset')] ?? '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05d5\u05db\u05e0\u05d9\u05ea'
+  const hint = String(args.userMessage ?? '').trim()
+  return {
+    type: 'plan.tasks_intent',
+    payload: {
+      tasks: [
+        {
+          tempId: `clarify_${randomUUID().slice(0, 8)}`,
+          titleHe: `\u05dc\u05d4\u05e9\u05dc\u05d9\u05dd \u05e0\u05ea\u05d5\u05df \u05d7\u05e1\u05e8 \u05e2\u05d1\u05d5\u05e8 ${actionLabel}`,
+          descriptionHe: hint
+            ? `\u05d7\u05e1\u05e8 \u05de\u05d9\u05d3\u05e2 \u05e7\u05e8\u05d9\u05d8\u05d9 \u05dc\u05d4\u05e9\u05dc\u05de\u05ea ${actionLabel}: ${hint.slice(0, 160)}`
+            : `\u05d7\u05e1\u05e8 \u05de\u05d9\u05d3\u05e2 \u05e7\u05e8\u05d9\u05d8\u05d9 \u05dc\u05d4\u05e9\u05dc\u05de\u05ea ${actionLabel}.`,
+          workType: { key: 'management', labelHe: '\u05e0\u05d9\u05d4\u05d5\u05dc' },
+          stageKey: 'clarification',
+          estimateHours: 0.5,
+          checklist: [
+            {
+              id: 'clarify_1',
+              title: '\u05dc\u05d0\u05e1\u05d5\u05e3 \u05d0\u05ea \u05d4\u05e0\u05ea\u05d5\u05df \u05d4\u05d7\u05e1\u05e8 \u05de\u05d4\u05dc\u05e7\u05d5\u05d7/\u05e9\u05d8\u05d7',
+              done: false,
+              order: 1,
+              estimatedHours: 0.25,
+              workType: 'management',
+              workTypeLabelHe: '\u05e0\u05d9\u05d4\u05d5\u05dc',
+            },
+            {
+              id: 'clarify_2',
+              title: '\u05dc\u05e2\u05d3\u05db\u05df \u05d0\u05ea \u05d4\u05ea\u05d5\u05db\u05e0\u05d9\u05ea \u05dc\u05e4\u05d9 \u05d4\u05e0\u05ea\u05d5\u05df \u05d4\u05de\u05d0\u05d5\u05de\u05ea',
+              done: false,
+              order: 2,
+              estimatedHours: 0.25,
+              workType: 'management',
+              workTypeLabelHe: '\u05e0\u05d9\u05d4\u05d5\u05dc',
+            },
+          ],
+          doneCriteriaHe: '\u05d4\u05e0\u05ea\u05d5\u05df \u05d4\u05d7\u05e1\u05e8 \u05d4\u05d5\u05e9\u05dc\u05dd \u05d5\u05d4\u05d5\u05d2\u05d3\u05e8 \u05db\u05de\u05e9\u05d9\u05de\u05d4 \u05dc\u05d4\u05de\u05e9\u05da \u05d8\u05d9\u05e4\u05d5\u05dc',
+          dedupKey: `task::project::clarification::management::${normalizeActionToken(args.action) || 'update'}`,
+          status: 'blocked',
+        },
+      ],
+    },
+  }
 }
 
 function summarizeBlocksForPrompt(blocks: any[]) {
@@ -1256,14 +1493,14 @@ function ensureMinimumBlocks(args: {
           return !isGenericText(label) && !isRepeatedText(label, recentBlockTexts);
         })
         for (const candidate of fallbackSuggestions.suggestions ?? []) {
-          if (merged.length >= 3) break
+          if (merged.length >= 4) break
           const key = String(candidate?.actionKey ?? candidate?.id ?? '')
           const already = merged.some((item: any) => String(item?.actionKey ?? item?.id ?? '') === key)
           if (!already) merged.push(candidate)
         }
         return {
           ...suggestionBlock,
-          suggestions: merged.slice(0, 3),
+          suggestions: merged.slice(0, 4),
         }
       })()
     );
@@ -1272,16 +1509,7 @@ function ensureMinimumBlocks(args: {
     const suggestionOut = output.find((block: any) => block?.type === 'SuggestionsBlock' || block?.type === 'SuggestionBlock');
     if (suggestionOut && Array.isArray(suggestionOut.suggestions)) {
       const all = suggestionOut.suggestions.filter(Boolean);
-      const isChangeSetSuggestion = (item: any) => {
-        const actionKey = String(item?.actionKey ?? '').toLowerCase();
-        const payloadAction = String(item?.payload?.action ?? '').toLowerCase();
-        return actionKey.includes('changeset') || payloadAction === 'create_changeset' || payloadAction === 'changeset.compile';
-      };
-      const actionSuggestions = all.filter((item: any) => !isChangeSetSuggestion(item)).slice(0, 2);
-      const changeSetSuggestion = all.find((item: any) => isChangeSetSuggestion(item));
-      suggestionOut.suggestions = writeLike && changeSetSuggestion
-        ? [...actionSuggestions, changeSetSuggestion]
-        : actionSuggestions;
+      suggestionOut.suggestions = writeLike ? all.slice(0, 4) : all.slice(0, 2);
     }
     return output;
   }
@@ -1662,8 +1890,14 @@ export const runNext = action({
     const userMessage = args.userMessage === '__continue__' ? '__continue__' : parsedInput.text;
     const queuedInputPrompt = buildQueuedInputPrompt(parsedInput.queuedInput);
     const explicitQueuedAction = parsedInput.explicitAction;
-    const compileConfirmedByText =
+    const isExplicitCompileAction =
       explicitQueuedAction === 'create_changeset' ||
+      explicitQueuedAction === 'update_plan' ||
+      explicitQueuedAction === 'update_tasks' ||
+      explicitQueuedAction === 'update_budget' ||
+      explicitQueuedAction === 'update_procurement_pricing';
+    const compileConfirmedByText =
+      isExplicitCompileAction ||
       (explicitQueuedAction === null && isLikelyCompileConfirmation(userMessage));
     if (parsedInput.queuedInput) {
       await ctx.runMutation(internal.sdk.telemetry.logEvent, {
@@ -1960,14 +2194,29 @@ export const runNext = action({
         'planning',
         'start plan',
         'create plan',
+        'update plan',
+        'update tasks',
+        'update budget',
+        'update pricing',
+        'search prices',
+        'web',
+        'internet',
+        'amazon',
+        'aliexpress',
+        'ebay',
         'build budget',
         'budget',
         'quote',
         'elements',
         'tasks',
-        'תכנון',
-        'תכנן',
-        'תקציב',
+        '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05d5\u05db\u05e0\u05d9\u05ea',
+        '\u05e2\u05d3\u05db\u05d5\u05df \u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+        '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05e7\u05e6\u05d9\u05d1',
+        '\u05e2\u05d3\u05db\u05d5\u05df \u05de\u05d7\u05d9\u05e8\u05d9\u05dd',
+        '\u05e2\u05d3\u05db\u05d5\u05df \u05e8\u05db\u05e9',
+        '\u05de\u05d7\u05d9\u05e8',
+        '\u05de\u05d7\u05d9\u05e8\u05d9\u05dd',
+        '???',
       ];
       const lower = (text || '').toLowerCase();
       return patterns.some((p) => lower.includes(p.toLowerCase()));
@@ -1985,6 +2234,7 @@ export const runNext = action({
       })
       : null;
     const shouldForceTools = !isChatEditRun && isPlanningRequest(lastUserMsg);
+    const askedForWebResearch = isWebResearchOrPricingRequest(lastUserMsg);
     const requiresTasksIntent = isChatEditRun && isTaskGenerationRequest(lastUserMsg);
     const strictFullPlanMode = !isChatEditRun && shouldForceTools;
 
@@ -2033,7 +2283,7 @@ export const runNext = action({
       : null;
 
     const modePolicyPrompt = isChatEditRun
-      ? 'Chat mode policy (internal instructions in English): discussion-first and clarification-first. User-facing content must stay Hebrew unless an English technical token is required. Always include a ChatBlock. Include QuestionsBlock only for truly blocking clarifications (do not repeat the same clarification after user answered). Include SuggestionsBlock only when actionable next steps exist. Suggestions for write/planning intents should include explicit create_changeset when relevant. Never create a ChangeSet unless explicit queued action resolves to create_changeset. Keep suggestions in timeline and avoid generic or repeated text.'
+      ? 'Chat mode policy (internal instructions in English): discussion-first and clarification-first. User-facing content must stay Hebrew unless an English technical token is required. Always include a ChatBlock. Include QuestionsBlock only for truly blocking clarifications (do not repeat the same clarification after user answered). Include SuggestionsBlock only when actionable next steps exist. Suggestions for write/planning intents must include: update_plan, update_tasks, update_budget, update_procurement_pricing. Never create a ChangeSet unless explicit queued action resolves to create_changeset or one of the update_* actions. Keep suggestions in timeline and avoid generic or repeated text.'
       : 'Planning mode policy: progress the planning pipeline with structured outputs.';
     const bootstrapPrompt = promptBootstrapContext ? buildBootstrapPrompt(promptBootstrapContext) : null;
     const historyPromptMessages = history.map((m: any) => toPromptMessage(m, isChatEditRun));
@@ -2096,7 +2346,7 @@ export const runNext = action({
           return {
             skipped: true,
             code: 'EXPLICIT_ACTION_REQUIRED',
-            reason: 'Compile in chat mode requires explicit create_changeset action.',
+            reason: 'Compile in chat mode requires explicit create_changeset/update_* action.',
           };
         }
 
@@ -2166,6 +2416,14 @@ export const runNext = action({
         }
 
         if (isChatEditRun && requiresTasksIntent && !hasTasksIntent(intents)) {
+          if (isExplicitCompileAction) {
+            const fallbackIntent = buildMinimalClarificationTaskIntent({
+              userMessage: lastUserMsg,
+              action: explicitQueuedAction,
+            });
+            intents = [...(Array.isArray(intents) ? intents : []), fallbackIntent];
+            pendingIntents.push(fallbackIntent);
+          } else {
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
             runId: args.runId,
             type: 'chat_compile_blocked_missing_tasks_intent',
@@ -2181,9 +2439,18 @@ export const runNext = action({
             code: 'TASK_INTENT_REQUIRED',
             reason: 'Task request requires a non-empty plan.tasks_intent before changeset.compile.',
           };
+          }
         }
 
         if (intents.length === 0) {
+          if (isExplicitCompileAction) {
+            const fallbackIntent = buildMinimalClarificationTaskIntent({
+              userMessage: lastUserMsg,
+              action: explicitQueuedAction,
+            });
+            intents = [fallbackIntent];
+            pendingIntents.push(fallbackIntent);
+          } else {
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
             runId: args.runId,
             type: 'changeset_compile_error',
@@ -2193,6 +2460,7 @@ export const runNext = action({
             error: 'changeset.compile דורש intents. קודם צריך לייצר intents דרך plan.elements / plan.tasks / cost.build_budget.',
             code: 'EMPTY_INTENTS',
           };
+          }
         }
 
         const result = await ctx.runAction(sdkChangeset.compile, {
@@ -2349,9 +2617,13 @@ export const runNext = action({
     }
 
     const toolNameMap = new Map<string, string>();
-    const allowedTools = isChatEditRun
+    const allowedToolsBase = isChatEditRun
       ? allowedToolsForChatIntent(chatIntent ?? 'project_read_qna')
       : (orchestrator.allowedTools ?? []);
+    const allowedTools =
+      isChatEditRun && askedForWebResearch && allowedToolsBase.includes('web_search')
+        ? ['web_search', ...allowedToolsBase.filter((tool) => tool !== 'web_search')]
+        : allowedToolsBase;
     const tools = buildToolDefinitions(allowedTools, toolNameMap);
 
     if (isChatEditRun) {
@@ -2496,8 +2768,13 @@ export const runNext = action({
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('Missing OPENAI_API_KEY');
     }
+    let toolCalledWebSearch = false;
     for (let i = 0; i < maxToolLoops; i++) {
-      const toolChoice = (i === 0 && shouldForceTools && tools.length > 0) ? 'required' : 'auto';
+      const forceAnyToolOnFirstTurn =
+        i === 0 &&
+        tools.length > 0 &&
+        (shouldForceTools || (isChatEditRun && askedForWebResearch));
+      const toolChoice = forceAnyToolOnFirstTurn ? 'required' : 'auto';
 
       await ctx.runMutation(internal.sdk.telemetry.logEvent, {
         runId: args.runId,
@@ -2579,6 +2856,7 @@ export const runNext = action({
           const openAiToolName = call.function.name;
           const toolName = toolNameMap.get(openAiToolName) ?? openAiToolName;
           if (toolName === 'changeset.compile') toolCalledCompile = true;
+          if (toolName === 'web_search') toolCalledWebSearch = true;
           let toolArgs: any = {};
           try {
             toolArgs = call.function.arguments ? JSON.parse(call.function.arguments) : {};
@@ -2618,6 +2896,14 @@ export const runNext = action({
           const intentsFromResult = collectIntentsFromResult(result, toolName);
           if (intentsFromResult.length > 0) {
             pendingIntents.push(...intentsFromResult);
+          }
+          if (toolName === 'pricing.resolve_lines') {
+            await persistPricingEvidenceFromToolResult({
+              ctx,
+              projectId: args.projectId,
+              result,
+              runId: args.runId,
+            });
           }
 
           messages.push({
@@ -2693,14 +2979,13 @@ export const runNext = action({
 
         const shouldCompileFromExplicitAction =
           isChatEditRun &&
-          explicitChangeSetOnly &&
           (
           compileConfirmedByText
           ) &&
           !toolCalledCompile &&
           !autoCompiled &&
           (!requiresTasksIntent || hasTasksIntent(pendingIntents)) &&
-          hasChangeProducingIntents(pendingIntents);
+          (hasChangeProducingIntents(pendingIntents) || isExplicitCompileAction);
 
         const shouldLogSkippedCompile =
           isChatEditRun &&
@@ -2712,12 +2997,12 @@ export const runNext = action({
 
         if (
           isChatEditRun &&
-          explicitChangeSetOnly &&
           compileConfirmedByText &&
           !toolCalledCompile &&
           !autoCompiled &&
           requiresTasksIntent &&
-          !hasTasksIntent(pendingIntents)
+          !hasTasksIntent(pendingIntents) &&
+          !isExplicitCompileAction
         ) {
           await ctx.runMutation(internal.sdk.telemetry.logEvent, {
             runId: args.runId,
@@ -2730,12 +3015,16 @@ export const runNext = action({
           });
         }
 
-        if ((!isChatEditRun || shouldCompileFromExplicitAction) && !toolCalledCompile && pendingIntents.length > 0 && !autoCompiled) {
+        if ((!isChatEditRun || shouldCompileFromExplicitAction) && !toolCalledCompile && (pendingIntents.length > 0 || isExplicitCompileAction) && !autoCompiled) {
           autoCompiled = true;
           let compileResult: any;
           try {
+            const intentsForCompile =
+              pendingIntents.length > 0
+                ? pendingIntents
+                : [buildMinimalClarificationTaskIntent({ userMessage: lastUserMsg, action: explicitQueuedAction })];
             compileResult = await toolHandlers['changeset.compile']({
-              intents: pendingIntents,
+              intents: intentsForCompile,
             });
           } catch (error: any) {
             compileResult = { error: error?.message ?? String(error) };
@@ -2779,6 +3068,38 @@ export const runNext = action({
           });
         }
 
+        continue;
+      }
+
+      if (
+        isChatEditRun &&
+        askedForWebResearch &&
+        !toolCalledWebSearch &&
+        allowedTools.includes('web_search')
+      ) {
+        let autoWebResult: any;
+        try {
+          autoWebResult = await toolHandlers.web_search({ query: lastUserMsg });
+          toolCalledWebSearch = true;
+        } catch (error: any) {
+          autoWebResult = { error: error?.message ?? String(error) };
+        }
+        await ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'chat_web_search_auto_forced',
+          payload: {
+            ok: !autoWebResult?.error,
+            query: lastUserMsg.slice(0, 200),
+          },
+        });
+        messages.push({
+          role: 'assistant',
+          content: message.content ?? '',
+        });
+        messages.push({
+          role: 'system',
+          content: `AUTO TOOL RESULT (web_search): ${summarizeToolResult('web_search', autoWebResult)}`,
+        });
         continue;
       }
 
@@ -3182,6 +3503,14 @@ Then call changeset.compile to create the ChangeSet.`
             if (intentsFromResult.length > 0) {
               pendingIntents.push(...intentsFromResult);
             }
+            if (originalName === 'pricing.resolve_lines') {
+              await persistPricingEvidenceFromToolResult({
+                ctx,
+                projectId: args.projectId,
+                result,
+                runId: args.runId,
+              });
+            }
             messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -3329,6 +3658,8 @@ Then call changeset.compile to create the ChangeSet.`
     };
   },
 });
+
+
 
 
 

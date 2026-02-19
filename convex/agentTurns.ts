@@ -22,7 +22,7 @@ function buildQueuedInput(args: {
   multiChoiceIds: string[]
   timestampMs: number
 }) {
-  const suggestionIds = uniqueStrings(args.suggestionIds, 3)
+  const suggestionIds = uniqueStrings(args.suggestionIds, 4)
   const multiChoiceIds = uniqueStrings(args.multiChoiceIds, 6)
   const yesNo = args.yesNo === 'yes' ? true : args.yesNo === 'no' ? false : null
 
@@ -72,7 +72,7 @@ export const submitTurn = action({
     if (run.projectId !== args.projectId) throw new Error('Run does not belong to project')
     if (run.conversationId !== args.conversationId) throw new Error('Run does not belong to conversation')
 
-    const suggestionIds = uniqueStrings(args.uiSelections.suggestionIds, 3)
+    const suggestionIds = uniqueStrings(args.uiSelections.suggestionIds, 4)
     const multiChoiceIds = uniqueStrings(args.uiSelections.answers.multiChoiceIds, 6)
     const hasSelections = suggestionIds.length > 0 || args.uiSelections.answers.yesNo !== null || multiChoiceIds.length > 0
     const trimmedMessage = String(args.messageText ?? '').trim()

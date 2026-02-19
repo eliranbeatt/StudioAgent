@@ -104,6 +104,7 @@ import type * as sdk_llm from "../sdk/llm.js";
 import type * as sdk_messageCompression from "../sdk/messageCompression.js";
 import type * as sdk_planner from "../sdk/planner.js";
 import type * as sdk_plannerNode from "../sdk/plannerNode.js";
+import type * as sdk_postprocess from "../sdk/postprocess.js";
 import type * as sdk_projectPlanning from "../sdk/projectPlanning.js";
 import type * as sdk_prompts from "../sdk/prompts.js";
 import type * as sdk_queries from "../sdk/queries.js";
@@ -136,6 +137,7 @@ import type * as sdk_vnext_validators_validateQuote from "../sdk/vnext/validator
 import type * as sdk_vnext_validators_validateScope from "../sdk/vnext/validators/validateScope.js";
 import type * as sdk_vnext_validators_validateTasks from "../sdk/vnext/validators/validateTasks.js";
 import type * as shareLinks from "../shareLinks.js";
+import type * as skills_actions from "../skills/actions.js";
 import type * as skills_prompts from "../skills/prompts.js";
 import type * as skills_recommender from "../skills/recommender.js";
 import type * as skills_registry from "../skills/registry.js";
@@ -255,6 +257,7 @@ declare const fullApi: ApiFromModules<{
   "sdk/messageCompression": typeof sdk_messageCompression;
   "sdk/planner": typeof sdk_planner;
   "sdk/plannerNode": typeof sdk_plannerNode;
+  "sdk/postprocess": typeof sdk_postprocess;
   "sdk/projectPlanning": typeof sdk_projectPlanning;
   "sdk/prompts": typeof sdk_prompts;
   "sdk/queries": typeof sdk_queries;
@@ -287,6 +290,7 @@ declare const fullApi: ApiFromModules<{
   "sdk/vnext/validators/validateScope": typeof sdk_vnext_validators_validateScope;
   "sdk/vnext/validators/validateTasks": typeof sdk_vnext_validators_validateTasks;
   shareLinks: typeof shareLinks;
+  "skills/actions": typeof skills_actions;
   "skills/prompts": typeof skills_prompts;
   "skills/recommender": typeof skills_recommender;
   "skills/registry": typeof skills_registry;

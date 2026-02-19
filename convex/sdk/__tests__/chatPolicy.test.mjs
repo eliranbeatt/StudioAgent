@@ -42,6 +42,8 @@ test('audit intent allows audit tool explicitly', () => {
 test('planning intent includes changeset compile but not review', () => {
   const tools = allowedToolsForChatIntent('planning_request')
   assert.equal(tools.includes('changeset.compile'), true)
+  assert.equal(tools.includes('web_search'), true)
+  assert.equal(tools.includes('pricing.resolve_lines'), true)
   assert.equal(tools.includes('changeset.review'), false)
 })
 
@@ -49,7 +51,19 @@ test('write intent includes compile/apply but not review by default', () => {
   const tools = allowedToolsForChatIntent('project_write_change')
   assert.equal(tools.includes('changeset.compile'), true)
   assert.equal(tools.includes('changeset.apply'), true)
+  assert.equal(tools.includes('web_search'), true)
+  assert.equal(tools.includes('pricing.resolve_lines'), true)
   assert.equal(tools.includes('changeset.review'), false)
+})
+
+test('read intent can use web search for research', () => {
+  const tools = allowedToolsForChatIntent('project_read_qna')
+  assert.equal(tools.includes('context.get'), true)
+  assert.equal(tools.includes('web_search'), true)
+})
+
+test('detectChatIntent routes hebrew update actions to planning request', () => {
+  assert.equal(detectChatIntent('עדכון תוכנית ועכשיו תעדכן מחירים מהאינטרנט'), 'planning_request')
 })
 
 test('suggestions attach only when useful', () => {

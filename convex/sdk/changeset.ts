@@ -809,15 +809,15 @@ function normalizeWorkLineFieldsForSdk(fields: any) {
   if (workType) normalized.workType = workType
 
   const workTypeLabelByKey: Record<string, string> = {
-    carpentry: 'Carpentry',
-    metal_fab: 'Metal fabrication',
-    paint_finish: 'Paint and finish',
-    printing_graphics: 'Printing and graphics',
-    props_sculpt: 'Props and sculpt',
-    rigging_install: 'Rigging and install',
-    transport_logistics: 'Transport and logistics',
-    purchasing: 'Purchasing',
-    management: 'Management',
+    carpentry: 'נגרות',
+    metal_fab: 'מסגרות',
+    paint_finish: 'צביעה וגמר',
+    printing_graphics: 'הדפסה וגרפיקה',
+    props_sculpt: 'פיסול ואביזרים',
+    rigging_install: 'ריגינג והתקנה',
+    transport_logistics: 'הובלה ולוגיסטיקה',
+    purchasing: 'רכש',
+    management: 'ניהול',
   }
   if (!firstNonEmptyString([normalized.workTypeLabelHe]) && workType && workTypeLabelByKey[workType]) {
     normalized.workTypeLabelHe = workTypeLabelByKey[workType]

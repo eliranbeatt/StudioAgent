@@ -78,11 +78,36 @@ function buildConstraintsHash(constraints: any) {
 function normalizeCandidates(candidates: any[], fallbackCurrency: 'ILS' | 'USD' | 'EUR') {
   return (Array.isArray(candidates) ? candidates : []).map((candidate: any) => ({
     sourceType: normalizeSourceType(candidate?.sourceType),
-    title: candidate?.title ? String(candidate.title) : undefined,
-    unitPrice: Number.isFinite(Number(candidate?.unitPrice)) ? Number(candidate.unitPrice) : undefined,
+    sourceName: candidate?.sourceName ? String(candidate.sourceName) : undefined,
+    sourceUrl: candidate?.sourceUrl ? String(candidate.sourceUrl) : undefined,
+    title: candidate?.title
+      ? String(candidate.title)
+      : candidate?.titleHe
+        ? String(candidate.titleHe)
+        : undefined,
+    descriptionHe: candidate?.descriptionHe ? String(candidate.descriptionHe) : undefined,
+    quantity: Number.isFinite(Number(candidate?.quantity)) ? Number(candidate.quantity) : undefined,
+    unit: candidate?.unit ? String(candidate.unit) : undefined,
+    price: Number.isFinite(Number(candidate?.price)) ? Number(candidate.price) : undefined,
+    shippingPrice: Number.isFinite(Number(candidate?.shippingPrice)) ? Number(candidate.shippingPrice) : undefined,
+    unitPrice: Number.isFinite(Number(candidate?.unitPrice))
+      ? Number(candidate.unitPrice)
+      : Number.isFinite(Number(candidate?.price))
+        ? Number(candidate.price)
+        : undefined,
     currency: candidate?.currency ? String(candidate.currency).toUpperCase() : fallbackCurrency,
-    unitHe: candidate?.unitHe ? String(candidate.unitHe) : undefined,
-    link: candidate?.link ? String(candidate.link) : undefined,
+    unitHe: candidate?.unitHe
+      ? String(candidate.unitHe)
+      : candidate?.unit
+        ? String(candidate.unit)
+        : undefined,
+    link: candidate?.link
+      ? String(candidate.link)
+      : candidate?.sourceUrl
+        ? String(candidate.sourceUrl)
+        : undefined,
+    confidence: candidate?.confidence ? normalizeConfidence(candidate.confidence) : undefined,
+    whyHe: candidate?.whyHe ? String(candidate.whyHe) : undefined,
     notesHe: candidate?.notesHe ? String(candidate.notesHe) : undefined,
     capturedAt: Number.isFinite(Number(candidate?.capturedAt)) ? Number(candidate.capturedAt) : undefined,
     raw: candidate?.raw,

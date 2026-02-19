@@ -28,7 +28,7 @@ export const get = query({
           eventDate: p.eventDate,
           details: p.details,
           status: p.status,
-          location: p.location,
+          location: p.details?.location,
           notes: p.notes,
           description: p.description,
           summary: p.summary,
@@ -86,9 +86,7 @@ export const get = query({
         id: line._id,
         taskId: line.taskId,
         elementId: line.elementId,
-        elementScope: line.elementScope,
-        sectionKey: line.sectionKey,
-        title: line.title,
+        title: line.itemName,
         quantity: line.quantity,
         uomCode: line.uomCode,
         plannedUnitCost: line.plannedUnitCost,
@@ -117,17 +115,16 @@ export const get = query({
         id: line._id,
         taskId: line.taskId,
         elementId: line.elementId,
-        elementScope: line.elementScope,
         sectionKey: line.sectionKey,
         workType: line.workType,
-        title: line.title,
-        hours: line.hours,
+        title: line.roleHe,
+        hours: line.plannedQuantity,
         rateTypeCode: line.rateTypeCode,
         rateTypeLabelHe: line.rateTypeLabelHe,
         plannedQuantity: line.plannedQuantity,
         plannedUnitCost: line.plannedUnitCost,
         plannedTotalCost: line.plannedTotalCost,
-        pricingSourceCode: line.pricingSourceCode,
+        pricingSourceCode: line.sourceCode,
         confidence: line.confidence,
         assignee: line.assignee,
         assigneeId: line.assigneeId,
@@ -145,7 +142,6 @@ export const get = query({
       res.quote = quote
         ? {
             id: quote._id,
-            titleHe: quote.title_he,
             quoteTextHe: quote.quoteText_he,
             quoteBlocks: quote.quoteBlocks,
             createdAt: quote.createdAt,
@@ -191,6 +187,25 @@ export const get = query({
         // Return the markdown string directly as the knowledge doc
         res.knowledgeDoc = k.contentMd_he;
       }
+    }
+
+    if (packs.has('files')) {
+      const files = await ctx.db
+        .query('projectFiles')
+        .withIndex('by_project', (q) => q.eq('projectId', args.projectId))
+        .order('desc')
+        .collect();
+      res.files = files.map((file: any) => ({
+        id: file._id,
+        fileName: file.fileName,
+        contentType: file.contentType,
+        size: file.size,
+        createdAt: file.createdAt,
+        summary: file.summary ?? file.extractedInfo?.summary ?? null,
+        topics: Array.isArray(file.extractedInfo?.topics) ? file.extractedInfo.topics : [],
+        facts: Array.isArray(file.extractedInfo?.facts) ? file.extractedInfo.facts : [],
+        entities: Array.isArray(file.extractedInfo?.entities) ? file.extractedInfo.entities : [],
+      }));
     }
 
     if (packs.has('pricing')) {

@@ -149,8 +149,20 @@ function humanizeWorkType(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const compact = value.trim();
   if (!compact) return undefined;
+  const labelsHe: Record<string, string> = {
+    carpentry: "נגרות",
+    metal_fab: "מסגרות",
+    paint_finish: "צביעה וגמר",
+    printing_graphics: "הדפסה וגרפיקה",
+    props_sculpt: "פיסול ואביזרים",
+    rigging_install: "ריגינג והתקנה",
+    transport_logistics: "הובלה ולוגיסטיקה",
+    purchasing: "רכש",
+    management: "ניהול",
+  };
+  if (labelsHe[compact]) return labelsHe[compact];
   const withSpaces = compact.replace(/[_-]+/g, " ");
-  return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
+  return withSpaces;
 }
 
 function normalizeWorkLineFieldsForApply(rawFields: any, taskTitle?: string) {

@@ -23,6 +23,7 @@ export const REGISTRY: Record<string, ToolDefinition> = {
     allowedTools: [
       'context.get',
       'knowledge.summarize_or_update',
+      'web_search',
       'changeset.compile',
       'changeset.review',
       'changeset.apply',
@@ -66,7 +67,7 @@ export const REGISTRY: Record<string, ToolDefinition> = {
     systemPrompt: FULL_PROMPTS.FREE_CHAT_SYSTEM,
     description: 'Free chat for brain dump and fact extraction',
     model: 'gpt-5.2',
-    allowedTools: ['context.get', 'knowledge.summarize_or_update', 'think.deep'],
+    allowedTools: ['context.get', 'knowledge.summarize_or_update', 'think.deep', 'web_search'],
     schemaName: 'chat.free',
   },
   'think.deep': {

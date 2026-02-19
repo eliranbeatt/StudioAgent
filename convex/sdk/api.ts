@@ -11,6 +11,24 @@ import { completionWithTracing } from '../lib/llm';
 export { get as contextGet } from './context';
 export { getCounts as contextGetCounts } from './context';
 
+const WORK_TYPE_LABEL_HE: Record<string, string> = {
+  carpentry: '\u05e0\u05d2\u05e8\u05d5\u05ea',
+  metal_fab: '\u05de\u05e1\u05d2\u05e8\u05d5\u05ea',
+  paint_finish: '\u05e6\u05d1\u05d9\u05e2\u05d4 \u05d5\u05d2\u05de\u05e8',
+  printing_graphics: '\u05d4\u05d3\u05e4\u05e1\u05d4 \u05d5\u05d2\u05e8\u05e4\u05d9\u05e7\u05d4',
+  props_sculpt: '\u05e4\u05d9\u05e1\u05d5\u05dc \u05d5\u05d0\u05d1\u05d9\u05d6\u05e8\u05d9\u05dd',
+  rigging_install: '\u05e8\u05d9\u05d2\u05d9\u05e0\u05d2 \u05d5\u05d4\u05ea\u05e7\u05e0\u05d4',
+  transport_logistics: '\u05d4\u05d5\u05d1\u05dc\u05d4 \u05d5\u05dc\u05d5\u05d2\u05d9\u05e1\u05d8\u05d9\u05e7\u05d4',
+  purchasing: '\u05e8\u05db\u05e9',
+  management: '\u05e0\u05d9\u05d4\u05d5\u05dc',
+};
+
+function workTypeLabelHe(value: unknown): string | undefined {
+  const key = String(value ?? '').trim().toLowerCase();
+  if (!key) return undefined;
+  return WORK_TYPE_LABEL_HE[key];
+}
+
 export const createConversation = mutation({
   args: {
     projectId: v.id('projects'),
@@ -750,7 +768,7 @@ function normalizeTaskChecklistFromOutput(task: any) {
           (toFiniteNumber(item?.estimatedMinutes) !== undefined ? Number(item.estimatedMinutes) / 60 : undefined)
         )
         return {
-          id: firstNonEmpty([item?.id, `item_${index + 1}`]),
+          id: firstNonEmpty([item?.id, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${index + 1}`]),
           title,
           done: typeof item?.done === 'boolean' ? item.done : false,
           order: Number.isFinite(item?.order) ? Number(item.order) : index,
@@ -770,7 +788,7 @@ function normalizeTaskChecklistFromOutput(task: any) {
       const title = String(value ?? '').trim()
       if (!title) return null
       return {
-        id: `item_${index + 1}`,
+        id: `\u05e2\u05d1\u05d5\u05d3\u05d4 ${index + 1}`,
         title,
         done: false,
         order: index,
@@ -837,10 +855,10 @@ function buildFinalizeDirectOps(
 
   for (let i = 0; i < elements.length; i += 1) {
     const item = elements[i] ?? {}
-    const title = firstNonEmpty([item.title, item.titleHe, item.name, item.nameHe, `Element ${i + 1}`])
+    const title = firstNonEmpty([item.title, item.titleHe, item.name, item.nameHe, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`])
     const type = normalizeElementTypeForChangeSet(firstNonEmpty([item.type, item.buildStrategy]))
-    const rawElementKey = firstNonEmpty([item.stableKey, item.elementKey, item.tempId, title, `element-${i + 1}`])
-    const elementKey = normalizeKeyPart(rawElementKey) || `element-${i + 1}`
+    const rawElementKey = firstNonEmpty([item.stableKey, item.elementKey, item.tempId, title, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`])
+    const elementKey = normalizeKeyPart(rawElementKey) || `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`
     const titleKey = normalizeKeyPart(title)
     const existing =
       elementByTitleType.get(`${titleKey}::${type}`) ??
@@ -883,7 +901,7 @@ function buildFinalizeDirectOps(
 
   for (let i = 0; i < tasks.length; i += 1) {
     const item = tasks[i] ?? {}
-    const title = firstNonEmpty([item.title, item.titleHe, item.name, item.descriptionHe, `Task ${i + 1}`])
+    const title = firstNonEmpty([item.title, item.titleHe, item.name, item.descriptionHe, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`])
     const description = firstNonEmpty([item.description, item.descriptionHe])
     const estimatedHours = toFiniteNumber(item.estimatedHours ?? item.estimateHours)
     const stage = firstNonEmpty([item.stage, item.stageKey])
@@ -900,9 +918,9 @@ function buildFinalizeDirectOps(
       `${stage || 'stage'}:${workType || 'work'}:${title}`,
       title,
       item.tempId,
-      `task-${i + 1}`,
+      `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`,
     ])
-    const normalizedTaskIdentity = normalizeKeyPart(taskIdentitySeed) || `task-${i + 1}`
+    const normalizedTaskIdentity = normalizeKeyPart(taskIdentitySeed) || `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`
     const dedupKey = firstNonEmpty([item.dedupKey, `finalize:task:${resolvedElementKey}:${normalizedTaskIdentity}`])
     const tempId = firstNonEmpty([item.tempId, `final_task_${normalizedTaskIdentity}`])
     const dependencyRaw = item?.dependencies?.afterTaskTempIds
@@ -976,7 +994,7 @@ function buildFinalizeDirectOps(
     const plannedTotalCost = toFiniteNumber(item.plannedTotalCost) ?? (
       plannedUnitCost !== undefined ? plannedUnitCost * quantity : undefined
     )
-    const itemName = firstNonEmpty([item.itemName, item.itemHe, item.title, item.titleHe, `Material ${i + 1}`])
+    const itemName = firstNonEmpty([item.itemName, item.itemHe, item.title, item.titleHe, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`])
     const unitCode = firstNonEmpty([item.uomCode, item.unitCode])
     const inputElementRef = firstNonEmpty([item.elementTempOrId, item.elementId])
     const inputTaskRef = firstNonEmpty([item.taskTempOrId, item.taskId])
@@ -987,7 +1005,7 @@ function buildFinalizeDirectOps(
       normalizeKeyPart(inputElementRef) ??
       (String(item?.elementScope ?? '').trim() === 'project' ? 'project' : 'unknown')
     const taskKey = taskKeyByRef.get(inputTaskRef) ?? normalizeKeyPart(inputTaskRef) ?? 'project'
-    const materialSignature = normalizeKeyPart(firstNonEmpty([itemName, item.sectionKey, `material-${i + 1}`]))
+    const materialSignature = normalizeKeyPart(firstNonEmpty([itemName, item.sectionKey, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`]))
     const stableMaterialDedup = firstNonEmpty([
       item.dedupKey,
       `finalize:material:${elementKey}:${taskKey}:${normalizeKeyPart(item.sectionKey)}:${materialSignature}`,
@@ -1021,18 +1039,24 @@ function buildFinalizeDirectOps(
     const plannedTotalCost = toFiniteNumber(item.plannedTotalCost) ?? (
       plannedUnitCost !== undefined ? plannedUnitCost * plannedQuantity : undefined
     )
-    const roleHe = firstNonEmpty([item.roleHe, item.workTypeLabelHe, item.workTypeKey, item.titleHe, `Work ${i + 1}`])
+    const workType = firstNonEmpty([item.workType, item.workTypeKey])
+    const roleHe = firstNonEmpty([
+      item.roleHe,
+      item.workTypeLabelHe,
+      workTypeLabelHe(workType),
+      item.titleHe,
+      `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`,
+    ])
     const inputElementRef = firstNonEmpty([item.elementTempOrId, item.elementId])
     const inputTaskRef = firstNonEmpty([item.taskTempOrId, item.taskId])
     const elementTempOrId = elementRefMap.get(inputElementRef) ?? inputElementRef
     const taskTempOrId = taskRefMap.get(inputTaskRef) ?? inputTaskRef
-    const workType = firstNonEmpty([item.workType, item.workTypeKey])
     const elementKey =
       elementKeyByRef.get(inputElementRef) ??
       normalizeKeyPart(inputElementRef) ??
       (String(item?.elementScope ?? '').trim() === 'project' ? 'project' : 'unknown')
     const taskKey = taskKeyByRef.get(inputTaskRef) ?? normalizeKeyPart(inputTaskRef) ?? 'project'
-    const workSignature = normalizeKeyPart(firstNonEmpty([roleHe, workType, item.sectionKey, `work-${i + 1}`]))
+    const workSignature = normalizeKeyPart(firstNonEmpty([roleHe, workType, item.sectionKey, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${i + 1}`]))
     const stableWorkDedup = firstNonEmpty([
       item.dedupKey,
       `finalize:work:${elementKey}:${taskKey}:${normalizeKeyPart(item.sectionKey)}:${workSignature}`,
@@ -1184,7 +1208,7 @@ function stageArtifactFromFinalizeTool(
   if (toolId === 'plan.elements') {
     const elements = Array.isArray(result?.elements) ? result.elements : []
     const proposedElements = elements.map((item: any, index: number) => {
-      const nameHe = firstNonEmpty([item?.titleHe, item?.nameHe, item?.title, item?.name, `אלמנט ${index + 1}`])
+      const nameHe = firstNonEmpty([item?.titleHe, item?.nameHe, item?.title, item?.name, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${index + 1}`])
       const elementKey = toFinalizeElementKey(firstNonEmpty([item?.tempId, item?.stableKey, item?.id, nameHe]))
       const refs = [item?.tempId, item?.stableKey, item?.id, item?.elementId]
       for (const ref of refs) {
@@ -1255,8 +1279,8 @@ function stageArtifactFromFinalizeTool(
         (String(line?.elementScope ?? '').trim() === 'project' ? '' : toFinalizeElementKey(rawElementRef))
       return {
         elementKey: mappedElementKey,
-        titleHe: firstNonEmpty([line?.itemHe, line?.itemName, `חומר ${index + 1}`]),
-        itemName: firstNonEmpty([line?.itemName, line?.itemHe, `חומר ${index + 1}`]),
+        titleHe: firstNonEmpty([line?.itemHe, line?.itemName, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${index + 1}`]),
+        itemName: firstNonEmpty([line?.itemName, line?.itemHe, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${index + 1}`]),
         quantity: toFiniteNumber(line?.qty ?? line?.quantity) ?? 1,
         unitPrice: toFiniteNumber(line?.unitPrice ?? line?.plannedUnitCost) ?? 1,
         taskTitleHe: firstNonEmpty([line?.taskTitleHe, line?.taskTempOrId, line?.taskId]),
@@ -1269,11 +1293,11 @@ function stageArtifactFromFinalizeTool(
         (String(line?.elementScope ?? '').trim() === 'project' ? '' : toFinalizeElementKey(rawElementRef))
       return {
         elementKey: mappedElementKey,
-        titleHe: firstNonEmpty([line?.titleHe, line?.roleHe, `עבודה ${index + 1}`]),
-        roleHe: firstNonEmpty([line?.roleHe, line?.titleHe, `עבודה ${index + 1}`]),
+        titleHe: firstNonEmpty([line?.titleHe, line?.roleHe, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${index + 1}`]),
+        roleHe: firstNonEmpty([line?.roleHe, line?.titleHe, `\u05e2\u05d1\u05d5\u05d3\u05d4 ${index + 1}`]),
         hours: toFiniteNumber(line?.hours ?? line?.qty ?? line?.plannedQuantity) ?? 1,
         hourlyRate: toFiniteNumber(line?.rate ?? line?.plannedUnitCost) ?? 1,
-        workTypeLabelHe: firstNonEmpty([line?.workTypeLabelHe, line?.workTypeKey, line?.workType]),
+        workTypeLabelHe: firstNonEmpty([line?.workTypeLabelHe, workTypeLabelHe(line?.workTypeKey), workTypeLabelHe(line?.workType)]),
       }
     })
     return {

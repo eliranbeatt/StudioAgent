@@ -1,7 +1,7 @@
 'use client';
 
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../../../../../../convex/_generated/api';
 import { Id } from '../../../../../../convex/_generated/dataModel';
 import { CheckCircle, Loader2, Play } from 'lucide-react';
@@ -37,8 +37,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
   const [finalReport, setFinalReport] = useState<any>(null);
   const [progress, setProgress] = useState({ stage: '', percent: 0 });
   const [sessionRestored, setSessionRestored] = useState(false);
-  const [planningMode, setPlanningMode] = useState<'separated' | 'combined'>('combined');
-  const planningModeRef = useRef<'separated' | 'combined'>('combined');
 
   const existingSession = useQuery(api.sdk.projectPlanning.getPlanningSession, { projectId });
   const checkContextQuery = useQuery(api.sdk.api.contextGet, projectId ? { projectId, packs: ['project', 'elements', 'tasks'] } : 'skip');
@@ -50,7 +48,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
   );
   const submitAnswers = useMutation(api.sdk.projectPlanning.submitAnswers);
   const savePlanningState = useMutation(api.sdk.projectPlanning.savePlanningState);
-  const setPlanningModePreference = useMutation(api.sdk.projectPlanning.setPlanningModePreference);
   const regenerateQuestions = useAction(api.sdk.projectPlanning.regenerateQuestions);
   const finalizeProject = useAction(api.sdk.projectPlanning.finalizeProject);
   const finalizationProgress = useQuery(
@@ -59,10 +56,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
   );
   const phaseResults = useQuery(
     api.sdk.projectPlanning.getPhaseResults,
-    runId ? { runId } : 'skip'
-  );
-  const finalizeCheckpointInfo = useQuery(
-    api.sdk.projectPlanning.getFinalizeCheckpointInfo,
     runId ? { runId } : 'skip'
   );
   const finalReportQuery = useQuery(
@@ -82,11 +75,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       setRunId(existingSession.runId);
       setCurrentStep(existingSession.currentStep);
       setQuestionSetIndex(existingSession.questionSetIndex);
-      if ((existingSession as any).planningMode === 'combined' || (existingSession as any).planningMode === 'separated') {
-        const restoredMode = (existingSession as any).planningMode as 'separated' | 'combined';
-        planningModeRef.current = restoredMode;
-        setPlanningMode(restoredMode);
-      }
     }
     setSessionRestored(true);
   }, [existingSession, sessionRestored]);
@@ -132,27 +120,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       });
     }
   }, [currentStep, getQuestionSets, questionSetIndex, runId, savePlanningState]);
-
-  const applyPlanningMode = async (
-    nextMode: 'separated' | 'combined',
-    options?: { restartFinalizing?: boolean }
-  ) => {
-    planningModeRef.current = nextMode;
-    setPlanningMode(nextMode);
-    if (runId) {
-      try {
-        await setPlanningModePreference({
-          runId,
-          planningMode: nextMode,
-        });
-      } catch {
-        // Keep UI selection even if persistence fails transiently.
-      }
-    }
-    if (options?.restartFinalizing && (currentStep === 'finalizing' || currentStep === 'report')) {
-      await handleRerunPhase('elements', 'pending', true);
-    }
-  };
 
   const setQuestionFreeText = (questionId: string, freeText: string) => {
     setAnswers(prev => ({
@@ -253,16 +220,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
         const nextRunId = ((result as any).runId ?? planningRunId) as Id<'sdkRuns'> | null;
         setConversationId((result as any).conversationId);
         setRunId(nextRunId);
-        if (nextRunId) {
-          try {
-            await setPlanningModePreference({
-              runId: nextRunId,
-              planningMode: planningModeRef.current,
-            });
-          } catch {
-            // Non-blocking; finalization call still carries planningMode explicitly.
-          }
-        }
         setCurrentStep('questions');
       }
     } finally {
@@ -286,14 +243,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       const planResult = await initiatePlanning({ projectId, conversationId: (result as any).conversationId });
       const planningRunId = ((planResult as any)?.runId ?? (result as any)?.runId) as Id<'sdkRuns'>;
       setRunId(planningRunId);
-      try {
-        await setPlanningModePreference({
-          runId: planningRunId,
-          planningMode: planningModeRef.current,
-        });
-      } catch {
-        // Non-blocking; finalization call still carries planningMode explicitly.
-      }
 
       // Save state
       await savePlanningState({
@@ -370,7 +319,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
         projectId,
         runId,
         conversationId: conversationId!,
-        planningMode: planningModeRef.current,
+        planningMode: 'separated',
       });
     } finally {
       setIsProcessing(false);
@@ -391,7 +340,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
         conversationId,
         phase,
         forceNewRun: forceNewRunOverride ?? status === 'running',
-        planningMode: planningModeRef.current,
+        planningMode: 'separated',
       });
       const nextRunId = (result as any)?.runId as Id<'sdkRuns'> | undefined;
       if (nextRunId && nextRunId !== runId) {
@@ -459,21 +408,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
             Welcome to the structured project planning flow. This will guide you through a complete
             planning process from context gathering to full project breakdown with pricing.
           </p>
-          <div className="mb-4 flex items-center gap-2 text-sm text-slate-700">
-            <span>Planning mode</span>
-            <select
-              className="border border-slate-300 rounded-lg px-2 py-1 bg-white"
-              value={planningMode}
-              onChange={(e) => {
-                const nextMode = e.target.value as 'separated' | 'combined';
-                void applyPlanningMode(nextMode).catch(() => undefined);
-              }}
-              disabled={isProcessing}
-            >
-              <option value="combined">Combined (Elements+Tasks+Budget)</option>
-              <option value="separated">Separated (Elements / Tasks / Budget)</option>
-            </select>
-          </div>
           <button
             onClick={handleStart}
             disabled={isProcessing}
@@ -532,24 +466,8 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
               <p className="text-xs text-slate-500">
                 Remaining sets: {totalSets} | {questionSet?.groupLabelHe ?? 'Loading...'}
               </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Finalization mode: {planningMode === 'combined' ? 'Combined B+C' : 'Separated'}
-              </p>
             </div>
             <div className="flex gap-2">
-              <select
-                className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white disabled:opacity-50"
-                value={planningMode}
-                onChange={(e) => {
-                  const nextMode = e.target.value as 'separated' | 'combined';
-                  void applyPlanningMode(nextMode).catch(() => undefined);
-                }}
-                disabled={isProcessing}
-                title="Planning mode for finalization"
-              >
-                <option value="combined">Combined (Elements+Tasks+Budget)</option>
-                <option value="separated">Separated (Elements / Tasks / Budget)</option>
-              </select>
               <button
                 onClick={handleRegenerateQuestions}
                 disabled={isProcessing}
@@ -739,12 +657,6 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
     const phases = phaseResults ?? [];
     const elementCount = ((checkContextQuery as any)?.elements?.length ?? 0) as number;
     const taskCount = ((checkContextQuery as any)?.tasks?.length ?? 0) as number;
-    const activeRunMode =
-      (finalizeCheckpointInfo as any)?.mode === 'combined' || (finalizeCheckpointInfo as any)?.mode === 'separated'
-        ? ((finalizeCheckpointInfo as any).mode as 'separated' | 'combined')
-        : undefined;
-    const uiMode = activeRunMode ?? planningMode;
-    const isCombinedMode = uiMode === 'combined';
     const canRerunPhase = (phaseName: string) => {
       if (phaseName === 'elements') return elementCount > 0;
       if (phaseName === 'tasks') return taskCount > 0;
@@ -764,9 +676,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
       }
       return phase.status;
     };
-    const completionPhases = isCombinedMode
-      ? ['elements', 'pricing', 'audit']
-      : ['elements', 'tasks', 'budget', 'pricing', 'audit'];
+    const completionPhases = ['elements', 'tasks', 'budget', 'pricing', 'audit'];
     const allPhasesComplete =
       progress.stage === 'completed' ||
       completionPhases.every((phaseName) => getPhaseStatus(phaseName) === 'success');
@@ -782,31 +692,15 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
               <p className="text-sm text-slate-500">
                 {allPhasesComplete ? 'All phases completed successfully' : 'Running finalization stages'}
               </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Run mode: {activeRunMode ?? 'not set'} | Selected mode: {planningMode}
-              </p>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white disabled:opacity-50"
-                value={planningMode}
-                onChange={(e) => {
-                  const nextMode = e.target.value as 'separated' | 'combined';
-                  void applyPlanningMode(nextMode, { restartFinalizing: true }).catch(() => undefined);
-                }}
-                disabled={isProcessing}
-                title="Mode for reruns and restarted finalization"
-              >
-                <option value="combined">Combined</option>
-                <option value="separated">Separated</option>
-              </select>
               <button
                 onClick={() => handleRerunPhase('elements', getPhaseStatus('elements'), true)}
                 disabled={isProcessing || !conversationId}
                 className="px-4 py-2 text-sm border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 disabled:opacity-50"
-                title="Restart finalization from elements with selected mode"
+                title="Restart finalization from elements"
               >
-                Apply Mode & Restart
+                Restart Finalization
               </button>
               {allPhasesComplete && (
                 <button
@@ -828,7 +722,7 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
 
               <div className="space-y-4 mb-8">
                 <FinalizePhaseRow
-                  label={isCombinedMode ? 'Planning Elements + Tasks + Budget (Combined)' : 'Planning Elements'}
+                  label="Planning Elements"
                   phase="elements"
                   status={getPhaseStatus('elements')}
                   wasCancelled={Boolean(phases.find(p => p.phase === 'elements' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
@@ -837,30 +731,26 @@ export function ProjectPlanningTab({ projectId }: { projectId: Id<'projects'> })
                   showRerun={canRerunPhase('elements')}
                   disabled={isProcessing}
                 />
-                {!isCombinedMode && (
-                  <FinalizePhaseRow
-                    label="Breaking Down Tasks"
-                    phase="tasks"
-                    status={getPhaseStatus('tasks')}
-                    wasCancelled={Boolean(phases.find(p => p.phase === 'tasks' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
-                    onRerun={() => handleRerunPhase('tasks', getPhaseStatus('tasks'))}
-                    onCancel={() => handleCancelPhase('tasks')}
-                    showRerun={canRerunPhase('tasks')}
-                    disabled={isProcessing}
-                  />
-                )}
-                {!isCombinedMode && (
-                  <FinalizePhaseRow
-                    label="Building Budget"
-                    phase="budget"
-                    status={getPhaseStatus('budget')}
-                    wasCancelled={Boolean(phases.find(p => p.phase === 'budget' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
-                    onRerun={() => handleRerunPhase('budget', getPhaseStatus('budget'))}
-                    onCancel={() => handleCancelPhase('budget')}
-                    showRerun={canRerunPhase('budget')}
-                    disabled={isProcessing}
-                  />
-                )}
+                <FinalizePhaseRow
+                  label="Breaking Down Tasks"
+                  phase="tasks"
+                  status={getPhaseStatus('tasks')}
+                  wasCancelled={Boolean(phases.find(p => p.phase === 'tasks' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
+                  onRerun={() => handleRerunPhase('tasks', getPhaseStatus('tasks'))}
+                  onCancel={() => handleCancelPhase('tasks')}
+                  showRerun={canRerunPhase('tasks')}
+                  disabled={isProcessing}
+                />
+                <FinalizePhaseRow
+                  label="Building Budget"
+                  phase="budget"
+                  status={getPhaseStatus('budget')}
+                  wasCancelled={Boolean(phases.find(p => p.phase === 'budget' && String((p as any).error ?? '').toLowerCase().includes('cancel')))}
+                  onRerun={() => handleRerunPhase('budget', getPhaseStatus('budget'))}
+                  onCancel={() => handleCancelPhase('budget')}
+                  showRerun={canRerunPhase('budget')}
+                  disabled={isProcessing}
+                />
                 <FinalizePhaseRow
                   label="Resolving Pricing"
                   phase="pricing"

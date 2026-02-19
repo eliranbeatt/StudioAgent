@@ -344,7 +344,7 @@ export const submitAnswers = mutation({
 
     const now = Date.now()
     let maxOrderKey: string | undefined
-    const applied: Array<{ qaPairId: Id<'qaPairs'>; status: string }> = []
+    const applied: Array<{ qaPairId: Id<'qaPairs'>; status: string; answerSource?: string }> = []
 
     for (const item of args.answers) {
       const qa = await ctx.db.get(item.qaPairId)
@@ -570,7 +570,7 @@ export const createQuestion = mutation({
     questionKey: v.optional(v.string()),
     questionType: v.optional(v.union(v.literal('text'), v.literal('number'), v.literal('date'), v.literal('single'), v.literal('multi'), v.literal('toggle'))),
     sectionPath: v.optional(v.array(v.string())),
-    blockingLevel: v.optional(v.string()),
+    blockingLevel: v.optional(v.union(v.literal('blocker'), v.literal('helpful'), v.literal('optional'))),
     scopeType: v.optional(v.union(v.literal('global'), v.literal('project'), v.literal('element'), v.literal('task'), v.literal('section'))),
     scopeKey: v.optional(v.string()),
     orderKey: v.optional(v.string()),

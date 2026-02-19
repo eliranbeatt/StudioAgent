@@ -178,6 +178,90 @@ function normalizePlanningQuestionText(question: any): string {
   return String(question?.textHe ?? question?.questionHe ?? question?.questionText ?? '').trim()
 }
 
+function normalizePricingKey(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\u0590-\u05ff]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120)
+}
+
+async function persistPricingEvidenceFromToolResult(args: {
+  ctx: any
+  projectId: any
+  result: any
+  runId?: any
+}) {
+  const recommendations = Array.isArray(args.result?.recommendations)
+    ? args.result.recommendations
+    : Array.isArray(args.result?.output?.recommendations)
+      ? args.result.output.recommendations
+      : []
+
+  for (const rec of recommendations) {
+    const itemHe = String(rec?.itemHe ?? '').trim()
+    const unitPrice = Number(rec?.recommended?.unitPrice)
+    if (!itemHe || !Number.isFinite(unitPrice) || unitPrice <= 0) continue
+
+    try {
+      const upsert = await args.ctx.runMutation(
+        internal.pricingEvidence.upsertWebPriceRunFromRecommendation,
+        {
+          projectId: args.projectId,
+          itemHe,
+          normalizedKey: normalizePricingKey(itemHe),
+          constraints: {
+            region: 'IL',
+            maxDeliveryDays: 7,
+            unitHe: rec?.recommended?.unitHe,
+          },
+          recommended: {
+            unitPrice,
+            currency: rec?.recommended?.currency,
+            unitHe: rec?.recommended?.unitHe,
+            priceBasisHe: rec?.recommended?.priceBasisHe,
+          },
+          confidence: rec?.confidence,
+          assumptionsHe: Array.isArray(rec?.assumptionsHe) ? rec.assumptionsHe : [],
+          candidates: Array.isArray(rec?.candidates) ? rec.candidates : [],
+          summaryHe: rec?.summaryHe,
+        }
+      )
+
+      const lineId = String(rec?.lineRef?.lineId ?? '').trim()
+      if (!lineId) continue
+      await args.ctx.runMutation(api.pricingEvidence.applyRecommendationToMaterialLine, {
+        materialLineId: lineId as any,
+        webPriceRunId: upsert?.runId,
+        itemHe,
+        recommended: {
+          unitPrice,
+          currency: rec?.recommended?.currency,
+          unitHe: rec?.recommended?.unitHe,
+          priceBasisHe: rec?.recommended?.priceBasisHe,
+        },
+        confidence: rec?.confidence,
+        assumptionsHe: Array.isArray(rec?.assumptionsHe) ? rec.assumptionsHe : [],
+        candidates: Array.isArray(rec?.candidates) ? rec.candidates : [],
+        appliedBy: 'agent',
+      })
+    } catch (error: any) {
+      if (args.runId) {
+        await args.ctx.runMutation(internal.sdk.telemetry.logEvent, {
+          runId: args.runId,
+          type: 'pricing_evidence_persist_error',
+          payload: {
+            itemHe,
+            lineId: String(rec?.lineRef?.lineId ?? ''),
+            message: String(error?.message ?? 'unknown'),
+          },
+        })
+      }
+    }
+  }
+}
+
 
 function normalizeQuestionGroups(result: any): Array<{ key: string; labelHe: string; questions: any[] }> {
   const grouped = Array.isArray(result?.questionGroups) ? result.questionGroups : []
@@ -1075,6 +1159,14 @@ export const runFinalizePhase = internalAction({
             toolOutputs: { ...checkpoint.toolOutputs },
             source: toolId,
           })
+          if (phase === 'pricing') {
+            await persistPricingEvidenceFromToolResult({
+              ctx,
+              projectId: args.projectId,
+              result,
+              runId: args.runId,
+            })
+          }
           checkpoint.context = await ctx.runQuery(api.sdk.api.contextGet, {
             projectId: args.projectId,
             packs: ['project', 'elements', 'tasks', 'accounting', 'qa', 'knowledge'],
@@ -1130,6 +1222,12 @@ export const runFinalizePhase = internalAction({
             context: checkpoint.context,
           })
           checkpoint.toolOutputs['pricing.resolve_lines.retry'] = pricingRetry
+          await persistPricingEvidenceFromToolResult({
+            ctx,
+            projectId: args.projectId,
+            result: pricingRetry,
+            runId: args.runId,
+          })
           await ctx.runAction(internal.sdk.api.persistFinalizeStageCheckpoint, {
             projectId: args.projectId,
             conversationId: args.conversationId,

@@ -91,7 +91,13 @@ export const saveProjectContextDoc = internalMutation({
 export const upsertMemoryDoc = internalMutation({
   args: {
     projectId: v.id("projects"),
-    kind: v.string(),
+    kind: v.union(
+      v.literal("SOURCE_DOC"),
+      v.literal("RUNNING_MEMORY"),
+      v.literal("QA_DIGEST"),
+      v.literal("USER_INPUT_LOG"),
+      v.literal("PROJECT_CONTEXT")
+    ),
     title_he: v.optional(v.string()),
     contentMd_he: v.string(),
   },

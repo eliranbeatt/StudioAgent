@@ -61,6 +61,19 @@ const WRITE_PATTERNS = [
 ]
 
 const PLANNING_PATTERNS = [
+  'update plan',
+  'update tasks',
+  'update budget',
+  'update pricing',
+  'update procurement',
+  'search prices',
+  'search online prices',
+  'price research',
+  'web search',
+  'internet',
+  'amazon',
+  'aliexpress',
+  'ebay',
   'build budget',
   'create budget',
   'make budget',
@@ -87,6 +100,15 @@ const PLANNING_PATTERNS = [
   '\u05e6\u05d5\u05e8 \u05ea\u05e7\u05e6\u05d9\u05d1',
   '\u05e6\u05d5\u05e8 \u05d4\u05e6\u05e2\u05ea \u05de\u05d7\u05d9\u05e8',
   '\u05d1\u05e0\u05d4 \u05d4\u05e6\u05e2\u05ea \u05de\u05d7\u05d9\u05e8',
+  '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05d5\u05db\u05e0\u05d9\u05ea',
+  '\u05e2\u05d3\u05db\u05d5\u05df \u05de\u05e9\u05d9\u05de\u05d5\u05ea',
+  '\u05e2\u05d3\u05db\u05d5\u05df \u05ea\u05e7\u05e6\u05d9\u05d1',
+  '\u05e2\u05d3\u05db\u05d5\u05df \u05e8\u05db\u05e9',
+  '\u05e2\u05d3\u05db\u05d5\u05df \u05de\u05d7\u05d9\u05e8\u05d9\u05dd',
+  '\u05d7\u05e4\u05e9',
+  '\u05d0\u05d9\u05e0\u05d8\u05e8\u05e0\u05d8',
+  '\u05d0\u05de\u05d6\u05d5\u05df',
+  '\u05e2\u05dc\u05d9 \u05d0\u05e7\u05e1\u05e4\u05e8\u05e1',
 ]
 
 const EXPLICIT_SKILL_PATTERNS = [
@@ -192,16 +214,18 @@ export function packsForIntent(intent: ChatIntent, userText: string): string[] {
 
 export function allowedToolsForChatIntent(intent: ChatIntent): string[] {
   if (intent === 'chat_smalltalk') return []
-  if (intent === 'project_read_qna') return ['context.get']
+  if (intent === 'project_read_qna') return ['context.get', 'web_search']
   if (intent === 'audit_request') return ['context.get', 'audit.project']
-  if (intent === 'deep_research') return ['context.get', 'think.deep', 'knowledge.summarize_or_update']
+  if (intent === 'deep_research') return ['context.get', 'think.deep', 'knowledge.summarize_or_update', 'web_search']
   if (intent === 'planning_request') {
     return [
       'context.get',
+      'web_search',
       'changeset.compile',
       'plan.elements',
       'plan.tasks',
       'cost.build_budget',
+      'pricing.resolve_lines',
       'quote.generate',
       'clarify.next_questions',
       'knowledge.summarize_or_update',
@@ -210,11 +234,13 @@ export function allowedToolsForChatIntent(intent: ChatIntent): string[] {
   if (intent === 'project_write_change') {
     return [
       'context.get',
+      'web_search',
       'changeset.compile',
       'changeset.apply',
       'plan.elements',
       'plan.tasks',
       'cost.build_budget',
+      'pricing.resolve_lines',
       'quote.generate',
       'clarify.next_questions',
       'knowledge.summarize_or_update',
@@ -225,6 +251,7 @@ export function allowedToolsForChatIntent(intent: ChatIntent): string[] {
   if (intent === 'explicit_skill_run') {
     return [
       'context.get',
+      'web_search',
       'plan.elements',
       'plan.tasks',
       'cost.build_budget',

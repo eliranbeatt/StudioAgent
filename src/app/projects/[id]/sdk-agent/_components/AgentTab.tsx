@@ -148,9 +148,52 @@ function normalizeSuggestions(block: any): SuggestionItem[] {
       labelHe: label,
       actionKey: String(item?.actionKey ?? item?.payload?.action ?? item?.id ?? `action_${i + 1}`),
     })
-    if (out.length >= 3) break
+    if (out.length >= 4) break
   }
   return out
+}
+
+function detectUpdateActionInText(text: string) {
+  const normalized = String(text ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!normalized) return false
+  const compact = normalized.replace(/\s+/g, '')
+  const hasUpdateVerb =
+    compact.includes('\u05e2\u05d3\u05db') ||
+    compact.includes('\u05ea\u05e2\u05d3\u05db') ||
+    compact.includes('\u05dc\u05e2\u05d3\u05db')
+  const hasPlanStem = compact.includes('\u05ea\u05d5\u05db\u05e0')
+  const hasTasksStem = compact.includes('\u05de\u05e9\u05d9\u05de')
+  const hasBudgetStem = compact.includes('\u05ea\u05e7\u05e6\u05d9\u05d1')
+  const hasProcurementStem = compact.includes('\u05e8\u05db\u05e9') || compact.includes('\u05de\u05d7\u05d9\u05e8')
+  return (
+    normalized.includes('update plan') ||
+    normalized.includes('update tasks') ||
+    normalized.includes('update budget') ||
+    normalized.includes('update pricing') ||
+    normalized.includes('update procurement') ||
+    (hasUpdateVerb && (hasPlanStem || hasTasksStem || hasBudgetStem || hasProcurementStem))
+  )
+}
+
+function detectResearchIntentInText(text: string) {
+  const normalized = String(text ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!normalized) return false
+  const compact = normalized.replace(/\s+/g, '')
+  return (
+    normalized.includes('search') ||
+    normalized.includes('web') ||
+    normalized.includes('internet') ||
+    normalized.includes('online') ||
+    normalized.includes('amazon') ||
+    normalized.includes('aliexpress') ||
+    normalized.includes('ebay') ||
+    normalized.includes('google') ||
+    compact.includes('\u05d7\u05e4\u05e9') ||
+    compact.includes('\u05d7\u05d9\u05e4\u05d5\u05e9') ||
+    compact.includes('\u05d1\u05e8\u05e9\u05ea') ||
+    compact.includes('\u05d0\u05d5\u05e0\u05dc\u05d9\u05d9\u05df') ||
+    compact.includes('\u05de\u05d7\u05d9\u05e8')
+  )
 }
 
 function normalizeQuestions(block: any): {
@@ -231,7 +274,10 @@ function shouldForceOrchestratorTurn(message: string, runStatus?: string) {
     ((normalized.includes('create') || normalized.includes('generate') || normalized.includes('build') || normalized.includes('compile') || normalized.includes('make')) &&
       mentionsChangeSet)
 
-  return asksForChangeSet
+  const asksForUpdateAction = detectUpdateActionInText(normalized)
+  const asksForResearchOrPricing = detectResearchIntentInText(normalized)
+
+  return asksForChangeSet || asksForUpdateAction || asksForResearchOrPricing
 }
 
 function extractChangeSetIdFromRunResult(value: any): Id<'changeSets'> | null {
@@ -687,11 +733,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
               <div className='text-sm font-semibold text-slate-700'>Agent Orchestrator</div>
               <div className='text-xs text-slate-500'>Free chat streaming with clarify/preview question blocks</div>
             </div>
-            {activeRun ? (
-              <div className='text-xs text-slate-500'>
-                Run {String(activeRun._id).slice(-6)} - {activeRun.status}
-              </div>
-            ) : null}
+            {activeRun ? <div className='text-xs text-slate-500'>Status: {activeRun.status}</div> : null}
           </div>
 
           <div className='flex-1 overflow-y-auto p-6 space-y-6'>
@@ -793,7 +835,7 @@ export function AgentTab({ projectId }: { projectId: Id<'projects'> }) {
               <div className='mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3'>
                 <div className='text-[11px] font-semibold text-amber-700 uppercase tracking-wider mb-1'>Approval Required</div>
                 <div className='text-sm text-amber-900 mb-2'>
-                  ChangeSet {String(pendingApprovalRun.pendingChangeSetId).slice(-6)} is ready for approval.
+                  \u05de\u05d5\u05e6\u05e2 \u05e2\u05d3\u05db\u05d5\u05df \u05de\u05d5\u05db\u05df \u05dc\u05d0\u05d9\u05e9\u05d5\u05e8.
                 </div>
                 <div className='flex gap-2'>
                   <button
@@ -956,7 +998,15 @@ function buildMessageWithQueuedInput(text: string, state: BlocksV2State) {
     suggestions: {
       actionPrimary: selectedActions[0] ?? null,
       actionSecondary: selectedActions[1] ?? null,
-      changeSetAction: selectedActions.find((id) => id.toLowerCase().includes('changeset') || id === 'create_changeset') ?? null,
+      changeSetAction:
+        selectedActions.find((id) =>
+          id.toLowerCase().includes('changeset') ||
+          id === 'create_changeset' ||
+          id === 'update_plan' ||
+          id === 'update_tasks' ||
+          id === 'update_budget' ||
+          id === 'update_procurement_pricing'
+        ) ?? null,
     },
     sentAt: Date.now(),
   }
@@ -1049,9 +1099,10 @@ function BlockRenderer({
   return (
     <div className='text-xs border border-gray-200 bg-gray-50 p-2 rounded overflow-hidden'>
       <div className='text-[10px] text-gray-400 font-mono mb-1 uppercase'>{block.type}</div>
-      <pre className='whitespace-pre-wrap font-mono text-gray-600'>{JSON.stringify(block, null, 2)}</pre>
+      <div className='text-gray-600'>Block content hidden in chat to avoid exposing internal payload details.</div>
     </div>
   )
 }
+
 
 

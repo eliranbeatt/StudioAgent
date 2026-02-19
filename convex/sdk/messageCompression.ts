@@ -15,10 +15,10 @@ export function summarizeToolResultCompact(toolName: string, result: any): strin
     if (result.knowledgeDoc) parts.push(`KnowledgeDoc: loaded (${String(result.knowledgeDoc).length} chars)`)
     if (Array.isArray(result.recentQA)) parts.push(`QA pairs: ${result.recentQA.length}`)
     if (Array.isArray(result.elements) && result.elements.length > 0) {
-      parts.push(`Element titles: ${result.elements.map((e: any) => `${e.title} [${e.id}]`).join(', ')}`)
+      parts.push(`Element titles: ${result.elements.map((e: any) => `${e.title}`).join(', ')}`)
     }
     if (Array.isArray(result.tasks) && result.tasks.length > 0) {
-      parts.push(`Task titles: ${result.tasks.slice(0, 20).map((t: any) => `${t.title} [${t.id}]`).join(', ')}`)
+      parts.push(`Task titles: ${result.tasks.slice(0, 20).map((t: any) => `${t.title}`).join(', ')}`)
     }
     return parts.join('\n') || JSON.stringify(result)
   }

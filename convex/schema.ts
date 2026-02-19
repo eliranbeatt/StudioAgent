@@ -1814,7 +1814,13 @@ export default defineSchema({
   flowQuestionSetResponses: defineTable({
     runId: v.id("flowRuns"),
     questionSetId: v.id("flowQuestionSets"),
-    intent: v.union(v.literal("answer"), v.literal("ask_more"), v.literal("skip")),
+    intent: v.union(
+      v.literal("answer"),
+      v.literal("ask_more"),
+      v.literal("skip"),
+      v.literal("submit_more"),
+      v.literal("submit_skip")
+    ),
     status: v.union(v.literal("answered"), v.literal("skipped")),
     answersByKey: v.optional(v.record(v.string(), v.string())),
     createdAt: v.number(),

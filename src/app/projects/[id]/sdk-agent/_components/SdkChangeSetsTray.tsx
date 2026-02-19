@@ -64,7 +64,7 @@ export function SdkChangeSetsTray({
                 return (
                   <div key={item._id} className='rounded border border-slate-200 p-2'>
                     <div className='text-xs font-medium text-slate-800'>
-                      {item.reason_he?.trim() || `ChangeSet ${String(item._id).slice(-6)}`}
+                      {item.reason_he?.trim() || 'עדכון מוצע'}
                     </div>
                     <div className='text-[11px] text-slate-500 mt-1'>
                       {item.opsCount} ops - {item.stage}

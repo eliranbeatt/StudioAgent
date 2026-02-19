@@ -384,7 +384,7 @@ export function validateSdkOutput(schemaName: string, payload: unknown) {
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
     // Use .issues (canonical Zod property) with .errors as fallback
-    const issues = parsed.error.issues ?? parsed.error.errors ?? [];
+    const issues = parsed.error.issues ?? [];
     // Log full error details for debugging
     console.error(
       `[validateSdkOutput] Schema "${schemaName}" validation failed.`,

@@ -37,7 +37,6 @@ export default function ProjectLayout({
 
   const navItems = [
     { name: "Overview", href: `/projects/${projectId}/overview`, icon: LayoutDashboard },
-    { name: "Agent v1", href: `/projects/${projectId}/agent`, icon: Bot },
     ...(featureFlags?.ff_sdk_agent_tab
       ? [{ name: "Agent", href: `/projects/${projectId}/sdk-agent`, icon: Bot }]
       : []),
