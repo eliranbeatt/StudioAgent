@@ -1,0 +1,137 @@
+{
+    "snapshotVersion": "2.0.0",
+    "generatedAt": "2026-02-21T15:30:00Z",
+    "source": "convex/schema.ts",
+    "tableCount": 60,
+    "tableGroups": {
+        "core": [
+            "projects",
+            "elements",
+            "tasks",
+            "taskDependencies",
+            "taskChecklistItems"
+        ],
+        "accounting": [
+            "accountingLines",
+            "taskAccountingLinks",
+            "quoteSnapshots"
+        ],
+        "changeset": [
+            "changeSets",
+            "changeSetOps",
+            "auditLogs"
+        ],
+        "agent": [
+            "agentConversations",
+            "agentMessages",
+            "sdkRuns",
+            "sdkRunEvents",
+            "sdkStageArtifacts"
+        ],
+        "knowledge": [
+            "memoryDocs",
+            "qaPairs"
+        ],
+        "skills": [
+            "skills"
+        ],
+        "vendors_pricing": [
+            "vendors",
+            "catalogTemplates",
+            "catalogVariants",
+            "catalogPriceRecords",
+            "pricebook"
+        ],
+        "files": [
+            "files"
+        ],
+        "management": [
+            "users",
+            "customers",
+            "receipts",
+            "inventory",
+            "employees",
+            "laborAllocations",
+            "runbooks",
+            "notifications",
+            "projectTags"
+        ]
+    },
+    "keyRelationships": [
+        {
+            "from": "elements",
+            "to": "projects",
+            "via": "projectId"
+        },
+        {
+            "from": "tasks",
+            "to": "projects",
+            "via": "projectId"
+        },
+        {
+            "from": "tasks",
+            "to": "elements",
+            "via": "elementId"
+        },
+        {
+            "from": "accountingLines",
+            "to": "projects",
+            "via": "projectId"
+        },
+        {
+            "from": "accountingLines",
+            "to": "elements",
+            "via": "elementId"
+        },
+        {
+            "from": "accountingLines",
+            "to": "tasks",
+            "via": "taskId"
+        },
+        {
+            "from": "taskAccountingLinks",
+            "to": "tasks",
+            "via": "taskId"
+        },
+        {
+            "from": "agentConversations",
+            "to": "projects",
+            "via": "projectId"
+        },
+        {
+            "from": "agentMessages",
+            "to": "agentConversations",
+            "via": "conversationId"
+        },
+        {
+            "from": "sdkRuns",
+            "to": "agentConversations",
+            "via": "conversationId"
+        },
+        {
+            "from": "sdkRunEvents",
+            "to": "sdkRuns",
+            "via": "runId"
+        },
+        {
+            "from": "memoryDocs",
+            "to": "projects",
+            "via": "projectId"
+        },
+        {
+            "from": "qaPairs",
+            "to": "projects",
+            "via": "projectId"
+        },
+        {
+            "from": "changeSets",
+            "to": "projects",
+            "via": "projectId"
+        },
+        {
+            "from": "files",
+            "to": "projects",
+            "via": "projectId"
+        }
+    ]
+}

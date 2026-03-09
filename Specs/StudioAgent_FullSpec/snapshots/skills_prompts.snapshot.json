@@ -1,0 +1,6 @@
+{
+  "generatedAt": "2026-02-21T14:51:03.328Z",
+  "included": false,
+  "reason": "Excluded per user scope: only current SDK agent, no legacy skills/flow agents.",
+  "source": "convex/skills/prompts.ts"
+}

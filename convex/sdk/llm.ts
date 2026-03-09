@@ -7,6 +7,7 @@ export async function runJsonCompletion(args: {
   systemPrompt: string;
   userContent: string;
   model: string;
+  reasoningEffort?: string;
   temperature?: number;
   projectId?: string;
   conversationId?: string;
@@ -21,6 +22,7 @@ export async function runJsonCompletion(args: {
     args.ctx,
     {
       model: args.model,
+      reasoning_effort: args.reasoningEffort,
       temperature: args.temperature,
       response_format: { type: 'json_object' },
       messages: [

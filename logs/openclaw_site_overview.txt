@@ -1,0 +1,505 @@
+### Build and Preview Commands (Bash)
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/README.md
+
+Commands to build the project for production and preview the built site. Requires Bun runtime.
+
+```bash
+bun run build
+bun run preview
+```
+
+--------------------------------
+
+### Add Null-Safe Operations for DOM Elements
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/OPTIMIZATIONS_SUMMARY.md
+
+Enhances code robustness by adding null checks before performing DOM operations. This prevents runtime errors that could occur if expected HTML elements are missing or have been renamed, making the application more resilient.
+
+```javascript
+if (osDetected) osDetected.textContent = osLabels[currentOs];
+```
+
+--------------------------------
+
+### Improve Clipboard Copy Handler with Fallback and Feedback
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/OPTIMIZATIONS_SUMMARY.md
+
+Enhances the clipboard copy functionality by adding a fallback mechanism using `execCommand` for older browsers and providing visual feedback for both success and failure. Includes null checks for icon elements and validation for command keys.
+
+```javascript
+let success = false;
+try {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(code);
+    success = true;
+  } else {
+    // Fallback using textarea + execCommand
+    const textArea = document.createElement('textarea');
+    textArea.value = code;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.select();
+    success = document.execCommand('copy');
+    document.body.removeChild(textArea);
+  }
+} catch (err) {
+  console.error('Failed to copy:', err);
+  success = false;
+}
+
+if (success) {
+  // Success feedback (green checkmark)
+} else {
+  // Visual error feedback - brief red flash
+  btn.style.background = 'rgba(239, 68, 68, 0.3)';
+  setTimeout(() => {
+    btn.style.background = '';
+  }, 1000);
+}
+```
+
+--------------------------------
+
+### Cache DOM Queries for Performance in index.astro
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/OPTIMIZATIONS_SUMMARY.md
+
+Improves performance by caching DOM query selectors for frequently accessed elements like command display areas. This avoids repeated DOM traversal on each update, leading to a smoother user experience, especially on less powerful devices.
+
+```javascript
+// Cached query selectors for frequently updated elements
+const pmCmdElements = document.querySelectorAll('.pm-cmd');
+const pmInstallElements = document.querySelectorAll('.pm-install');
+const osCmdElements = document.querySelectorAll('.os-cmd');
+const osCmdHackableElements = document.querySelectorAll('.os-cmd-hackable');
+```
+
+```javascript
+pmCmdElements.forEach(...);  // Uses cached reference
+pmInstallElements.forEach(...);
+osCmdElements.forEach(...);
+osCmdHackableElements.forEach(...);
+```
+
+--------------------------------
+
+### Sort Showcase Items by Quote Length (JavaScript)
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/CLAUDE.md
+
+This JavaScript code snippet demonstrates how to filter and group showcase items based on the length of their 'quote' field. This is used to ensure uniform row heights in a 3-column CSS grid by categorizing items into 'longs', 'meds', and 'shorts'. The filtering logic relies on character counts to define these categories.
+
+```javascript
+// Group by size for uniform row heights
+const longs = sorted.filter(t => t.quote.length > 400);
+const meds = sorted.filter(t => t.quote.length > 200 && t.quote.length <= 400);
+const shorts = sorted.filter(t => t.quote.length <= 200);
+// Alternate: 3 shorts, 3 meds, 3 longs, repeat
+// Keeps high-engagement items near top within each category
+```
+
+--------------------------------
+
+### Remove Dead Code in index.astro
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/OPTIMIZATIONS_SUMMARY.md
+
+Eliminates unused and duplicated code objects (`installCmds`, `osCmds`) from `src/pages/index.astro`. This reduces the overall bundle size and improves code maintainability.
+
+--------------------------------
+
+### Unix Installer Script Options (install.sh)
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Provides a reference for the command-line options available for the main Unix installer script (install.sh). It covers installation methods, version selection, directory configuration, and options to skip interactive prompts or onboarding.
+
+```bash
+# Full usage reference
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --help
+
+# Available options:
+#   --install-method, --method npm|git   Install via npm (default) or git checkout
+#   --npm                                Shortcut for --install-method npm
+#   --git, --github                      Shortcut for --install-method git
+#   --version <version|dist-tag>         npm install version (default: latest)
+#   --beta                               Use beta channel if available
+#   --git-dir, --dir <path>              Git checkout directory (default: ~/openclaw)
+#   --no-git-update                      Skip git pull for existing checkout
+#   --no-onboard                         Skip onboarding wizard
+#   --no-prompt                          Disable interactive prompts (for CI)
+#   --dry-run                            Preview actions without making changes
+#   --verbose                            Enable debug output
+#   --help, -h                           Show help message
+```
+
+--------------------------------
+
+### Core Package Dependencies
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Lists the main dependencies required for the OpenClaw landing page, including Astro, Lucide icons, and Vercel analytics. It also specifies development dependencies like types for js-yaml.
+
+```json
+{
+  "dependencies": {
+    "@astrojs/rss": "^4.0.15",
+    "@lucide/astro": "^0.563.0",
+    "@vercel/analytics": "^1.6.1",
+    "astro": "^5.17.2",
+    "js-yaml": "^4.1.1",
+    "simple-icons": "^16.8.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9"
+  }
+}
+```
+
+--------------------------------
+
+### Development Commands (Bash)
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/README.md
+
+Commands to install dependencies and start the development server for the OpenClaw project. Requires Bun runtime.
+
+```bash
+bun install
+bun run dev
+```
+
+--------------------------------
+
+### Non-Interactive CLI Installer Options (install-cli.sh)
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Details the command-line options for the non-interactive CLI installer script (install-cli.sh). This script is useful for automated deployments and allows specifying installation paths, methods, and versions.
+
+```bash
+# Full usage reference
+curl -fsSL https://openclaw.ai/install-cli.sh | bash -s -- --help
+
+# Available options:
+#   --json                               Emit NDJSON events (machine-readable)
+#   --prefix <path>                      Install prefix (default: ~/.openclaw)
+#   --install-method, --method npm|git   Install method
+#   --npm                                Shortcut for npm install
+#   --git, --github                      Shortcut for git install
+#   --git-dir, --dir <path>              Git checkout directory
+#   --version <ver>                      OpenClaw version (default: latest)
+#   --node-version <ver>                 Node.js version (default: 22.22.0)
+#   --onboard                            Run onboarding after install
+#   --no-onboard                         Skip onboarding (default)
+#   --set-npm-prefix                     Force npm prefix if not writable
+```
+
+--------------------------------
+
+### Fix Easter Egg Null Safety in Astro Component
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/OPTIMIZATIONS_SUMMARY.md
+
+This snippet addresses a potential null safety issue in the `src/pages/index.astro` file. It ensures that the Easter egg functionality does not crash if the target DOM elements (`.lobster-icon` or `#tagline`) are not found. The improvement adds conditional checks before accessing element properties or adding event listeners.
+
+```javascript
+const lobsterIcon = document.querySelector('.lobster-icon');
+const tagline = document.getElementById('tagline');
+
+if (lobsterIcon && tagline) {
+  const originalTagline = tagline.textContent;
+  lobsterIcon.addEventListener('mouseenter', () => { ... });
+}
+```
+
+--------------------------------
+
+### OpenClaw Installer Configuration Environment Variables
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Environment variables that control the behavior of the OpenClaw installers across different platforms. These variables allow customization of installation methods, versions, beta channel access, git operations, onboarding, prompts, and more.
+
+```bash
+# Installation method (npm or git)
+export OPENCLAW_INSTALL_METHOD=npm
+
+# OpenClaw version to install
+export OPENCLAW_VERSION=latest
+
+# Enable beta channel
+export OPENCLAW_BETA=1
+
+# Git checkout directory (for git installs)
+export OPENCLAW_GIT_DIR=~/openclaw
+
+# Skip git pull on existing checkouts
+export OPENCLAW_GIT_UPDATE=0
+
+# Skip onboarding wizard
+export OPENCLAW_NO_ONBOARD=1
+
+# Disable interactive prompts
+export OPENCLAW_NO_PROMPT=1
+
+# Dry run mode
+export OPENCLAW_DRY_RUN=1
+
+# Verbose output
+export OPENCLAW_VERBOSE=1
+
+# npm log level (error, warn, notice)
+export OPENCLAW_NPM_LOGLEVEL=error
+
+# Avoid building sharp against global libvips
+export SHARP_IGNORE_GLOBAL_LIBVIPS=1
+
+# Custom install prefix (CLI installer)
+export OPENCLAW_PREFIX=~/.openclaw
+
+# Custom Node.js version (CLI installer)
+export OPENCLAW_NODE_VERSION=22.22.0
+
+# Custom config path
+export OPENCLAW_CONFIG_PATH=~/.openclaw/openclaw.json
+
+# Profile name for multi-workspace setups
+export OPENCLAW_PROFILE=default
+```
+
+--------------------------------
+
+### Windows CMD Installation for OpenClaw
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+An alternative installation script for Windows Command Prompt users. It downloads and executes the installation script. Supports installing beta versions.
+
+```cmd
+curl -fsSL https://openclaw.ai/install.cmd -o install.cmd && install.cmd && del install.cmd
+
+# With beta tag
+curl -fsSL https://openclaw.ai/install.cmd -o install.cmd && install.cmd --tag beta && del install.cmd
+```
+
+--------------------------------
+
+### Get OpenClaw Version
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+This command retrieves the currently installed version of the OpenClaw CLI. It's a simple way to verify the installation and check for updates.
+
+```bash
+openclaw --version
+```
+
+--------------------------------
+
+### OpenClaw CLI Post-Installation Commands
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Lists essential commands for managing OpenClaw after installation. These include commands for onboarding, health checks, plugin updates, gateway management, and updating the OpenClaw installation itself.
+
+```bash
+# Complete onboarding wizard
+openclaw onboard
+
+# Check installation health and run migrations
+openclaw doctor
+openclaw doctor --non-interactive
+
+# Update all plugins
+openclaw plugins update --all
+
+# Check gateway daemon status
+openclaw daemon status
+openclaw daemon status --json
+
+# Manage gateway service
+openclaw gateway install --force
+openclaw gateway restart
+openclaw gateway status --probe --deep
+
+# Update OpenClaw (git installs)
+openclaw update --restart
+```
+
+--------------------------------
+
+### Local Development Commands for OpenClaw Landing Page
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Commands for managing the local development environment of the OpenClaw landing page, which is built with Astro. Requires Bun for dependency management and running scripts. Includes commands for installing dependencies, starting a development server, building for production, and previewing the production build.
+
+```bash
+# Install dependencies (requires Bun)
+bun install
+
+# Start development server with hot reload
+bun run dev
+# Server runs at http://localhost:4321
+
+# Build for production
+bun run build
+
+# Preview production build
+bun run preview
+```
+
+--------------------------------
+
+### Astro Site Configuration
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Configuration for the Astro static site generator, defining the site URL and build asset directory. This file is essential for building and deploying the OpenClaw website.
+
+```javascript
+// astro.config.mjs
+import { defineConfig } from 'astro/config';
+
+export default defineConfig({
+  site: 'https://openclaw.ai',
+  build: {
+    assets: '_assets'
+  }
+});
+```
+
+--------------------------------
+
+### Fix Deprecated API Usage: navigator.platform to userAgentData
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/OPTIMIZATIONS_SUMMARY.md
+
+Replaces the deprecated `navigator.platform` with the modern `navigator.userAgentData` API for detecting the operating system, with a fallback to `navigator.userAgent` for broader compatibility. This ensures future compatibility with browser updates.
+
+```javascript
+const isWindows = navigator.userAgentData?.platform === 'Windows' ||
+                  navigator.userAgent.toLowerCase().includes('windows');
+```
+
+--------------------------------
+
+### macOS/Linux One-Liner Installation for OpenClaw
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Installs OpenClaw on macOS and Linux systems. It automatically handles Node.js setup and dependency management via npm. Options include installing beta versions, from git, skipping onboarding, dry runs, and specifying versions.
+
+```bash
+# Standard installation with onboarding
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash
+
+# Install beta version
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --beta
+
+# Install from git repository (for developers)
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git
+
+# Skip onboarding wizard
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard
+
+# Dry run (preview what would happen)
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --dry-run
+
+# Specify version
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --version 1.2.3
+```
+
+--------------------------------
+
+### macOS/Linux CLI-Only Installer Script (Bash)
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/README.md
+
+Installs only the OpenClaw CLI on macOS and Linux systems without the onboarding process. Uses curl to download and execute a bash script.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash
+```
+
+--------------------------------
+
+### CLI-Only Non-Interactive Installation for OpenClaw
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+A minimal installer for automated environments like CI/CD pipelines. It installs OpenClaw to a user-local prefix without interactive prompts. Supports JSON output, custom prefixes, specific Node.js versions, and running onboarding post-installation.
+
+```bash
+# Basic non-interactive install
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash
+
+# JSON output for scripting
+curl -fsSL https://openclaw.ai/install-cli.sh | bash -s -- --json
+
+# Custom install prefix
+curl -fsSL https://openclaw.ai/install-cli.sh | bash -s -- --prefix /opt/openclaw
+
+# Specific Node.js version
+curl -fsSL https://openclaw.ai/install-cli.sh | bash -s -- --node-version 22.22.0
+
+# Run onboarding after install
+curl -fsSL https://openclaw.ai/install-cli.sh | bash -s -- --onboard
+```
+
+--------------------------------
+
+### macOS/Linux Installer Script (Bash)
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/README.md
+
+Installs OpenClaw on macOS and Linux systems. It uses curl to download and execute a bash script. This script handles dependency installation and OpenClaw setup.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash
+```
+
+--------------------------------
+
+### Windows PowerShell Installation for OpenClaw
+
+Source: https://context7.com/openclaw/openclaw.ai/llms.txt
+
+Native Windows installation script using PowerShell. It leverages package managers like winget, Chocolatey, or Scoop for Node.js management. Supports installing beta versions, skipping onboarding, installing from git, and performing dry runs.
+
+```powershell
+# Standard installation
+iwr -useb https://openclaw.ai/install.ps1 | iex
+
+# Install beta with parameters
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -Tag beta
+
+# Skip onboarding
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -NoOnboard
+
+# Install from git
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -InstallMethod git
+
+# Dry run
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -DryRun
+```
+
+--------------------------------
+
+### Windows Installer Script (PowerShell)
+
+Source: https://github.com/openclaw/openclaw.ai/blob/main/README.md
+
+Installs OpenClaw on Windows systems. It uses Invoke-WebRequest (iwr) to download and execute a PowerShell script.
+
+```powershell
+iwr -useb https://openclaw.ai/install.ps1 | iex
+```
+
+=== COMPLETE CONTENT === This response contains all available snippets from this library. No additional content exists. Do not make further requests.

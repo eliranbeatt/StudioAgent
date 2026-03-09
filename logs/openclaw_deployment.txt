@@ -1,0 +1,1811 @@
+### Deploy and Verify OpenClaw on Fly.io
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/fly.md
+
+This snippet shows the command to deploy the configured OpenClaw application to Fly.io. It also includes commands to check the deployment status and view logs, which are essential for verifying that the gateway and any integrated services (like Discord) are running correctly.
+
+```bash
+fly deploy
+
+# After deployment, verify:
+fly status
+fly logs
+```
+
+--------------------------------
+
+### Deploy OpenCLaw with Private Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/fly.md
+
+Deploying OpenCLaw using a private configuration file (`fly.private.toml`) ensures that the application is not exposed to public internet scanners. This is a one-time setup for new deployments or can be used to convert existing ones.
+
+```bash
+# Deploy with private config
+fly deploy -c fly.private.toml
+```
+
+```bash
+# List current IPs
+fly ips list -a my-openclaw
+
+# Release public IPs
+fly ips release <public-ipv4> -a my-openclaw
+fly ips release <public-ipv6> -a my-openclaw
+
+# Switch to private config so future deploys don't re-allocate public IPs
+# (remove [http_service] or deploy with the private template)
+fly deploy -c fly.private.toml
+
+# Allocate private-only IPv6
+fly ips allocate-v6 --private -a my-openclaw
+```
+
+```bash
+# Forward local port 3000 to the app
+fly proxy 3000:3000 -a my-openclaw
+
+# Then open http://localhost:3000 in browser
+```
+
+```bash
+# Create WireGuard config (one-time)
+fly wireguard create
+```
+
+```bash
+fly ssh console -a my-openclaw
+```
+
+--------------------------------
+
+### Configure fly.toml for OpenClaw Deployment
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/fly.md
+
+This TOML configuration file defines the settings for deploying OpenClaw on Fly.io. It specifies the app name, build settings, environment variables, process configuration, HTTP service settings, VM size, and volume mounts for persistent storage. Key settings include binding to LAN, allowing unconfigured startup, matching internal port, recommended memory, and persisting state to `/data`.
+
+```toml
+app = "my-openclaw"  # Your app name
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  OPENCLAW_PREFER_PNPM = "1"
+  OPENCLAW_STATE_DIR = "/data"
+  NODE_OPTIONS = "--max-old-space-size=1536"
+
+[processes]
+  app = "node dist/index.js gateway --allow-unconfigured --port 3000 --bind lan"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2048mb"
+
+[mounts]
+  source = "openclaw_data"
+  destination = "/data"
+```
+
+--------------------------------
+
+### Export OpenClaw Configuration and Workspace
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/render.mdx
+
+Provides the URL endpoint to export OpenClaw's configuration and workspace, creating a portable backup.
+
+```url
+https://<your-service>.onrender.com/setup/export
+```
+
+--------------------------------
+
+### Render Blueprint Configuration (render.yaml)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/render.mdx
+
+Defines the OpenClaw service on Render, including runtime, environment variables, and persistent disk. This YAML file configures the entire stack declaratively.
+
+```yaml
+services:
+  - type: web
+    name: openclaw
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: SETUP_PASSWORD
+        sync: false # prompts during deploy
+      - key: OPENCLAW_STATE_DIR
+        value: /data/.openclaw
+      - key: OPENCLAW_WORKSPACE_DIR
+        value: /data/workspace
+      - key: OPENCLAW_GATEWAY_TOKEN
+        generateValue: true # auto-generates a secure token
+    disk:
+      name: openclaw-data
+      mountPath: /data
+      sizeGB: 1
+```
+
+--------------------------------
+
+### Create Fly.io App and Volume
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/fly.md
+
+This snippet demonstrates how to clone the OpenClaw repository, create a new application on Fly.io, and provision a persistent volume for data storage. It requires the `flyctl` CLI to be installed and configured.
+
+```bash
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
+
+# Create a new Fly app (pick your own name)
+fly apps create my-openclaw
+
+# Create a persistent volume (1GB is usually enough)
+fly volumes create openclaw_data --size 1 --region iad
+```
+
+--------------------------------
+
+### Configure Webhook with ngrok Tunnel
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/fly.md
+
+This JSON configuration demonstrates how to set up webhook callbacks for services like Twilio within a private OpenCLaw deployment using an ngrok tunnel. It specifies the provider, tunnel configuration, and security settings to accept forwarded host headers from the tunnel.
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "voice-call": {
+        "enabled": true,
+        "config": {
+          "provider": "twilio",
+          "tunnel": { "provider": "ngrok" },
+          "webhookSecurity": {
+            "allowedHosts": ["example.ngrok.app"]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Run OpenClaw Ansible Playbook
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/ansible.md
+
+Executes the OpenClaw Ansible playbook for installation or configuration updates. This script automates the deployment process. It can be run multiple times as it is idempotent.
+
+```bash
+# Run playbook script
+./run-playbook.sh
+
+# Or run directly (then manually execute /tmp/openclaw-setup.sh after)
+# ansible-playbook playbook.yml --ask-become-pass
+```
+
+--------------------------------
+
+### Automated OpenClaw Installation Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/ansible.md
+
+This script downloads and executes the OpenClaw Ansible installation. It's a one-command solution for deploying OpenClaw with security hardening. Ensure you have `curl` installed.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/openclaw/openclaw-ansible/main/install.sh | bash
+```
+
+--------------------------------
+
+### Signal to Update and Restart Fly Application
+
+Source: https://github.com/openclaw/openclaw/blob/main/AGENTS.md
+
+This command sequence is used to update the 'flawd-bot' application deployed on Fly.io. It first pulls the latest changes from the main branch and then restarts the specified machine.
+
+```bash
+fly ssh console -a flawd-bot -C "bash -lc 'cd /data/clawd/openclaw && git pull --rebase origin main'"
+fly machines restart e825232f34d058 -a flawd-bot
+```
+
+--------------------------------
+
+### Set Fly.io Secrets for OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/fly.md
+
+This command sequence sets essential secrets for the OpenClaw application on Fly.io. It includes generating a random gateway token for non-loopback binding, and placeholders for model provider API keys (Anthropic, OpenAI, Google) and channel tokens (Discord). These secrets are crucial for security and integration.
+
+```bash
+# Required: Gateway token (for non-loopback binding)
+fly secrets set OPENCLAW_GATEWAY_TOKEN=$(openssl rand -hex 32)
+
+# Model provider API keys
+fly secrets set ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional: Other providers
+fly secrets set OPENAI_API_KEY=sk-...
+fly secrets set GOOGLE_API_KEY=...
+
+# Channel tokens
+fly secrets set DISCORD_BOT_TOKEN=MTQ...
+```
+
+--------------------------------
+
+### Apply setupCommand Changes
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+Shows how to recreate sandbox containers after modifying the `setupCommand`. This ensures that any changes to the agent's setup process are reflected in the newly created containers. It can be applied to all containers or just a specific agent.
+
+```bash
+openclaw sandbox recreate --all
+# or just one agent:
+openclaw sandbox recreate --agent family
+```
+
+--------------------------------
+
+### OpenClaw Onboarding Wizard
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Initiates the OpenClaw onboarding process, which can include setting up the gateway and building UI assets. The `--install-daemon` flag is used to configure OpenClaw as a background service. This command is typically run after installation.
+
+```bash
+openclaw onboard --install-daemon
+
+```
+
+```bash
+pnpm openclaw onboard
+
+```
+
+--------------------------------
+
+### Skip Onboarding with PowerShell Install
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs Openclaw using PowerShell while skipping the onboarding process. This is useful for automated deployments where onboarding is not required.
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -NoOnboard
+```
+
+--------------------------------
+
+### Install OpenClaw Gateway with Force Option
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+This bash command forces the reinstallation of the OpenClaw Gateway service. It is useful for resolving configuration mismatches between the CLI and the running service, especially when dealing with profiles or state directories.
+
+```bash
+openclaw gateway install --force
+```
+
+--------------------------------
+
+### Override acpx Plugin Command and Version (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/acp-agents.md
+
+Configuration to override the default command path and expected version for the acpx plugin. This is useful for custom builds or specific deployment scenarios.
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "acpx": {
+        "enabled": true,
+        "config": {
+          "command": "../acpx/dist/cli.js",
+          "expectedVersion": "any"
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Install OpenClaw Gateway Service for a Profile
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+This bash command installs the OpenClaw Gateway as a service for a specific profile. This ensures the gateway runs with the correct configuration and state associated with that profile.
+
+```bash
+openclaw --profile <name> gateway install
+```
+
+--------------------------------
+
+### Uninstall OpenClaw CLI (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/uninstall.md
+
+Executes the built-in OpenClaw uninstaller. The `--all`, `--yes`, and `--non-interactive` flags automate the process, making it suitable for scripting or automated deployments.
+
+```bash
+openclaw uninstall
+
+```
+
+```bash
+openclaw uninstall --all --yes --non-interactive
+
+```
+
+```bash
+npx -y openclaw uninstall --all --yes --non-interactive
+
+```
+
+--------------------------------
+
+### Checking Device Auth v2 Migration for Gateway Connectivity
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/troubleshooting.md
+
+This command sequence is used to check the Openclaw version and gateway status, particularly relevant when encountering nonce or signature errors related to device authentication. It helps in verifying the migration status for Device Auth v2. If nonce/signature errors are present in logs, it's crucial to update the connecting client and ensure it correctly handles the challenge-response device authentication flow, including waiting for `connect.challenge`, signing the bound payload, and sending the `connect.params.device.nonce` with the correct nonce.
+
+```bash
+openclaw --version
+openclaw doctor
+openclaw gateway status
+```
+
+--------------------------------
+
+### Publish a Single Skill using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command publishes a single skill to the ClawHub registry. It requires the path to the skill directory and specifies the slug, name, version, and tags for the skill.
+
+```bash
+clawhub publish ./my-skill --slug my-skill --name "My Skill" --version 1.0.0 --tags latest
+```
+
+--------------------------------
+
+### Configure OpenClaw with Venice API Key (Non-interactive)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/venice.md
+
+Automate the Venice AI setup in OpenClaw using the 'openclaw onboard' command with non-interactive flags. This is useful for scripting and automated deployments.
+
+```bash
+openclaw onboard --non-interactive \
+  --auth-choice venice-api-key \
+  --venice-api-key "vapi_xxxxxxxxxxxx"
+```
+
+--------------------------------
+
+### Move, Copy, and Delete Emails (Himalaya)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/himalaya/SKILL.md
+
+Commands for managing the lifecycle of emails, including moving them to different folders, copying them, and deleting them from the mailbox.
+
+```bash
+himalaya message move 42 "Archive"
+himalaya message copy 42 "Important"
+himalaya message delete 42
+```
+
+--------------------------------
+
+### Minimal WhatsApp Policy (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/whatsapp.md
+
+A minimal configuration pattern for the WhatsApp channel, recommended for dedicated number deployments. It sets the DM policy to 'allowlist' and specifies allowed sender numbers.
+
+```json5
+{
+  channels: {
+    whatsapp: {
+      dmPolicy: "allowlist",
+      allowFrom: ["+15551234567"],
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Setup and Onboarding
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Commands and options for initializing the Openclaw configuration and workspace, including an interactive wizard.
+
+```APIDOC
+## Setup and Onboarding
+
+### `setup` Command
+
+Initializes configuration and workspace.
+
+#### Options
+- `--workspace <dir>`: Specifies the agent workspace path. Defaults to `~/.openclaw/workspace`.
+- `--wizard`: Runs the interactive onboarding wizard.
+- `--non-interactive`: Runs the wizard without prompts.
+- `--mode <local|remote>`: Sets the wizard mode to local or remote.
+- `--remote-url <url>`: Specifies the remote Gateway URL.
+- `--remote-token <token>`: Provides a token for the remote Gateway.
+
+**Note**: The wizard automatically runs if any wizard-related flags are present (e.g., `--non-interactive`, `--mode`, `--remote-url`, `--remote-token`).
+
+### `onboard` Command
+
+An interactive wizard to set up the gateway, workspace, and skills.
+
+#### Options
+- `--workspace <dir>`: Specifies the agent workspace path.
+- `--reset`: Resets configuration, credentials, and sessions before starting the wizard.
+- `--reset-scope <config|config+creds+sessions|full>`: Defines the scope of the reset. Defaults to `config+creds+sessions`. `full` also removes the workspace.
+- `--non-interactive`: Runs the wizard without prompts.
+- `--mode <local|remote>`: Sets the wizard mode to local or remote.
+- `--flow <quickstart|advanced|manual>`: Specifies the onboarding flow. `manual` is an alias for `advanced`.
+- `--auth-choice <setup-token|token|chutes|openai-codex|openai-api-key|openrouter-api-key|ai-gateway-api-key|moonshot-api-key|moonshot-api-key-cn|kimi-code-api-key|synthetic-api-key|venice-api-key|gemini-api-key|zai-api-key|mistral-api-key|apiKey|minimax-api|minimax-api-lightning|opencode-zen|custom-api-key|skip>`: Selects the authentication method.
+- `--token-provider <id>`: (Non-interactive) Specifies the token provider ID when using `--auth-choice token`.
+- `--token <token>`: (Non-interactive) Provides the token when using `--auth-choice token`.
+- `--token-profile-id <id>`: (Non-interactive) Sets the token profile ID. Defaults to `<provider>:manual`.
+- `--token-expires-in <duration>`: (Non-interactive) Sets the token expiration duration (e.g., `365d`, `12h`).
+- `--secret-input-mode <plaintext|ref>`: Sets the mode for secret input. Defaults to `plaintext`. `ref` stores provider default environment references instead of plaintext keys.
+- `--anthropic-api-key <key>`: Sets the Anthropic API key.
+- `--openai-api-key <key>`: Sets the OpenAI API key.
+- `--mistral-api-key <key>`: Sets the Mistral API key.
+- `--openrouter-api-key <key>`: Sets the OpenRouter API key.
+- `--ai-gateway-api-key <key>`: Sets the AI Gateway API key.
+- `--moonshot-api-key <key>`: Sets the Moonshot API key.
+- `--kimi-code-api-key <key>`: Sets the Kimi Code API key.
+- `--gemini-api-key <key>`: Sets the Gemini API key.
+- `--zai-api-key <key>`: Sets the Zai API key.
+- `--minimax-api-key <key>`: Sets the Minimax API key.
+- `--opencode-zen-api-key <key>`: Sets the OpenCodeZen API key.
+- `--custom-base-url <url>`: (Non-interactive) Sets the base URL for custom API providers when using `--auth-choice custom-api-key`.
+- `--custom-model-id <id>`: (Non-interactive) Sets the model ID for custom API providers when using `--auth-choice custom-api-key`.
+- `--custom-api-key <key>`: (Non-interactive, optional) Sets the API key for custom providers. Falls back to `CUSTOM_API_KEY` environment variable if omitted.
+- `--custom-provider-id <id>`: (Non-interactive, optional) Sets a custom provider ID.
+- `--custom-compatibility <openai|anthropic>`: (Non-interactive, optional) Sets the compatibility mode for custom providers. Defaults to `openai`.
+- `--gateway-port <port>`: Sets the Gateway port.
+- `--gateway-bind <loopback|lan|tailnet|auto|custom>`: Sets the Gateway bind address.
+- `--gateway-auth <token|password>`: Sets the Gateway authentication method.
+- `--gateway-token <token>`: Sets the Gateway authentication token.
+- `--gateway-token-ref-env <name>`: (Non-interactive) Stores the gateway auth token as an environment SecretRef. Requires the environment variable to be set. Cannot be combined with `--gateway-token`.
+- `--gateway-password <password>`: Sets the Gateway authentication password.
+- `--remote-url <url>`: Specifies the remote Gateway URL.
+- `--remote-token <token>`: Provides a token for the remote Gateway.
+- `--tailscale <off|serve|funnel>`: Configures Tailscale integration.
+- `--tailscale-reset-on-exit`: Resets Tailscale configuration on exit.
+- `--install-daemon`: Installs the Gateway daemon.
+- `--no-install-daemon` or `--skip-daemon`: Skips daemon installation.
+- `--daemon-runtime <node|bun>`: Sets the runtime for the daemon. `bun` is not recommended for Gateway runtime.
+- `--skip-channels`: Skips channel setup.
+- `--skip-skills`: Skips skill setup.
+- `--skip-health`: Skips health check setup.
+- `--skip-ui`: Skips UI setup.
+- `--node-manager <npm|pnpm|bun>`: Sets the Node.js package manager. `pnpm` is recommended; `bun` is not recommended for Gateway runtime.
+- `--json`: Outputs results in JSON format.
+```
+
+--------------------------------
+
+### Sync and Backup Multiple Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command scans local skill directories and uploads any new or updated skills to the ClawHub registry. The `--all` flag ensures that all found skills are uploaded without prompts.
+
+```bash
+clawhub sync --all
+```
+
+--------------------------------
+
+### Set HSTS Header for Proxy TLS Termination
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/trusted-proxy-auth.md
+
+This example shows how to set the Strict-Transport-Security (HSTS) header for a domain when your reverse proxy handles TLS termination. This is recommended for internet-facing deployments to enforce HTTPS.
+
+```text
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+```
+
+--------------------------------
+
+### Apply systemd Configuration Changes
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/raspberry-pi.md
+
+These commands are used to apply systemd configuration changes after editing the service drop-in file. `daemon-reload` reloads the systemd manager configuration, and `restart openclaw` restarts the OpenClaw service to apply the new settings.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart openclaw
+```
+
+--------------------------------
+
+### Configure API-based Language Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/raspberry-pi.md
+
+This JSON configuration specifies the default language models to be used by OpenClaw agents. It prioritizes 'anthropic/claude-sonnet-4-20250514' as the primary model and 'openai/gpt-4o-mini' as a fallback, suitable for cloud-based model execution rather than local LLM deployment on a Pi.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-20250514",
+        "fallbacks": ["openai/gpt-4o-mini"]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Install Playwright Browsers in Docker
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Command to install necessary Playwright browsers within a Docker environment. This is part of enabling full features when using the default security-first Docker image.
+
+```bash
+node /app/node_modules/playwright-core/cli.js install chromium
+```
+
+--------------------------------
+
+### Manage Gateway Device Pairings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+The `devices` command handles the management of gateway device pairing entries and per-role device tokens. It allows listing, approving, rejecting, removing, and clearing device pairings, as well as rotating and revoking device tokens for specific roles and scopes.
+
+```bash
+openclaw devices list
+openclaw devices list --json
+openclaw devices approve [requestId]
+openclaw devices reject <requestId>
+openclaw devices remove <deviceId>
+openclaw devices clear --yes
+openclaw devices clear --pending
+openclaw devices rotate --device <id> --role <role>
+openclaw devices revoke --device <id> --role <role>
+```
+
+--------------------------------
+
+### Gateway Control UI Configuration Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/web/control-ui.md
+
+A JSON configuration snippet demonstrating how to set the `allowedOrigins` for the Gateway's Control UI. This is crucial for non-loopback deployments and remote dev setups to permit connections from specific origins.
+
+```json5
+{
+  gateway: {
+    controlUi: {
+      allowedOrigins: ["http://localhost:5173"],
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Build and Launch OpenClaw Docker Compose Services
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/gcp.md
+
+Commands to build the Docker images defined in `docker-compose.yml` and then start the `openclaw-gateway` service in detached mode. It also includes a troubleshooting tip for build failures due to insufficient memory.
+
+```bash
+docker compose build
+docker compose up -d openclaw-gateway
+```
+
+--------------------------------
+
+### Deploy iMessage Channel with Remote Mac via SSH
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/imessage.md
+
+Set up the iMessage channel to run on a remote Mac, accessible via SSH. This configuration specifies the path to the iMessage CLI tool, the remote host, and attachment settings.
+
+```json5
+{
+  channels: {
+    imessage: {
+      enabled: true,
+      cliPath: "~/.openclaw/scripts/imsg-ssh",
+      remoteHost: "bot@mac-mini.tailnet-1234.ts.net",
+      includeAttachments: true,
+      dbPath: "/Users/bot/Library/Messages/chat.db"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Nginx Reverse Proxy Configuration for OpenClaw (Nginx)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This example shows the correct Nginx configuration directives for setting `X-Forwarded-For` and `X-Real-IP` headers when OpenClaw is deployed behind an Nginx reverse proxy. Proper header management is crucial for accurate client IP detection by the Gateway.
+
+```nginx
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Real-IP $remote_addr;
+```
+
+--------------------------------
+
+### Openclaw Onboarding: Non-interactive Mode with Synthetic API Key
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Automates Openclaw onboarding using a local mode and a synthetic API key. It sets the gateway port and bind address for local configuration.
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice synthetic-api-key \
+  --synthetic-api-key "$SYNTHETIC_API_KEY" \
+  --gateway-port 18789 \
+  --gateway-bind loopback
+```
+
+--------------------------------
+
+### Manage Gateway Launchd Service (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/child-process.md
+
+Commands to control the Gateway's launchd service on macOS. 'kickstart' forces a restart, while 'bootout' stops the service. These commands are essential for managing the Gateway's lifecycle, especially during development or troubleshooting.
+
+```bash
+launchctl kickstart -k gui/$UID/ai.openclaw.gateway
+launchctl bootout gui/$UID/ai.openclaw.gateway
+```
+
+--------------------------------
+
+### Apply Openclaw Secrets Plan
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/secrets.md
+
+Applies a previously generated Openclaw secrets plan. The `--dry-run` flag simulates the apply process without making changes, and the `--json` flag outputs the result in JSON format. This command is used to deploy secrets and update configuration files.
+
+```bash
+openclaw secrets apply --from /tmp/openclaw-secrets-plan.json
+openclaw secrets apply --from /tmp/openclaw-secrets-plan.json --dry-run
+openclaw secrets apply --from /tmp/openclaw-secrets-plan.json --json
+```
+
+--------------------------------
+
+### Install OpenClaw Skipping Onboarding (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+This command installs OpenClaw while skipping the initial onboarding process. The `--no-onboard` flag is passed to the installation script, preventing any interactive onboarding steps after the installation is complete. This is useful for automated or headless installations.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-onboard
+```
+
+--------------------------------
+
+### Batch Pull Request Reviews with Codex
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/coding-agent/SKILL.md
+
+This section details how to perform batch pull request reviews in parallel using Codex. It involves fetching all PR refs, deploying multiple Codex instances (one per PR) in the background with PTY enabled, and then monitoring progress. Finally, results are posted to GitHub.
+
+```bash
+# Fetch all PR refs first
+git fetch origin '+refs/pull/*/head:refs/remotes/origin/pr/*'
+
+# Deploy the army - one Codex per PR (all with PTY!)
+bash pty:true workdir:~/project background:true command:"codex exec 'Review PR #86. git diff origin/main...origin/pr/86'"
+bash pty:true workdir:~/project background:true command:"codex exec 'Review PR #87. git diff origin/main...origin/pr/87'"
+
+# Monitor all
+process action:list
+
+# Post results to GitHub
+gh pr comment <PR#> --body "<review content>"
+```
+
+--------------------------------
+
+### Run Live CLI Backend Smoke Test with OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+This command executes live smoke tests for the Gateway and agent pipeline using a local CLI backend. It requires specific environment variables to be set for enabling the live test and CLI backend, and optionally allows overriding default model, command, arguments, and environment variable clearing.
+
+```bash
+OPENCLAW_LIVE_CLI_BACKEND=1 \
+  OPENCLAW_LIVE_CLI_BACKEND_MODEL="claude-cli/claude-sonnet-4-6" \
+  pnpm test:live src/gateway/gateway-cli-backend.live.test.ts
+```
+
+--------------------------------
+
+### Manage Devices and Nodes via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/index.md
+
+CLI commands for listing, approving, and rejecting device pairings, as well as checking the status and describing nodes. These commands are essential for managing node connections and ensuring they are properly paired with the gateway.
+
+```bash
+openclaw devices list
+openclaw devices approve <requestId>
+openclaw devices reject <requestId>
+openclaw nodes status
+openclaw nodes describe --node <idOrNameOrIp>
+```
+
+--------------------------------
+
+### OpenClaw Onboarding for Synthetic API Key
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/synthetic.md
+
+This command initiates the OpenClaw onboarding process, specifically for setting up authentication using a Synthetic API key. It requires the `SYNTHETIC_API_KEY` environment variable to be set.
+
+```bash
+openclaw onboard --auth-choice synthetic-api-key
+```
+
+--------------------------------
+
+### Manage OpenCLAW Device Pairing and Execution Approvals
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/troubleshooting.md
+
+Verify and manage the pairing of OpenCLAW nodes with the gateway and control execution approvals for specific commands. This section covers checking device lists, node status, and configuring approval allowlists.
+
+```bash
+openclaw devices list
+openclaw nodes status
+openclaw approvals get --node <idOrNameOrIp>
+openclaw approvals allowlist add --node <idOrNameOrIp> "/usr/bin/uname"
+```
+
+--------------------------------
+
+### Onboard to Together AI with API Key (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/together.md
+
+This command initiates the onboarding process for Together AI using an API key. It prompts the user to store the API key for the Gateway. This is the recommended method for setting up authentication.
+
+```bash
+openclaw onboard --auth-choice together-api-key
+```
+
+--------------------------------
+
+### Onboard and Install OpenClaw Daemon
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/index.md
+
+Executes the OpenClaw onboarding process and installs it as a system daemon. This command simplifies the setup by automating initial configuration and service management. It's a crucial step for running OpenClaw in the background.
+
+```bash
+openclaw onboard --install-daemon
+```
+
+--------------------------------
+
+### OpenClaw CLI Operations Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/start/openclaw.md
+
+A collection of bash commands for operating and checking the status of the OpenClaw application. These commands provide insights into local status, deep diagnostics, and gateway health.
+
+```bash
+openclaw status          # local status (creds, sessions, queued events)
+openclaw status --all    # full diagnosis (read-only, pasteable)
+openclaw status --deep   # adds gateway health probes (Telegram + Discord)
+openclaw health --json   # gateway health snapshot (WS)
+```
+
+--------------------------------
+
+### CLI Workflow for Node Pairing Management
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/pairing.md
+
+This snippet demonstrates the command-line interface commands for managing node pairing. It includes operations for listing pending requests, approving or rejecting them, checking node status, and renaming nodes. These commands are essential for headless operations.
+
+```bash
+openclaw nodes pending
+openclaw nodes approve <requestId>
+openclaw nodes reject <requestId>
+openclaw nodes status
+openclaw nodes rename --node <id|name|ip> --name "Living Room iPad"
+```
+
+--------------------------------
+
+### Bootstrap OpenClaw Setup
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/start/setup.md
+
+Initializes the OpenClaw environment by setting up necessary configurations and directories. This command is used for both initial setup and potentially re-running setup steps.
+
+```bash
+openclaw setup
+```
+
+--------------------------------
+
+### Approve DM Pairing Requests
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+The `pairing` command is used to manage Direct Message (DM) pairing requests across different channels. It supports listing pending requests, approving them with a code, and notifying users. Options include specifying channels and accounts.
+
+```bash
+openclaw pairing list
+openclaw pairing list --channel whatsapp
+openclaw pairing approve <channel> <code>
+openclaw pairing approve --channel whatsapp --account personal <code> --notify
+```
+
+--------------------------------
+
+### Manage Tailscale Funnel and Serve Status (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/googlechat.md
+
+Commands to check the current status of Tailscale Serve and Tailscale Funnel configurations. Useful for verifying that services are running as expected.
+
+```bash
+tailscale serve status
+tailscale funnel status
+```
+
+--------------------------------
+
+### Openclaw Onboarding: Non-interactive Mode with OpenCode Zen
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Automates Openclaw onboarding using a local mode and OpenCode Zen authentication. It configures the gateway port and bind address, requiring an API key.
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice opencode-zen \
+  --opencode-zen-api-key "$OPENCODE_API_KEY" \
+  --gateway-port 18789 \
+  --gateway-bind loopback
+```
+
+--------------------------------
+
+### Manage Gateway Service Lifecycle
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/gateway.md
+
+Commands for installing, starting, stopping, restarting, and uninstalling the Gateway service. These commands facilitate the management of the gateway's operational state. Options like `--port`, `--runtime`, and `--token` are available for installation.
+
+```bash
+openclaw gateway install
+openclaw gateway start
+openclaw gateway stop
+openclaw gateway restart
+openclaw gateway uninstall
+```
+
+--------------------------------
+
+### OpenClaw Live Test: Comprehensive Model Matrix (Tools + Image)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+This command executes a comprehensive live smoke test covering a wide range of models, including support for tool calling and image inputs. It's designed to ensure the gateway functions correctly with diverse AI providers and capabilities.
+
+```bash
+OPENCLAW_LIVE_GATEWAY_MODELS="openai/gpt-5.2,openai-codex/gpt-5.4,anthropic/claude-opus-4-6,google/gemini-3-pro-preview,google/gemini-3-flash-preview,google-antigravity/claude-opus-4-6-thinking,google-antigravity/gemini-3-flash,zai/glm-4.7,minimax/minimax-m2.5" pnpm test:live src/gateway/gateway-models.profiles.live.test.ts
+```
+
+--------------------------------
+
+### Fetch and Approve UI Pairing Token (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+These commands are used to resolve 'unauthorized' or 'disconnected (1008): pairing required' errors. They fetch a new dashboard link, list devices, and approve a pending pairing request using the request ID.
+
+```bash
+docker compose run --rm openclaw-cli dashboard --no-open
+docker compose run --rm openclaw-cli devices list
+docker compose run --rm openclaw-cli devices approve <requestId>
+```
+
+--------------------------------
+
+### OpenCLAW Gateway Operational Checks
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/index.md
+
+Lists command-line tools for checking the operational status of the OpenCLAW Gateway and related components. These commands help verify liveness, readiness, and channel status, which are crucial for monitoring the system's health.
+
+```bash
+openclaw gateway status
+openclaw channels status --probe
+openclaw health
+```
+
+--------------------------------
+
+### Openclaw Onboarding: Non-interactive Mode with Gateway Token Reference
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Configures Openclaw onboarding in non-interactive mode using a gateway token stored in an environment variable. This method skips direct authentication and uses the token for gateway access.
+
+```bash
+export OPENCLAW_GATEWAY_TOKEN="your-token"
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice skip \
+  --gateway-auth token \
+  --gateway-token-ref-env OPENCLAW_GATEWAY_TOKEN
+```
+
+--------------------------------
+
+### Setup CoreDNS for Wide-Area Bonjour
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/bonjour.md
+
+This bash command installs and configures CoreDNS on the gateway host to serve DNS-SD records for a chosen domain over Tailscale. It listens on port 53 on Tailscale interfaces and uses a specified database file for records.
+
+```bash
+openclaw dns setup --apply
+```
+
+--------------------------------
+
+### Enable boot-md Hook
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/hooks.md
+
+Command to enable the boot-md hook in Openclaw. This hook runs the BOOT.md file when the gateway starts.
+
+```bash
+openclaw hooks enable boot-md
+```
+
+--------------------------------
+
+### Openclaw Onboarding: Non-interactive Mode with Moonshot API Key
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Automates Openclaw onboarding using a local mode and Moonshot API key for authentication. It configures the gateway port and bind address for local operation.
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice moonshot-api-key \
+  --moonshot-api-key "$MOONSHOT_API_KEY" \
+  --gateway-port 18789 \
+  --gateway-bind loopback
+```
+
+--------------------------------
+
+### OpenClaw Pairing Approval Command
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Approves a pending pairing request for a specific channel and optionally an account. This command is used when the bot is in pairing mode and an unknown sender needs to be granted access.
+
+```bash
+openclaw pairing approve --channel <channel> [--account <id>] <code>
+```
+
+--------------------------------
+
+### Onboard to ZAI Provider using CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/glm.md
+
+This command initiates the onboarding process for the ZAI provider within OpenClaw, which is necessary for accessing GLM models. It prompts for authentication details.
+
+```bash
+openclaw onboard --auth-choice zai-api-key
+```
+
+--------------------------------
+
+### Install Gateway Service (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/windows.md
+
+Commands to install the OpenClaw gateway service within a WSL2 environment. This can be done using the 'openclaw onboard' command with the '--install-daemon' flag, or directly with 'openclaw gateway install'. 'openclaw configure' can also be used to select the Gateway service.
+
+```bash
+openclaw onboard --install-daemon
+```
+
+```bash
+openclaw gateway install
+```
+
+```bash
+openclaw configure
+```
+
+--------------------------------
+
+### Node Management: Status and Listing
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Commands to check the status and list connected device nodes. This includes filtering by connection time and describing individual nodes. Essential for managing distributed testing environments.
+
+```bash
+openclaw nodes status --connected
+openclaw nodes list --connected --last-connected "24h"
+openclaw nodes describe --node <id|name|ip>
+```
+
+--------------------------------
+
+### Update All Installed Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command updates all skills that have been previously installed and have newer versions available in the registry. It's a convenient way to keep all your skills up-to-date.
+
+```bash
+clawhub update --all
+```
+
+--------------------------------
+
+### Install OpenClaw using Git Method (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+This command installs OpenClaw using the Git method. The `--install-method git` flag (or its alias `--git`) instructs the script to clone the repository directly, which can be useful for development or when specific Git versions are required. This method might be preferred if you need to work with the source code directly.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --install-method git
+```
+
+--------------------------------
+
+### Installer Specification for Skills (Markdown)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/skills.md
+
+Specifies installation methods for skills using metadata, including package manager details like Homebrew formulas or download URLs. Supports platform-specific installations.
+
+```markdown
+---
+name: gemini
+description: Use Gemini CLI for coding assistance and Google search lookups.
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "??",
+        "requires": { "bins": ["gemini"] },
+        "install":
+          [
+            {
+              "id": "brew",
+              "kind": "brew",
+              "formula": "gemini-cli",
+              "bins": ["gemini"],
+              "label": "Install Gemini CLI (brew)",
+            },
+          ],
+      },
+  }
+---
+
+```
+
+--------------------------------
+
+### Node Management: Command Execution
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Execute arbitrary commands on connected nodes. Supports specifying the working directory and sending notifications. Enables remote execution of tasks and scripts.
+
+```bash
+openclaw nodes run --node <id> --cwd /tmp "ls -la"
+openclaw nodes notify --node <id> --title "Alert" --body "Task completed"
+```
+
+--------------------------------
+
+### Run a Sequential Pipeline with Approvals (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/lobster.md
+
+This example demonstrates how to execute a sequence of commands using the `exec` tool within Lobster, piping the output of one command to the next. It includes an `approve` step to halt the pipeline for manual review before proceeding, with a preview limit and a prompt. The `timeoutMs` specifies the maximum execution time for the pipeline.
+
+```bash
+inbox list --json
+inbox categorize --json
+inbox apply --json
+```
+
+```json
+{
+  "action": "run",
+  "pipeline": "exec --json --shell 'inbox list --json' | exec --stdin json --shell 'inbox categorize --json' | exec --stdin json --shell 'inbox apply --json' | approve --preview-from-stdin --limit 5 --prompt 'Apply changes?'",
+  "timeoutMs": 30000
+}
+```
+
+--------------------------------
+
+### Shorthand Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/CLAUDE.md
+
+Provides a shorthand command for synchronizing the working tree, including committing changes and rebasing.
+
+```APIDOC
+## Shorthand Commands
+
+### Sync Command
+- `sync`: If the working tree is dirty, commit all changes with a sensible Conventional Commit message, then `git pull --rebase`. If rebase conflicts and cannot resolve, stop. Otherwise, `git push`.
+```
+
+--------------------------------
+
+### Install Dependencies and Watch Gateway
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/start/setup.md
+
+Installs project dependencies using pnpm and starts the Gateway in watch mode. This command is essential for the bleeding-edge development workflow, enabling hot reloading on TypeScript changes.
+
+```bash
+pnpm install
+pnpm gateway:watch
+```
+
+--------------------------------
+
+### Non-interactive Onboarding with Vercel AI Gateway (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/vercel-ai-gateway.md
+
+This bash command performs a non-interactive OpenClaw onboarding, setting the mode to local, choosing AI Gateway API key authentication, and providing the API key directly as an argument. This is useful for automated setups.
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice ai-gateway-api-key \
+  --ai-gateway-api-key "$AI_GATEWAY_API_KEY"
+```
+
+--------------------------------
+
+### Openclaw Onboarding: Non-interactive Mode with Gemini API Key
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Automates Openclaw onboarding using a local mode and Gemini API key for authentication. It sets up the gateway with a specified port and bind address.
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice gemini-api-key \
+  --gemini-api-key "$GEMINI_API_KEY" \
+  --gateway-port 18789 \
+  --gateway-bind loopback
+```
+
+--------------------------------
+
+### Build and Launch Openclaw Docker Containers
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/hetzner.md
+
+Commands to build the Docker images defined in the `docker-compose.yml` file and then launch the services in detached mode. It also includes commands to verify the installation of specific binaries within the running gateway container.
+
+```bash
+docker compose build
+docker compose up -d openclaw-gateway
+```
+
+```bash
+docker compose exec openclaw-gateway which gog
+docker compose exec openclaw-gateway which goplaces
+docker compose exec openclaw-gateway which wacli
+```
+
+--------------------------------
+
+### Install OpenClaw Browser Extension (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/browser.md
+
+Command to install the OpenClaw browser extension. This is typically done in development or for unpacked extensions. It requires enabling developer mode in Chrome and loading the unpacked extension.
+
+```bash
+openclaw browser extension install
+```
+
+--------------------------------
+
+### OpenClaw CLI: Manage Auth Profile Order
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Commands to manage the authentication profile rotation order for a given provider. This allows specifying a default profile, an explicit order of fallback profiles within a provider, or clearing any custom order to revert to the system's default or round-robin behavior. These commands do not store secrets but configure how OpenClaw selects credentials.
+
+```bash
+openclaw models auth order get --provider anthropic
+
+openclaw models auth order set --provider anthropic anthropic:default
+
+openclaw models auth order set --provider anthropic anthropic:work anthropic:default
+
+openclaw models auth order clear --provider anthropic
+
+openclaw models auth order set --provider anthropic --agent main anthropic:default
+```
+
+--------------------------------
+
+### Install OpenClaw Beta Version (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Installs the beta version of OpenClaw using a curl command to download and execute the installation script. This method is suitable for macOS and Linux environments.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --beta
+```
+
+--------------------------------
+
+### OpenClaw Live Test: Tool Calling Across Providers
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+This command runs a live smoke test that includes tool calling capabilities across multiple model providers. It ensures that the gateway correctly handles requests involving tools for various AI models.
+
+```bash
+OPENCLAW_LIVE_GATEWAY_MODELS="openai/gpt-5.2,anthropic/claude-opus-4-6,google/gemini-3-flash-preview,zai/glm-4.7,minimax/minimax-m2.5" pnpm test:live src/gateway/gateway-models.profiles.live.test.ts
+```
+
+--------------------------------
+
+### reset
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Resets local configuration and state, keeping the CLI installed.
+
+```APIDOC
+## reset
+
+### Description
+Resets local configuration and state, keeping the CLI installed.
+
+### Method
+POST
+
+### Endpoint
+/reset
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+- **scope** (string) - Optional - The scope of the reset (config, config+creds+sessions, full).
+- **yes** (boolean) - Optional - Confirm reset without prompting.
+- **non-interactive** (boolean) - Optional - Run in non-interactive mode. Requires `--scope` and `--yes`.
+- **dry-run** (boolean) - Optional - Simulate the reset without making changes.
+
+### Request Example
+```json
+{
+  "example": "openclaw reset --scope config+creds+sessions --yes"
+}
+```
+
+### Response
+#### Success Response (200)
+- **message** (string) - Confirmation message of the reset operation.
+
+#### Response Example
+```json
+{
+  "example": {
+    "message": "Local configuration and state have been reset."
+  }
+}
+```
+```
+
+--------------------------------
+
+### Install OpenClaw Chrome Extension
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Commands to install the OpenClaw browser extension and retrieve its path. This extension is necessary for browser takeover functionality.
+
+```bash
+openclaw browser extension install
+openclaw browser extension path
+```
+
+--------------------------------
+
+### Check Hook Execution Enabled Status
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/hooks.md
+
+Command to list enabled hooks in Openclaw. A checkmark (?) next to a hook indicates it is enabled and ready for execution.
+
+```bash
+openclaw hooks list
+# Should show ? next to enabled hooks
+```
+
+--------------------------------
+
+### OpenClaw CLI Media Sending
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Demonstrates how to send a message with an attached media file using the OpenClaw CLI. Outbound attachments require a 'MEDIA:<path-or-url>' line. Ensure the target channel supports media and the file size is within provider limits.
+
+```bash
+openclaw message send --target +15555550123 --message "Here you go" --media /path/to/file.png
+```
+
+--------------------------------
+
+### Install Playwright Browsers in Docker Container
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Install Playwright browsers directly within a running openclaw-cli container without relying on npx. This command executes the Playwright CLI installation script for Chromium. This is useful for power-user configurations where system dependencies are baked into the image.
+
+```bash
+docker compose run --rm openclaw-cli \
+  node /app/node_modules/playwright-core/cli.js install chromium
+```
+
+--------------------------------
+
+### Verify Security Posture with Bash Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/oracle.md
+
+These bash commands help verify the security posture of your Openclaw instance. They check for open public ports, confirm Tailscale SSH is active, and provide an option to disable the standard SSH daemon.
+
+```bash
+# Confirm no public ports listening
+sudo ss -tlnp | grep -v '127.0.0.1\|::1'
+
+# Verify Tailscale SSH is active
+tailscale status | grep -q 'offers: ssh' && echo "Tailscale SSH active"
+
+# Optional: disable sshd entirely
+sudo systemctl disable --now ssh
+```
+
+--------------------------------
+
+### Location Settings Management
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/location-command.md
+
+Manages the location settings for a node, including enabling/disabling location services and setting the desired precision.
+
+```APIDOC
+## PUT /nodes/{nodeId}/location/settings
+
+### Description
+Manages the location settings for a node, including enabling/disabling location services and setting the desired precision.
+
+### Method
+PUT
+
+### Endpoint
+`/nodes/{nodeId}/location/settings`
+
+### Parameters
+#### Path Parameters
+- **nodeId** (string) - Required - The unique identifier of the node.
+
+#### Request Body
+- **enabledMode** (string) - Required - The location mode. Can be `off`, `whileUsing`, or `always`.
+- **preciseEnabled** (boolean) - Required - Whether precise location is enabled.
+
+### Request Example
+```json
+{
+  "enabledMode": "always",
+  "preciseEnabled": true
+}
+```
+
+### Response
+#### Success Response (200)
+- **message** (string) - Confirmation message indicating the settings have been updated.
+
+#### Response Example
+```json
+{
+  "message": "Location settings updated successfully."
+}
+```
+
+#### Error Responses
+- **NODE_NOT_FOUND** - The specified node ID does not exist.
+- **INVALID_MODE** - The provided `enabledMode` is not valid.
+- **PERMISSION_DENIED** - The user does not have permission to modify these settings.
+```
+
+--------------------------------
+
+### Migrate OpenClaw Setup to a New Machine
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Steps to migrate an existing OpenClaw setup to a new machine by copying the state directory and workspace, then running `openclaw doctor`. This preserves bot memory, session history, auth, and channel state.
+
+```bash
+# On the new machine:
+# 1. Install OpenClaw
+# 2. Copy $OPENCLAW_STATE_DIR (default: ~/.openclaw) from the old machine.
+# 3. Copy your workspace (default: ~/.openclaw/workspace) from the old machine.
+# 4. Run openclaw doctor and restart the Gateway service.
+```
+
+--------------------------------
+
+### Re-run Installer with Verbose Output (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Executes the OpenClaw installer script with verbose output enabled. This is helpful for debugging installation issues by providing detailed logs of the process. Supports standard, beta, and git-based installations.
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --verbose
+```
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --beta --verbose
+```
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git --verbose
+```
+
+--------------------------------
+
+### Manage Engagement (Likes, Reposts, Bookmarks)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Perform actions like liking, reposting, or bookmarking posts using their IDs. You can also undo these actions. The commands allow for managing your engagement with specific posts.
+
+```bash
+# Like / unlike a post
+xurl like 1234567890
+xurl unlike 1234567890
+
+# Repost / undo a repost
+xurl repost 1234567890
+xurl unrepost 1234567890
+
+# Bookmark / remove a bookmark
+xurl bookmark 1234567890
+xurl unbookmark 1234567890
+
+# List your bookmarks / likes
+xurl bookmarks -n 20
+xurl likes -n 20
+```
+
+--------------------------------
+
+### Navigate to OpenClaw Project Directory
+
+Source: https://github.com/openclaw/openclaw/blob/main/scripts/shell-helpers/README.md
+
+Changes the current directory to the root of the OpenClaw project. This is a convenience command for developers working with the OpenClaw codebase.
+
+```bash
+clawdock-cd
+```
+
+--------------------------------
+
+### OpenClaw Pairing List Command
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Lists pending pairing requests for a specific channel and optionally an account. This is useful for checking if a pairing code was sent or if requests are pending approval.
+
+```bash
+openclaw pairing list --channel <channel> [--account <id>]
+```
+
+--------------------------------
+
+### Install and Update OpenClaw Skills
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Commands to install new skills from ClawHub and update all installed skills. Skills are installed into the local `./skills` directory or a configured OpenClaw workspace.
+
+```bash
+clawhub install <skill-slug>
+clawhub update --all
+```
+
+--------------------------------
+
+### OpenClaw Live Test: Single Model Direct Run
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+This command runs a live test for a single model directly, bypassing the gateway. It's useful for quick, isolated testing of a specific model's functionality.
+
+```bash
+OPENCLAW_LIVE_MODELS="openai/gpt-5.2" pnpm test:live src/agents/models.profiles.live.test.ts
+```
+
+--------------------------------
+
+### Updating OpenClaw Globally on VM
+
+Source: https://github.com/openclaw/openclaw/blob/main/CLAUDE.md
+
+This command updates the globally installed OpenClaw CLI to the latest version. It requires root privileges because global Node.js packages are typically installed in system-protected directories.
+
+```bash
+sudo npm i -g openclaw@latest
+```
+
+--------------------------------
+
+### Openclaw Onboarding: Non-interactive Mode with Z.AI API Key
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Automates Openclaw onboarding using a local mode and Z.AI API key for authentication. It configures the gateway port and bind address for local access.
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice zai-api-key \
+  --zai-api-key "$ZAI_API_KEY" \
+  --gateway-port 18789 \
+  --gateway-bind loopback
+```
+
+--------------------------------
+
+### OpenClaw Development Setup
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Sets up OpenClaw for development by cloning the repository, installing Node.js dependencies, and building the project. This is intended for contributors and developers who need to work with the source code. It also includes building UI assets.
+
+```bash
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
+pnpm install
+pnpm build
+pnpm ui:build
+openclaw onboard
+
+```
+
+--------------------------------
+
+### Parallel Map (pmap) for Concurrent Transformation
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Introduces the 'pmap' operation in OpenProse, which performs transformations concurrently, similar to 'parallel for' but in pipeline syntax. It processes 'tasks' in parallel and aggregates the results.
+
+```prose
+let tasks = ["task1", "task2", "task3"]
+
+let results = tasks | pmap:
+  session "Process this task in parallel"
+    context: item
+
+session "Aggregate all results"
+  context: results
+```
+
+--------------------------------
+
+### Openclaw Onboarding: Non-interactive Mode with Anthropic API Key
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Automates Openclaw onboarding using a local mode and Anthropic API key for authentication. It configures the gateway port and bind address, and includes options to install and run the daemon.
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice apiKey \
+  --anthropic-api-key "$ANTHROPIC_API_KEY" \
+  --gateway-port 18789 \
+  --gateway-bind loopback \
+  --install-daemon \
+  --daemon-runtime node \
+  --skip-skills
+```
+
+--------------------------------
+
+### Force Reinstall and Restart Gateway Service
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/troubleshooting.md
+
+If configuration checks do not resolve discrepancies between service configuration and runtime, these commands can be used to force a reinstallation of service metadata and restart the gateway. This is a more forceful step to reset the gateway's state.
+
+```bash
+openclaw gateway install --force
+openclaw gateway restart
+```
+
+--------------------------------
+
+### Update to OpenClaw Dev Channel (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Updates the OpenClaw installation to the development channel, which corresponds to the main branch of the Git repository. This command switches the installation to build from source.
+
+```bash
+openclaw update --channel dev
+```
+
+--------------------------------
+
+### Permissions Mapping
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/location-command.md
+
+Retrieves the location permissions map for a node, indicating the availability of location data reporting.
+
+```APIDOC
+## GET /nodes/{nodeId}/permissions/location
+
+### Description
+Retrieves the location permissions map for a node, indicating the availability of location data reporting.
+
+### Method
+GET
+
+### Endpoint
+`/nodes/{nodeId}/permissions/location`
+
+### Parameters
+#### Path Parameters
+- **nodeId** (string) - Required - The unique identifier of the node.
+
+### Response
+#### Success Response (200)
+- **location** (object) - An object detailing the location permission status. May be omitted if location is not supported or reported by the node.
+  - **supported** (boolean) - Indicates if the node supports reporting location permissions.
+  - **granted** (boolean) - Indicates if location permissions have been granted.
+
+#### Response Example
+```json
+{
+  "location": {
+    "supported": true,
+    "granted": true
+  }
+}
+```
+
+#### Error Responses
+- **NODE_NOT_FOUND** - The specified node ID does not exist.
+- **PERMISSION_DENIED** - The user does not have permission to access this information.
+```
+
+--------------------------------
+
+### Invoke Android Device/Personal Data Commands (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/index.md
+
+Invokes various Android-specific commands to retrieve device status, information, permissions, notifications, contacts, calendar events, motion data, and app updates. Requires specific capabilities to be enabled on the node.
+
+```bash
+openclaw nodes invoke --node <idOrNameOrIp> --command device.status --params '{}'
+openclaw nodes invoke --node <idOrNameOrIp> --command notifications.list --params '{}'
+openclaw nodes invoke --node <idOrNameOrIp> --command photos.latest --params '{"limit":1}'
+```
+
+--------------------------------
+
+### Configure Anthropic Setup Token Test (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+Demonstrates how to set up and run the Anthropic setup-token live test. This involves pasting a token and then executing the test with specific environment variables.
+
+```bash
+openclaw models auth paste-token --provider anthropic --profile-id anthropic:setup-token-test
+OPENCLAW_LIVE_SETUP_TOKEN=1 OPENCLAW_LIVE_SETUP_TOKEN_PROFILE=anthropic:setup-token-test pnpm test:live src/agents/anthropic.setup-token.live.test.ts
+```
+
+--------------------------------
+
+### SQL for Persistent Agent Memory Management
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+These SQL commands manage the memory of persistent agents within OpenCLaw. They include reading the agent's current state, updating it, and recording specific agent segments with prompts and summaries.
+
+```sql
+-- Read your current state:
+  psql "$OPENPROSE_POSTGRES_URL" -t -A -c "SELECT memory FROM openprose.agents WHERE name = 'captain' AND run_id = '20260116-143052-a7b3c9'"
+
+-- Update when done:
+  psql "$OPENPROSE_POSTGRES_URL" -c "UPDATE openprose.agents SET memory = '...', updated_at = NOW() WHERE name = 'captain' AND run_id = '20260116-143052-a7b3c9'"
+
+-- Record this segment:
+  psql "$OPENPROSE_POSTGRES_URL" -c "INSERT INTO openprose.agent_segments (agent_name, run_id, segment_number, prompt, summary) VALUES ('captain', '20260116-143052-a7b3c9', 3, '...', '...')"
+```

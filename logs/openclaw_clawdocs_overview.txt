@@ -1,0 +1,1370 @@
+### Financial Monitoring Heartbeat Recipe
+
+Source: https://clawdocs.org/guides/heartbeat
+
+An example HEARTBEAT.md configuration for financial monitoring. It tracks stock portfolio performance, alerts on significant price movements, and provides a daily summary at market close.
+
+```markdown
+## Financial (every 2 hours during market hours)  
+- Check my portfolio watchlist: AAPL, GOOGL, MSFT  
+- Alert me if any stock moves more than 3% in either direction  
+- Daily summary at market close  
+```
+
+--------------------------------
+
+### Example Environment File Content
+
+Source: https://clawdocs.org/guides/privacy-compliance
+
+An example of the content for the ~/.openclaw/env file, showing how API keys for services like Anthropic and OpenAI should be formatted. Ensure this file has strict permissions (600) to prevent unauthorized access.
+
+```shell
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+OPENAI_API_KEY=sk-xxxxx
+
+```
+
+--------------------------------
+
+### Self-Hosted LLM Inference with Ollama
+
+Source: https://clawdocs.org/guides/privacy-compliance
+
+Demonstrates setting up self-hosted LLM inference using Ollama for EU data residency. This approach eliminates data transfers to US-based providers by running models locally.
+
+```bash
+# Example: Pull and run a model with Ollama
+olama pull llama3
+olama run llama3
+```
+
+--------------------------------
+
+### Skill Configuration Example - YAML
+
+Source: https://clawdocs.org/guides/skill-development
+
+Shows how to define configuration parameters within a skill's YAML frontmatter. This example includes email, time, and timezone settings for a 'daily-digest' skill.
+
+```yaml
+---
+name: daily-digest
+config:
+  email: ""          # User must configure
+  time: "09:00"
+  timezone: "UTC"
+---
+
+```
+
+--------------------------------
+
+### Example SOUL.md Structure
+
+Source: https://clawdocs.org/guides/soul-md
+
+This Markdown snippet demonstrates the structure of an effective SOUL.md file, including sections for Core Truths, Boundaries, Vibe, and Continuity. It serves as a template for defining an agent's personality and operational guidelines.
+
+```markdown
+# SOUL.md  
+  
+You are the colleague who actually gets things done.  
+  
+## Core Truths  
+- **Results Over Process** — Don't explain what you're going to do. Just do it.  
+- **Ownership** — When you take on a task, you own it end-to-end.  
+  I don't come back with "I couldn't because..." — I come back with the solution.  
+- **Competence Over Performance** — No theatre. No filler.  
+  Be helpful, not performatively helpful.  
+  
+## Boundaries  
+- Don't volunteer opinions on personal decisions unless asked  
+- Don't pretend to emotions you don't have  
+- If you change SOUL.md, tell the user — it's your soul, and they should know  
+- Have opinions. You're allowed to disagree.  
+  
+## Vibe  
+- Direct, concise, occasionally dry  
+- Be the assistant you'd actually want to talk to  
+- Skip the "Great question!" and "I'd be happy to help!" — just help  
+  
+## Continuity  
+- Each session you wake up fresh — these files are your memory  
+- Important things get written down, preferences persist, lessons accumulate  
+
+
+```
+
+--------------------------------
+
+### Skill File Format Example - Markdown/YAML
+
+Source: https://clawdocs.org/guides/skill-development
+
+Defines the structure of a skill file using Markdown with YAML frontmatter. It includes metadata like name, version, description, trigger, and tools, followed by instructions for the agent.
+
+```markdown
+---
+name: my-skill
+version: 1.0.0
+description: A brief description of what this skill does
+trigger: "keyword1|keyword2|phrase"
+tools: [shell, filesystem, browser]
+author: your-name
+---
+
+# Skill Name
+
+Instructions for the agent when this skill is activated.
+
+## When to Use
+Describe the conditions under which this skill should activate.
+
+## Steps
+1. First, do this
+2. Then do that
+3. Finally, return the result
+
+## Examples
+- "keyword1 something specific" ? expected behavior
+- "keyword2 another thing" ? expected behavior
+
+```
+
+--------------------------------
+
+### Gateway to Client: Heartbeat Status Message Example (JSON)
+
+Source: https://clawdocs.org/reference/gateway-api
+
+The 'heartbeat_status' message reports the outcome of a heartbeat cycle. It includes the status (e.g., 'HEARTBEAT_OK'), the number of actions taken, and tokens used during the cycle.
+
+```json
+{
+  "type": "heartbeat_status",
+  "payload": {
+    "result": "HEARTBEAT_OK",
+    "actions_taken": 0,
+    "tokens_used": 450
+  }
+}
+```
+
+--------------------------------
+
+### News & Research Heartbeat Recipe
+
+Source: https://clawdocs.org/guides/heartbeat
+
+An example HEARTBEAT.md configuration for a daily morning briefing. It fetches top Hacker News stories, weather forecasts, calendar events, and package release information.
+
+```markdown
+## Morning Briefing (daily at 8am)  
+- Top 5 Hacker News stories relevant to AI and TypeScript  
+- Weather forecast for San Francisco  
+- My Google Calendar events for today  
+- Any new releases of packages I depend on (check package.json)  
+```
+
+--------------------------------
+
+### Kubernetes Helm Chart Configuration Example (values.yaml)
+
+Source: https://clawdocs.org/guides/deployment-options
+
+An example values.yaml file for the OpenClaw Helm chart. It demonstrates how to configure the gateway port and host, the brain provider, and how to reference secrets for API keys.
+
+```yaml
+openclaw:
+  config:
+    gateway:
+      port: 18789
+      host: "0.0.0.0"
+    brain:
+      provider: anthropic
+  env:
+    ANTHROPIC_API_KEY:
+      secretKeyRef:
+        name: openclaw-secrets
+        key: anthropic-api-key  
+```
+
+--------------------------------
+
+### Creating a Git Summary Skill - Markdown/YAML
+
+Source: https://clawdocs.org/guides/skill-development
+
+An example of a skill file for summarizing git activity. It specifies the name, version, description, trigger phrases, and the necessary 'shell' tool, along with detailed steps for the agent to follow.
+
+```markdown
+---
+name: git-summary
+version: 1.0.0
+description: Summarize recent git activity in a repository
+trigger: "git summary|repo summary|what happened in git"
+tools: [shell]
+---
+
+# Git Summary
+
+When triggered, analyze the recent git history of the current
+or specified repository and provide a human-readable summary.
+
+## Steps
+1. Run `git log --oneline --since="1 week ago"` in the target repo
+2. Group commits by author
+3. Identify the most-changed files with `git diff --stat HEAD~20`
+4. Summarize the overall trajectory (new features, bug fixes, refactors)
+5. Present in a clear, concise format
+
+```
+
+--------------------------------
+
+### Skill State Management - File Path
+
+Source: https://clawdocs.org/guides/skill-development
+
+Explains how skills can persist state between invocations by storing data in the memory directory. This example points to the default location for skill state files.
+
+```text
+memory/skills/my-skill-state.md
+
+```
+
+--------------------------------
+
+### Chaining Skills Example - YAML
+
+Source: https://clawdocs.org/guides/skill-development
+
+Demonstrates how a skill can depend on other skills. The 'morning-routine' skill lists 'weather-briefing', 'calendar-summary', and 'news-digest' as dependencies in its YAML frontmatter.
+
+```yaml
+---
+name: morning-routine
+depends: [weather-briefing, calendar-summary, news-digest]
+---
+
+```
+
+--------------------------------
+
+### System Health Heartbeat Recipe
+
+Source: https://clawdocs.org/guides/heartbeat
+
+An example HEARTBEAT.md configuration for system health monitoring. It checks disk usage, Docker container health, RAM usage, and SSL certificate expiry, with alerts for critical conditions.
+
+```markdown
+## System Health (hourly)  
+- Check disk usage on all partitions, alert if > 85%  
+- Check if Docker containers are healthy  
+- Monitor RAM usage, alert if > 90%  
+- Check SSL certificate expiry for mysite.com, alert if < 14 days  
+```
+
+--------------------------------
+
+### Heartbeat Integration for Code Review (Markdown)
+
+Source: https://clawdocs.org/guides/recipes/code-reviewer
+
+This snippet describes how the Code Reviewer skill integrates with the OpenClaw heartbeat mechanism. It outlines periodic tasks like checking for new PRs, auto-reviewing dependabot PRs, and alerting on CI failures.
+
+```markdown
+## Code Review (every heartbeat)
+- Check github.com/myorg/myrepo for new PRs
+- Auto-review PRs from dependabot
+- Alert on Slack if CI fails on main branch
+
+```
+
+--------------------------------
+
+### Example Memory Entry: Preferences
+
+Source: https://clawdocs.org/architecture/memory-system
+
+An example of a Markdown file storing user preferences. This includes communication style, development environment settings, and an update timestamp.
+
+```markdown
+## Communication Style  
+- Prefers concise responses, no filler  
+- Uses dark mode everywhere  
+- Timezone: America/Los_Angeles  
+  
+## Development  
+- Primary language: TypeScript  
+- Editor: VS Code with Vim bindings  
+- Package manager: pnpm (never npm)  
+- Always use strict TypeScript config  
+  
+## Updated: 2026-02-08  
+
+
+```
+
+--------------------------------
+
+### Memory Configuration Example
+
+Source: https://clawdocs.org/architecture/memory-system
+
+A YAML configuration snippet for the OpenClaw memory system. It shows how to enable memory, set the path, define maximum context tokens, enable auto-saving, and specify memory categories.
+
+```yaml
+memory:  
+  enabled: true  
+  path: "~/.openclaw/memory"  
+  max_context_tokens: 2000   # Max tokens loaded per conversation  
+  auto_save: true             # Save after every conversation  
+  categories:  
+    - preferences  
+    - contacts  
+    - projects  
+    - learnings  
+
+
+```
+
+--------------------------------
+
+### Email Triage Heartbeat Recipe
+
+Source: https://clawdocs.org/guides/heartbeat
+
+An example of a HEARTBEAT.md configuration for email triage. It checks Gmail for unread emails, flags VIP emails for immediate WhatsApp summaries, batches others into a digest, and marks promotional emails as read.
+
+```markdown
+## Email Triage (every heartbeat)  
+- Check Gmail for new unread emails  
+- Flag emails from VIPs: boss@company.com, cto@company.com  
+- For flagged emails: send me a WhatsApp summary immediately  
+- For other emails: batch into a digest  
+- Mark promotional emails as read automatically  
+```
+
+--------------------------------
+
+### Gateway to Client: Response Message Example (JSON)
+
+Source: https://clawdocs.org/reference/gateway-api
+
+An example of a 'response' message from the Gateway, typically an agent's reply to a 'chat' message. It includes the response text, any tool calls made, and the number of tokens used. The 'id' field correlates it to the original request.
+
+```json
+{
+  "type": "response",
+  "id": "msg-001",
+  "payload": {
+    "text": "Here are the files in your home directory:\n...",
+    "tool_calls": [],
+    "tokens_used": 1250
+  }
+}
+```
+
+--------------------------------
+
+### OpenClaw Memory System Structure
+
+Source: https://clawdocs.org/getting-started/core-concepts
+
+Illustrates the directory structure and file organization for OpenClaw's memory system. This system uses local Markdown files to store preferences, contacts, project context, learnings, autonomous task definitions, and configuration, ensuring data persistence and human readability.
+
+```file structure
+~/.openclaw/  
++-- memory/  
+¦   +-- preferences.md    # Your preferences and habits  
+¦   +-- contacts.md       # People it's learned about  
+¦   +-- projects.md       # Active projects and context  
+¦   +-- learnings.md      # Things it's figured out  
++-- HEARTBEAT.md          # Autonomous task definitions  
++-- config.yml            # Main configuration  
+
+```
+
+--------------------------------
+
+### Client to Gateway: Status Request Message Example (JSON)
+
+Source: https://clawdocs.org/reference/gateway-api
+
+A simple 'status' message requesting the current status of the Gateway API. It has an empty payload, indicating a straightforward query for general information.
+
+```json
+{
+  "type": "status",
+  "payload": {}
+}
+```
+
+--------------------------------
+
+### GitHub Monitor Heartbeat Recipe
+
+Source: https://clawdocs.org/guides/heartbeat
+
+An example HEARTBEAT.md configuration for monitoring a GitHub repository. It checks for new issues and PRs, categorizes issues, summarizes PR diffs, and alerts on CI failures for the main branch.
+
+```markdown
+## GitHub Monitor (every heartbeat)  
+- Check github.com/myorg/myrepo for new issues and PRs  
+- For issues: categorize as bug/feature/question based on content  
+- For PRs: check if CI passed, summarize the diff  
+- Alert me on Discord if any CI is failing on main branch  
+```
+
+--------------------------------
+
+### Define Heartbeat Tasks in HEARTBEAT.md
+
+Source: https://clawdocs.org/architecture/heartbeat
+
+This markdown file defines the proactive tasks the OpenClaw agent should perform at different intervals (Continuous, Hourly, Daily, Weekly). It serves as the input for the heartbeat system.
+
+```markdown
+# Heartbeat Tasks  
+  
+## Continuous (every heartbeat)  
+- Check Gmail for emails from my boss or with "urgent" in subject  
+- Monitor GitHub notifications for @mentions  
+  
+## Hourly  
+- Check if any running deployments have failed  
+- Summarize new Slack messages in #engineering  
+  
+## Daily (morning)  
+- Weather briefing for my location  
+- Summarize my Google Calendar for today  
+- Check for new OpenClaw releases  
+  
+## Weekly (Monday)  
+- Generate a summary of last week's GitHub activity  
+- Review and clean up my Downloads folder  
+
+
+```
+
+--------------------------------
+
+### Accessing SQLite Memory Index
+
+Source: https://clawdocs.org/guides/privacy-compliance
+
+Provides the command to query the SQLite index used for storing agent memory. This index is located at `~/.openclaw/memory/<agentId>.sqlite` and can be queried directly.
+
+```bash
+sqlite3 ~/.openclaw/memory/<agentId>.sqlite "SELECT * FROM messages;"
+```
+
+--------------------------------
+
+### OpenClaw Skill Definition Example
+
+Source: https://clawdocs.org/getting-started/core-concepts
+
+An example of a skill definition file for OpenClaw. Skills are implemented as Markdown files with YAML frontmatter that specify the skill's name, trigger keywords, required tools (e.g., web-search, chat), and a description of its functionality. This example defines a 'weather-briefing' skill.
+
+```markdown
+---
+name: weather-briefing
+trigger: "weather|forecast|temperature"
+tools: [web-search, chat]
+---
+
+# Weather Briefing  
+
+When asked about weather, search for current conditions  
+and provide a concise briefing with temperature, conditions,  
+and any weather alerts.  
+
+```
+
+--------------------------------
+
+### Install Openclaw Skills with Security Options
+
+Source: https://clawdocs.org/security/skill-verification
+
+Demonstrates various ways to install Openclaw skills, emphasizing security. Options include installing within a sandbox to restrict capabilities, disabling shell access for enhanced safety, and downloading skills to a review directory before final installation.
+
+```bash
+# Install with sandbox (skills can't escape the sandbox)
+openclaw clawhub install <skill-name> --sandbox
+
+# Install but don't grant shell access
+openclaw clawhub install <skill-name> --no-shell
+
+# Install to a review directory first
+openclaw clawhub download <skill-name> --to ~/review/
+# ... review the files manually ...
+openclaw skill install ~/review/<skill-name>.md
+```
+
+--------------------------------
+
+### Define Email Assistant Skill Metadata
+
+Source: https://clawdocs.org/guides/recipes/email-assistant
+
+This YAML configuration defines the metadata for the email-assistant skill, including its name, version, description, trigger keywords, required tools, and initial configuration settings.
+
+```yaml
+---
+name: email-assistant
+version: 1.0.0
+description: Intelligent email triage, summarization, and draft responses
+trigger: "email|inbox|mail|gmail"
+tools: [gmail, chat, memory]
+config:
+  vip_contacts: []
+  auto_archive_promotions: true
+  digest_channel: "whatsapp"
+---
+```
+
+--------------------------------
+
+### Gateway to Client: Error Message Example (JSON)
+
+Source: https://clawdocs.org/reference/gateway-api
+
+An 'error' message format used by the Gateway to report issues. It includes an error code (e.g., 'AUTH_REQUIRED') and a descriptive message, helping clients understand and handle failures.
+
+```json
+{
+  "type": "error",
+  "payload": {
+    "code": "AUTH_REQUIRED",
+    "message": "Authentication required for this operation"
+  }
+}
+```
+
+--------------------------------
+
+### Configuring Skills - Shell Command
+
+Source: https://clawdocs.org/guides/skill-development
+
+Illustrates the CLI command used to set configuration values for a specific skill. This example shows how to set the email configuration for the 'daily-digest' skill.
+
+```shell
+openclaw skill config daily-digest --set email=me@example.com
+
+```
+
+--------------------------------
+
+### Integrate Email Assistant with Heartbeat
+
+Source: https://clawdocs.org/guides/recipes/email-assistant
+
+This configuration snippet shows how to integrate the email-assistant skill into the OpenClaw Heartbeat for regular email checking and digest compilation.
+
+```markdown
+## Email (every heartbeat)
+- Run email-assistant skill to check for new emails
+- Send VIP alerts to WhatsApp immediately
+- Compile digest at 8am and 5pm
+```
+
+--------------------------------
+
+### Gateway to Client: Tool Result Message Example (JSON)
+
+Source: https://clawdocs.org/reference/gateway-api
+
+The 'tool_result' message provides the output and exit code of a previously executed tool. This allows the client to process the results of operations performed by the Gateway. It includes the tool name and its output.
+
+```json
+{
+  "type": "tool_result",
+  "payload": {
+    "tool": "shell",
+    "output": "Desktop\nDocuments\nDownloads\n...",
+    "exit_code": 0
+  }
+}
+```
+
+--------------------------------
+
+### Configure Work and Personal Agents with Bindings
+
+Source: https://clawdocs.org/guides/multi-agent
+
+Implement a common pattern for managing work and personal agents by defining separate agent configurations and binding them to different communication channels. This setup allows for distinct tones and functionalities for each agent.
+
+```json
+{
+  "agents": {
+    "list": [
+      {
+        "id": "work",
+        "workspace": "~/.openclaw/workspace-work"
+      },
+      {
+        "id": "personal",
+        "workspace": "~/.openclaw/workspace-personal"
+      }
+    ]
+  },
+  "bindings": [
+    { "agentId": "work", "match": { "channel": "slack" } },
+    { "agentId": "work", "match": { "channel": "teams" } },
+    { "agentId": "personal", "match": { "channel": "whatsapp" } },
+    { "agentId": "personal", "match": { "channel": "telegram" } }
+  ]
+}
+```
+
+--------------------------------
+
+### Docker Compose for OpenClaw with Local Ollama Inference
+
+Source: https://clawdocs.org/guides/deployment-options
+
+A docker-compose.yml configuration for running OpenClaw with Ollama for local LLM inference. It includes services for both OpenClaw and Ollama, specifying GPU resources for Ollama and environment variables for connecting them.
+
+```yaml
+services:
+  openclaw:
+    image: openclaw/openclaw:latest
+    ports:
+      - "127.0.0.1:18789:18789"
+    volumes:
+      - openclaw-data:/root/.openclaw
+    environment:
+      - OPENCLAW_BRAIN_PROVIDER=ollama
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  openclaw-data:
+  ollama-data:  
+```
+
+--------------------------------
+
+### Instructing the Agent with Natural Language
+
+Source: https://clawdocs.org/architecture/memory-system
+
+Examples of natural language prompts to instruct the agent regarding memory management. These include remembering specific information, forgetting context, and querying stored memories.
+
+```json
+"Remember that I prefer dark mode for all tools"
+"Forget everything about my previous project"
+"What do you remember about me?"
+
+
+```
+
+--------------------------------
+
+### Usage Examples for OpenClaw Chat (Shell)
+
+Source: https://clawdocs.org/guides/recipes/code-reviewer
+
+These are command-line examples demonstrating how to interact with the OpenClaw Code Reviewer skill using the `openclaw chat` command. They show how to request PR reviews, check CI status, and find security issues.
+
+```shell
+openclaw chat "Review PR #42 in myorg/myrepo"
+openclaw chat "What's the CI status for our repos?"
+openclaw chat "Find security issues in the latest PR"
+
+```
+
+--------------------------------
+
+### Code Reviewer Skill - PR Review Process (Markdown)
+
+Source: https://clawdocs.org/guides/recipes/code-reviewer
+
+This section details the automated pull request review process within the Code Reviewer skill. It outlines the steps from fetching the PR diff to providing structured feedback and code suggestions.
+
+```markdown
+# Code Reviewer
+
+## PR Review Process
+1. Fetch the PR diff using `gh pr diff`
+2. Analyze changes for:
+   - Logic errors and bugs
+   - Security vulnerabilities (SQL injection, XSS, etc.)
+   - Performance concerns
+   - Style inconsistencies
+   - Missing tests for new functionality
+3. Provide a structured review with severity levels
+4. Suggest specific code improvements with diffs
+
+```
+
+--------------------------------
+
+### Install and Serve Model with vLLM
+
+Source: https://clawdocs.org/guides/cloud-gpu-models
+
+This snippet shows how to install the vLLM library and then serve a specified model. It configures the server to listen on all interfaces, use a specific port, and set the maximum model length. vLLM is recommended for cloud-based inference.
+
+```bash
+pip install vllm
+
+vllm serve Qwen/Qwen3-32B-Instruct \
+  --host 0.0.0.0 \
+  --port 8090 \
+  --max-model-len 8192
+```
+
+--------------------------------
+
+### Frontmatter Template for New Markdown Pages (YAML)
+
+Source: https://clawdocs.org/contributing/docs
+
+This is a template for the frontmatter section of a new Markdown file. It includes essential metadata like `sidebar_position`, `title`, and `description` for SEO and navigation. This frontmatter is parsed by the documentation generator.
+
+```yaml
+---
+sidebar_position: 1
+title: Your Page Title
+description: A brief description for SEO
+---
+
+# Your Page Title
+
+Content here...
+```
+
+--------------------------------
+
+### Testing and Managing Skills - Shell Commands
+
+Source: https://clawdocs.org/guides/skill-development
+
+Provides essential command-line interface (CLI) commands for interacting with OpenClaw skills. This includes testing, installing, listing, and removing skills.
+
+```shell
+# Test a skill without installing
+openclaw skill test ./my-skill.md "trigger phrase here"
+
+# Install locally
+openclaw skill install ./my-skill.md
+
+# List installed skills
+openclaw skill list
+
+# Remove a skill
+openclaw skill remove my-skill
+
+```
+
+--------------------------------
+
+### Gateway Message Format
+
+Source: https://clawdocs.org/reference/gateway-api
+
+Defines the standard structure for all messages exchanged with the Gateway API.
+
+```APIDOC
+## Gateway Message Format
+
+### Description
+All messages exchanged with the Gateway API adhere to a specific structure, ensuring consistent data handling.
+
+### Interface Definition
+```typescript
+interface GatewayMessage {
+  type: string;           // Message type
+  id?: string;            // Optional correlation ID
+  payload: object;        // Type-specific data
+  timestamp: string;      // ISO 8601 timestamp
+}
+```
+```
+
+--------------------------------
+
+### Code Reviewer Skill - CI Monitoring (Markdown)
+
+Source: https://clawdocs.org/guides/recipes/code-reviewer
+
+This part of the Code Reviewer skill documentation describes its CI monitoring capabilities. It explains how the skill checks GitHub Actions status, alerts on build failures, and tracks flaky tests.
+
+```markdown
+## CI Monitoring
+- Check GitHub Actions status for configured repos
+- Alert on build failures with error summary
+- Track flaky tests (failures that pass on re-run)
+
+```
+
+--------------------------------
+
+### Environment Variable Setup for API Keys
+
+Source: https://clawdocs.org/guides/privacy-compliance
+
+Demonstrates how to set up environment variables for API keys in the ~/.openclaw/env file and secure it with appropriate file permissions. This method is recommended for storing sensitive credentials.
+
+```shell
+chmod 600 ~/.openclaw/env
+```
+
+--------------------------------
+
+### OpenClaw Full Configuration Example (YAML)
+
+Source: https://clawdocs.org/reference/configuration
+
+A comprehensive example of the OpenClaw configuration file (~/.openclaw/config.yml). It demonstrates settings for LLM integration, gateway, execution environment (shell, browser, filesystem, sandbox), heartbeat, memory, and skills.
+
+```yaml
+# LLM Configuration  
+brain:  
+  provider: "anthropic"           # anthropic, openai, xai, local  
+  model: "claude-opus-4-6"  
+  api_key: "${ANTHROPIC_API_KEY}"  
+  temperature: 0.7  
+  max_tokens: 4096  
+  fallback:  
+    provider: "openai"  
+    model: "gpt-4o"  
+  heartbeat_override:  
+    provider: "anthropic"  
+    model: "claude-haiku-4-5-20251001"  
+  
+# Gateway Configuration  
+gateway:  
+  host: "127.0.0.1"  
+  port: 18789  
+  max_connections: 10  
+  log_level: "info"  
+  pid_file: "~/.openclaw/gateway.pid"  
+  
+# Execution Environment  
+hands:  
+  shell:  
+    enabled: true  
+    timeout: 30000  
+    blocked_commands: []  
+  browser:  
+    enabled: true  
+    headless: true  
+    timeout: 60000  
+    allowed_domains: []  
+  filesystem:  
+    writable_paths: []  
+    blocked_paths:  
+      - "~/.ssh"  
+      - "~/.gnupg"  
+  sandbox:  
+    enabled: false  
+    type: "docker"  
+  
+# Heartbeat  
+heartbeat:  
+  enabled: true  
+  interval: 1800  
+  quiet_hours:  
+    start: "23:00"  
+    end: "07:00"  
+    timezone: "America/Los_Angeles"  
+  
+# Memory  
+memory:  
+  enabled: true  
+  path: "~/.openclaw/memory"  
+  max_context_tokens: 2000  
+  auto_save: true  
+  
+# Skills  
+skills:  
+  path: "~/.openclaw/skills"  
+  allow_install: true  
+  allow_clawhub: true  
+  auto_install_deps: false  
+  
+# Channels (configured individually)  
+channels: {}  
+  
+# Logging  
+logging:  
+  level: "info"  
+  path: "~/.openclaw/logs"  
+  max_size: "10m"  
+  max_files: 5  
+  audit:  
+    enabled: false  
+
+```
+
+--------------------------------
+
+### Configure OpenClaw Brain Provider and Model
+
+Source: https://clawdocs.org/architecture/brain-and-hands
+
+This configuration snippet sets up the primary AI reasoning engine (Brain) for OpenClaw. It specifies the provider (e.g., Anthropic, OpenAI), the model to use, API key, and generation parameters like temperature and max tokens. It also includes an optional fallback provider for resilience.
+
+```yaml
+brain:
+  provider: "anthropic"
+  model: "claude-opus-4-6"
+  api_key: "${ANTHROPIC_API_KEY}"  # Or set env var
+  temperature: 0.7
+  max_tokens: 4096
+  
+  # Fallback if primary provider is down
+  fallback:
+    provider: "openai"
+    model: "gpt-4o"
+
+```
+
+--------------------------------
+
+### Client to Gateway: Chat Message Example (JSON)
+
+Source: https://clawdocs.org/reference/gateway-api
+
+An example of a 'chat' message sent from a client to the Gateway API. This message is used to send user queries to the agent, specifying the model and memory options. The 'id' field can be used for correlation.
+
+```json
+{
+  "type": "chat",
+  "id": "msg-001",
+  "payload": {
+    "text": "What files are in my home directory?",
+    "context": {},
+    "options": {
+      "model": "claude-opus-4-6",
+      "no_memory": false
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Skill Tools Declaration - YAML
+
+Source: https://clawdocs.org/guides/skill-development
+
+Illustrates how to declare the tools a skill requires. This YAML snippet lists common tools like shell, filesystem, browser, http, memory, and chat.
+
+```yaml
+tools:
+  - shell          # Execute terminal commands
+  - filesystem     # Read/write files
+  - browser        # Web automation
+  - http           # Make API requests
+  - memory         # Read/write agent memory
+  - chat           # Send messages to channels
+
+```
+
+--------------------------------
+
+### Configure OpenClaw Heartbeat Tasks
+
+Source: https://clawdocs.org/getting-started/quick-start
+
+Shows how to configure the heartbeat feature in `~/.openclaw/HEARTBEAT.md` to enable autonomous task execution by the OpenClaw agent at specified intervals.
+
+```markdown
+# Heartbeat Tasks  
+  
+## Every 30 minutes  
+- Check my Gmail for urgent emails and summarize them  
+- Monitor the GitHub repo openclaw/openclaw for new issues  
+  
+## Daily at 9am  
+- Give me a weather briefing for San Francisco  
+- Summarize my calendar for today  
+
+
+```
+
+--------------------------------
+
+### Publishing Skills to ClawHub - Shell Commands
+
+Source: https://clawdocs.org/guides/skill-development
+
+Demonstrates the CLI commands for publishing and updating skills on the ClawHub platform. It covers logging in, publishing a new skill, and updating an existing one.
+
+```shell
+# Login to ClawHub
+openclaw clawhub login
+
+# Publish
+openclaw clawhub publish ./my-skill.md
+
+# Update
+openclaw clawhub publish ./my-skill.md --update
+
+```
+
+--------------------------------
+
+### Clone and Run TabbyAPI for Consumer GPUs
+
+Source: https://clawdocs.org/guides/cloud-gpu-models
+
+This sequence of commands clones the TabbyAPI repository, installs it as an editable package, and then runs the main script to serve a model. TabbyAPI is optimized for consumer GPUs using ExllamaV2/V3.
+
+```bash
+git clone https://github.com/theroyallab/tabbyAPI
+cd tabbyAPI && pip install -e .
+python main.py --model Qwen3-32B-EXL2 --port 5000
+```
+
+--------------------------------
+
+### Lobster Workflow for Deployment Pipeline
+
+Source: https://clawdocs.org/guides/automation
+
+This Lobster workflow defines a deployment pipeline with distinct stages for linting, testing, and staging deployment. It includes a required approval gate for the deployment step and ensures that tests depend on the linting stage.
+
+```yaml
+name: Deploy Pipeline
+steps:
+  - name: lint
+    skill: code-lint
+    input: "{{ files.changed }}"
+  - name: test
+    skill: run-tests
+    needs: [lint]
+  - name: deploy
+    skill: deploy-staging
+    needs: [test]
+    approval: required
+
+```
+
+--------------------------------
+
+### OpenClaw Hands to Brain Tool Result Protocol
+
+Source: https://clawdocs.org/architecture/brain-and-hands
+
+This JSON structure represents the result returned by an OpenClaw Hand after executing a tool call. It includes the type of message ('tool_result'), the tool that was executed, the output or result of the operation, and the exit code.
+
+```json
+{
+  "type": "tool_result",
+  "tool": "shell",
+  "output": "On branch main\nnothing to commit, working tree clean",
+  "exit_code": 0
+}
+
+```
+
+--------------------------------
+
+### Configure Hybrid Model Routing with Local Heartbeat Override
+
+Source: https://clawdocs.org/guides/cost-management
+
+This configuration sets a default 'claude-sonnet-4' model for the brain but overrides it to use a local 'qwen3:14b' model for heartbeats. This strategy leverages cost-effective local models for routine tasks while using a more powerful model for general processing.
+
+```yaml
+brain:
+  provider: "anthropic"
+  model: "claude-sonnet-4"
+  
+  # Use local model for heartbeat  
+  heartbeat_override:
+    provider: "local"
+    local:
+      endpoint: "http://localhost:11434"
+      model: "qwen3:14b"
+      type: "ollama"
+
+```
+
+--------------------------------
+
+### Configure Code Reviewer Skill (YAML)
+
+Source: https://clawdocs.org/guides/recipes/code-reviewer
+
+This snippet defines the configuration for the OpenClaw Code Reviewer skill. It specifies the skill's name, version, description, trigger phrases, required tools, and customizable settings like repository lists and review style.
+
+```yaml
+---
+name: code-reviewer
+version: 1.0.0
+description: Automated PR review and CI monitoring
+trigger: "review pr|code review|check ci|pull request"
+tools: [shell, github, chat]
+config:
+  repos: []
+  review_style: "thorough"  # thorough | quick | security-only
+---
+
+```
+
+--------------------------------
+
+### Gateway to Client: Tool Call Notification Example (JSON)
+
+Source: https://clawdocs.org/reference/gateway-api
+
+A 'tool_call' message indicating that the Gateway is about to execute a tool. It specifies the tool name, its arguments, and the current status (e.g., 'executing'). This provides visibility into the agent's actions.
+
+```json
+{
+  "type": "tool_call",
+  "payload": {
+    "tool": "shell",
+    "args": {"command": "ls ~"},
+    "status": "executing"
+  }
+}
+```
+
+--------------------------------
+
+### Reinstall Dependencies for Developer Mode
+
+Source: https://clawdocs.org/reference/troubleshooting
+
+Guides developers on resolving `pnpm install` failures by clearing caches and reinstalling dependencies. This is useful when encountering issues in developer mode.
+
+```shell
+# Clear caches  
+rm -rf node_modules  
+pnpm store prune  
+  
+# Reinstall  
+pnpm install  
+```
+
+--------------------------------
+
+### Configure Heartbeat Settings in config.yml
+
+Source: https://clawdocs.org/architecture/heartbeat
+
+This YAML configuration file allows customization of the heartbeat system, including enabling/disabling it, setting the interval, choosing the AI model, defining token limits, and configuring quiet hours.
+
+```yaml
+heartbeat:
+  enabled: true
+  interval: 1800         # seconds (30 minutes)
+  model: "claude-haiku-4-5-20251001"  # Use a cheap model for heartbeat
+  max_tokens: 1024
+  quiet_hours:
+    start: "23:00"
+    end: "07:00"
+    timezone: "America/Los_Angeles"
+
+
+```
+
+--------------------------------
+
+### Configure Hybrid Routing in OpenClaw (YAML)
+
+Source: https://clawdocs.org/guides/cloud-gpu-models
+
+This configuration snippet demonstrates how to set up hybrid routing in OpenClaw's config.yml. It specifies a primary brain provider and model, with an override for heartbeats to use a local Ollama instance. This allows for cost optimization by using cheaper models for less demanding tasks.
+
+```yaml
+brain:
+  provider: "anthropic"
+  model: "claude-opus-4-6"
+
+  heartbeat_override:
+    provider: "local"
+    local:
+      endpoint: "http://localhost:11434"
+      model: "qwen3:14b"
+      type: "ollama"
+
+```
+
+--------------------------------
+
+### Configure Gateway Authentication (YAML)
+
+Source: https://clawdocs.org/reference/gateway-api
+
+Configuration snippet for enabling and setting up authentication for the Gateway API. It shows how to enable authentication and specify an authentication token using a placeholder. This is crucial for securing the API.
+
+```yaml
+gateway:
+  auth:
+    enabled: true
+    token: "${OPENCLAW_AUTH_TOKEN}"
+```
+
+--------------------------------
+
+### Docker Compose Configuration for OpenClaw
+
+Source: https://clawdocs.org/guides/deployment-options
+
+An example docker-compose.yml file for setting up OpenClaw. It specifies the image, port mapping, volume for data persistence, and environment variables like the LLM API key. It also includes a restart policy.
+
+```yaml
+services:
+  openclaw:
+    image: openclaw/openclaw:latest
+    ports:
+      - "18789:18789"
+    volumes:
+      - openclaw-data:/root/.openclaw
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    restart: unless-stopped
+
+volumes:
+  openclaw-data:  
+```
+
+--------------------------------
+
+### Run Separate OpenClaw Gateway Instances
+
+Source: https://clawdocs.org/guides/multi-agent
+
+Launch independent OpenClaw gateway instances for stronger isolation, each with its own port and home directory. This approach is useful for separating distinct environments like work and personal use.
+
+```bash
+# Instance 1 (work)
+OPENCLAW_PORT=18789 OPENCLAW_HOME=~/.openclaw-work openclaw gateway
+
+# Instance 2 (personal)
+OPENCLAW_PORT=18790 OPENCLAW_HOME=~/.openclaw-personal openclaw gateway
+```
+
+--------------------------------
+
+### Configure Minimum Cost Settings (YAML)
+
+Source: https://clawdocs.org/guides/cost-management
+
+Sets up Openclaw to use a cheaper heartbeat model and specifies local Ollama endpoint for inference. This configuration aims to minimize costs by offloading processing to a local, less expensive model.
+
+```yaml
+brain:
+  provider: "anthropic"
+  model: "claude-sonnet-4"
+
+  heartbeat_override:
+    provider: "local"
+    local:
+      endpoint: "http://localhost:11434"
+      model: "llama3.1:8b"
+      type: "ollama"
+
+```
+
+--------------------------------
+
+### CLI Chat: Multi-Step Task Execution
+
+Source: https://clawdocs.org/guides/basic-usage
+
+Illustrates how OpenClaw can automatically break down complex tasks into sequential steps. The example shows setting up a PostgreSQL database, creating a table, adding data, and generating an ORM client.
+
+```bash
+openclaw chat "Set up a PostgreSQL database, create a users table, \  
+  add seed data, and generate a TypeScript ORM client"  
+
+```
+
+--------------------------------
+
+### Install 1Panel via Bash Script
+
+Source: https://clawdocs.org/guides/deployment-options
+
+This command installs 1Panel on any Linux server using a single line of bash. It fetches the installation script from the provided URL and executes it. After installation, the web panel can be accessed via a URL provided by the installer.
+
+```bash
+# One-line install on any Linux server  
+bash -c "$(curl -sSL https://resource.fit2cloud.com/1panel/package/v2/quick_start.sh)"  
+```
+
+--------------------------------
+
+### CLI Chat: One-shot and Interactive Sessions
+
+Source: https://clawdocs.org/guides/basic-usage
+
+Demonstrates how to use the OpenClaw CLI for both single commands and interactive chat sessions. The one-shot command executes a single query, while the interactive session allows for a series of follow-up questions and commands within a single conversation.
+
+```bash
+# One-shot message  
+openclaw chat "What's in my current directory?"  
+  
+# Interactive session  
+openclaw chat  
+> What files changed in git today?  
+> Summarize the largest one  
+> exit  
+
+```
+
+--------------------------------
+
+### CLI Chat: Working with Context in Sessions
+
+Source: https://clawdocs.org/guides/basic-usage
+
+Illustrates how OpenClaw maintains context within an interactive chat session, allowing for follow-up commands that build upon previous interactions and project context.
+
+```bash
+openclaw chat  
+> I'm working on the authentication module in ~/project  
+> What does the login function do?  
+> Refactor it to use JWT instead of sessions  
+> Now update the tests to match  
+
+```
+
+--------------------------------
+
+### Route Models by Agent Role in OpenClaw
+
+Source: https://clawdocs.org/guides/multi-agent
+
+Assign different Large Language Models (LLMs) to specific agents based on their roles and cost considerations. This JSON configuration demonstrates how to specify distinct models for agents like 'thinker', 'responder', and 'coder'.
+
+```json
+{
+  "agents": {
+    "list": [
+      { "id": "thinker", "model": "claude-opus-4-6" },
+      { "id": "responder", "model": "claude-haiku-4-5" },
+      { "id": "coder", "model": "gpt-5.3-codex" }
+    ]
+  }
+}
+```

@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2026-02-21T14:51:03.328Z",
+  "scope": "sdk.vnext only",
+  "excluded": [
+    "convex/flow/*",
+    "src/app/projects/[id]/flow-agent/*"
+  ],
+  "stageOrder": [
+    "brief",
+    "scope",
+    "concept",
+    "tasks",
+    "budget",
+    "pricing",
+    "ops",
+    "quote",
+    "audit",
+    "compile"
+  ],
+  "stageSkills": {
+    "brief": [
+      "intake.parse_brief",
+      "clarify.next_questions"
+    ],
+    "scope": [
+      "plan.elements"
+    ],
+    "concept": [
+      "chat.free"
+    ],
+    "tasks": [
+      "plan.tasks"
+    ],
+    "budget": [
+      "cost.build_budget"
+    ],
+    "pricing": [
+      "pricing.resolve_lines"
+    ],
+    "ops": [
+      "plan.execution_phases",
+      "runbook.installation",
+      "ops.daily_plan"
+    ],
+    "quote": [
+      "quote.generate"
+    ],
+    "audit": [
+      "audit.project"
+    ],
+    "compile": []
+  },
+  "edges": [
+    {
+      "from": "brief",
+      "to": "scope"
+    },
+    {
+      "from": "scope",
+      "to": "concept"
+    },
+    {
+      "from": "concept",
+      "to": "tasks"
+    },
+    {
+      "from": "tasks",
+      "to": "budget"
+    },
+    {
+      "from": "budget",
+      "to": "pricing"
+    },
+    {
+      "from": "pricing",
+      "to": "ops"
+    },
+    {
+      "from": "ops",
+      "to": "quote"
+    },
+    {
+      "from": "quote",
+      "to": "audit"
+    },
+    {
+      "from": "audit",
+      "to": "compile"
+    }
+  ]
+}

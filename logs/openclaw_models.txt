@@ -1,0 +1,1913 @@
+### Adding Models from Z.AI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Shows how to add models from Z.AI, specifically GLM models. Similar to other providers, this requires setting the primary model, configuring the model in `models`, and providing the ZAI API key in the environment variables.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "zai/glm-5" },
+      models: { "zai/glm-5": {} },
+    },
+  },
+  env: { ZAI_API_KEY: "..." },
+}
+```
+
+--------------------------------
+
+### Adding Models from OpenRouter
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Demonstrates how to integrate models from OpenRouter, a pay-per-token service. This involves setting the primary model, defining the model in the `models` configuration, and providing the OpenRouter API key in the environment variables.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "openrouter/anthropic/claude-sonnet-4-5" },
+      models: { "openrouter/anthropic/claude-sonnet-4-5": {} },
+    },
+  },
+  env: { OPENROUTER_API_KEY: "sk-or-..." },
+}
+```
+
+--------------------------------
+
+### Configuring Default Models and Allowlist
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Shows how to set a primary default model and define an allowlist for allowed models. If a model is not in the allowlist, an error message is displayed instead of a reply. The allowlist can be managed via configuration or by listing available models.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "openai/gpt-5.2" },
+      models: {
+        "openai/gpt-5.2": { alias: "gpt" },
+        "openai-codex/gpt-5.4": { alias: "codex" }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Model Allowlist Configuration Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/models.md
+
+An example JSON5 configuration snippet demonstrating how to set up an allowlist for models, including aliases for specific models. This controls which models are permitted for use.
+
+```json5
+{
+  agent: {
+    model: { primary: "anthropic/claude-sonnet-4-5" },
+    models: {
+      "anthropic/claude-sonnet-4-5": { alias: "Sonnet" },
+      "anthropic/claude-opus-4-6": { alias: "Opus" },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Switching Models for Daily Tasks and Coding
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Demonstrates how to switch between different AI models for distinct tasks. This can be done per session using slash commands or by setting a default model and overriding it when needed. Sub-agents can also be configured with specific default models.
+
+```text
+/model gpt-5.2
+/model openai-codex/gpt-5.4
+```
+
+--------------------------------
+
+### List Available Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Lists available AI models, with options to show all, local models, or filter by provider. Output can be in JSON or plain text format.
+
+```bash
+openclaw models list --all --json
+openclaw models list --provider openai --plain
+```
+
+--------------------------------
+
+### List Available Models (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+Lists all available OpenCLAW models, optionally in JSON format. This command is useful for discovering model IDs and their capabilities for testing.
+
+```bash
+openclaw models list
+openclaw models list --json
+```
+
+--------------------------------
+
+### Configure Primary Model with Fallback Models (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+This configuration sets a primary model and defines a list of fallback models to be used if the primary is unavailable. It also includes aliases for the models.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "huggingface/deepseek-ai/DeepSeek-R1",
+        fallbacks: ["huggingface/Qwen/Qwen3-8B"],
+      },
+      models: {
+        "huggingface/deepseek-ai/DeepSeek-R1": { alias: "DeepSeek R1" },
+        "huggingface/Qwen/Qwen3-8B": { alias: "Qwen3 8B" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### List Installed Ollama Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Command to list all models currently installed in Ollama. This is useful for identifying available models or models that need to be pulled.
+
+```bash
+ollama list
+```
+
+--------------------------------
+
+### Configure Multiple Models with Aliases (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+This configuration demonstrates setting a primary model and multiple fallback models, each with a defined alias. This allows for flexible model selection and easier referencing.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "huggingface/deepseek-ai/DeepSeek-V3.2",
+        fallbacks: [
+          "huggingface/meta-llama/Llama-3.3-70B-Instruct",
+          "huggingface/openai/gpt-oss-120b",
+        ],
+      },
+      models: {
+        "huggingface/deepseek-ai/DeepSeek-V3.2": { alias: "DeepSeek V3.2" },
+        "huggingface/meta-llama/Llama-3.3-70B-Instruct": { alias: "Llama 3.3 70B" },
+        "huggingface/openai/gpt-oss-120b": { alias: "GPT-OSS 120B" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Anthropic Model in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration snippet sets the default primary model to an Anthropic model, specifically 'anthropic/claude-opus-4-6'. It shows how to define the primary model for agents using Anthropic's services.
+
+```json
+{
+  "agents": { "defaults": { "model": { "primary": "anthropic/claude-opus-4-6" } } }
+}
+```
+
+--------------------------------
+
+### Manage Model Aliases
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Manages aliases for AI models. Allows listing, adding, and removing custom aliases to simplify model selection.
+
+```bash
+openclaw models aliases add "gpt4" "gpt-4-turbo"
+openclaw models aliases list --json
+```
+
+--------------------------------
+
+### Manage Image Model Fallbacks
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Manages fallback models for image generation. Allows listing, adding, removing, or clearing fallback image models.
+
+```bash
+openclaw models image-fallbacks add "dall-e-2"
+openclaw models image-fallbacks list --plain
+```
+
+--------------------------------
+
+### Configure OpenCode Zen Model in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration snippet sets the default primary model to an OpenCode Zen model, specifically 'opencode/claude-opus-4-6'. It demonstrates how to configure OpenClaw to use a model from the OpenCode provider.
+
+```json
+{
+  "agents": { "defaults": { "model": { "primary": "opencode/claude-opus-4-6" } } }
+}
+```
+
+--------------------------------
+
+### OpenProse Multi-step Task with Model Override
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+This example demonstrates a multi-step task where the model used for a session can be overridden. It starts with a quick analysis using a 'haiku' model and then proceeds to a deep analysis using a more powerful 'opus' model for the same agent.
+
+```prose
+agent analyst:
+  model: haiku
+  prompt: "You analyze data quickly"
+
+# Quick initial analysis
+session: analyst
+  prompt: "Scan the data for obvious patterns"
+
+# Detailed analysis with more powerful model
+session: analyst
+  model: opus
+  prompt: "Perform deep analysis on the patterns found"
+```
+
+--------------------------------
+
+### Manage Model Fallbacks
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Manages fallback models for text generation. Allows listing, adding, removing, or clearing fallback models.
+
+```bash
+openclaw models fallbacks add "gpt-3.5-turbo"
+openclaw models fallbacks list
+```
+
+--------------------------------
+
+### Configure OpenAI Model in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration snippet sets the default primary model to an OpenAI model, specifically 'openai/gpt-5.4'. It demonstrates how to specify the model within the OpenClaw agent defaults.
+
+```json
+{
+  "agents": { "defaults": { "model": { "primary": "openai/gpt-5.4" } } }
+}
+```
+
+--------------------------------
+
+### Set Primary and Image Models (Bash)
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Configure the primary AI model for general tasks and the specific model used for image generation. This allows setting default models for different functionalities.
+
+```bash
+# Set primary model
+openclaw models set "anthropic/claude-sonnet-4-5"
+
+# Set image model
+openclaw models set-image "openai/dall-e-3"
+```
+
+--------------------------------
+
+### Switching Models in Chat Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/models.md
+
+Demonstrates interactive commands for switching AI models within a chat session. These commands allow dynamic model selection without restarting the session.
+
+```bash
+/model
+/model list
+/model 3
+/model openai/gpt-5.2
+/model status
+```
+
+--------------------------------
+
+### Configure OpenAI Codex Model in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration snippet sets the default primary model to an OpenAI Codex model, specifically 'openai-codex/gpt-5.4'. It illustrates how to specify a Codex model as the primary choice for agents.
+
+```json
+{
+  "agents": { "defaults": { "model": { "primary": "openai-codex/gpt-5.4" } } }
+}
+```
+
+--------------------------------
+
+### OpenClaw CLI Commands for Model Management (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+These bash commands demonstrate essential OpenClaw CLI operations for managing AI models. They cover onboarding with authentication, setting a specific model, and listing available models.
+
+```bash
+openclaw onboard --auth-choice opencode-zen
+openclaw models set opencode/claude-opus-4-6
+openclaw models list
+```
+
+--------------------------------
+
+### List Available Ollama Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Commands to list models managed by Ollama and models recognized by OpenClaw, useful for verifying model availability after pulling.
+
+```bash
+ollama list
+openclaw models list
+```
+
+--------------------------------
+
+### Configure vLLM Agent with a Specific Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration sets the default primary model for agents when using vLLM, a local or self-hosted OpenAI-compatible server. Replace 'your-model-id' with an actual model ID obtained from the vLLM server's `/v1/models` endpoint.
+
+```json5
+{
+  agents: {
+    defaults: { model: { primary: "vllm/your-model-id" } },
+  },
+}
+```
+
+--------------------------------
+
+### List Available Models with OpenClaw CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This command lists all the models that OpenClaw is aware of, including those provided by configured providers. It helps users discover available models for use.
+
+```bash
+openclaw models list
+```
+
+--------------------------------
+
+### Pull a Tool-Capable Ollama Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Command to download and install a specific model from Ollama. OpenClaw auto-discovers models that report tool support, so pulling a tool-capable model is recommended.
+
+```bash
+ollama pull gpt-oss:20b
+```
+
+--------------------------------
+
+### Configure Multiple Models with Policy Suffixes (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+This example configures a primary model with a policy suffix and includes other models with their own policy suffixes and aliases. This allows for fine-grained control over model selection based on cost or speed.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "huggingface/Qwen/Qwen2.5-7B-Instruct:cheapest" },
+      models: {
+        "huggingface/Qwen/Qwen2.5-7B-Instruct": { alias: "Qwen2.5 7B" },
+        "huggingface/Qwen/Qwen2.5-7B-Instruct:cheapest": { alias: "Qwen2.5 7B (cheap)" },
+        "huggingface/deepseek-ai/DeepSeek-R1:fastest": { alias: "DeepSeek R1 (fast)" },
+        "huggingface/meta-llama/Llama-3.1-8B-Instruct": { alias: "Llama 3.1 8B" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Defining Model Shortcut Aliases
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Explains how to define custom aliases for model IDs within the `agents.defaults.models` configuration. These aliases simplify model selection using slash commands, allowing for shorter, more memorable references.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "anthropic/claude-opus-4-6" },
+      models: {
+        "anthropic/claude-opus-4-6": { alias: "opus" },
+        "anthropic/claude-sonnet-4-5": { alias: "sonnet" },
+        "anthropic/claude-haiku-4-5": { alias: "haiku" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure API-based Language Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/raspberry-pi.md
+
+This JSON configuration specifies the default language models to be used by OpenClaw agents. It prioritizes 'anthropic/claude-sonnet-4-20250514' as the primary model and 'openai/gpt-4o-mini' as a fallback, suitable for cloud-based model execution rather than local LLM deployment on a Pi.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-20250514",
+        "fallbacks": ["openai/gpt-4o-mini"]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Scan for Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Scans for available AI models based on specified criteria like parameters, age, and provider. Can optionally set defaults or image defaults.
+
+```bash
+openclaw models scan --provider openai --max-candidates 5 --set-default
+openclaw models scan --min-params 10 --timeout 5000 --json
+```
+
+--------------------------------
+
+### Configure Shared Models and Overrides
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/media-understanding.md
+
+This example demonstrates configuring a shared list of media models and applying specific overrides for audio and video capabilities. It includes provider-based models like OpenAI and Google, as well as a CLI-based model for image and video processing.
+
+```json
+{
+  "tools": {
+    "media": {
+      "models": [
+        { "provider": "openai", "model": "gpt-5.2", "capabilities": ["image"] },
+        {
+          "provider": "google",
+          "model": "gemini-3-flash-preview",
+          "capabilities": ["image", "audio", "video"]
+        },
+        {
+          "type": "cli",
+          "command": "gemini",
+          "args": [
+            "-m",
+            "gemini-3-flash",
+            "--allowed-tools",
+            "read_file",
+            "Read the media at {{MediaPath}} and describe it in <= {{MaxChars}} characters."
+          ],
+          "capabilities": ["image", "video"]
+        }
+      ],
+      "audio": {
+        "attachments": { "mode": "all", "maxAttachments": 2 }
+      },
+      "video": {
+        "maxChars": 500
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Hybrid LM Studio Config: Hosted Primary, Local Fallback
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/local-models.md
+
+This configuration prioritizes a hosted model (e.g., Anthropic Claude Sonnet) as the primary LLM, with local models served by LM Studio as fallbacks. It uses `models.mode: "merge"` to ensure hosted models remain available. This provides a balance between performance and local control.
+
+```json5
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-5",
+        "fallbacks": ["lmstudio/minimax-m2.5-gs32", "anthropic/claude-opus-4-6"],
+      },
+      "models": {
+        "anthropic/claude-sonnet-4-5": { "alias": "Sonnet" },
+        "lmstudio/minimax-m2.5-gs32": { "alias": "MiniMax Local" },
+        "anthropic/claude-opus-4-6": { "alias": "Opus" },
+      },
+    },
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "lmstudio": {
+        "baseUrl": "http://127.0.0.1:1234/v1",
+        "apiKey": "lmstudio",
+        "api": "openai-responses",
+        "models": [
+          {
+            "id": "minimax-m2.5-gs32",
+            "name": "MiniMax M2.5 GS32",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 196608,
+            "maxTokens": 8192,
+          },
+        ],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Manage Model Aliases and Fallbacks (Bash)
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Configure aliases for frequently used models and manage fallback models for redundancy. This simplifies model selection and ensures availability.
+
+```bash
+# Manage model aliases
+openclaw models aliases list
+openclaw models aliases add sonnet "anthropic/claude-sonnet-4-5"
+openclaw models aliases remove sonnet
+
+# Manage fallback models
+openclaw models fallbacks add "openai/gpt-5.2"
+openclaw models fallbacks list
+openclaw models fallbacks clear
+```
+
+--------------------------------
+
+### Configure Default Models and Fallbacks
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Defines the default models, including primary and fallback options for general, image, and PDF processing. It also specifies model aliases and cataloged models with their parameters.
+
+```json5
+{
+  agents: {
+    defaults: {
+      models: {
+        "anthropic/claude-opus-4-6": { alias: "opus" },
+        "minimax/MiniMax-M2.5": { alias: "minimax" },
+      },
+      model: {
+        primary: "anthropic/claude-opus-4-6",
+        fallbacks: ["minimax/MiniMax-M2.5"],
+      },
+      imageModel: {
+        primary: "openrouter/qwen/qwen-2.5-vl-72b-instruct:free",
+        fallbacks: ["openrouter/google/gemini-2.0-flash-vision:free"],
+      },
+      pdfModel: {
+        primary: "anthropic/claude-opus-4-6",
+        fallbacks: ["openai/gpt-5-mini"],
+      },
+      pdfMaxBytesMb: 10,
+      pdfMaxPages: 20,
+      thinkingDefault: "low",
+      verboseDefault: "off",
+      elevatedDefault: "on",
+      timeoutSeconds: 600,
+      mediaMaxMb: 5,
+      contextTokens: 200000,
+      maxConcurrent: 3,
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Set Default Model with OpenClaw CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This command allows users to set a specific model as the default for OpenClaw. The format is 'provider/model', ensuring that the specified model is used unless overridden.
+
+```bash
+openclaw models set <provider/model>
+```
+
+--------------------------------
+
+### List Available Venice AI Models in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/venice.md
+
+Display all available Venice AI models configured within OpenClaw. This command helps you see the full list of models you can choose from, filtered to show only Venice models.
+
+```bash
+openclaw models list | grep venice
+```
+
+--------------------------------
+
+### Configure AI Models (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Specifies the primary AI model and fallback models for agent interactions. Also defines a model catalog and settings for image downscaling.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4-5",
+        fallbacks: ["openai/gpt-5.2"],
+      },
+      models: {
+        "anthropic/claude-sonnet-4-5": { alias: "Sonnet" },
+        "openai/gpt-5.2": { alias: "GPT" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Synthetic Agent with Anthropic-compatible Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration sets up the Synthetic provider for agents, specifying an Anthropic-compatible model and its custom endpoint details. It includes the base URL, API key, API type, and a list of available models.
+
+```json5
+{
+  agents: {
+    defaults: { model: { primary: "synthetic/hf:MiniMaxAI/MiniMax-M2.5" } },
+  },
+  models: {
+    mode: "merge",
+    providers: {
+      synthetic: {
+        baseUrl: "https://api.synthetic.new/anthropic",
+        apiKey: "${SYNTHETIC_API_KEY}",
+        api: "anthropic-messages",
+        models: [{ id: "hf:MiniMaxAI/MiniMax-M2.5", name: "MiniMax M2.5" }],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### LM Studio Configuration for MiniMax M2.5
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/local-models.md
+
+This JSON5 configuration sets up OpenClaw to use the MiniMax M2.5 model served via LM Studio. It defines default agents, merges local and hosted models, and specifies provider details for LM Studio, including API endpoint and model parameters. This setup is recommended for local LLM serving.
+
+```json5
+{
+  "agents": {
+    "defaults": {
+      "model": { "primary": "lmstudio/minimax-m2.5-gs32" },
+      "models": {
+        "anthropic/claude-opus-4-6": { "alias": "Opus" },
+        "lmstudio/minimax-m2.5-gs32": { "alias": "Minimax" },
+      },
+    },
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "lmstudio": {
+        "baseUrl": "http://127.0.0.1:1234/v1",
+        "apiKey": "lmstudio",
+        "api": "openai-responses",
+        "models": [
+          {
+            "id": "minimax-m2.5-gs32",
+            "name": "MiniMax M2.5 GS32",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 196608,
+            "maxTokens": 8192,
+          },
+        ],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Install Ollama and Pull a Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This bash command demonstrates how to install Ollama, a local LLM runtime, and then pull a specific model (llama3.3) to be used with an OpenAI-compatible API.
+
+```bash
+# Install Ollama, then pull a model:
+ollama pull llama3.3
+```
+
+--------------------------------
+
+### Check and List Models (Bash)
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Manage AI model configurations, including checking their status, authentication profiles, and listing available models from specific providers.
+
+```bash
+# Check model status and auth profiles
+openclaw models status --probe
+openclaw models status --json
+
+# List available models
+openclaw models list --all --provider anthropic
+```
+
+--------------------------------
+
+### Configure OpenClaw to Use Local vLLM Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/vllm.md
+
+This JSON configuration snippet sets the primary model for OpenClaw agents to a model served by a local vLLM instance. Replace 'vllm/your-model-id' with the actual model identifier from your vLLM server.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": { "primary": "vllm/your-model-id" },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Set Default LLM Model Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/index.md
+
+This JSON snippet demonstrates how to configure the default primary LLM model within OpenClaw. It specifies the provider and model name, typically used after authenticating with the chosen provider.
+
+```json5
+{
+  agents: { defaults: { model: { primary: "anthropic/claude-opus-4-6" } } },
+}
+```
+
+--------------------------------
+
+### OpenClaw Models CLI Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/models.md
+
+Provides a comprehensive list of OpenClaw Models CLI commands for managing model configurations, including listing, setting, aliases, and fallbacks.
+
+```bash
+openclaw models list
+openclaw models status
+openclaw models set <provider/model>
+openclaw models set-image <provider/model>
+
+openclaw models aliases list
+openclaw models aliases add <alias> <provider/model>
+openclaw models aliases remove <alias>
+
+openclaw models fallbacks list
+openclaw models fallbacks add <provider/model>
+openclaw models fallbacks remove <provider/model>
+openclaw models fallbacks clear
+
+openclaw models image-fallbacks list
+openclaw models image-fallbacks add <provider/model>
+openclaw models image-fallbacks remove <provider/model>
+openclaw models image-fallbacks clear
+```
+
+--------------------------------
+
+### Model Tiering: Assign Models Based on Task Complexity (Prose)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/patterns.md
+
+This pattern demonstrates assigning different AI models (Sonnet, Opus, Haiku) to tasks based on their complexity and required reasoning capabilities. It defines agents with specific models and orchestrates their execution within sessions, optimizing cost by using simpler models for simpler tasks.
+
+```prose
+agent captain:
+  model: sonnet  # Orchestration and coordination
+  persist: true  # Execution-scoped (dies with run)
+  prompt: "You coordinate the team and review work"
+
+agent researcher:
+  model: opus  # Hard analytical work
+  prompt: "You perform deep research and analysis"
+
+agent formatter:
+  model: haiku  # Simple transformation (use sparingly)
+  prompt: "You format text into consistent structure"
+
+agent preferences:
+  model: sonnet
+  persist: user  # User-scoped (survives across projects)
+  prompt: "You remember user preferences and patterns"
+
+# Captain orchestrates, specialists do the hard work
+session: captain
+  prompt: "Plan the research approach"
+
+let findings = session: researcher
+  prompt: "Investigate the technical architecture"
+
+resume: captain
+  prompt: "Review findings and determine next steps"
+  context: findings
+```
+
+--------------------------------
+
+### Set Default Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Sets the default primary model for agents. This command updates the `agents.defaults.model.primary` configuration setting.
+
+```bash
+openclaw models set "claude-3-opus-20240229"
+```
+
+--------------------------------
+
+### Set Default Image Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Sets the default primary image model for agents. This command updates the `agents.defaults.imageModel.primary` configuration setting.
+
+```bash
+openclaw models set-image "dall-e-3"
+```
+
+--------------------------------
+
+### Local-First LM Studio Config with Hosted Safety Net
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/local-models.md
+
+This configuration prioritizes a local LLM served by LM Studio, with hosted models as fallbacks. It ensures that if the local model is unavailable, OpenClaw can seamlessly switch to hosted alternatives like Anthropic Claude. The `models.mode: "merge"` setting is crucial for this fallback mechanism.
+
+```json5
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "lmstudio/minimax-m2.5-gs32",
+        "fallbacks": ["anthropic/claude-sonnet-4-5", "anthropic/claude-opus-4-6"],
+      },
+      "models": {
+        "anthropic/claude-sonnet-4-5": { "alias": "Sonnet" },
+        "lmstudio/minimax-m2.5-gs32": { "alias": "MiniMax Local" },
+        "anthropic/claude-opus-4-6": { "alias": "Opus" },
+      },
+    },
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "lmstudio": {
+        "baseUrl": "http://127.0.0.1:1234/v1",
+        "apiKey": "lmstudio",
+        "api": "openai-responses",
+        "models": [
+          {
+            "id": "minimax-m2.5-gs32",
+            "name": "MiniMax M2.5 GS32",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 196608,
+            "maxTokens": 8192,
+          },
+        ],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure OpenClaw for ZAI GLM Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/glm.md
+
+This JSON configuration snippet sets up the OpenClaw environment to use the ZAI provider and specifies a GLM model as the primary agent model. It requires a ZAI API key for authentication.
+
+```json
+{
+  "env": { "ZAI_API_KEY": "sk-..." },
+  "agents": { "defaults": { "model": { "primary": "zai/glm-5" } } }
+}
+```
+
+--------------------------------
+
+### Configure Volcano Engine (Doubao) Agent
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration sets the default primary model for agents using the Volcano Engine provider, specifically targeting the Doubao model.
+
+```json5
+{
+  agents: {
+    defaults: { model: { primary: "volcengine/doubao-seed-1-8-251228" } },
+  },
+}
+```
+
+--------------------------------
+
+### Scan for Models (Bash)
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Scan for available AI models from a specific provider and optionally set one as the default. This helps discover and configure new models.
+
+```bash
+# Scan for available models
+openclaw models scan --provider anthropic --set-default
+```
+
+--------------------------------
+
+### Configure Ollama Agent for Local LLM
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration sets the default primary model for agents when using Ollama, a local LLM runtime. It assumes Ollama is running locally and accessible.
+
+```json5
+{
+  agents: {
+    defaults: { model: { primary: "ollama/llama3.3" } },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Default Model with Policy Variants (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+This example sets a default model and defines specific variants of that model using policy suffixes like ':cheapest' and ':fastest'. Aliases are provided for each variant.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "huggingface/Qwen/Qwen3-8B" },
+      models: {
+        "huggingface/Qwen/Qwen3-8B": { alias: "Qwen3 8B" },
+        "huggingface/Qwen/Qwen3-8B:cheapest": { alias: "Qwen3 8B (cheapest)" },
+        "huggingface/Qwen/Qwen3-8B:fastest": { alias: "Qwen3 8B (fastest)" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Set Default Model Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/together.md
+
+This JSON5 configuration snippet sets the default primary model for agents within OpenClaw. It specifies 'together/moonshotai/Kimi-K2.5' as the model to be used by default.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "together/moonshotai/Kimi-K2.5" },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Ollama Agent Fallbacks
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Sets up primary and fallback models for OpenClaw agents, specifying models hosted by Ollama. This ensures model availability and provides alternatives if the primary model fails.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "ollama/gpt-oss:20b",
+        "fallbacks": ["ollama/llama3.3", "ollama/qwen2.5-coder:32b"],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Local Models Only with LM Studio
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Sets up the agent to use only local models, specifically integrating with LM Studio. This configuration specifies the workspace, the primary local model, and details about the LM Studio provider, including its base URL, API key, and model specifics like context window and token limits. This is ideal for environments where cloud-based models are not desired or available.
+
+```json5
+{
+  agent: {
+    workspace: "~/.openclaw/workspace",
+    model: { primary: "lmstudio/minimax-m2.5-gs32" },
+  },
+  models: {
+    mode: "merge",
+    providers: {
+      lmstudio: {
+        baseUrl: "http://127.0.0.1:1234/v1",
+        apiKey: "lmstudio",
+        api: "openai-responses",
+        models: [
+          {
+            id: "minimax-m2.5-gs32",
+            name: "MiniMax M2.5 GS32",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 196608,
+            maxTokens: 8192,
+          },
+        ],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure BytePlus Agent
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON configuration sets the default primary model for agents using the BytePlus provider, which offers international access to models similar to Volcano Engine.
+
+```json5
+{
+  agents: {
+    defaults: { model: { primary: "byteplus/seed-1-8-251228" } },
+  },
+}
+```
+
+--------------------------------
+
+### Override OpenAI Model Transport Protocol
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This configuration demonstrates how to override the default transport protocol for a specific OpenAI model. It allows choosing between WebSocket, SSE, or auto-detection for the 'openai/gpt-5.4' model.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "models": {
+        "openai/gpt-5.4": {
+          "params": {
+            "transport": "sse"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Default Model for Vercel AI Gateway (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/vercel-ai-gateway.md
+
+This JSON5 configuration snippet sets the default primary model for OpenClaw agents to a specific Vercel AI Gateway model. It specifies the provider and the model identifier.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "vercel-ai-gateway/anthropic/claude-opus-4.6" },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Pull Reasoning-Capable Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Pulls a model specifically identified as reasoning-capable from Ollama. OpenClaw can utilize this capability if the model reports 'thinking' via the Ollama API.
+
+```bash
+ollama pull deepseek-r1:32b
+```
+
+--------------------------------
+
+### Match Model Complexity to Task Requirements for Cost Efficiency
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/antipatterns.md
+
+Using the most powerful and expensive models (like Opus) for simple tasks leads to unnecessary costs. Select models appropriate to the task's complexity, such as using Haiku for basic classification, to optimize spending. The example shows using Opus for classification versus the more cost-effective Haiku.
+
+```prose
+# Bad: Opus for simple classification
+agent classifier:
+  model: opus
+  prompt: "Categorize items as: spam, not-spam"
+
+# Expensive for a binary classification
+for email in emails:
+  session: classifier
+    prompt: "Classify: {email}"
+
+# Good: Haiku for simple tasks
+agent classifier:
+  model: haiku
+  prompt: "Categorize items as: spam, not-spam"
+```
+
+--------------------------------
+
+### Pull Ollama Models
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Command-line instructions to download various open-source language models using the Ollama package manager. These models can then be used with OpenClaw.
+
+```bash
+ollama pull gpt-oss:20b
+# or
+ollama pull llama3.3
+# or
+ollama pull qwen2.5-coder:32b
+# or
+ollama pull deepseek-r1:32b
+```
+
+--------------------------------
+
+### Summarize Model Usage with model_usage.py (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/SKILL.md
+
+Execute the `model_usage.py` script to get per-model cost summaries. Options include specifying the provider (codex/claude), mode (current/all), and output format. This script requires the CodexBar CLI to be installed.
+
+```bash
+python {baseDir}/scripts/model_usage.py --provider codex --mode current
+python {baseDir}/scripts/model_usage.py --provider codex --mode all
+python {baseDir}/scripts/model_usage.py --provider claude --mode all --format json --pretty
+```
+
+--------------------------------
+
+### Setting MiniMax as Default with OpenAI for Complex Tasks
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Illustrates how to configure MiniMax as the default model and use OpenAI for more demanding tasks. This involves setting API keys, defining default models, and creating aliases for easy switching via slash commands.
+
+```json5
+{
+  env: { MINIMAX_API_KEY: "sk-...", OPENAI_API_KEY: "sk-..." },
+  agents: {
+    defaults: {
+      model: { primary: "minimax/MiniMax-M2.5" },
+      models: {
+        "minimax/MiniMax-M2.5": { alias: "minimax" },
+        "openai/gpt-5.2": { alias: "gpt" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Send Agent Hook Request with Model Override
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/webhook.md
+
+Example of sending a POST request to the /hooks/agent endpoint, specifying a different model to be used for processing. This is achieved by including the 'model' field in the JSON payload.
+
+```bash
+curl -X POST http://127.0.0.1:18789/hooks/agent \
+  -H 'x-openclaw-token: SECRET' \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Summarize inbox","name":"Email","model":"openai/gpt-5.2-mini"}'
+```
+
+--------------------------------
+
+### Override OpenAI Codex Model Transport Protocol
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This configuration demonstrates how to override the default transport protocol for a specific OpenAI Codex model. It allows choosing between WebSocket, SSE, or auto-detection for the 'openai-codex/gpt-5.4' model.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "models": {
+        "openai-codex/gpt-5.4": {
+          "params": {
+            "transport": "websocket"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Model Selection Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/slash-commands.md
+
+Commands to select and manage AI models. Supports selecting by number, provider/model name, or checking status. On Discord, provides an interactive picker.
+
+```shell
+/model
+/model list
+/model 3
+/model openai/gpt-5.2
+/model opus@anthropic:default
+/model status
+```
+
+--------------------------------
+
+### OpenClaw Live Test: Single Model Direct Run
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+This command runs a live test for a single model directly, bypassing the gateway. It's useful for quick, isolated testing of a specific model's functionality.
+
+```bash
+OPENCLAW_LIVE_MODELS="openai/gpt-5.2" pnpm test:live src/agents/models.profiles.live.test.ts
+```
+
+--------------------------------
+
+### Pull Another Ollama Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Command to download and install another Ollama model. This demonstrates pulling different models, such as llama3.3, which may or may not have tool support reported.
+
+```bash
+ollama pull llama3.3
+```
+
+--------------------------------
+
+### Get Model Status
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Checks the status of configured AI models, including authentication and OAuth expiry. Supports live probing of providers and detailed status output.
+
+```bash
+openclaw models status --json
+openclaw models status --probe --probe-provider anthropic
+```
+
+--------------------------------
+
+### Override Model Display Names with Aliases
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+Configure custom display names (aliases) for models in the OpenCLAW configuration. This allows for user-friendly labels in the CLI and UI, overriding the default names derived from API responses or model IDs. The configuration is structured under `agents.defaults.models`.
+
+```json5
+{
+  agents: {
+    defaults: {
+      models: {
+        "huggingface/deepseek-ai/DeepSeek-R1": { alias: "DeepSeek R1 (fast)" },
+        "huggingface/deepseek-ai/DeepSeek-R1:cheapest": { alias: "DeepSeek R1 (cheap)" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Identify Kilo Gateway Gemini Models for Sanitization (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/design/kilo-gateway-integration.md
+
+This snippet identifies if a given provider and model represent a Kilo Gateway Gemini model. It's used within a larger check to determine if non-image sanitization is required for the model. This helps in ensuring proper data handling for specific AI model types.
+
+```typescript
+const isKilocodeGemini = provider === "kilocode" && modelId.toLowerCase().includes("gemini");
+
+// Include in needsNonImageSanitize check
+const needsNonImageSanitize =
+  isGoogle || isAnthropic || isMistral || isOpenRouterGemini || isKilocodeGemini;
+```
+
+--------------------------------
+
+### Pull New Model with Ollama
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Demonstrates how to pull a new model using Ollama, which will then be automatically discovered and available for use by OpenClaw if auto-discovery is enabled.
+
+```bash
+ollama pull mistral
+```
+
+--------------------------------
+
+### OpenClaw Live Test: Single Model Gateway Smoke
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+This command executes a live smoke test for a single model through the OpenClaw gateway. It verifies the gateway's ability to route requests to and from the specified model.
+
+```bash
+OPENCLAW_LIVE_GATEWAY_MODELS="openai/gpt-5.2" pnpm test:live src/gateway/gateway-models.profiles.live.test.ts
+```
+
+--------------------------------
+
+### Check vLLM Server Models Endpoint
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/vllm.md
+
+This command uses curl to send a GET request to the vLLM server's /v1/models endpoint. It helps verify if the server is running and accessible, and if it's correctly exposing the list of available models.
+
+```bash
+curl http://127.0.0.1:8000/v1/models
+```
+
+--------------------------------
+
+### OpenAI-Compatible Local Proxy Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/local-models.md
+
+This configuration demonstrates how to connect OpenClaw to any local LLM server that exposes an OpenAI-compatible API endpoint (e.g., vLLM, LiteLLM). It specifies a generic `local` provider with a custom `baseUrl`, `apiKey`, and model details. The `models.mode: "merge"` ensures hosted fallbacks remain active.
+
+```json5
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "local": {
+        "baseUrl": "http://127.0.0.1:8000/v1",
+        "apiKey": "sk-local",
+        "api": "openai-responses",
+        "models": [
+          {
+            "id": "my-local-model",
+            "name": "Local Model",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 120000,
+            "maxTokens": 8192,
+          },
+        ],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Set Default Venice AI Model in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/venice.md
+
+Change the default Venice AI model used by OpenClaw to 'venice/claude-opus-45' for high-capability tasks. This command updates your preferred model for general use.
+
+```bash
+openclaw models set venice/claude-opus-45
+```
+
+--------------------------------
+
+### OpenClaw Agent CLI Usage Examples
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/venice.md
+
+Demonstrates how to use the OpenClaw agent command-line interface to interact with different models. These examples show how to specify models, including private, anonymized, uncensored, and vision-capable models, and provide a message for processing.
+
+```bash
+# Use default private model
+openclaw agent --model venice/llama-3.3-70b --message "Quick health check"
+
+# Use Claude via Venice (anonymized)
+openclaw agent --model venice/claude-opus-45 --message "Summarize this task"
+
+# Use uncensored model
+openclaw agent --model venice/venice-uncensored --message "Draft options"
+
+# Use vision model with image
+openclaw agent --model venice/qwen3-vl-235b-a22b --message "Review attached image"
+```
+
+--------------------------------
+
+### Provider Model Entry Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/media-understanding.md
+
+Defines a model entry of type 'provider' for media understanding. It specifies the provider, model name, prompt, size limits, timeout, and capabilities.
+
+```json
+{
+  "type": "provider", // default if omitted
+  "provider": "openai",
+  "model": "gpt-5.2",
+  "prompt": "Describe the image in <= 500 chars.",
+  "maxChars": 500,
+  "maxBytes": 10485760,
+  "timeoutSeconds": 60,
+  "capabilities": ["image"], // optional, used for multi-modal entries
+  "profile": "vision-profile",
+  "preferredProfile": "vision-fallback"
+}
+```
+
+--------------------------------
+
+### Diagnosing Anthropic 429 Rate Limit Errors
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/troubleshooting.md
+
+Use these commands when encountering 'HTTP 429: rate_limit_error: Extra usage is required for long context requests' from Anthropic models. This involves checking logs, model status, and configuration related to Anthropic models. Look for specific Anthropic models configured for long context (1M context window) and verify the eligibility of the current Anthropic credential for such usage. Failures are expected on long sessions or model runs requiring the 1M beta path.
+
+```bash
+openclaw logs --follow
+openclaw models status
+openclaw config get agents.defaults.models
+```
+
+--------------------------------
+
+### Configure OpenAI-Compatible Local Proxy (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This JSON5 configuration sets up OpenClaw to use a local AI model proxy compatible with the OpenAI API. It specifies the model details, provider endpoint, and API key. Optional parameters for custom providers are also outlined.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "lmstudio/minimax-m2.5-gs32" },
+      models: { "lmstudio/minimax-m2.5-gs32": { alias: "Minimax" } },
+    },
+  },
+  models: {
+    providers: {
+      lmstudio: {
+        baseUrl: "http://localhost:1234/v1",
+        apiKey: "LMSTUDIO_KEY",
+        api: "openai-completions",
+        models: [
+          {
+            id: "minimax-m2.5-gs32",
+            name: "MiniMax M2.5",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200000,
+            maxTokens: 8192,
+          },
+        ],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Check Cache TTL Eligibility for Kilo Gateway and Anthropic Models (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/design/kilo-gateway-integration.md
+
+This function determines if a provider and model combination is eligible for cache Time-To-Live (TTL) optimization. It specifically checks for 'anthropic', 'openrouter' with Anthropic models, and 'kilocode' with Anthropic models. The function normalizes provider and model IDs to lowercase for case-insensitive comparison.
+
+```typescript
+export function isCacheTtlEligibleProvider(provider: string, modelId: string): boolean {
+  const normalizedProvider = provider.toLowerCase();
+  const normalizedModelId = modelId.toLowerCase();
+  if (normalizedProvider === "anthropic") return true;
+  if (normalizedProvider === "openrouter" && normalizedModelId.startsWith("anthropic/"))
+    return true;
+  if (normalizedProvider === "kilocode" && normalizedModelId.startsWith("anthropic/")) return true;
+  return false;
+}
+```
+
+--------------------------------
+
+### Enable OpenAI Priority Processing
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This configuration demonstrates how to enable priority processing for OpenAI models by setting the 'serviceTier' parameter. This can be used to ensure higher priority for requests to specific OpenAI models.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "models": {
+        "openai/gpt-5.4": {
+          "params": {
+            "serviceTier": "priority"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure MiniMax M2.5 as Fallback Model
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/minimax.md
+
+Sets up MiniMax M2.5 as a fallback model in OpenClaw, ensuring that if the primary model (e.g., Anthropic Claude Opus) fails, the request is routed to MiniMax M2.5. This configuration requires the MINIMAX_API_KEY environment variable.
+
+```json5
+{
+  env: { MINIMAX_API_KEY: "sk-..." },
+  agents: {
+    defaults: {
+      models: {
+        "anthropic/claude-opus-4-6": { alias: "primary" },
+        "minimax/MiniMax-M2.5": { alias: "minimax" },
+      },
+      model: {
+        primary: "anthropic/claude-opus-4-6",
+        fallbacks: ["minimax/MiniMax-M2.5"],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Discover Hugging Face Models via API
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+Demonstrates how OpenClaw discovers available Hugging Face models by querying the Inference API. An optional Authorization header can be included for a full list.
+
+```http
+GET https://router.huggingface.co/v1/models
+# Optional: Authorization: Bearer $HUGGINGFACE_HUB_TOKEN or $HF_TOKEN
+```
+
+--------------------------------
+
+### Configure Bedrock Model Discovery in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/bedrock.md
+
+This JSON configuration enables and customizes automatic discovery of Amazon Bedrock models that support streaming and text output within OpenClaw. It allows filtering providers, setting refresh intervals for cached model lists, and defining default context window and token limits.
+
+```json
+{
+  "models": {
+    "bedrockDiscovery": {
+      "enabled": true,
+      "region": "us-east-1",
+      "providerFilter": ["anthropic", "amazon"],
+      "refreshInterval": 3600,
+      "defaultContextWindow": 32000,
+      "defaultMaxTokens": 4096
+    }
+  }
+}
+```
+
+--------------------------------
+
+### OpenClaw Live Test: Comprehensive Model Matrix (Tools + Image)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+This command executes a comprehensive live smoke test covering a wide range of models, including support for tool calling and image inputs. It's designed to ensure the gateway functions correctly with diverse AI providers and capabilities.
+
+```bash
+OPENCLAW_LIVE_GATEWAY_MODELS="openai/gpt-5.2,openai-codex/gpt-5.4,anthropic/claude-opus-4-6,google/gemini-3-pro-preview,google/gemini-3-flash-preview,google-antigravity/claude-opus-4-6-thinking,google-antigravity/gemini-3-flash,zai/glm-4.7,minimax/minimax-m2.5" pnpm test:live src/gateway/gateway-models.profiles.live.test.ts
+```
+
+--------------------------------
+
+### Onboard Z.AI (GLM) Provider
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+Onboards the Z.AI provider using an API key. Aliases 'z.ai' and 'z-ai' are normalized to 'zai'.
+
+```bash
+openclaw onboard --auth-choice zai-api-key
+```
+
+--------------------------------
+
+### Disable Model TTS Overrides
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tts.md
+
+This JSON configuration disables all model-driven TTS directives. When disabled, the model cannot emit `[[tts:...]]` tags to control voice or text formatting for TTS output.
+
+```json
+{
+  "messages": {
+    "tts": {
+      "modelOverrides": {
+        "enabled": false
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Onboard Mistral Provider
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+Onboards the Mistral provider using an API key.
+
+```bash
+openclaw onboard --auth-choice mistral-api-key
+```
+
+--------------------------------
+
+### Pin Channels to Specific Models in OpenClaw Config
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configure specific channel IDs to use particular models, overriding the default model selection. This is useful for tailoring responses based on the communication channel. Supports Discord, Slack, and Telegram.
+
+```json5
+{
+  channels: {
+    modelByChannel: {
+      discord: {
+        "123456789012345678": "anthropic/claude-opus-4-6"
+      },
+      slack: {
+        "C1234567890": "openai/gpt-4.1"
+      },
+      telegram: {
+        "-1001234567890": "openai/gpt-4.1-mini",
+        "-1001234567890:topic:99": "anthropic/claude-sonnet-4-6"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Onboard Google Gemini API Key with OpenClaw CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+This command initiates the onboarding process for Google Gemini models using an API key. It guides the user through setting up the necessary authentication credentials for the Gemini API.
+
+```bash
+openclaw onboard --auth-choice gemini-api-key
+```
+
+--------------------------------
+
+### Configure Hugging Face Default Model in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+Sets the default Hugging Face model for OpenClaw agents. This configuration is typically done within the OpenClaw configuration file.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": { "primary": "huggingface/deepseek-ai/DeepSeek-R1" }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Onboard Hugging Face Inference Provider
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+Onboards the Hugging Face Inference provider using an API key.
+
+```bash
+openclaw onboard --auth-choice huggingface-api-key
+```
+
+--------------------------------
+
+### CLI Model Entry Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/media-understanding.md
+
+Defines a model entry of type 'cli' for media understanding. It specifies the command, arguments, size limits, timeout, and capabilities. CLI templates can use special variables like {{MediaPath}}.
+
+```json
+{
+  "type": "cli",
+  "command": "gemini",
+  "args": [
+    "-m",
+    "gemini-3-flash",
+    "--allowed-tools",
+    "read_file",
+    "Read the media at {{MediaPath}} and describe it in <= {{MaxChars}} characters."
+  ],
+  "maxChars": 500,
+  "maxBytes": 52428800,
+  "timeoutSeconds": 120,
+  "capabilities": ["video", "image"]
+}
+```
+
+--------------------------------
+
+### Custom Model Provider Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Sets up custom model providers, merging configurations and defining a 'custom-proxy' provider with its base URL, API key, API type, and specific model details including ID, name, cost, and context window.
+
+```json
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "custom-proxy": {
+        "baseUrl": "http://localhost:4000/v1",
+        "apiKey": "LITELLM_KEY",
+        "api": "openai-responses",
+        "authHeader": true,
+        "headers": {
+          "X-Proxy-Region": "us-west"
+        },
+        "models": [
+          {
+            "id": "llama-3.1-8b",
+            "name": "Llama 3.1 8B",
+            "api": "openai-responses",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 128000,
+            "maxTokens": 32000
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Summarize Model via JSON (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/summarize/SKILL.md
+
+Illustrates how to configure the default AI model for the summarize CLI tool using a JSON configuration file. This allows setting a preferred model for all subsequent commands.
+
+```json
+{
+  "model": "openai/gpt-5.2"
+}
+```
+
+--------------------------------
+
+### Onboard to ZAI Provider using CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/glm.md
+
+This command initiates the onboarding process for the ZAI provider within OpenClaw, which is necessary for accessing GLM models. It prompts for authentication details.
+
+```bash
+openclaw onboard --auth-choice zai-api-key
+```
+
+--------------------------------
+
+### OpenClaw Fix: Google Gemini API Key Missing
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+This scenario occurs when OpenClaw attempts to use Google Gemini as a fallback model and cannot find the necessary API key. The solution involves either providing the Google authentication credentials or adjusting the model configuration to exclude Google models from the fallback list.
+
+```bash
+No API key found for provider "google"
+```

@@ -1,0 +1,110 @@
+{
+    "snapshotVersion": "2.0.0",
+    "generatedAt": "2026-02-21T15:30:00Z",
+    "source": "convex/sdk/schemas.ts",
+    "uiBlockCount": 10,
+    "blocks": [
+        {
+            "type": "ChatBlock",
+            "fields": [
+                "markdownHe"
+            ],
+            "description": "Free-form markdown response"
+        },
+        {
+            "type": "SuggestionsBlock",
+            "fields": [
+                "titleHe",
+                "suggestions[]",
+                "freeTextPromptHe?"
+            ],
+            "description": "Next-step suggestions"
+        },
+        {
+            "type": "QuestionsBlock",
+            "fields": [
+                "titleHe",
+                "stageKey?",
+                "questions[]",
+                "actions[]",
+                "continueAction?",
+                "freeTextPromptHe?",
+                "autoRun?"
+            ],
+            "description": "Structured user questions"
+        },
+        {
+            "type": "ChangeSetBlock",
+            "fields": [
+                "titleHe",
+                "summaryHe",
+                "stats",
+                "changeSet.ops[]",
+                "nextActions[]"
+            ],
+            "description": "Data mutation proposal"
+        },
+        {
+            "type": "ReviewBlock",
+            "fields": [
+                "titleHe",
+                "sections[]",
+                "risksHe[]"
+            ],
+            "description": "Audit/review findings"
+        },
+        {
+            "type": "ShoppingPlanBlock",
+            "fields": [
+                "titleHe",
+                "objective",
+                "trips[]",
+                "totals",
+                "assumptionsHe[]"
+            ],
+            "description": "Procurement plan"
+        },
+        {
+            "type": "PrintQaBlock",
+            "fields": [
+                "overallStatus",
+                "issues[]",
+                "questionsHe[]",
+                "vendorNotesHe[]"
+            ],
+            "description": "Print file QA"
+        },
+        {
+            "type": "ReceiptBlock",
+            "fields": [
+                "extracted",
+                "mappingSuggestions[]",
+                "questionsHe[]"
+            ],
+            "description": "Receipt parsing"
+        },
+        {
+            "type": "RunbookBlock",
+            "fields": [
+                "titleHe",
+                "summaryHe?",
+                "phases[]",
+                "bringListHe[]",
+                "safetyHe[]",
+                "checkpointsHe[]"
+            ],
+            "description": "Install/teardown runbook"
+        },
+        {
+            "type": "DailyPlanBlock",
+            "fields": [
+                "date",
+                "prioritiesHe[]",
+                "scheduleHe[]",
+                "blockersHe[]",
+                "shoppingHe[]"
+            ],
+            "description": "Daily execution plan"
+        }
+    ]
+}

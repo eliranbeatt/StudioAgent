@@ -1,0 +1,143 @@
+{
+  "snapshotVersion": "2.0.0",
+  "generatedAt": "2026-02-21T15:30:00Z",
+  "source": "convex/sdk/schemas.ts",
+  "schemaCount": 27,
+  "schemas": [
+    {
+      "name": "orchestrator.response",
+      "usedBy": "orchestrator",
+      "description": "Orchestrator output with blocks and tool calls"
+    },
+    {
+      "name": "context.response",
+      "usedBy": "context.get",
+      "description": "Context data response"
+    },
+    {
+      "name": "knowledge.response",
+      "usedBy": "knowledge.summarize_or_update",
+      "description": "Knowledge update response"
+    },
+    {
+      "name": "web_search.response",
+      "usedBy": "web_search",
+      "description": "Web search results"
+    },
+    {
+      "name": "clarify.next_questions",
+      "usedBy": "clarify.next_questions",
+      "description": "Question set output"
+    },
+    {
+      "name": "chat.free.response",
+      "usedBy": "chat.free",
+      "description": "Free-form chat response"
+    },
+    {
+      "name": "think.deep.response",
+      "usedBy": "think.deep",
+      "description": "Deep analysis response"
+    },
+    {
+      "name": "intake.parse_brief",
+      "usedBy": "intake.parse_brief",
+      "description": "Structured brief extraction"
+    },
+    {
+      "name": "plan.elements",
+      "usedBy": "plan.elements",
+      "description": "Element generation output"
+    },
+    {
+      "name": "plan.tasks",
+      "usedBy": "plan.tasks",
+      "description": "Task generation output"
+    },
+    {
+      "name": "plan.execution_phases",
+      "usedBy": "plan.execution_phases",
+      "description": "Phase plan output"
+    },
+    {
+      "name": "draft.plan_and_questions",
+      "usedBy": "draft.plan_and_questions",
+      "description": "Planning flow entry output"
+    },
+    {
+      "name": "cost.build_budget",
+      "usedBy": "cost.build_budget",
+      "description": "Budget generation output"
+    },
+    {
+      "name": "pricing.resolve_lines",
+      "usedBy": "pricing.resolve_lines",
+      "description": "Price resolution results"
+    },
+    {
+      "name": "quote.generate",
+      "usedBy": "quote.generate",
+      "description": "Quote draft output"
+    },
+    {
+      "name": "procurement.shopping_plan",
+      "usedBy": "procurement.shopping_plan",
+      "description": "Shopping plan output"
+    },
+    {
+      "name": "finance.ingest_receipt",
+      "usedBy": "finance.ingest_receipt",
+      "description": "Receipt parsing output"
+    },
+    {
+      "name": "audit.project",
+      "usedBy": "audit.project",
+      "description": "Audit findings output"
+    },
+    {
+      "name": "audit.fix_plan",
+      "usedBy": "audit.fix_plan",
+      "description": "Repair intent output"
+    },
+    {
+      "name": "maint.sync_and_repair",
+      "usedBy": "maint.sync_and_repair",
+      "description": "Repair results output"
+    },
+    {
+      "name": "qa.print_files",
+      "usedBy": "qa.print_files",
+      "description": "Print QA results"
+    },
+    {
+      "name": "runbook.installation",
+      "usedBy": "runbook.installation",
+      "description": "Runbook output"
+    },
+    {
+      "name": "ops.daily_plan",
+      "usedBy": "ops.daily_plan",
+      "description": "Daily plan output"
+    },
+    {
+      "name": "changeset.compile",
+      "usedBy": "changeset.compile",
+      "description": "Compiled operations"
+    },
+    {
+      "name": "changeset.review",
+      "usedBy": "changeset.review",
+      "description": "Review findings"
+    },
+    {
+      "name": "admin.set_labor_rates",
+      "usedBy": "admin.set_labor_rates",
+      "description": "Labor rate updates"
+    },
+    {
+      "name": "admin.confirm_measurements",
+      "usedBy": "admin.confirm_measurements",
+      "description": "Measurement confirmation"
+    }
+  ]
+}

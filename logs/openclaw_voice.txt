@@ -1,0 +1,1969 @@
+### Agent Tool Actions for Voice Calls
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This lists the available actions for the `voice_call` agent tool. These actions allow an agent to programmatically control voice calls, such as initiating, continuing, speaking, ending, and getting the status of a call.
+
+```markdown
+Tool name: `voice_call`
+
+Actions:
+
+- `initiate_call` (message, to?, mode?)
+- `continue_call` (callId, message)
+- `speak_to_user` (callId, message)
+- `end_call` (callId)
+- `get_status` (callId)
+```
+
+--------------------------------
+
+### Use Core TTS for Voice Calls (OpenAI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This configuration snippet demonstrates how to use the core TTS settings, specifically with OpenAI, for voice calls. It ensures that the default TTS configuration is applied without any overrides for the voice call plugin.
+
+```json5
+{
+  messages: {
+    tts: {
+      provider: "openai",
+      openai: { voice: "alloy" },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Voice Call Actions for Agents
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/voice-call/SKILL.md
+
+Available actions for agents to interact with voice calls using the voice_call tool. These actions allow initiating, continuing, speaking, ending, and checking the status of calls.
+
+```python
+# Initiate a new voice call
+voice_call.initiate_call(message='Call me back', to='+15555550123', mode='voice')
+
+# Continue an existing call with a message
+voice_call.continue_call(callId='<id>', message='I have an update')
+
+# Speak a message to a user in an ongoing call
+voice_call.speak_to_user(callId='<id>', message='Please hold.')
+
+# End an ongoing call
+voice_call.end_call(callId='<id>')
+
+# Get the status of a call
+voice_call.get_status(callId='<id>')
+```
+
+--------------------------------
+
+### TTS Configuration Override (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/voice-call/README.md
+
+Overrides the default Text-to-Speech (TTS) configuration for voice calls. This allows specifying a different TTS provider or voice options, which will deep-merge with the core `messages.tts` configuration. Edge TTS is ignored for voice calls.
+
+```json5
+{
+  tts: {
+    provider: "openai",
+    openai: {
+      voice: "alloy",
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Deep-Merge TTS OpenAI Model for Voice Calls
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This configuration demonstrates a deep merge for TTS settings within the voice call plugin, specifically overriding the OpenAI model and voice. This allows fine-tuning TTS for calls without affecting global TTS settings.
+
+```json5
+{
+  plugins: {
+    entries: {
+      "voice-call": {
+        config: {
+          tts: {
+            openai: {
+              model: "gpt-4o-mini-tts",
+              voice: "marin",
+            },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Install Voice Call Plugin from Local Folder
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Installs the Voice Call plugin from a local directory, typically used for development or when not using a published package. It involves installing dependencies within the plugin's directory and then restarting the Gateway.
+
+```bash
+openclaw plugins install ./extensions/voice-call
+cd ./extensions/voice-call && pnpm install
+```
+
+--------------------------------
+
+### Check Voice Call Status via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/voice-call/SKILL.md
+
+Command-line interface to retrieve the status of an ongoing or completed voice call using its unique ID.
+
+```bash
+openclaw voicecall status --call-id <id>
+```
+
+--------------------------------
+
+### Voice Directives for TTS Control (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/talk.md
+
+Control ElevenLabs TTS voice and playback behavior by prefixing assistant replies with a JSON line. This allows dynamic changes to voice, model, and playback settings for individual responses.
+
+```json
+{
+  "voice": "<voice-id>",
+  "once": true
+}
+```
+
+--------------------------------
+
+### TTS for Calls Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Configure Text-to-Speech (TTS) settings for voice calls, allowing overrides for core TTS configurations like OpenAI or ElevenLabs.
+
+```APIDOC
+## TTS for calls
+
+Voice Call uses the core `messages.tts` configuration (OpenAI or ElevenLabs) for
+streaming speech on calls. You can override it under the plugin config with the
+**same shape** — it deep-merges with `messages.tts`.
+
+### Example: Override to ElevenLabs
+
+```json
+{
+  "tts": {
+    "provider": "elevenlabs",
+    "elevenlabs": {
+      "voiceId": "pMsXgVXv3BLzUgSXRplE",
+      "modelId": "eleven_multilingual_v2"
+    }
+  }
+}
+```
+
+**Notes:**
+
+- **Edge TTS is ignored for voice calls** (telephony audio needs PCM; Edge output is unreliable).
+- Core TTS is used when Twilio media streaming is enabled; otherwise calls fall back to provider native voices.
+
+### More examples
+
+#### Use core TTS only (no override)
+
+```json
+{
+  "messages": {
+    "tts": {
+      "provider": "openai",
+      "openai": { "voice": "alloy" }
+    }
+  }
+}
+```
+
+#### Override to ElevenLabs just for calls (keep core default elsewhere)
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "voice-call": {
+        "config": {
+          "tts": {
+            "provider": "elevenlabs",
+            "elevenlabs": {
+              "apiKey": "elevenlabs_key",
+              "voiceId": "pMsXgVXv3BLzUgSXRplE",
+              "modelId": "eleven_multilingual_v2"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### Override only the OpenAI model for calls (deep-merge example)
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "voice-call": {
+        "config": {
+          "tts": {
+            "openai": {
+              "model": "gpt-4o-mini-tts",
+              "voice": "marin"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+```
+
+--------------------------------
+
+### Voice Wake Changed Event Payload (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/voicewake.md
+
+The payload structure for the 'voicewake.changed' event, which is broadcast when the global voice wake word list is updated. This ensures all connected clients and nodes receive the latest triggers.
+
+```json
+{
+  "triggers": string[]
+}
+```
+
+--------------------------------
+
+### Voice Wake Storage Format (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/voicewake.md
+
+The structure for storing voice wake word settings on the Gateway host. It includes a list of trigger words and a timestamp for when the list was last updated.
+
+```json
+{
+  "triggers": ["openclaw", "claude", "computer"],
+  "updatedAtMs": 1730000000000
+}
+```
+
+--------------------------------
+
+### Agent Tool: voice_call
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+The `voice_call` agent tool provides actions to programmatically control voice calls.
+
+```APIDOC
+## Agent tool
+
+Tool name: `voice_call`
+
+Actions:
+
+- `initiate_call` (message, to?, mode?)
+- `continue_call` (callId, message)
+- `speak_to_user` (callId, message)
+- `end_call` (callId)
+- `get_status` (callId)
+
+This repo ships a matching skill doc at `skills/voice-call/SKILL.md`.
+```
+
+--------------------------------
+
+### Configure TTS for Voice Calls with ElevenLabs
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This configuration allows overriding the default TTS provider for voice calls to ElevenLabs. It specifies the voice and model to be used, merging with the core `messages.tts` configuration.
+
+```json5
+{
+  tts: {
+    provider: "elevenlabs",
+    elevenlabs: {
+      voiceId: "pMsXgVXv3BLzUgSXRplE",
+      modelId: "eleven_multilingual_v2",
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Override TTS to ElevenLabs for Voice Calls Only
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This configuration overrides the TTS provider specifically for the voice call plugin to ElevenLabs, while keeping the core TTS settings unchanged for other parts of the application. It requires an ElevenLabs API key and specifies the voice and model.
+
+```json5
+{
+  plugins: {
+    entries: {
+      "voice-call": {
+        config: {
+          tts: {
+            provider: "elevenlabs",
+            elevenlabs: {
+              apiKey: "elevenlabs_key",
+              voiceId: "pMsXgVXv3BLzUgSXRplE",
+              modelId: "eleven_multilingual_v2",
+            },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Agent Tool: TTS
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tts.md
+
+Describes the 'tts' agent tool, which converts text to speech and returns a media path, with special handling for Telegram voice bubbles.
+
+```APIDOC
+## Agent Tool: TTS
+
+### Description
+The `tts` tool is an agent utility within OpenClaw designed to convert text input into speech audio. It returns a `MEDIA:` path for the generated audio file and includes specific metadata for Telegram integration.
+
+### Functionality
+
+- **Text-to-Speech Conversion**: Takes text as input and generates an audio file.
+- **Media Path Return**: Returns the generated audio file's path, prefixed with `MEDIA:`.
+- **Telegram Integration**: If the generated audio is compatible with Telegram's voice note format, the tool appends `[[audio_as_voice]]`. This flag signals Telegram to send the audio as a voice bubble, enhancing the user experience.
+
+```
+
+--------------------------------
+
+### Basic sag CLI Usage Examples
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/sag/SKILL.md
+
+Demonstrates fundamental commands for using the sag CLI to convert text to speech. These examples cover basic text-to-speech, specifying a voice, listing available voices, and accessing model-specific tips.
+
+```bash
+# Basic text-to-speech
+sag "Hello there"
+
+# Specify a voice
+sag speak -v "Roger" "Hello"
+
+# List available voices
+sag voices
+
+# Access model-specific tips
+sag prompting
+```
+
+--------------------------------
+
+### Initiate Voice Call via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/voice-call/SKILL.md
+
+Command-line interface to start a voice call using the OpenClaw voice-call plugin. Requires a recipient phone number and an optional message.
+
+```bash
+openclaw voicecall call --to "+15555550123" --message "Hello from OpenClaw"
+```
+
+--------------------------------
+
+### Voice Call Tool Actions (YAML)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/voice-call/README.md
+
+Defines the available actions for the `voice_call` tool, which can be used within OpenClaw's agent framework. These actions correspond to the CLI commands and RPC methods for managing voice calls.
+
+```yaml
+actions:
+  - initiate_call (message, to?, mode?)
+  - continue_call (callId, message)
+  - speak_to_user (callId, message)
+  - end_call (callId)
+  - get_status (callId)
+```
+
+--------------------------------
+
+### User Settings for Voice Wake and PTT
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/voicewake.md
+
+Outlines the user-facing settings available in the application, including toggles for Voice Wake and Push-to-Talk, language and microphone selection, sound preferences, and fallback mechanisms for microphone devices.
+
+```swift
+struct VoiceWakeSettings {
+    var isVoiceWakeEnabled: Bool
+    var isPushToTalkEnabled: Bool
+    var pushToTalkShortcut: NSEvent.ModifierFlags?
+    var selectedLanguage: String?
+    var selectedMicrophone: String?
+    var triggerWords: [String]
+    var chimeSound: NSSound? // Or URL to sound file
+    // ...
+}
+
+// Example for mic picker fallback:
+func getPreferredMicrophone() -> String? {
+    // ... check if last selection is available ...
+    // ... if not, fallback to system default ...
+    // ... show disconnected hint ...
+    return preferredMic ?? systemDefaultMic
+}
+```
+
+--------------------------------
+
+### Install Voice Call Plugin from npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Installs the Voice Call plugin using npm. This is the recommended method for installation. After installation, the OpenClaw Gateway must be restarted for the plugin to become active.
+
+```bash
+openclaw plugins install @openclaw/voice-call
+```
+
+--------------------------------
+
+### Voice Call Actions
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/voice-call/SKILL.md
+
+This section details the actions available through the voice_call tool for managing voice calls.
+
+```APIDOC
+## Voice Call Actions
+
+This section details the actions available through the voice_call tool for managing voice calls.
+
+### Initiate Call
+
+Initiates a new voice call.
+
+### Method
+POST
+
+### Endpoint
+/voicecall/initiate
+
+### Parameters
+#### Query Parameters
+- **to** (string) - Optional - The phone number to call.
+- **message** (string) - Required - The message to speak to the user.
+- **mode** (string) - Optional - The mode of the call (e.g., 'voice', 'sms').
+
+### Request Example
+```json
+{
+  "message": "Hello from OpenClaw",
+  "to": "+15555550123",
+  "mode": "voice"
+}
+```
+
+### Response
+#### Success Response (200)
+- **callId** (string) - The unique identifier for the initiated call.
+
+#### Response Example
+```json
+{
+  "callId": "call_abc123"
+}
+```
+
+---
+
+### Continue Call
+
+Continues an existing voice call with a new message.
+
+### Method
+POST
+
+### Endpoint
+/voicecall/continue
+
+### Parameters
+#### Query Parameters
+- **callId** (string) - Required - The ID of the call to continue.
+- **message** (string) - Required - The message to speak to the user.
+
+### Request Example
+```json
+{
+  "callId": "call_abc123",
+  "message": "How can I help you today?"
+}
+```
+
+### Response
+#### Success Response (200)
+- **status** (string) - The status of the continued call.
+
+#### Response Example
+```json
+{
+  "status": "continued"
+}
+```
+
+---
+
+### Speak to User
+
+Speaks a message to the user in an ongoing call.
+
+### Method
+POST
+
+### Endpoint
+/voicecall/speak
+
+### Parameters
+#### Query Parameters
+- **callId** (string) - Required - The ID of the call.
+- **message** (string) - Required - The message to speak.
+
+### Request Example
+```json
+{
+  "callId": "call_abc123",
+  "message": "Please hold."
+}
+```
+
+### Response
+#### Success Response (200)
+- **status** (string) - The status of the speak action.
+
+#### Response Example
+```json
+{
+  "status": "spoken"
+}
+```
+
+---
+
+### End Call
+
+Ends an ongoing voice call.
+
+### Method
+POST
+
+### Endpoint
+/voicecall/end
+
+### Parameters
+#### Query Parameters
+- **callId** (string) - Required - The ID of the call to end.
+
+### Request Example
+```json
+{
+  "callId": "call_abc123"
+}
+```
+
+### Response
+#### Success Response (200)
+- **status** (string) - The status of the ended call.
+
+#### Response Example
+```json
+{
+  "status": "ended"
+}
+```
+
+---
+
+### Get Call Status
+
+Retrieves the status of a voice call.
+
+### Method
+GET
+
+### Endpoint
+/voicecall/status
+
+### Parameters
+#### Query Parameters
+- **callId** (string) - Required - The ID of the call to get the status for.
+
+### Request Example
+```bash
+GET /voicecall/status?callId=call_abc123
+```
+
+### Response
+#### Success Response (200)
+- **status** (string) - The current status of the call (e.g., 'ringing', 'in_progress', 'completed', 'failed').
+
+#### Response Example
+```json
+{
+  "status": "in_progress"
+}
+```
+```
+
+--------------------------------
+
+### Configure TTS to Reply Only After Inbound Voice Note
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tts.md
+
+This configuration sets the TTS 'auto' mode to 'inbound', meaning outbound replies will only be converted to audio after an inbound voice note is received. This is useful for maintaining conversational context.
+
+```json
+{
+  "messages": {
+    "tts": {
+      "auto": "inbound"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Tool Actions
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/voice-call/README.md
+
+Available actions for the 'voice_call' tool, used for programmatic interaction with the voice call functionality.
+
+```APIDOC
+## Tool Actions
+
+### Description
+Defines the actions available for the `voice_call` tool, enabling integration with AI agents or other systems that utilize tools.
+
+### Method
+Tool Action
+
+### Endpoint
+N/A
+
+### Actions
+- **`initiate_call`**: Initiates a new voice call.
+  - **Parameters**:
+    - `message` (string) - Required - The message to speak when the call connects.
+    - `to` (string) - Optional - The phone number to call. If not provided, a default might be used or an error returned.
+    - `mode` (string) - Optional - The mode of the call ('notify' or 'conversation').
+- **`continue_call`**: Continues an existing call with a new message.
+  - **Parameters**:
+    - `callId` (string) - Required - The ID of the call to continue.
+    - `message` (string) - Required - The message to speak in the ongoing call.
+- **`speak_to_user`**: Speaks a message to the user in an ongoing call without changing the call state.
+  - **Parameters**:
+    - `callId` (string) - Required - The ID of the call.
+    - `message` (string) - Required - The message to speak.
+- **`end_call`**: Ends an ongoing voice call.
+  - **Parameters**:
+    - `callId` (string) - Required - The ID of the call to end.
+- **`get_status`**: Retrieves the status of a specific voice call.
+  - **Parameters**:
+    - `callId` (string) - Required - The ID of the call.
+
+### Request Example
+```json
+{
+  "tool": "voice_call",
+  "action": "initiate_call",
+  "args": {
+    "to": "+15555550123",
+    "message": "Hello, this is an automated call."
+  }
+}
+```
+
+### Response
+Tool execution result, typically indicating success or failure, and potentially returning data like call status or confirmation.
+
+### Error Handling
+- Missing required arguments for an action will result in an error.
+- Invalid `callId` or phone numbers will lead to action failures.
+- Provider-specific errors during call operations will be reported.
+```
+
+--------------------------------
+
+### OpenClaw CLI Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Command-line interface commands for managing voice calls, including initiating, continuing, speaking, ending, and checking call status.
+
+```APIDOC
+## CLI
+
+```bash
+openclaw voicecall call --to "+15555550123" --message "Hello from OpenClaw"
+openclaw voicecall continue --call-id <id> --message "Any questions?"
+openclaw voicecall speak --call-id <id> --message "One moment"
+openclaw voicecall end --call-id <id>
+openclaw voicecall status --call-id <id>
+openclaw voicecall tail
+openclaw voicecall expose --mode funnel
+```
+```
+
+--------------------------------
+
+### Gateway RPC Methods for Voice Calls
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This outlines the Remote Procedure Call (RPC) methods available through the Gateway for managing voice calls. These methods mirror the agent tool actions, providing an interface for external systems to interact with OpenClaw's voice call functionality.
+
+```markdown
+- `voicecall.initiate` (`to?`, `message`, `mode?`)
+- `voicecall.continue` (`callId`, `message`)
+- `voicecall.speak` (`callId`, `message`)
+- `voicecall.end` (`callId`)
+- `voicecall.status` (`callId`)
+```
+
+--------------------------------
+
+### OpenClaw CLI Commands for Voice Calls
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This snippet shows various command-line interface (CLI) commands for managing voice calls with OpenClaw. It includes initiating calls, continuing conversations, speaking messages, ending calls, checking status, and exposing call funnels.
+
+```bash
+openclaw voicecall call --to "+15555550123" --message "Hello from OpenClaw"
+openclaw voicecall continue --call-id <id> --message "Any questions?"
+openclaw voicecall speak --call-id <id> --message "One moment"
+openclaw voicecall end --call-id <id>
+openclaw voicecall status --call-id <id>
+openclaw voicecall tail
+openclaw voicecall expose --mode funnel
+```
+
+--------------------------------
+
+### Telegram Audio Message Action Example (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/telegram.md
+
+Shows an example of sending an audio message in Telegram, specifying whether it should be sent as a voice note. The `asVoice: true` parameter forces the audio file to be sent as a voice note.
+
+```json5
+{
+  action: "send",
+  channel: "telegram",
+  to: "123456789",
+  media: "https://example.com/voice.ogg",
+  asVoice: true,
+}
+```
+
+--------------------------------
+
+### Stream Logs for Voice Wake Events (macOS)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/voice-overlay.md
+
+This command streams detailed logs related to voice wake events on macOS. It filters logs by subsystem 'ai.openclaw' and categories containing 'voicewake', displaying them at the 'info' level in a compact format. This is useful for debugging sticky overlay issues.
+
+```bash
+sudo log stream --predicate 'subsystem == "ai.openclaw" AND category CONTAINS "voicewake"' --level info --style compact
+```
+
+--------------------------------
+
+### Voice Wake API
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/voicewake.md
+
+This section details the methods and events related to managing global voice wake words. The wake words are stored globally on the Gateway and synchronized across all connected nodes and clients.
+
+```APIDOC
+## Voice Wake API Endpoints
+
+### Get Voice Wake Triggers
+
+#### Description
+Retrieves the current list of global voice wake word triggers.
+
+### Method
+`GET` (Implicit via `voicewake.get` RPC)
+
+### Endpoint
+N/A (RPC call)
+
+### Parameters
+None
+
+### Request Example
+```json
+{
+  "method": "voicewake.get"
+}
+```
+
+### Response
+#### Success Response (200)
+- **triggers** (string[]) - An array of strings representing the current global wake word triggers.
+
+#### Response Example
+```json
+{
+  "triggers": ["openclaw", "claude", "computer"]
+}
+```
+
+---
+
+### Set Voice Wake Triggers
+
+#### Description
+Sets or updates the global list of voice wake word triggers. Changes are persisted by the Gateway and broadcast to all connected clients and nodes.
+
+### Method
+`POST` (Implicit via `voicewake.set` RPC)
+
+### Endpoint
+N/A (RPC call)
+
+### Parameters
+#### Request Body
+- **triggers** (string[]) - Required - An array of strings representing the new global wake word triggers. Triggers are normalized (trimmed, empties dropped). Empty lists fall back to defaults. Limits are enforced for safety (count/length caps).
+
+### Request Example
+```json
+{
+  "method": "voicewake.set",
+  "params": {
+    "triggers": ["openclaw", "newwake", "ai assistant"]
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+- **triggers** (string[]) - An array of strings representing the updated global wake word triggers.
+
+#### Response Example
+```json
+{
+  "triggers": ["openclaw", "newwake", "ai assistant"]
+}
+```
+
+---
+
+## Voice Wake Events
+
+### voicewake.changed
+
+#### Description
+This event is broadcast whenever the global voice wake word triggers are changed. All connected WebSocket clients and nodes receive this event.
+
+### Event Name
+`voicewake.changed`
+
+### Payload
+- **triggers** (string[]) - An array of strings representing the updated global wake word triggers.
+
+### Example Payload
+```json
+{
+  "event": "voicewake.changed",
+  "payload": {
+    "triggers": ["openclaw", "claude", "computer", "new trigger"]
+  }
+}
+```
+
+### Who Receives It
+- All WebSocket clients (macOS app, WebChat, etc.)
+- All connected nodes (iOS/Android)
+- Also sent on node connect as an initial "current state" push.
+```
+
+--------------------------------
+
+### Voice Wake Protocol Methods (OpenAPI/JSON-RPC)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/voicewake.md
+
+Defines the methods for retrieving and setting voice wake words via the OpenClaw protocol. These methods are used for communication between clients and the Gateway.
+
+```json
+{
+  "voicewake.get": "? { triggers: string[] }"
+}
+```
+
+```json
+{
+  "voicewake.set": "with params { triggers: string[] } ? { triggers: string[] }"
+}
+```
+
+--------------------------------
+
+### Forwarding Transcripts with Machine Hints
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/voicewake.md
+
+Describes the process of forwarding transcribed text, including prepending machine hints, and how this is shared between wake-word and push-to-talk functionalities. It also mentions the destination providers and error handling.
+
+```swift
+class VoiceWakeForwarder {
+    func prefixedTranscript(_ transcript: String) -> String {
+        // Prepend machine hint
+        return "[Machine Hint] \(transcript)"
+    }
+    
+    func forward(_ text: String) {
+        // Send to active gateway/agent
+        // Handle delivery to last-used main provider (WhatsApp, Telegram, etc.)
+        // Log errors if delivery fails
+    }
+    // ...
+}
+```
+
+--------------------------------
+
+### Gateway RPC: voicecall
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Gateway Remote Procedure Call (RPC) methods for managing voice calls.
+
+```APIDOC
+## Gateway RPC
+
+- `voicecall.initiate` (`to?`, `message`, `mode?`)
+- `voicecall.continue` (`callId`, `message`)
+- `voicecall.speak` (`callId`, `message`)
+- `voicecall.end` (`callId`)
+- `voicecall.status` (`callId`)
+```
+
+--------------------------------
+
+### Voice Wake Runtime Behavior and Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/voicewake.md
+
+Details the runtime behavior of the Voice Wake feature, including pause detection, silence windows, session limits, and debounce intervals. It also touches upon the overlay controller and restart mechanisms.
+
+```swift
+class VoiceWakeRuntime {
+    // ...
+    func refresh(_ options: VoiceWakeOptions) {
+        // ...
+    }
+    // ...
+}
+
+class VoiceWakeOverlayController {
+    // ...
+}
+
+class VoiceSessionCoordinator {
+    func refreshVoiceWakeRuntime() {
+        // Triggers VoiceWakeRuntime.refresh(...)
+    }
+    // ...
+}
+```
+
+--------------------------------
+
+### Send Discord Voice Message
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/discord.md
+
+Sends a voice message to a Discord channel. Requires a local file path to an audio file (any format is accepted and converted to OGG/Opus). Text content is omitted as Discord does not allow both in the same payload. Requires ffmpeg and ffprobe.
+
+```bash
+message(action="send", channel="discord", target="channel:123", path="/path/to/audio.mp3", asVoice=true)
+```
+
+--------------------------------
+
+### CLI Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/voice-call/README.md
+
+Command-line interface commands for interacting with the Voice Call plugin, including initiating calls, managing ongoing calls, and retrieving status.
+
+```APIDOC
+## CLI Commands
+
+### Description
+Interact with the Voice Call plugin using the OpenClaw CLI for various call management tasks.
+
+### Method
+CLI Command
+
+### Endpoint
+N/A
+
+### Commands
+- **`openclaw voicecall call --to "<phone_number>" --message "<message_text>"`**: Initiates a new voice call.
+  - `--to`: The recipient's phone number.
+  - `--message`: The message to be spoken to the recipient.
+- **`openclaw voicecall continue --call-id "<call_id>" --message "<message_text>"`**: Continues an ongoing call with a new message.
+  - `--call-id`: The ID of the call to continue.
+  - `--message`: The message to speak in the ongoing call.
+- **`openclaw voicecall speak --call-id "<call_id>" --message "<message_text>"`**: Speaks a message in an ongoing call without changing the call state.
+  - `--call-id`: The ID of the call.
+  - `--message`: The message to speak.
+- **`openclaw voicecall end --call-id "<call_id>"`**: Ends an ongoing voice call.
+  - `--call-id`: The ID of the call to end.
+- **`openclaw voicecall status --call-id "<call_id>"`**: Retrieves the status of a specific voice call.
+  - `--call-id`: The ID of the call.
+- **`openclaw voicecall tail`**: Streams logs related to voice calls.
+- **`openclaw voicecall expose --mode <mode>`**: Exposes the webhook endpoint using a specified tunnel mode (e.g., 'funnel').
+  - `--mode`: The tunneling mode to use.
+
+### Request Example
+```bash
+openclaw voicecall call --to "+15555550123" --message "Hello from OpenClaw"
+openclaw voicecall end --call-id "call_abc123"
+```
+
+### Response
+CLI output indicating success or failure of the command, and relevant information like call IDs or status.
+
+### Error Handling
+- Invalid phone numbers or call IDs will result in errors.
+- Incorrect command syntax will display usage information.
+- Network or provider issues may cause call initiation or management failures.
+```
+
+--------------------------------
+
+### Example TTS Directive in Reply
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tts.md
+
+An example of a reply payload demonstrating how to use TTS directives within the text. This includes specifying voice, model, speed, and providing text with expressive tags.
+
+```text
+Here you go.
+
+[[tts:voiceId=pMsXgVXv3BLzUgSXRplE model=eleven_v3 speed=1.1]]
+[[tts:text]](laughs) Read the song once more.[[/tts:text]]
+```
+
+--------------------------------
+
+### Generate Audio File with sag CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/sag/SKILL.md
+
+This example shows how to generate an audio file using the sag CLI, specifying a voice and an output path. This is useful for integrating TTS audio into replies or other media.
+
+```bash
+# Generate audio file
+sag -v Clawd -o /tmp/voice-reply.mp3 "Your message here"
+```
+
+--------------------------------
+
+### Voice Call Gateway RPC Methods (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/voice-call/README.md
+
+Remote Procedure Call (RPC) methods exposed by the OpenClaw Gateway for voice call management. These methods allow programmatic control over initiating, continuing, speaking, ending, and checking the status of voice calls.
+
+```json
+{
+  "methods": [
+    "voicecall.initiate" (to?, message, mode?),
+    "voicecall.continue" (callId, message),
+    "voicecall.speak" (callId, message),
+    "voicecall.end" (callId),
+    "voicecall.status" (callId)
+  ]
+}
+```
+
+--------------------------------
+
+### Voice Wake Forwarding Command Template
+
+Source: https://github.com/openclaw/openclaw/blob/main/CLAUDE.md
+
+This snippet shows the command template for voice wake forwarding using the `openclaw-mac` CLI. It highlights that the `${text}` variable is already shell-escaped by `VoiceWakeForwarder`, so no additional quoting is necessary.
+
+```bash
+openclaw-mac agent --message "${text}" --thinking low
+```
+
+--------------------------------
+
+### Inbound Calls Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Configure inbound call handling, including enabling calls, setting allowlists, and customizing greetings.
+
+```APIDOC
+## Inbound calls
+
+Inbound policy defaults to `disabled`. To enable inbound calls, set:
+
+```json
+{
+  "inboundPolicy": "allowlist",
+  "allowFrom": ["+15550001234"],
+  "inboundGreeting": "Hello! How can I help?"
+}
+```
+
+Auto-responses use the agent system. Tune with:
+
+- `responseModel`
+- `responseSystemPrompt`
+- `responseTimeoutMs`
+```
+
+--------------------------------
+
+### Voice Call Plugin Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Configuration for the Voice Call plugin, specifying the provider (e.g., twilio, telnyx, plivo, mock), phone numbers, API credentials, webhook settings, and call behavior options like outbound mode and streaming.
+
+```json5
+{
+  plugins: {
+    entries: {
+      "voice-call": {
+        enabled: true,
+        config: {
+          provider: "twilio", // or "telnyx" | "plivo" | "mock"
+          fromNumber: "+15550001234",
+          toNumber: "+15550005678",
+
+          twilio: {
+            accountSid: "ACxxxxxxxx",
+            authToken: "...",
+          },
+
+          telnyx: {
+            apiKey: "...",
+            connectionId: "...",
+            // Telnyx webhook public key from the Telnyx Mission Control Portal
+            // (Base64 string; can also be set via TELNYX_PUBLIC_KEY).
+            publicKey: "...",
+          },
+
+          plivo: {
+            authId: "MAxxxxxxxxxxxxxxxxxxxx",
+            authToken: "...",
+          },
+
+          // Webhook server
+          serve: {
+            port: 3334,
+            path: "/voice/webhook",
+          },
+
+          // Webhook security (recommended for tunnels/proxies)
+          webhookSecurity: {
+            allowedHosts: ["voice.example.com"],
+            trustedProxyIPs: ["100.64.0.1"],
+          },
+
+          // Public exposure (pick one)
+          // publicUrl: "https://example.ngrok.app/voice/webhook",
+          // tunnel: { provider: "ngrok" },
+          // tailscale: { mode: "funnel", path: "/voice/webhook" }
+
+          outbound: {
+            defaultMode: "notify", // notify | conversation
+          },
+
+          streaming: {
+            enabled: true,
+            streamPath: "/voice/stream",
+            preStartTimeoutMs: 5000,
+            maxPendingConnections: 32,
+            maxPendingConnectionsPerIp: 4,
+            maxConnections: 128,
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Enable Inbound Calls with Allowlist and Greeting
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This configuration enables inbound calls by setting the `inboundPolicy` to 'allowlist' and specifying allowed phone numbers in `allowFrom`. It also includes a custom greeting message.
+
+```json5
+{
+  inboundPolicy: "allowlist",
+  allowFrom: ["+15550001234"],
+  inboundGreeting: "Hello! How can I help?",
+}
+```
+
+--------------------------------
+
+### Configure Mistral Voxtral Audio Transcription
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/audio.md
+
+This JSON configuration enables audio transcription using the Mistral AI provider with the Voxtral model. It sets Mistral as the exclusive transcription service, suitable for users who prefer or are integrated with the Mistral ecosystem. Authentication details should be managed through standard provider authentication methods.
+
+```json
+{
+  "tools": {
+    "media": {
+      "audio": {
+        "enabled": true,
+        "models": [{ "provider": "mistral", "model": "voxtral-mini-latest" }]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Echoing Transcripts to Chat
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/audio.md
+
+This JSON configuration enables audio transcription and includes an option to echo the transcript back to the chat. The `echoTranscript` flag is set to true, and `echoFormat` customizes the message format, allowing users to see the transcribed text directly. The OpenAI provider is specified for transcription.
+
+```json
+{
+  "tools": {
+    "media": {
+      "audio": {
+        "enabled": true,
+        "echoTranscript": true,
+        "echoFormat": '?? "{transcript}" ',
+        "models": [{ "provider": "openai", "model": "gpt-4o-mini-transcribe" }]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Voice Call Plugin Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/voice-call/README.md
+
+Configuration options for the OpenClaw Voice Call plugin, including provider selection, credentials, webhook settings, and streaming parameters.
+
+```APIDOC
+## Voice Call Plugin Configuration
+
+### Description
+Configuration for the Voice Call plugin, allowing selection of providers (Twilio, Telnyx, Plivo, Mock) and their specific settings, as well as general call and streaming parameters.
+
+### Method
+Configuration (via `openclaw.config.ts` or similar)
+
+### Endpoint
+N/A
+
+### Parameters
+#### Plugin Configuration (`plugins.entries.voice-call.config`)
+- **provider** (string) - Required - The telephony provider to use ('twilio', 'telnyx', 'plivo', 'mock').
+- **fromNumber** (string) - Required - The phone number to use for outgoing calls.
+- **toNumber** (string) - Optional - A default number to call if not specified in the action.
+- **twilio** (object) - Optional - Twilio provider specific configuration.
+  - **accountSid** (string) - Required if provider is 'twilio' - Your Twilio Account SID.
+  - **authToken** (string) - Required if provider is 'twilio' - Your Twilio Auth Token.
+- **telnyx** (object) - Optional - Telnyx provider specific configuration.
+  - **apiKey** (string) - Required if provider is 'telnyx' - Your Telnyx API Key.
+  - **connectionId** (string) - Required if provider is 'telnyx' - Your Telnyx Connection ID.
+  - **publicKey** (string) - Optional - Telnyx webhook public key (or set via TELNYX_PUBLIC_KEY).
+- **plivo** (object) - Optional - Plivo provider specific configuration.
+  - **authId** (string) - Required if provider is 'plivo' - Your Plivo Auth ID.
+  - **authToken** (string) - Required if provider is 'plivo' - Your Plivo Auth Token.
+- **serve** (object) - Optional - Webhook server configuration.
+  - **port** (number) - Optional - The port for the webhook server (default: 3334).
+  - **path** (string) - Optional - The path for the webhook endpoint (default: '/voice/webhook').
+- **publicUrl** (string) - Optional - A publicly accessible URL for the webhook.
+- **tunnel** (object) - Optional - Tunneling configuration for exposing the webhook.
+  - **provider** (string) - Optional - The tunneling provider (e.g., 'ngrok').
+- **tailscale** (object) - Optional - Tailscale tunneling configuration.
+  - **mode** (string) - Optional - Tailscale tunnel mode ('funnel').
+  - **path** (string) - Optional - The path for the Tailscale tunnel.
+- **outbound** (object) - Optional - Outbound call settings.
+  - **defaultMode** (string) - Optional - Default mode for outbound calls ('notify' or 'conversation').
+- **streaming** (object) - Optional - Media streaming configuration.
+  - **enabled** (boolean) - Optional - Enable media streaming (default: true).
+  - **streamPath** (string) - Optional - The path for media streaming WebSocket connections.
+  - **preStartTimeoutMs** (number) - Optional - Timeout for pre-start frames (default: 5000).
+  - **maxPendingConnections** (number) - Optional - Maximum unauthenticated pre-start sockets (default: 32).
+  - **maxPendingConnectionsPerIp** (number) - Optional - Maximum unauthenticated pre-start sockets per IP (default: 4).
+  - **maxConnections** (number) - Optional - Maximum total open media stream sockets (default: 128).
+- **staleCallReaperSeconds** (number) - Optional - Seconds to wait before ending a call without a terminal webhook (default: 0, disabled).
+- **tts** (object) - Optional - Text-to-Speech configuration, overrides core `messages.tts`.
+  - **provider** (string) - Optional - TTS provider ('openai', 'elevenlabs').
+  - **openai** (object) - Optional - OpenAI TTS specific settings.
+    - **voice** (string) - Optional - The voice to use for OpenAI TTS.
+
+### Request Example
+```json
+{
+  "provider": "twilio",
+  "fromNumber": "+15550001234",
+  "twilio": {
+    "accountSid": "ACxxxxxxxx",
+    "authToken": "your_token"
+  },
+  "streaming": {
+    "enabled": true,
+    "streamPath": "/voice/stream"
+  },
+  "staleCallReaperSeconds": 300
+}
+```
+
+### Response
+N/A (Configuration is applied on plugin load)
+
+### Error Handling
+- Incorrect provider configuration will prevent the plugin from loading.
+- Missing required credentials for the selected provider will result in call failures.
+- Webhook URL issues will prevent receiving call status updates.
+```
+
+--------------------------------
+
+### Disable Model TTS Overrides
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tts.md
+
+This JSON configuration disables all model-driven TTS directives. When disabled, the model cannot emit `[[tts:...]]` tags to control voice or text formatting for TTS output.
+
+```json
+{
+  "messages": {
+    "tts": {
+      "modelOverrides": {
+        "enabled": false
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure sherpa-onnx-tts Environment Variables (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/sherpa-onnx-tts/SKILL.md
+
+This JSON5 snippet shows how to configure the SHERPA_ONNX_RUNTIME_DIR and SHERPA_ONNX_MODEL_DIR environment variables in the openclaw.json file. These paths are essential for the sherpa-onnx-tts skill to locate the necessary runtime and voice model files.
+
+```json5
+{
+  skills: {
+    entries: {
+      "sherpa-onnx-tts": {
+        env: {
+          SHERPA_ONNX_RUNTIME_DIR: "~/.openclaw/tools/sherpa-onnx-tts/runtime",
+          SHERPA_ONNX_MODEL_DIR: "~/.openclaw/tools/sherpa-onnx-tts/models/vits-piper-en_US-lessac-high",
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Discord Roles, Channels, Members, and Voice Management
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/message.md
+
+Endpoints for managing Discord roles, channels, members, and voice-related functionalities.
+
+```APIDOC
+## Discord Roles, Channels, Members, and Voice
+
+### Description
+APIs for managing Discord server resources including roles, channels, members, and voice status.
+
+### Method
+Various (e.g., GET, POST, PUT, DELETE)
+
+### Endpoints
+- `/guild/{guild_id}/roles`
+- `/guild/{guild_id}/channels`
+- `/guild/{guild_id}/members/{user_id}`
+- `/guild/{guild_id}/voice`
+
+### Parameters
+#### Path Parameters
+- `--guild-id` (string) - Required - The ID of the Discord guild.
+- `--user-id` (string) - Required - The ID of the Discord user.
+- `--role-id` (string) - Required - The ID of the Discord role.
+- `--target` (string) - Required - The target channel or user ID.
+
+### Request Example
+```
+openclaw role info --guild-id 1234567890
+openclaw role add --guild-id 1234567890 --user-id 0987654321 --role-id 1122334455
+openclaw channel info --target 1234567890
+openclaw member info --user-id 0987654321 --guild-id 1234567890
+openclaw voice status --guild-id 1234567890 --user-id 0987654321
+```
+```
+
+--------------------------------
+
+### Configure Edge TTS Primary TTS (No API Key)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tts.md
+
+This configuration uses Edge TTS as the primary provider, which does not require an API key. It specifies Edge TTS settings like voice, language, output format, rate, and pitch. Edge TTS is enabled by default when no API keys are found.
+
+```json
+{
+  "messages": {
+    "tts": {
+      "auto": "always",
+      "provider": "edge",
+      "edge": {
+        "enabled": true,
+        "voice": "en-US-MichelleNeural",
+        "lang": "en-US",
+        "outputFormat": "audio-24khz-48kbitrate-mono-mp3",
+        "rate": "+10%",
+        "pitch": "-5%"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Webhook Security Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Configure webhook security settings to manage trusted hosts, forwarding headers, and proxy IPs for secure webhook integrations.
+
+```APIDOC
+## Webhook Security
+
+When a proxy or tunnel sits in front of the Gateway, the plugin reconstructs the
+public URL for signature verification. These options control which forwarded
+headers are trusted.
+
+`webhookSecurity.allowedHosts` allowlists hosts from forwarding headers.
+
+`webhookSecurity.trustForwardingHeaders` trusts forwarded headers without an allowlist.
+
+`webhookSecurity.trustedProxyIPs` only trusts forwarded headers when the request
+remote IP matches the list.
+
+Webhook replay protection is enabled for Twilio and Plivo. Replayed valid webhook
+requests are acknowledged but skipped for side effects.
+
+Twilio conversation turns include a per-turn token in `<Gather>` callbacks, so
+stale/replayed speech callbacks cannot satisfy a newer pending transcript turn.
+
+### Example with a stable public host
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "voice-call": {
+        "config": {
+          "publicUrl": "https://voice.example.com/voice/webhook",
+          "webhookSecurity": {
+            "allowedHosts": ["voice.example.com"]
+          }
+        }
+      }
+    }
+  }
+}
+```
+```
+
+--------------------------------
+
+### Configure Audio Transcription with Provider and CLI Fallback
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/audio.md
+
+This JSON configuration enables audio transcription, setting a maximum byte limit and defining a fallback strategy. It prioritizes the OpenAI provider for transcription and falls back to the Whisper CLI if the provider fails or is unavailable. The Whisper CLI command is specified with its arguments and a timeout.
+
+```json
+{
+  "tools": {
+    "media": {
+      "audio": {
+        "enabled": true,
+        "maxBytes": 20971520,
+        "models": [
+          { "provider": "openai", "model": "gpt-4o-mini-transcribe" },
+          {
+            "type": "cli",
+            "command": "whisper",
+            "args": ["--model", "base", "{{MediaPath}}"],
+            "timeoutSeconds": 45
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Push-to-Talk Hotkey Detection and Capture
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/voicewake.md
+
+Explains how Push-to-Talk (PTT) hotkeys are detected using global event monitors, specifically for the right Option key. It outlines the capture pipeline and its interaction with the wake-word runtime.
+
+```swift
+NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { event in
+    if event.keyCode == 61 && event.modifierFlags.contains(.option) {
+        // Right Option key pressed
+        // ... start capture ...
+    }
+}
+
+class VoicePushToTalk {
+    func startCapture() {
+        // ...
+    }
+    func stopCapture() {
+        // ...
+    }
+    // ...
+}
+
+// In VoicePushToTalk or similar:
+// Pause wake-word runtime when PTT starts
+// Restart wake-word runtime after PTT release
+```
+
+--------------------------------
+
+### Text-to-Speech Telephony Runtime Helper
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/plugin.md
+
+TypeScript example demonstrating how to use the `textToSpeechTelephony` runtime helper within an OpenClaw plugin. It utilizes core TTS configuration and returns audio data.
+
+```typescript
+const result = await api.runtime.tts.textToSpeechTelephony({
+  text: "Hello from OpenClaw",
+  cfg: api.config,
+});
+```
+
+--------------------------------
+
+### Configure Audio Transcription with Scope Gating
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/audio.md
+
+This JSON configuration enables audio transcription with specific scope rules. It allows transcription by default but denies it for messages in group chats, ensuring privacy or controlled usage. The configuration specifies the OpenAI provider as the transcription model.
+
+```json
+{
+  "tools": {
+    "media": {
+      "audio": {
+        "enabled": true,
+        "scope": {
+          "default": "allow",
+          "rules": [{ "action": "deny", "match": { "chatType": "group" } }]
+        },
+        "models": [{ "provider": "openai", "model": "gpt-4o-mini-transcribe" }]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Voice Call Plugin Stale Call Reaper Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Configuration for the stale call reaper, which automatically ends calls that do not receive a terminal webhook. This is useful for notify-mode calls and should be set higher than `maxDurationSeconds`.
+
+```json5
+{
+  plugins: {
+    entries: {
+      "voice-call": {
+        config: {
+          maxDurationSeconds: 300,
+          staleCallReaperSeconds: 360,
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Webhook Security with Allowed Hosts
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This configuration snippet sets up webhook security for a voice call plugin, allowing only specific hosts to forward headers. It ensures that signature verification is performed correctly even when a proxy is in front of the Gateway.
+
+```json5
+{
+  plugins: {
+    entries: {
+      "voice-call": {
+        config: {
+          publicUrl: "https://voice.example.com/voice/webhook",
+          webhookSecurity: {
+            allowedHosts: ["voice.example.com"],
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Discord Voice Channel Auto-Join
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/discord.md
+
+Enables and configures automatic joining of Discord voice channels. Requires native commands to be enabled and the bot to have Connect + Speak permissions. Supports TTS configuration and encryption options.
+
+```json
+{
+  "channels": {
+    "discord": {
+      "voice": {
+        "enabled": true,
+        "autoJoin": [
+          {
+            "guildId": "123456789012345678",
+            "channelId": "234567890123456789"
+          }
+        ],
+        "daveEncryption": true,
+        "decryptionFailureTolerance": 24,
+        "tts": {
+          "provider": "openai",
+          "openai": { "voice": "alloy" }
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Run sherpa-onnx-tts for TTS Generation (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/sherpa-onnx-tts/SKILL.md
+
+This bash command shows the basic usage of the sherpa-onnx-tts skill to generate a WAV audio file from input text. It specifies the output file and the text to be synthesized.
+
+```bash
+{baseDir}/bin/sherpa-onnx-tts -o ./tts.wav "Hello from local TTS."
+```
+
+--------------------------------
+
+### Consume Reply Directives from Chunk
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Parses and extracts reply directives such as `[[media:url]]`, `[[voice]]`, and `[[reply:id]]` from a given text chunk. It returns the cleaned text along with extracted media URLs, an audio-as-voice flag, and the reply-to ID.
+
+```typescript
+const { text: cleanedText, mediaUrls, audioAsVoice, replyToId } = consumeReplyDirectives(chunk);
+```
+
+--------------------------------
+
+### Talk Mode Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/talk.md
+
+Configure Talk mode settings in the OpenClaw configuration file (~/.openclaw/openclaw.json). This includes setting default ElevenLabs TTS voice, model, API key, and interrupt behavior.
+
+```json5
+{
+  "talk": {
+    "voiceId": "elevenlabs_voice_id",
+    "modelId": "eleven_v3",
+    "outputFormat": "mp3_44100_128",
+    "apiKey": "elevenlabs_api_key",
+    "interruptOnSpeech": true
+  }
+}
+```
+
+--------------------------------
+
+### Configure Deepgram Audio Transcription
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/audio.md
+
+This JSON configuration enables audio transcription using the Deepgram provider. It specifies Deepgram as the sole transcription model, allowing for efficient and potentially cost-effective audio processing. API keys for Deepgram are expected to be configured separately.
+
+```json
+{
+  "tools": {
+    "media": {
+      "audio": {
+        "enabled": true,
+        "models": [{ "provider": "deepgram", "model": "nova-3" }]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Install an Official OpenClaw Plugin
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/plugin.md
+
+Command to install an official OpenClaw plugin from the registry. This example shows installing the Voice Call plugin. Only npm registry specs are supported.
+
+```bash
+openclaw plugins install @openclaw/voice-call
+```
+
+--------------------------------
+
+### VM Conversation Narration Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/sqlite.md
+
+Provides an example of how the VM narrates key events during execution, including statement processing, spawning sessions, task tool calls, and binding updates. This serves as the VM's 'mental model' of execution.
+
+```text
+[Position] Statement 3: let research = session: researcher
+   Spawning session, will write to state.db
+   [Task tool call]
+[Success] Session complete, binding written to DB
+[Binding] research = <stored in state.db>
+```
+
+--------------------------------
+
+### Configure OpenAI Primary with ElevenLabs Fallback TTS
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tts.md
+
+This configuration sets OpenAI as the primary TTS provider with ElevenLabs as a fallback. It includes detailed settings for both providers, such as API keys, base URLs, model IDs, and voice configurations. The 'summaryModel' is also specified for auto-summaries.
+
+```json
+{
+  "messages": {
+    "tts": {
+      "auto": "always",
+      "provider": "openai",
+      "summaryModel": "openai/gpt-4.1-mini",
+      "modelOverrides": {
+        "enabled": true
+      },
+      "openai": {
+        "apiKey": "openai_api_key",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini-tts",
+        "voice": "alloy"
+      },
+      "elevenlabs": {
+        "apiKey": "elevenlabs_api_key",
+        "baseUrl": "https://api.elevenlabs.io",
+        "voiceId": "voice_id",
+        "modelId": "eleven_multilingual_v2",
+        "seed": 42,
+        "applyTextNormalization": "auto",
+        "languageCode": "en",
+        "voiceSettings": {
+          "stability": 0.5,
+          "similarityBoost": 0.75,
+          "style": 0.0,
+          "useSpeakerBoost": true,
+          "speed": 1.0
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Input/Output Bindings Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/in-context.md
+
+Demonstrates how inputs are received and outputs are defined within a program. Inputs are passed from the caller, and outputs are prepared to be returned to the caller.
+
+```text
+[Input] Inputs received:
+   topic = "quantum computing" (from caller)
+   depth = "deep" (from caller)
+
+[Output] output findings = "Research shows..." (will return to caller)
+[Output] output sources = ["arxiv:2401.1234", ...] (will return to caller)
+```
+
+--------------------------------
+
+### Speech-to-Text Transcription Runtime Helper
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/plugin.md
+
+TypeScript example showing how to use the `transcribeAudioFile` runtime helper in an OpenClaw plugin to convert audio files to text. It relies on core media configuration.
+
+```typescript
+const { text } = await api.runtime.stt.transcribeAudioFile({
+  filePath: "/tmp/inbound-audio.ogg",
+  cfg: api.config,
+  // Optional when MIME cannot be inferred reliably:
+  mime: "audio/ogg",
+});
+```
+
+--------------------------------
+
+### Trigger Voice Ears Animation (Swift)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/icon.md
+
+Initiates the 'big ears' animation for the menu bar icon when a voice wake word is detected. It sets a timer to stop the animation after a period of silence. This function is intended for internal use within the app's voice pipeline.
+
+```swift
+AppState.triggerVoiceEars(ttl: nil)
+// ... after 1s of silence ...
+AppState.stopVoiceEars()
+```
+
+--------------------------------
+
+### Translate Audio with Whisper CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openai-whisper/SKILL.md
+
+Command to transcribe and translate an audio file into English using the Whisper CLI. Supports various output formats like SRT for subtitles.
+
+```bash
+whisper /path/audio.m4a --task translate --output_format srt
+```
+
+--------------------------------
+
+### Transcribe Audio with Whisper CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openai-whisper/SKILL.md
+
+Basic command to transcribe an audio file using the Whisper CLI. Allows specifying the audio file path, model size, output format, and output directory. Models are automatically downloaded and cached.
+
+```bash
+whisper /path/audio.mp3 --model medium --output_format txt --output_dir .
+```
+
+--------------------------------
+
+### VM Conversation Narration Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+Illustrates how the Virtual Machine (VM) narrates key conversational events, even when using a database for persistence. This narration serves as the VM's 'mental model' of execution.
+
+```text
+[Position] Statement 3: let research = session: researcher
+   Spawning session, will write to state database
+   [Task tool call]
+[Success] Session complete, binding written to DB
+[Binding] research = <stored in openprose.bindings>
+```
+
+--------------------------------
+
+### Add System.Echo Method: Server Handler (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/typebox.md
+
+This code implements the server-side handler for the 'system.echo' method. It takes the 'text' parameter, processes it, and sends back a success response.
+
+```typescript
+import { GatewayRequestHandlers } from '../gateway';
+
+export const systemHandlers: GatewayRequestHandlers = {
+  "system.echo": ({ params, respond }) => {
+    const text = String(params.text ?? "");
+    respond(true, { ok: true, text });
+  },
+};
+```

@@ -1,0 +1,1988 @@
+### Security Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Commands for auditing and securing your Openclaw configuration and local state.
+
+```APIDOC
+## Security Commands
+
+### Description
+Commands for auditing and securing your Openclaw configuration and local state.
+
+### Commands
+- `openclaw security audit`
+  - **Description**: Audit configuration and local state for common security vulnerabilities.
+- `openclaw security audit --deep`
+  - **Description**: Perform a best-effort live probe of the Gateway for security issues.
+- `openclaw security audit --fix`
+  - **Description**: Apply security fixes by tightening safe defaults and adjusting state/configuration file permissions.
+```
+
+--------------------------------
+
+### Secure Baseline Configuration for Openclaw Gateway
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+A secure baseline configuration for the Openclaw Gateway. This setup prioritizes privacy by binding to loopback, using token authentication, and enforcing DM pairing for WhatsApp, along with requiring mentions in group chats.
+
+```json5
+{
+  gateway: {
+    mode: "local",
+    bind: "loopback",
+    port: 18789,
+    auth: { mode: "token", token: "your-long-random-token" },
+  },
+  channels: {
+    whatsapp: {
+      dmPolicy: "pairing",
+      groups: { "*": { requireMention: true } },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Path Sanitization Function
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/security/THREAT-MODEL-ATLAS.md
+
+The sanitizePath() function is implemented to prevent path traversal vulnerabilities, ensuring high effectiveness in securing the system. It sanitizes file paths to mitigate security risks.
+
+```javascript
+sanitizePath()
+```
+
+--------------------------------
+
+### Configure Security: Allow Remote Viewer (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/diffs.md
+
+Configures the security setting `allowRemoteViewer` within the diffs plugin. When `false`, only loopback requests are permitted. Setting it to `true` allows remote viewers if the tokenized path is valid.
+
+```json5
+{
+  plugins: {
+    entries: {
+      diffs: {
+        enabled: true,
+        config: {
+          security: {
+            allowRemoteViewer: false,
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Security & Configuration Tips
+
+Source: https://github.com/openclaw/openclaw/blob/main/AGENTS.md
+
+Tips related to security, credential management, and handling sensitive information.
+
+```APIDOC
+## Security & Configuration Tips
+
+### Description
+Tips related to security, credential management, and handling sensitive information.
+
+### Method
+N/A (Documentation of conventions and commands)
+
+### Endpoint
+N/A
+
+### Parameters
+N/A
+
+### Request Example
+N/A
+
+### Response
+N/A
+
+### Notes
+- Web provider stores creds at `~/.openclaw/credentials/`; rerun `openclaw login` if logged out.
+- Pi sessions live under `~/.openclaw/sessions/` by default; the base directory is not configurable.
+- Environment variables: see `~/.profile`.
+- Never commit or publish real phone numbers, videos, or live configuration values. Use obviously fake placeholders in docs, tests, and examples.
+- Release flow: always read `docs/reference/RELEASING.md` and `docs/platforms/mac/release.md` before any release work.
+```
+
+--------------------------------
+
+### Check Firewall Status (Linux/macOS)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/healthcheck/SKILL.md
+
+Commands to verify the current status of the host's firewall. This is crucial for assessing network security posture. Commands vary depending on the firewall management tool installed.
+
+```shell
+# Linux (UFW)
+ufw status
+
+# Linux (firewalld)
+firewall-cmd --state
+
+# Linux (nftables)
+ft list ruleset
+
+# macOS
+/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+pfctl -s info
+```
+
+--------------------------------
+
+### Security / Send Policy
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/session-tool.md
+
+Configure policy-based blocking for sending messages by channel and chat type. This policy can be overridden at the session level.
+
+```APIDOC
+## Security / Send Policy
+
+### Description
+Configure policy-based blocking for sending messages by channel and chat type. This policy can be overridden at the session level.
+
+### Method
+N/A (Configuration)
+
+### Endpoint
+N/A (Configuration)
+
+### Parameters
+#### Query Parameters
+- `session.sendPolicy.rules` (array) - Required - Rules to match channel and chat type for blocking.
+  - `match` (object) - Required - Criteria for matching.
+    - `channel` (string) - Required - The channel type (e.g., "discord").
+    - `chatType` (string) - Required - The chat type (e.g., "group").
+  - `action` (string) - Required - The action to take ("deny").
+- `session.sendPolicy.default` (string) - Required - The default action when no rules match ("allow").
+
+### Request Example
+```json
+{
+  "session": {
+    "sendPolicy": {
+      "rules": [
+        {
+          "match": { "channel": "discord", "chatType": "group" },
+          "action": "deny"
+        }
+      ],
+      "default": "allow"
+    }
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+N/A (Configuration)
+
+#### Response Example
+N/A (Configuration)
+
+### Runtime Overrides
+- `sendPolicy` (string: "allow" | "deny") - Optional - Overrides the global send policy for a specific session. Unset to inherit.
+- Can be set via `sessions.patch` or the `/send on|off|inherit` command.
+```
+
+--------------------------------
+
+### Verify Security Posture with Bash Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/oracle.md
+
+These bash commands help verify the security posture of your Openclaw instance. They check for open public ports, confirm Tailscale SSH is active, and provide an option to disable the standard SSH daemon.
+
+```bash
+# Confirm no public ports listening
+sudo ss -tlnp | grep -v '127.0.0.1\|::1'
+
+# Verify Tailscale SSH is active
+tailscale status | grep -q 'offers: ssh' && echo "Tailscale SSH active"
+
+# Optional: disable sshd entirely
+sudo systemctl disable --now ssh
+```
+
+--------------------------------
+
+### Run OpenClaw Security Audits
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/healthcheck/SKILL.md
+
+Commands to perform security audits using the OpenClaw tool. Includes options for a deep scan, a faster scan, JSON output, and applying safe defaults.
+
+```shell
+# Deep security audit
+openclaw security audit --deep
+
+# Faster, non-probing audit
+openclaw security audit
+
+# Audit with JSON output
+openclaw security audit --json
+
+# Apply OpenClaw safe defaults
+openclaw security audit --fix
+```
+
+--------------------------------
+
+### Run OpenClaw Security Audits
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This command initiates a security audit of the OpenClaw configuration. Options include a deep scan, automatic fixing of common issues, and JSON output for programmatic analysis. Regular execution is recommended, especially after configuration changes or network exposure.
+
+```bash
+openclaw security audit
+openclaw security audit --deep
+openclaw security audit --fix
+openclaw security audit --json
+```
+
+--------------------------------
+
+### Isolate DM Sessions in Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON configuration snippet enables session isolation for direct messages (DMs) on a per-channel-peer basis. This prevents context leakage between different users messaging the bot within the same channel, enhancing multi-user security.
+
+```json
+{
+  "session": { "dmScope": "per-channel-peer" },
+}
+```
+
+--------------------------------
+
+### Configure Webhook Security with Allowed Hosts
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+This configuration snippet sets up webhook security for a voice call plugin, allowing only specific hosts to forward headers. It ensures that signature verification is performed correctly even when a proxy is in front of the Gateway.
+
+```json5
+{
+  plugins: {
+    entries: {
+      "voice-call": {
+        config: {
+          publicUrl: "https://voice.example.com/voice/webhook",
+          webhookSecurity: {
+            allowedHosts: ["voice.example.com"],
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### TLS Configuration and Fingerprint Pinning (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/refactor/clawnet.md
+
+Illustrates how to reuse existing TLS runtime configurations and implement fingerprint pinning for secure communication. This involves setting up TLS on the server and verifying the server's certificate fingerprint on the client.
+
+```TypeScript
+import tls from 'tls';
+import fs from 'fs';
+
+// Server-side TLS setup (src/infra/bridge/server/tls.ts)
+const options = {
+  key: fs.readFileSync('server.key'),
+  cert: fs.readFileSync('server.crt'),
+  // ... other TLS options
+};
+const server = tls.createServer(options, (socket) => {
+  console.log('Client connected');
+  socket.end('Hello from server!');
+});
+server.listen(8000, () => {
+  console.log('Server listening on port 8000');
+});
+
+// Client-side fingerprint verification (src/node-host/bridge-client.ts)
+const serverCertificateFingerprint = 'expected-fingerprint-sha256'; // Replace with actual fingerprint
+
+const clientOptions = {
+  host: 'localhost',
+  port: 8000,
+  rejectUnauthorized: true, // Important for security
+  checkServerIdentity: (hostname, cert) => {
+    const fingerprint = tls.createSecureContext({ cert }).fingerprint;
+    if (fingerprint !== serverCertificateFingerprint) {
+      throw new Error('Server certificate fingerprint mismatch');
+    }
+    return undefined; // Certificate is valid
+  },
+};
+
+const socket = tls.connect(clientOptions, () => {
+  console.log('Connected to server');
+  socket.write('Hello from client!');
+});
+
+socket.on('data', (data) => {
+  console.log('Received:', data.toString());
+  socket.end();
+});
+
+socket.on('error', (err) => {
+  console.error('Socket error:', err.message);
+});
+
+```
+
+--------------------------------
+
+### GitHub Account Age Check Function
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/security/THREAT-MODEL-ATLAS.md
+
+This function, requireGitHubAccountAge(), is used as a security control to ensure a minimum age for GitHub accounts, acting as a deterrent against new attackers. Its effectiveness is considered medium.
+
+```javascript
+requireGitHubAccountAge()
+```
+
+--------------------------------
+
+### Configure Secure DM Mode in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/session.md
+
+This configuration snippet shows how to enable secure direct message mode by setting the 'dmScope' to 'per-channel-peer'. This isolates conversation contexts per channel and sender, preventing information leakage between users in multi-user setups. It is recommended for agents that can receive DMs from multiple people.
+
+```json5
+// ~/.openclaw/openclaw.json
+{
+  session: {
+    // Secure DM mode: isolate DM context per channel + sender.
+    dmScope: "per-channel-peer",
+  },
+}
+```
+
+--------------------------------
+
+### Secure Docker Run Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/SECURITY.md
+
+An example of how to run the OpenClaw Docker image with enhanced security settings. It uses `--read-only` for filesystem protection and `--cap-drop=ALL` to limit container capabilities.
+
+```bash
+docker run --read-only --cap-drop=ALL \
+  -v openclaw-data:/app/data \
+  openclaw/openclaw:latest
+```
+
+--------------------------------
+
+### Webhook Security Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Configure webhook security settings to manage trusted hosts, forwarding headers, and proxy IPs for secure webhook integrations.
+
+```APIDOC
+## Webhook Security
+
+When a proxy or tunnel sits in front of the Gateway, the plugin reconstructs the
+public URL for signature verification. These options control which forwarded
+headers are trusted.
+
+`webhookSecurity.allowedHosts` allowlists hosts from forwarding headers.
+
+`webhookSecurity.trustForwardingHeaders` trusts forwarded headers without an allowlist.
+
+`webhookSecurity.trustedProxyIPs` only trusts forwarded headers when the request
+remote IP matches the list.
+
+Webhook replay protection is enabled for Twilio and Plivo. Replayed valid webhook
+requests are acknowledged but skipped for side effects.
+
+Twilio conversation turns include a per-turn token in `<Gather>` callbacks, so
+stale/replayed speech callbacks cannot satisfy a newer pending transcript turn.
+
+### Example with a stable public host
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "voice-call": {
+        "config": {
+          "publicUrl": "https://voice.example.com/voice/webhook",
+          "webhookSecurity": {
+            "allowedHosts": ["voice.example.com"]
+          }
+        }
+      }
+    }
+  }
+}
+```
+```
+
+--------------------------------
+
+### Configure Default Exec Host and Security Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/index.md
+
+Commands to configure the default execution host, security mode, and target node for 'exec' calls within the gateway configuration. These settings determine where and how commands are executed.
+
+```bash
+openclaw config set tools.exec.host node
+openclaw config set tools.exec.security allowlist
+openclaw config set tools.exec.node "<id-or-name>"
+```
+
+--------------------------------
+
+### Gather OS Information (Linux/macOS/Windows)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/healthcheck/SKILL.md
+
+Commands to determine the operating system and version. These are essential for tailoring subsequent hardening and security checks. Supported on Linux, macOS, and Windows.
+
+```shell
+# Linux
+cat /etc/os-release
+
+# macOS
+sw_vers
+
+# Windows (PowerShell)
+Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version
+```
+
+--------------------------------
+
+### Fetch GitHub Security Advisory
+
+Source: https://github.com/openclaw/openclaw/blob/main/AGENTS.md
+
+Fetches details of a specific GitHub Security Advisory (GHSA) using the GitHub API. Requires the GHSA identifier.
+
+```bash
+gh api /repos/openclaw/openclaw/security-advisories/<GHSA>
+```
+
+--------------------------------
+
+### Gateway Security Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configure trusted reverse proxies and fallback mechanisms for real IP addresses. `trustedProxies` should list IPs of proxies you control that terminate TLS. `allowRealIpFallback` enables accepting `X-Real-IP` when `X-Forwarded-For` is missing, defaulting to `false` for security.
+
+```json
+{
+  "trustedProxies": [
+    "192.168.1.1",
+    "192.168.1.2"
+  ],
+  "allowRealIpFallback": true
+}
+```
+
+--------------------------------
+
+### Allow Insecure Private WebSocket Connections
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This environment variable allows the Openclaw Gateway client to use plaintext `ws://` connections on trusted private networks. By default, plaintext WebSocket connections are restricted to loopback interfaces for security. Setting this variable to `1` bypasses that restriction for specific network scenarios.
+
+```bash
+export OPENCLAW_ALLOW_INSECURE_PRIVATE_WS=1
+```
+
+--------------------------------
+
+### Perform OpenClaw Security Audit
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/healthcheck/SKILL.md
+
+Performs a security audit of the system using OpenClaw. The `--deep` flag enables a more thorough audit, and `--fix` attempts to automatically resolve issues. The `--json` flag outputs results in JSON format.
+
+```bash
+openclaw security audit
+```
+
+```bash
+openclaw security audit --deep
+```
+
+```bash
+openclaw security audit --fix
+```
+
+```bash
+openclaw security audit --deep --fix --json
+```
+
+--------------------------------
+
+### Require Child Runtimes to be Sandboxed During Delegation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This setting enforces that any delegated sub-agent runs must be executed within a sandboxed environment. If the target child runtime is not sandboxed, the `sessions_spawn` call will fail.
+
+```json
+{
+  "agents": {
+    "list": [
+      {
+        "subagents": {
+          "allowAgents": ["known-safe-agent-id"],
+          "sessions_spawn": {
+            "sandbox": "require"
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Configure Strict Browser SSRF Policy
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON configuration sets a strict Server-Side Request Forgery (SSRF) policy for the browser. It disables access to private networks by default and specifies allowed hostnames and patterns for explicit exceptions. This is crucial for preventing unauthorized access to internal resources.
+
+```json5
+{
+  browser: {
+    ssrfPolicy: {
+      dangerouslyAllowPrivateNetwork: false,
+      hostnameAllowlist: ["*.example.com", "example.com"],
+      allowedHostnames: ["localhost"],
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Restrict File System Access to Workspace Only
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This optional configuration restricts file system operations (read, write, edit, apply_patch) and native prompt image loading to the agent's workspace directory. This adds an extra layer of security by preventing access to arbitrary paths.
+
+```json
+{
+  "tools": {
+    "fs": {
+      "workspaceOnly": true
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Applying the Principle of Least Privilege to Agents
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/antipatterns.md
+
+Illustrates how to configure agents with minimal necessary permissions to perform their tasks, rather than granting excessive access. This enhances security by reducing the potential impact of a compromised agent.
+
+```prose
+# Bad: Full access for simple task
+agent file-reader:
+  permissions:
+    read: ["**/*"]
+    write: ["**/*"]
+    bash: allow
+    network: allow
+
+session: file-reader
+  prompt: "Read the README.md file"
+```
+
+```prose
+# Good: Minimal permissions
+agent file-reader:
+  permissions:
+    read: ["README.md"]
+    write: []
+    bash: deny
+    network: deny
+```
+
+--------------------------------
+
+### Enable Secure DM Mode for Multi-User Conversations
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Configures secure direct message (DM) mode to ensure DMs from different users do not share a single context, which is crucial for multi-user or sensitive DM agents. It sets `dmScope` to `per-channel-peer` and provides examples for WhatsApp and Discord, specifying `dmPolicy` and `allowFrom` lists for multi-user inboxes.
+
+```json5
+{
+  // Secure DM mode (recommended for multi-user or sensitive DM agents)
+  session: { dmScope: "per-channel-peer" },
+
+  channels: {
+    // Example: WhatsApp multi-user inbox
+    whatsapp: {
+      dmPolicy: "allowlist",
+      allowFrom: ["+15555550123", "+15555550124"],
+    },
+
+    // Example: Discord multi-user inbox
+    discord: {
+      enabled: true,
+      token: "YOUR_DISCORD_BOT_TOKEN",
+      dm: { enabled: true, allowFrom: ["123456789012345678", "987654321098765432"] },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### OpenClaw Security Audit
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Perform security audits on the OpenClaw system to identify vulnerabilities. The --deep flag enables a more thorough scan, and --fix attempts to remediate found issues.
+
+```bash
+openclaw security audit
+openclaw security audit --deep --fix
+```
+
+--------------------------------
+
+### Gateway Security and Endpoint Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configure security settings such as trusted proxies and IP fallback, and enable/disable OpenAI-compatible endpoints like Chat Completions and Responses API.
+
+```APIDOC
+## Gateway Configuration
+
+### Description
+Configure security and enable specific API endpoints for the Openclaw Gateway.
+
+### Method
+N/A (Configuration)
+
+### Endpoint
+N/A (Configuration)
+
+### Parameters
+#### Query Parameters
+- **trustedProxies** (string array) - Optional - Reverse proxy IPs that terminate TLS. Only list proxies you control.
+- **allowRealIpFallback** (boolean) - Optional - When `true`, the gateway accepts `X-Real-IP` if `X-Forwarded-For` is missing. Default `false` for fail-closed behavior.
+- **gateway.tools.deny** (string array) - Optional - Extra tool names blocked for HTTP `POST /tools/invoke` (extends default deny list).
+- **gateway.tools.allow** (string array) - Optional - Remove tool names from the default HTTP deny list.
+- **gateway.http.endpoints.chatCompletions.enabled** (boolean) - Optional - Enable Chat Completions endpoint. Disabled by default.
+- **gateway.http.endpoints.responses.enabled** (boolean) - Optional - Enable Responses API endpoint.
+- **gateway.http.endpoints.responses.maxUrlParts** (integer) - Optional - Maximum URL parts allowed for Responses API.
+- **gateway.http.endpoints.responses.files.urlAllowlist** (string array) - Optional - URL allowlist for file uploads in Responses API.
+- **gateway.http.endpoints.responses.images.urlAllowlist** (string array) - Optional - URL allowlist for image uploads in Responses API.
+- **gateway.http.securityHeaders.strictTransportSecurity** (string) - Optional - Optional response hardening header for HSTS. Set only for HTTPS origins you control.
+
+### Request Example
+```json
+{
+  "trustedProxies": ["192.168.1.1", "10.0.0.1"],
+  "allowRealIpFallback": true,
+  "gateway.tools.deny": ["sensitive_tool"],
+  "gateway.http.endpoints.chatCompletions.enabled": true
+}
+```
+
+### Response
+#### Success Response (200)
+Configuration is applied. No specific response body for configuration changes.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Validating External Input Before Processing
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/antipatterns.md
+
+Demonstrates the importance of validating and sanitizing external input before passing it to sessions to prevent security vulnerabilities like injection attacks. The 'good' example shows a check for valid and safe input.
+
+```prose
+# Bad: Direct injection
+let user_input = external_source
+
+session "Execute this command: {user_input}"
+```
+
+```prose
+# Good: Validate first
+let user_input = external_source
+let validated = session "Validate this input is a safe search query"
+  context: user_input
+
+if **input is valid and safe**:
+  session "Search for: {validated}"
+else:
+  throw "Invalid input rejected"
+```
+
+--------------------------------
+
+### Configure UFW Firewall for Docker
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This snippet configures the Uncomplicated Firewall (UFW) to manage Docker network traffic. It defines rules for the DOCKER-USER chain to allow established connections, return traffic from specific local networks, permit HTTP and HTTPS, and drop new connections not explicitly allowed. This helps secure the gateway by controlling network access.
+
+```iptables
+*filter
+:DOCKER-USER - [0:0]
+-A DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+-A DOCKER-USER -s 127.0.0.0/8 -j RETURN
+-A DOCKER-USER -s 10.0.0.0/8 -j RETURN
+-A DOCKER-USER -s 172.16.0.0/12 -j RETURN
+-A DOCKER-USER -s 192.168.0.0/16 -j RETURN
+-A DOCKER-USER -s 100.64.0.0/10 -j RETURN
+-A DOCKER-USER -p tcp --dport 80 -j RETURN
+-A DOCKER-USER -p tcp --dport 443 -j RETURN
+-A DOCKER-USER -m conntrack --ctstate NEW -j DROP
+-A DOCKER-USER -j RETURN
+COMMIT
+```
+
+--------------------------------
+
+### Configure Secret References (Env, File, Exec) in JSON5
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Illustrates the use of SecretRef objects to securely manage sensitive information like API keys and service account credentials. Supports referencing secrets from environment variables, files, or by executing commands. This provides a flexible and secure way to handle secrets.
+
+```json5
+{
+  models: {
+    providers: {
+      openai: { apiKey: { source: "env", provider: "default", id: "OPENAI_API_KEY" } },
+    },
+  },
+  skills: {
+    entries: {
+      "nano-banana-pro": {
+        apiKey: {
+          source: "file",
+          provider: "filemain",
+          id: "/skills/entries/nano-banana-pro/apiKey",
+        },
+      },
+    },
+  },
+  channels: {
+    googlechat: {
+      serviceAccountRef: {
+        source: "exec",
+        provider: "vault",
+        id: "channels/googlechat/serviceAccount",
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure User ID Allowlist for Twitch Channels
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/twitch.md
+
+Specifies a hard allowlist of user IDs that are permitted to interact with the bot on a Twitch channel. This is the most secure method for access control in Openclaw.
+
+```json5
+{
+  channels: {
+    twitch: {
+      accounts: {
+        default: {
+          allowFrom: ["123456789", "987654321"],
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Verify Node.js Version
+
+Source: https://github.com/openclaw/openclaw/blob/main/SECURITY.md
+
+This command verifies the installed Node.js version. OpenClaw requires Node.js 22.12.0 or later for security patches.
+
+```bash
+node --version  # Should be v22.12.0 or later
+```
+
+--------------------------------
+
+### Identity Management: Stable ID and Cute Slug (Conceptual)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/refactor/clawnet.md
+
+Explains the distinction between a stable, unchangeable identifier (like a keypair fingerprint) required for authentication and a human-friendly 'cute slug' used for labeling. This system ensures reliable identification while allowing for user-friendly naming.
+
+```Pseudocode
+// Authentication requires a stable ID
+function authenticateUser(credentials) {
+  const stableId = getStableIdFromCredentials(credentials); // e.g., keypair fingerprint
+  if (!isValidStableId(stableId)) {
+    throw new Error('Invalid stable ID');
+  }
+  // ... proceed with authentication ...
+}
+
+// Gateway registry stores human-readable labels
+interface GatewayRegistryEntry {
+  stableId: string;
+  cuteSlug: string; // e.g., 'scarlet-claw'
+  // ... other properties
+}
+
+function updateCuteSlug(stableId, newSlug) {
+  const entry = findEntryByStableId(stableId);
+  if (entry) {
+    entry.cuteSlug = handleSlugCollision(newSlug);
+    saveRegistryEntry(entry);
+  }
+}
+
+```
+
+--------------------------------
+
+### Device Keypair Generation and Authentication (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/refactor/clawnet.md
+
+Demonstrates the process of generating a device keypair, deriving a device ID from the public key, and the subsequent authentication flow involving a nonce challenge and signature verification. This method avoids bearer token replay by issuing tokens based on proof-of-possession of the private key.
+
+```TypeScript
+import { generateKeyPair, sign, verify } from 'crypto';
+
+// Device generates keypair once
+const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'secp256k1' });
+
+// deviceId = fingerprint(publicKey)
+const deviceId = publicKey.export({ type: 'spki', format: 'pem' }); // Simplified representation
+
+// Gateway sends nonce
+const nonce = Buffer.from('some-random-nonce');
+
+// Device signs nonce with its private key
+const signature = sign('sha256', nonce, privateKey);
+
+// Gateway verifies signature using the device's public key
+const isVerified = verify('sha256', nonce, publicKey, signature);
+
+console.log('Device ID:', deviceId);
+console.log('Signature verified:', isVerified);
+
+```
+
+--------------------------------
+
+### Verify Bind and Authentication Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/troubleshooting.md
+
+This set of commands is used to inspect the gateway's bind address and authentication token configuration. It helps ensure that non-loopback binds are properly secured and that the correct authentication token is being used.
+
+```bash
+openclaw config get gateway.bind
+openclaw config get gateway.auth.token
+openclaw gateway status
+openclaw logs --follow
+```
+
+--------------------------------
+
+### WhatsApp Channel Login Command
+
+Source: https://github.com/openclaw/openclaw/blob/main/README.md
+
+This command is used to log in to the WhatsApp channel integration within OpenClaw. It stores credentials securely and enables the agent to interact with WhatsApp messages.
+
+```bash
+pnpm openclaw channels login
+```
+
+--------------------------------
+
+### Enable Agent Sandboxing (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Configures agent sandboxing to run sessions in isolated Docker containers for enhanced security. Supports different modes and scopes for isolation.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        mode: "non-main",  // off | non-main | all
+        scope: "agent",    // session | agent | shared
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Deny Control Plane Tools in Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON configuration snippet specifies tools that should be denied for agents handling untrusted content. It includes 'gateway', 'cron', 'sessions_spawn', and 'sessions_send' to prevent persistent control-plane changes and session manipulation.
+
+```json
+{
+  "tools": {
+    "deny": ["gateway", "cron", "sessions_spawn", "sessions_send"],
+  },
+}
+```
+
+--------------------------------
+
+### Configure Discord DM Policy
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/discord.md
+
+Controls direct message access from Discord users. Options include 'pairing', 'allowlist', 'open', and 'disabled'. 'pairing' prompts for verification, 'allowlist' restricts to specified users, 'open' allows all (with potential security implications), and 'disabled' blocks all DMs. Legacy settings are also mentioned.
+
+```json5
+{
+  channels: {
+    discord: {
+      dmPolicy: "allowlist",
+      allowFrom: ["user:123456789012345678"],
+      dm: {
+        policy: "pairing",
+        allowFrom: ["user:987654321098765432"]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Patch GitHub Security Advisory
+
+Source: https://github.com/openclaw/openclaw/blob/main/AGENTS.md
+
+Applies a patch to a GitHub Security Advisory using the GitHub API and a JSON payload. This can include publishing the advisory.
+
+```bash
+gh api -X PATCH /repos/openclaw/openclaw/security-advisories/<GHSA> --input /tmp/ghsa.patch.json
+```
+
+--------------------------------
+
+### Access Openclaw Control UI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/oracle.md
+
+Access the Openclaw Control UI securely over your Tailscale network. No SSH tunnel is required as Tailscale handles HTTPS encryption, authentication, and access from any device on your tailnet.
+
+```text
+https://openclaw.<tailnet-name>.ts.net/
+```
+
+--------------------------------
+
+### WhatsApp DM Pairing Policy Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON snippet configures the Direct Message (DM) policy for WhatsApp channels within OpenClaw. It sets the 'dmPolicy' to 'pairing' by default, meaning that direct message interactions will require pairing.
+
+```json
+{
+  "channels": { "whatsapp": { "dmPolicy": "pairing" } },
+}
+```
+
+--------------------------------
+
+### Configure Agent with Full Access (No Sandbox)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON configuration defines an agent with full access, disabling sandboxing. The agent is assigned a dedicated workspace. This setup is suitable for personal agents where unrestricted access is desired.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "personal",
+        workspace: "~/.openclaw/workspace-personal",
+        sandbox: { mode: "off" },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Recommended Session Key Policy Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/webhook.md
+
+Configuration for the webhook session key policy, recommending a fixed default session key and disabling request overrides for enhanced security.
+
+```json5
+{
+  hooks: {
+    enabled: true,
+    token: "${OPENCLAW_HOOKS_TOKEN}",
+    defaultSessionKey: "hook:ingress",
+    allowRequestSessionKey: false,
+    allowedSessionKeyPrefixes: ["hook:"],
+  },
+}
+```
+
+--------------------------------
+
+### Configure Group Mentions for WhatsApp
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This configuration ensures that in WhatsApp group chats, the bot will only respond when explicitly mentioned. It sets a default `requireMention` to true for all groups.
+
+```json
+{
+  "channels": {
+    "whatsapp": {
+      "groups": {
+        "*": { "requireMention": true }
+      }
+    }
+  },
+  "agents": {
+    "list": [
+      {
+        "id": "main",
+        "groupChat": { "mentionPatterns": ["@openclaw", "@mybot"]
+        }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Disable Openclaw Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandbox-vs-tool-policy-vs-elevated.md
+
+This configuration disables the sandbox entirely, allowing all tools to run without restrictions. This can be set globally or on a per-agent basis. Use with caution as it bypasses security checks.
+
+```properties
+agents.defaults.sandbox.mode=off
+```
+
+```properties
+agents.list[].sandbox.mode=off
+```
+
+--------------------------------
+
+### Node Management: Pending Approvals
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Commands for managing pending node connection requests. Allows listing, approving, rejecting, and renaming nodes. Crucial for securing and organizing access to devices.
+
+```bash
+openclaw nodes pending
+openclaw nodes approve <requestId>
+openclaw nodes reject <requestId>
+openclaw nodes rename --node <id> --name "My MacBook"
+```
+
+--------------------------------
+
+### Configure Agent with No Filesystem/Shell Access
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON configuration defines an agent with a restricted environment, denying filesystem and shell access while allowing specific messaging and session tools. The workspace access is set to 'none', and a curated list of allowed tools is provided, suitable for public-facing agents where sensitive operations must be prevented.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "public",
+        workspace: "~/.openclaw/workspace-public",
+        sandbox: {
+          mode: "all",
+          scope: "agent",
+          workspaceAccess: "none",
+        },
+        tools: {
+          sessions: { visibility: "tree" },
+          allow: [
+            "sessions_list",
+            "sessions_history",
+            "sessions_send",
+            "sessions_spawn",
+            "session_status",
+            "whatsapp",
+            "telegram",
+            "slack",
+            "discord",
+          ],
+          deny: [
+            "read",
+            "write",
+            "edit",
+            "apply_patch",
+            "exec",
+            "process",
+            "browser",
+            "canvas",
+            "nodes",
+            "cron",
+            "gateway",
+            "image",
+          ],
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### OpenCLaw Runtime and Token Authentication
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Details on runtime selection and token authentication for the OpenCLaw daemon. Node.js is recommended, while Bun is not. The daemon validates tokens but does not persist plaintext values. Installation is blocked if tokens are unresolved or authentication modes are ambiguous.
+
+```text
+- **Runtime selection:** Node (recommended; required for WhatsApp/Telegram). Bun is **not recommended**.
+- If token auth requires a token and `gateway.auth.token` is SecretRef-managed, daemon install validates it but does not persist resolved plaintext token values into supervisor service environment metadata.
+- If token auth requires a token and the configured token SecretRef is unresolved, daemon install is blocked with actionable guidance.
+- If both `gateway.auth.token` and `gateway.auth.password` are configured and `gateway.auth.mode` is unset, daemon install is blocked until mode is set explicitly.
+```
+
+--------------------------------
+
+### Approve DM Pairing Codes via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+These bash commands demonstrate how to manage direct message (DM) pairing approvals using the OpenClaw CLI. 'pairing list' shows pending requests, and 'pairing approve' approves a specific request with a given code.
+
+```bash
+openclaw pairing list <channel>
+openclaw pairing approve <channel> <code>
+```
+
+--------------------------------
+
+### Sanitize Session History Images (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/transcript-hygiene.md
+
+Sanitizes image payloads within session messages to prevent provider rejections due to size limits. It downscales or recompresses oversized base64 images and helps control token pressure for vision-capable models. The maximum image side dimension is configurable.
+
+```TypeScript
+import {
+  sanitizeSessionMessagesImages
+} from "src/agents/pi-embedded-helpers/images.ts";
+import {
+  sanitizeContentBlocksImages
+} from "src/agents/tool-images.ts";
+
+// Example usage within sanitizeSessionHistory:
+sanitizeSessionMessagesImages(session.messages);
+sanitizeContentBlocksImages(session.content_blocks);
+
+// Configuration for max image dimension (default: 1200px)
+// agents.defaults.imageMaxDimensionPx = 1200;
+```
+
+--------------------------------
+
+### Configure Read-Only Workspace Access in Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This configuration snippet demonstrates how to set up a read-only workspace access for agents within a sandbox environment. It prevents agents from modifying files in their workspace.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "workspaceAccess": "ro"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Gateway TLS Termination
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/trusted-proxy-auth.md
+
+Enables TLS termination directly on the OpenClaw Gateway and configures HSTS security headers. This is used when OpenClaw serves HTTPS without a separate TLS-terminating proxy. The `strictTransportSecurity` header can be set to a string value or `false` to disable.
+
+```json5
+{
+  gateway: {
+    tls: { enabled: true },
+    http: {
+      securityHeaders: {
+        strictTransportSecurity: "max-age=31536000; includeSubDomains",
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Disable Device Authentication in Openclaw Gateway (Break-glass)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/web/control-ui.md
+
+This JSON configuration snippet dangerously disables device authentication checks for the Openclaw Gateway's Control UI. Use this only as a last resort for emergency access.
+
+```json
+{
+  "gateway": {
+    "controlUi": { "dangerouslyDisableDeviceAuth": true },
+    "bind": "tailnet",
+    "auth": { "mode": "token", "token": "replace-me" }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Agent with Read-Only Tools and Workspace
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON configuration sets up an agent with a sandboxed environment and read-only access to both the workspace and specific tools. It explicitly denies write, edit, execute, and browser-related operations, making it suitable for family or work agents requiring limited permissions.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "family",
+        workspace: "~/.openclaw/workspace-family",
+        sandbox: {
+          mode: "all",
+          scope: "agent",
+          workspaceAccess: "ro",
+        },
+        tools: {
+          allow: ["read"],
+          deny: ["write", "edit", "apply_patch", "exec", "process", "browser"],
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Generate Gateway Authentication Token
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This command uses the `openclaw doctor` utility to generate a secure authentication token for the Gateway. This token can then be used in the Gateway's configuration to enforce token-based authentication for WebSocket connections.
+
+```bash
+openclaw doctor --generate-gateway-token
+```
+
+--------------------------------
+
+### Configure Sub-Agent Tool Access (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/subagents.md
+
+This JSON5 configuration snippet demonstrates how to define tool access policies for sub-agents. It shows how to deny specific tools and optionally set an allow-list, with 'deny' taking precedence. This configuration is crucial for controlling the capabilities of sub-agents within the OpenCLAW system.
+
+```json5
+{
+  agents: {
+    defaults: {
+      subagents: {
+        maxConcurrent: 1,
+      },
+    },
+  },
+  tools: {
+    subagents: {
+      tools: {
+        // deny wins
+        deny: ["gateway", "cron"],
+        // if allow is set, it becomes allow-only (deny still wins)
+        // allow: ["read", "exec", "process"]
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Sandbox Session Visibility Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/session-tool.md
+
+Illustrates JSON5 configuration for controlling session tool visibility, particularly within sandboxed environments. It shows options for 'self', 'tree', 'agent', and 'all' visibility.
+
+```json5
+{
+  "tools": {
+    "sessions": {
+      "visibility": "tree"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "sessionToolsVisibility": "spawned"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Audit detect-secrets Baseline Interactively
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This command initiates an interactive audit of the detect-secrets baseline. It allows users to review flagged secrets and mark them as either real or false positives.
+
+```bash
+detect-secrets audit .secrets.baseline
+```
+
+--------------------------------
+
+### WhatsApp Login on Remote Host
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/remote.md
+
+Command to initiate the WhatsApp login flow on the remote OpenClaw host. This requires scanning a QR code with a phone to authenticate.
+
+```bash
+openclaw channels login --verbose
+```
+
+--------------------------------
+
+### Tailscale Serve Identity Header Authentication
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+When gateway.auth.allowTailscale is true, OpenClaw uses Tailscale Serve identity headers for Control UI/WebSocket authentication. It verifies identity by resolving the x-forwarded-for address through the local Tailscale daemon. This feature is only active for requests hitting loopback with specific forwarded headers. Standard HTTP API endpoints still require token/password authentication.
+
+```text
+When `gateway.auth.allowTailscale` is `true` (default for Serve), OpenClaw
+accepts Tailscale Serve identity headers (`tailscale-user-login`) for Control
+UI/WebSocket authentication. OpenClaw verifies the identity by resolving the
+`x-forwarded-for` address through the local Tailscale daemon (`tailscale whois`)
+and matching it to the header. This only triggers for requests that hit loopback
+and include `x-forwarded-for`, `x-forwarded-proto`, and `x-forwarded-host` as
+injected by Tailscale. HTTP API endpoints (for example `/v1/*`, `/tools/invoke`, and `/api/channels/*`)
+still require token/password auth.
+```
+
+--------------------------------
+
+### OpenClaw Basic Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/start/openclaw.md
+
+A minimal JSON configuration for OpenClaw, primarily focusing on WhatsApp channel settings. It specifies allowed sender numbers to enhance security by restricting message sources.
+
+```json5
+{
+  channels: { whatsapp: { allowFrom: ["+15555550123"] } },
+}
+```
+
+--------------------------------
+
+### Configure No Workspace Access in Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This configuration snippet shows how to disable workspace access entirely for agents within a sandbox. Tools will operate on a separate sandbox workspace, not the agent's own.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "workspaceAccess": "none"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Incorrect Nginx Reverse Proxy Configuration for OpenClaw (Nginx)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This Nginx configuration snippet illustrates an incorrect approach to setting forwarding headers, specifically by appending or preserving untrusted headers. This can lead to security vulnerabilities by misrepresenting the client's IP address.
+
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+
+--------------------------------
+
+### Checking Device Auth v2 Migration for Gateway Connectivity
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/troubleshooting.md
+
+This command sequence is used to check the Openclaw version and gateway status, particularly relevant when encountering nonce or signature errors related to device authentication. It helps in verifying the migration status for Device Auth v2. If nonce/signature errors are present in logs, it's crucial to update the connecting client and ensure it correctly handles the challenge-response device authentication flow, including waiting for `connect.challenge`, signing the bound payload, and sending the `connect.params.device.nonce` with the correct nonce.
+
+```bash
+openclaw --version
+openclaw doctor
+openclaw gateway status
+```
+
+--------------------------------
+
+### Restrict Tools for All Senders in an IRC Channel
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/irc.md
+
+This JSON configuration restricts the available tools for all senders in the `#tuirc-dev` IRC channel. It denies access to several potentially sensitive tools, enhancing security for public channels.
+
+```json5
+{
+  channels: {
+    irc: {
+      groups: {
+        "#tuirc-dev": {
+          allowFrom: ["*"],
+          tools: {
+            deny: ["group:runtime", "group:fs", "gateway", "nodes", "cron", "browser"],
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Approval Workflow with Gateway and Operator UI (Conceptual)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/refactor/clawnet.md
+
+Outlines a proposed centralized approval system where the gateway manages approval records and communicates with operator UIs. This flow ensures that approvals are handled consistently and securely, with clear semantics for resolution and timeouts.
+
+```Pseudocode
+// Gateway receives system.run intent from agent
+function handleRunIntent(agentData) {
+  const approvalRecord = createApprovalRecord(agentData.commandId);
+  broadcastApprovalRequest(approvalRecord);
+}
+
+// Operator UI receives approval request and sends decision
+function sendApprovalDecision(approvalId, decision) { // decision: 'approved' or 'denied'
+  gateway.resolveApproval(approvalId, decision, userScope);
+}
+
+// Gateway processes approval resolution
+function resolveApproval(approvalId, decision, scope) {
+  if (!hasScope(scope, 'operator.approvals')) {
+    reject('Unauthorized');
+    return;
+  }
+  const record = getApprovalRecord(approvalId);
+  if (record.status === 'settled' || isTimeout(record)) {
+    reject('Approval already settled or timed out');
+    return;
+  }
+  record.status = 'settled';
+  record.decision = decision;
+  logApproval(record);
+  if (decision === 'approved') {
+    invokeNodeCommand(record.command);
+  }
+}
+
+```
+
+--------------------------------
+
+### Create PostgreSQL User and Schema for OpenProse
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+This SQL script demonstrates the recommended security setup for OpenProse's PostgreSQL state management. It creates a dedicated user with minimal privileges and a schema for OpenProse data, ensuring that the agent only has access to the necessary resources.
+
+```sql
+-- Create dedicated user with minimal privileges
+CREATE USER openprose_agent WITH PASSWORD 'changeme';
+CREATE SCHEMA openprose AUTHORIZATION openprose_agent;
+GRANT ALL ON SCHEMA openprose TO openprose_agent;
+-- User can only access the openprose schema, nothing else
+```
+
+--------------------------------
+
+### Configure Gateway WebSocket Authentication (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON5 configuration snippet sets up authentication for the Gateway's WebSocket connections. The 'token' mode requires a shared bearer token for all clients, which is the recommended approach. Alternatively, 'password' mode can be used, preferably set via the `OPENCLAW_GATEWAY_PASSWORD` environment variable. The 'trusted-proxy' mode delegates authentication to a reverse proxy.
+
+```json5
+{
+  gateway: {
+    auth: { mode: "token", token: "your-token" },
+  },
+}
+```
+
+```json5
+{
+  gateway: {
+    auth: { mode: "password", password: "your-password" },
+  },
+}
+```
+
+```json5
+{
+  gateway: {
+    auth: { mode: "trusted-proxy" },
+  },
+}
+```
+
+--------------------------------
+
+### Configure WhatsApp Access Policy (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/whatsapp.md
+
+Defines the access control policies for the WhatsApp channel, including direct message (DM) policies, allowed sender lists, and group chat policies. This configuration is crucial for managing who can interact with the channel and how group messages are handled.
+
+```json5
+{
+  channels: {
+    whatsapp: {
+      dmPolicy: "pairing",
+      allowFrom: ["+15551234567"],
+      groupPolicy: "allowlist",
+      groupAllowFrom: ["+15551234567"],
+    },
+  },
+}
+```
+
+--------------------------------
+
+### OpenClaw Reverse Proxy Configuration Example (YAML)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This snippet demonstrates how to configure the `gateway.trustedProxies` setting in OpenClaw's YAML configuration to ensure proper client IP detection when running behind a reverse proxy. It also shows the `allowRealIpFallback` option and basic authentication setup.
+
+```yaml
+gateway:
+  trustedProxies:
+    - "127.0.0.1" # if your proxy runs on localhost
+  # Optional. Default false.
+  # Only enable if your proxy cannot provide X-Forwarded-For.
+  allowRealIpFallback: false
+  auth:
+    mode: password
+    password: ${OPENCLAW_GATEWAY_PASSWORD}
+```
+
+--------------------------------
+
+### Verify 1Password Account Access within Tmux
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/1password/SKILL.md
+
+Confirms that the CLI is successfully signed in and has access to the 1Password account within the tmux session. This is a crucial verification step.
+
+```bash
+SOCKET_DIR="${OPENCLAW_TMUX_SOCKET_DIR:-${CLAWDBOT_TMUX_SOCKET_DIR:-${TMPDIR:-/tmp}/openclaw-tmux-sockets}}"
+mkdir -p "$SOCKET_DIR"
+SOCKET="$SOCKET_DIR/openclaw-op.sock"
+SESSION="op-auth-$(date +%Y%m%d-%H%M%S)"
+
+tmux -S "$SOCKET" new -d -s "$SESSION" -n shell
+tmux -S "$SOCKET" send-keys -t "$SESSION":0.0 -- "op signin --account my.1password.com" Enter
+tmux -S "$SOCKET" send-keys -t "$SESSION":0.0 -- "op whoami" Enter
+```
+
+--------------------------------
+
+### Hardened Openclaw Gateway Baseline Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON5 configuration provides a hardened baseline for the Openclaw gateway. It enforces local-only mode, loopback binding, token-based authentication, and restricts access to sensitive tools by default. This configuration is designed to minimize the attack surface and isolate sensitive operations.
+
+```json5
+{
+  gateway: {
+    mode: "local",
+    bind: "loopback",
+    auth: { mode: "token", token: "replace-with-long-random-token" },
+  },
+  session: {
+    dmScope: "per-channel-peer",
+  },
+  tools: {
+    profile: "messaging",
+    deny: ["group:automation", "group:runtime", "group:fs", "sessions_spawn", "sessions_send"],
+    fs: { workspaceOnly: true },
+    exec: { security: "deny", ask: "always" },
+    elevated: { enabled: false },
+  },
+  channels: {
+    whatsapp: { dmPolicy: "pairing", groups: { "*": { requireMention: true } } },
+  },
+}
+```
+
+--------------------------------
+
+### OpenClaw SSRF Policy Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/browser.md
+
+Configures the SSRF policy to control access to private and internal network destinations. This JSON configuration allows specifying allowed hostnames and disabling private network access by default.
+
+```json5
+{
+  browser: {
+    ssrfPolicy: {
+      dangerouslyAllowPrivateNetwork: false,
+      hostnameAllowlist: ["*.example.com", "example.com"],
+      allowedHostnames: ["localhost"], // optional exact allow
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Verify Openclaw Gateway Status and Access
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/hetzner.md
+
+Commands to check the logs of the Openclaw gateway service to confirm it's running and listening on the expected port. It also provides instructions for setting up an SSH tunnel to securely access the gateway from a local machine and then accessing it via a web browser.
+
+```bash
+docker compose logs -f openclaw-gateway
+```
+
+```bash
+ssh -N -L 18789:127.0.0.1:18789 root@YOUR_VPS_IP
+```
+
+--------------------------------
+
+### Agent Permissions Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Shows how to define granular access control for an agent, specifying read, write, execute, bash, and network permissions using glob patterns and allow/deny values.
+
+```prose
+agent secure-agent:
+  permissions:
+    read: ["*.md", "*.txt"]
+    write: ["output/"]
+    bash: deny
+    network: allow
+```
+
+--------------------------------
+
+### GHSA (Repo Advisory) Patch/Publish
+
+Source: https://github.com/openclaw/openclaw/blob/main/AGENTS.md
+
+Workflow for patching and publishing GitHub Security Advisories (GHSA).
+
+```APIDOC
+## GHSA (Repo Advisory) Patch/Publish
+
+### Description
+Workflow for patching and publishing GitHub Security Advisories (GHSA).
+
+### Method
+N/A (Documentation of conventions and commands)
+
+### Endpoint
+N/A
+
+### Parameters
+N/A
+
+### Request Example
+```bash
+gh api /repos/openclaw/openclaw/security-advisories/<GHSA>
+gh api -X PATCH /repos/openclaw/openclaw/security-advisories/<GHSA> --input /tmp/ghsa.patch.json
+```
+
+### Response
+N/A
+
+### Notes
+- Before reviewing security advisories, read `SECURITY.md`.
+- Fetch advisory: `gh api /repos/openclaw/openclaw/security-advisories/<GHSA>`
+- Latest npm version: `npm view openclaw version --userconfig "$(mktemp)"`
+- Private fork PRs must be closed before publishing.
+- Description newline footgun: write Markdown via heredoc to `/tmp/ghsa.desc.md` (no `"\\n"` strings).
+- Build patch JSON via jq: `jq -n --rawfile desc /tmp/ghsa.desc.md '{summary,severity,description:$desc,vulnerabilities:[...]}' > /tmp/ghsa.patch.json`
+- GHSA API footgun: cannot set `severity` and `cvss_vector_string` in the same PATCH; do separate calls.
+- Patch + publish: `gh api -X PATCH /repos/openclaw/openclaw/security-advisories/<GHSA> --input /tmp/ghsa.patch.json` (publish = include `"state":"published"`; no `/publish` endpoint).
+- If publish fails (HTTP 422): missing `severity`/`description`/`vulnerabilities[]`, or private fork has open PRs.
+- Verify: re-fetch; ensure `state=published`, `published_at` set; `jq -r .description | rg '\\n'` returns nothing.
+```
+
+--------------------------------
+
+### OpenClaw Access Control Configuration
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+JSON5 configuration for defining access control policies for channels like WhatsApp. It specifies DM and group policies, including allowed senders and group-specific settings.
+
+```json5
+{
+  channels: {
+    whatsapp: {
+      // DM access policy: pairing | allowlist | open | disabled
+      dmPolicy: "pairing",
+      allowFrom: ["+15551234567"],
+
+      // Group access policy
+      groupPolicy: "allowlist",
+      groupAllowFrom: ["+15551234567"],
+      groups: {
+        "*": { requireMention: true },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### exec
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/index.md
+
+Executes shell commands within the workspace. Supports various options for background execution, timeouts, and security.
+
+```APIDOC
+## exec
+
+### Description
+Run shell commands in the workspace. Supports background execution, timeouts, and elevated privileges.
+
+### Method
+POST
+
+### Endpoint
+`/tools/exec`
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+None
+
+#### Request Body
+- **command** (string) - Required - The shell command to execute.
+- **yieldMs** (integer) - Optional - Timeout in milliseconds for auto-backgrounding. Defaults to 10000.
+- **background** (boolean) - Optional - If true, runs the command immediately in the background.
+- **timeout** (integer) - Optional - Timeout in seconds to kill the process. Defaults to 1800.
+- **elevated** (boolean) - Optional - If true, runs the command with elevated privileges (requires specific configuration and agent capabilities).
+- **host** (string) - Optional - The host to run the command on (`sandbox`, `gateway`, `node`). Defaults to `sandbox`.
+- **security** (string) - Optional - Security level for the command (`deny`, `allowlist`, `full`).
+- **ask** (string) - Optional - Controls user interaction for security prompts (`off`, `on-miss`, `always`).
+- **node** (string) - Optional - The node ID or name to target when `host` is `node`.
+- **pty** (boolean) - Optional - If true, requests a real TTY for the command.
+
+### Request Example
+```json
+{
+  "command": "ls -l",
+  "background": true,
+  "timeout": 60
+}
+```
+
+### Response
+#### Success Response (200)
+- **status** (string) - The status of the command execution (e.g., "running", "completed").
+- **sessionId** (string) - A unique identifier for the background session, if applicable.
+- **output** (string) - The command output, if executed synchronously.
+- **exitCode** (integer) - The exit code of the command, if completed.
+
+#### Response Example
+```json
+{
+  "status": "running",
+  "sessionId": "abc123xyz789"
+}
+```
+```
+
+--------------------------------
+
+### Disable mDNS Discovery via Environment Variable
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This method provides an alternative way to disable mDNS/Bonjour discovery broadcasts without modifying the configuration file. Setting the `OPENCLAW_DISABLE_BONJOUR` environment variable to `1` will prevent the Gateway from broadcasting its presence on the local network.
+
+```bash
+export OPENCLAW_DISABLE_BONJOUR=1
+```
+
+--------------------------------
+
+### Configure Host Browser Control in Sandboxed Sessions (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/chrome-extension.md
+
+This configuration allows sandboxed sessions to control the host browser. It's necessary when the browser tool is restricted by default in a sandboxed environment and you need to interact with the host's Chrome instance. Ensure the tool policy does not deny browser access and specify `target="host"` when calling the browser tool if needed.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        browser: {
+          allowHostControl: true
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Get OpenClaw Health Information
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/healthcheck/SKILL.md
+
+Fetches health information for OpenClaw, outputting in JSON format.
+
+```bash
+openclaw health --json
+```
+
+--------------------------------
+
+### Integrate 1Password CLI for Secrets (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/secrets.md
+
+Configuration example for using the 1Password CLI as an 'exec' provider to retrieve secrets. It specifies the command path, allows symlinks, defines trusted directories, and passes necessary environment variables. The example shows how to map this provider to an OpenAI API key.
+
+```json5
+{
+  secrets: {
+    providers: {
+      onepassword_openai: {
+        source: "exec",
+        command: "/opt/homebrew/bin/op",
+        allowSymlinkCommand: true, // required for Homebrew symlinked binaries
+        trustedDirs: ["/opt/homebrew"],
+        args: ["read", "op://Personal/OpenClaw QA API Key/password"],
+        passEnv: ["HOME"],
+        jsonOnly: false,
+      },
+    },
+  },
+  models: {
+    providers: {
+      openai: {
+        baseUrl: "https://api.openai.com/v1",
+        models: [{ id: "gpt-5", name: "gpt-5" }],
+        apiKey: { source: "exec", provider: "onepassword_openai", id: "value" },
+      },
+    },
+  },
+}
+```

@@ -1,0 +1,1749 @@
+### TUI Integration Import (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Demonstrates the import of components from the `@mariozechner/pi-tui` package for integrating OpenClaw with a local TUI mode. This allows for an interactive terminal experience similar to Pi's native mode.
+
+```typescript
+// src/tui/tui.ts
+import { ... } from "@mariozechner/pi-tui";
+```
+
+--------------------------------
+
+### Pi Agent Package Dependencies (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Defines the core package dependencies for integrating the pi SDK within OpenClaw. These packages provide the necessary abstractions for LLM interactions, agent loop management, and high-level SDK functionalities.
+
+```json
+{
+  "@mariozechner/pi-agent-core": "0.49.3",
+  "@mariozechner/pi-ai": "0.49.3",
+  "@mariozechner/pi-coding-agent": "0.49.3",
+  "@mariozechner/pi-tui": "0.49.3"
+}
+```
+
+--------------------------------
+
+### Configure Gmail Integration Hooks
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Set up the Gmail integration for the hooks system, including account details, Pub/Sub topic and subscription, push token, and the hook URL. It also configures the local server for receiving push notifications, Tailscale integration for external access, and specifies the LLM model and thinking mode for processing emails. The gateway automatically manages the `gog gmail watch serve` process when configured.
+
+```json5
+{
+  "hooks": {
+    "gmail": {
+      "account": "openclaw@gmail.com",
+      "topic": "projects/<project-id>/topics/gog-gmail-watch",
+      "subscription": "gog-gmail-watch-push",
+      "pushToken": "shared-push-token",
+      "hookUrl": "http://127.0.0.1:18789/hooks/gmail",
+      "includeBody": true,
+      "maxBytes": 20000,
+      "renewEveryMinutes": 720,
+      "serve": { "bind": "127.0.0.1", "port": 8788, "path": "/" },
+      "tailscale": { "mode": "funnel", "path": "/gmail-pubsub" },
+      "model": "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+      "thinking": "off"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### OpenCLaw Channel Integrations
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Configuration details for integrating different messaging channels with OpenCLaw. Each channel may require specific authentication methods such as QR codes, bot tokens, service account JSON, or server credentials.
+
+```text
+- [WhatsApp](/channels/whatsapp): optional QR login.
+- [Telegram](/channels/telegram): bot token.
+- [Discord](/channels/discord): bot token.
+- [Google Chat](/channels/googlechat): service account JSON + webhook audience.
+- [Mattermost](/channels/mattermost) (plugin): bot token + base URL.
+- [Signal](/channels/signal): optional `signal-cli` install + account config.
+- [BlueBubbles](/channels/bluebubbles): **recommended for iMessage**; server URL + password + webhook.
+- [iMessage](/channels/imessage): legacy `imsg` CLI path + DB access.
+```
+
+--------------------------------
+
+### Split SDK Tools for OpenClaw (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Splits SDK tools, overriding built-in tools with custom definitions for OpenClaw's environment. This function ensures that OpenClaw's policy filtering, sandbox integration, and extended toolset are consistently applied across different providers by passing all tools via `customTools`.
+
+```typescript
+export function splitSdkTools(options: { tools: AnyAgentTool[]; sandboxEnabled: boolean }) {
+  return {
+    builtInTools: [], // Empty. We override everything
+    customTools: toToolDefinitions(options.tools),
+  };
+}
+```
+
+--------------------------------
+
+### Adding Models from OpenRouter
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Demonstrates how to integrate models from OpenRouter, a pay-per-token service. This involves setting the primary model, defining the model in the `models` configuration, and providing the OpenRouter API key in the environment variables.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "openrouter/anthropic/claude-sonnet-4-5" },
+      models: { "openrouter/anthropic/claude-sonnet-4-5": {} },
+    },
+  },
+  env: { OPENROUTER_API_KEY: "sk-or-..." },
+}
+```
+
+--------------------------------
+
+### Mattermost Quick Setup Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Minimal configuration required to enable Mattermost integration.
+
+```APIDOC
+## Mattermost Quick Setup Configuration
+
+### Description
+Configure OpenClaw with Mattermost bot token and base URL for basic integration.
+
+### Method
+Configuration File
+
+### Endpoint
+N/A
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+None
+
+#### Request Body
+- **channels.mattermost.enabled** (boolean) - Required - Enable Mattermost integration.
+- **channels.mattermost.botToken** (string) - Required - Bot token obtained from Mattermost.
+- **channels.mattermost.baseUrl** (string) - Required - Base URL of the Mattermost instance.
+- **channels.mattermost.dmPolicy** (string) - Optional - Policy for direct messages ('pairing' or 'open'). Defaults to 'pairing'.
+
+### Request Example
+```json5
+{
+  "channels": {
+    "mattermost": {
+      "enabled": true,
+      "botToken": "mm-token",
+      "baseUrl": "https://chat.example.com",
+      "dmPolicy": "pairing"
+    }
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+Configuration applied.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Mattermost Environment Variables
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Sets Mattermost integration configuration using environment variables for the default account. This is an alternative to using the JSON configuration file for the bot token and base URL.
+
+```bash
+MATTERMOST_BOT_TOKEN=...
+MATTERMOST_URL=https://chat.example.com
+```
+
+--------------------------------
+
+### Environment Variables for Slack Socket Mode
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/slack.md
+
+This bash configuration sets environment variables for Slack integration in Socket Mode. It's a fallback for the default account when direct configuration is not provided.
+
+```bash
+SLACK_APP_TOKEN=xapp-...
+SLACK_BOT_TOKEN=xoxb-...
+```
+
+--------------------------------
+
+### Reactions (Message Tool)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Enables adding and removing reactions to Mattermost messages using the `message action=react` command.
+
+```APIDOC
+## Reactions (message tool)
+
+Use `message action=react` with `channel=mattermost`.
+`messageId` is the Mattermost post id.
+`emoji` accepts names like `thumbsup` or `:+1:` (colons are optional).
+Set `remove=true` (boolean) to remove a reaction.
+Reaction add/remove events are forwarded as system events to the routed agent session.
+
+### Request Example
+
+```
+message action=react channel=mattermost target=channel:<channelId> messageId=<postId> emoji=thumbsup
+message action=react channel=mattermost target=channel:<channelId> messageId=<postId> emoji=thumbsup remove=true
+```
+
+### Configuration
+
+- `channels.mattermost.actions.reactions`: enable/disable reaction actions (default true).
+- Per-account override: `channels.mattermost.accounts.<id>.actions.reactions`.
+```
+
+--------------------------------
+
+### Mattermost Native Slash Commands Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Enables native slash commands for Mattermost integration. This configuration allows OpenClaw to register commands via the Mattermost API and receive callback POSTs. It includes options for enabling native skills and specifying a callback path and URL.
+
+```json
+{
+  "channels": {
+    "mattermost": {
+      "commands": {
+        "native": true,
+        "nativeSkills": true,
+        "callbackPath": "/api/channels/mattermost/command",
+        "callbackUrl": "https://gateway.example.com/api/channels/mattermost/command"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Minimal Mattermost Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+A minimal JSON configuration for enabling the Mattermost channel integration. It requires the bot token and the Mattermost base URL, and sets the direct message policy to 'pairing'.
+
+```json
+{
+  "channels": {
+    "mattermost": {
+      "enabled": true,
+      "botToken": "mm-token",
+      "baseUrl": "https://chat.example.com",
+      "dmPolicy": "pairing"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure BlueBubbles iMessage Integration for OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+This JSON configuration snippet sets up the BlueBubbles channel within OpenClaw, enabling iMessage integration. It requires the server URL, API password, and the webhook path for communication with the BlueBubbles service.
+
+```json
+{
+  "channels": {
+    "bluebubbles": {
+      "serverUrl": "http://localhost:1234",
+      "password": "your-api-password",
+      "webhookPath": "/bluebubbles-webhook"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Webhook Integration API
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Set up HTTP webhook endpoints for external triggers to wake the agent or run isolated tasks.
+
+```APIDOC
+## Webhook Integration API
+
+### Description
+APIs for setting up and managing webhook endpoints to trigger agent actions or run isolated tasks via HTTP requests.
+
+### Method
+POST, PUT
+
+### Endpoint
+`/hooks/wake`, `/hooks/agent`, `/webhooks/gmail`
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+- `--account` (string) - Required - Gmail account email.
+- `--project` (string) - Required - Google Cloud project ID.
+- `--hook-url` (string) - Required - The URL for the webhook.
+- `--hook-token` (string) - Required - Token for webhook authentication.
+
+#### Request Body
+- `text` (string) - Required - Text content for the wake event.
+- `mode` (string) - Optional - Mode for the wake event (e.g., "now").
+- `message` (string) - Required - Message content for agent tasks.
+- `name` (string) - Optional - Name for the agent task.
+- `deliver` (boolean) - Optional - Whether to deliver the agent task result.
+- `channel` (string) - Optional - Channel for delivery.
+- `to` (string) - Optional - Recipient for delivery.
+- `model` (string) - Optional - Model to use for the agent task.
+- `timeoutSeconds` (integer) - Optional - Timeout for the agent task.
+
+### Request Example
+```bash
+# Wake the agent with a system event
+curl -X POST http://127.0.0.1:18789/hooks/wake \
+  -H 'Authorization: Bearer SECRET' \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"New email received","mode":"now"}'
+
+# Gmail webhook setup
+openclaw webhooks gmail setup \
+  --account user@gmail.com \
+  --project my-gcp-project \
+  --hook-url "https://example.com/hooks/gmail" \
+  --hook-token "$GMAIL_HOOK_TOKEN"
+```
+
+### Response
+#### Success Response (200)
+- `status` (string) - Status of the webhook operation.
+
+#### Response Example
+```json
+{
+  "status": "Webhook configured successfully."
+}
+```
+```
+
+--------------------------------
+
+### Manual Session Compaction
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Handles manual compaction of an embedded Pi session directly. This function is called when context overflow triggers auto-compaction or for explicit manual compaction. It returns a compaction result object.
+
+```typescript
+const compactResult = await compactEmbeddedPiSessionDirect({
+  sessionId,
+  sessionFile,
+  provider,
+  model,
+  ...
+});
+```
+
+--------------------------------
+
+### Interactive Buttons (Message Tool)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Allows sending messages with clickable buttons that trigger agent responses upon user interaction.
+
+```APIDOC
+## Interactive buttons (message tool)
+
+Send messages with clickable buttons. When a user clicks a button, the agent receives the selection and can respond.
+
+Enable buttons by adding `inlineButtons` to the channel capabilities:
+
+```json
+{
+  channels: {
+    mattermost: {
+      capabilities: ["inlineButtons"],
+    },
+  },
+}
+```
+
+Use `message action=send` with a `buttons` parameter. Buttons are a 2D array (rows of buttons):
+
+```
+message action=send channel=mattermost target=channel:<channelId> buttons=[[{"text":"Yes","callback_data":"yes"},{"text":"No","callback_data":"no"}]]
+```
+
+### Button Fields
+
+- `text` (required): display label.
+- `callback_data` (required): value sent back on click (used as the action ID).
+- `style` (optional): `"default"`, `"primary"`, or `"danger"`.
+
+### User Interaction Flow
+
+1. All buttons are replaced with a confirmation line (e.g., "? **Yes** selected by @user").
+2. The agent receives the selection as an inbound message and responds.
+
+### Notes
+
+- Button callbacks use HMAC-SHA256 verification (automatic, no config needed).
+- Mattermost strips callback data from its API responses (security feature), so all buttons are removed on click — partial removal is not possible.
+- Action IDs containing hyphens or underscores are sanitized automatically (Mattermost routing limitation).
+
+### Configuration
+
+- `channels.mattermost.capabilities`: array of capability strings. Add `"inlineButtons"` to enable the buttons tool description in the agent system prompt.
+- `channels.mattermost.interactions.callbackBaseUrl`: optional external base URL for button callbacks (for example `https://gateway.example.com`). Use this when Mattermost cannot reach the gateway at its bind host directly.
+- In multi-account setups, you can also set the same field under `channels.mattermost.accounts.<id>.interactions.callbackBaseUrl`.
+- If `interactions.callbackBaseUrl` is omitted, OpenClaw derives the callback URL from `gateway.customBindHost` + `gateway.port`, then falls back to `http://localhost:<port>`.
+- Reachability rule: the button callback URL must be reachable from the Mattermost server. `localhost` only works when Mattermost and OpenClaw run on the same host/network namespace.
+- If your callback target is private/tailnet/internal, add its host/domain to Mattermost `ServiceSettings.AllowedUntrustedInternalConnections`.
+```
+
+--------------------------------
+
+### Subscribe to Embedded Pi Session Events (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Subscribes to various events emitted by an active pi agent session. This allows for real-time monitoring and handling of agent activities, including message streaming, tool execution, and agent lifecycle events. Callbacks are provided for different event types.
+
+```typescript
+const subscription = subscribeEmbeddedPiSession({
+  session: activeSession,
+  runId: params.runId,
+  verboseLevel: params.verboseLevel,
+  reasoningMode: params.reasoningLevel,
+  toolResultFormat: params.toolResultFormat,
+  onToolResult: params.onToolResult,
+  onReasoningStream: params.onReasoningStream,
+  onBlockReply: params.onBlockReply,
+  onPartialReply: params.onPartialReply,
+  onAgentEvent: params.onAgentEvent,
+});
+```
+
+--------------------------------
+
+### Discover Hugging Face Models via API
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+Demonstrates how OpenClaw discovers available Hugging Face models by querying the Inference API. An optional Authorization header can be included for a full list.
+
+```http
+GET https://router.huggingface.co/v1/models
+# Optional: Authorization: Bearer $HUGGINGFACE_HUB_TOKEN or $HF_TOKEN
+```
+
+--------------------------------
+
+### Configure Compaction Safeguard Pi Extension
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Adds the compaction safeguard Pi extension, which includes adaptive token budgeting and summaries for tool failures and file operations. This is enabled when the compaction mode is set to 'safeguard'.
+
+```typescript
+if (resolveCompactionMode(params.cfg) === "safeguard") {
+  setCompactionSafeguardRuntime(params.sessionManager, { maxHistoryShare });
+  paths.push(resolvePiExtensionPath("compaction-safeguard"));
+}
+```
+
+--------------------------------
+
+### Run Gateway Integration Tests
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/test.md
+
+Enables and runs integration tests for the gateway. This can be done by setting an environment variable or using a dedicated command.
+
+```bash
+OPENCLAW_TEST_INCLUDE_GATEWAY=1 pnpm test
+```
+
+```bash
+pnpm test:gateway
+```
+
+--------------------------------
+
+### Gmail Integration Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configure the Gmail integration for the Openclaw Gateway, including account details, push subscriptions, and serving options.
+
+```APIDOC
+## Gmail Integration Configuration
+
+### Description
+Configure the Gmail integration for the Openclaw Gateway. This allows the gateway to automatically start `gog gmail watch serve` on boot when configured.
+
+### Method
+N/A (Configuration)
+
+### Endpoint
+N/A (Configuration)
+
+### Parameters
+#### Hooks Gmail Configuration Object
+- **account** (string) - Required - The Gmail account email address.
+- **topic** (string) - Required - The Google Cloud Pub/Sub topic name.
+- **subscription** (string) - Required - The Google Cloud Pub/Sub subscription name.
+- **pushToken** (string) - Required - A shared token for push notifications.
+- **hookUrl** (string) - Required - The URL where the gateway will receive push notifications.
+- **includeBody** (boolean) - Optional - Whether to include the email body in notifications. Default `true`.
+- **maxBytes** (integer) - Optional - Maximum bytes to include for the email body. Default `20000`.
+- **renewEveryMinutes** (integer) - Optional - How often to renew the push subscription in minutes. Default `720`.
+- **serve** (object) - Configuration for the internal server to handle push notifications.
+  - **bind** (string) - The IP address to bind the server to. Default `127.0.0.1`.
+  - **port** (integer) - The port for the server to listen on. Default `8788`.
+  - **path** (string) - The path for the server to listen on. Default `/`.
+- **tailscale** (object) - Optional - Tailscale configuration for exposing the serve endpoint.
+  - **mode** (string) - Tailscale mode (`funnel`).
+  - **path** (string) - The Tailscale funnel path.
+- **model** (string) - Optional - The LLM model to use for processing Gmail content.
+- **thinking** (string) - Optional - Controls thinking process display for Gmail processing (`on` or `off`).
+
+### Environment Variable
+- **OPENCLAW_SKIP_GMAIL_WATCHER** (integer) - Set to `1` to disable the automatic start of `gog gmail watch serve`.
+
+### Request Example
+```json
+{
+  "hooks": {
+    "gmail": {
+      "account": "openclaw@gmail.com",
+      "topic": "projects/my-project/topics/gog-gmail-watch",
+      "subscription": "gog-gmail-watch-push",
+      "pushToken": "shared-push-token",
+      "hookUrl": "http://127.0.0.1:18789/hooks/gmail",
+      "includeBody": true,
+      "maxBytes": 20000,
+      "renewEveryMinutes": 720,
+      "serve": {
+        "bind": "127.0.0.1",
+        "port": 8788,
+        "path": "/"
+      },
+      "tailscale": {
+        "mode": "funnel",
+        "path": "/gmail-pubsub"
+      },
+      "model": "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+      "thinking": "off"
+    }
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+Configuration is applied. Gateway will manage the Gmail watcher service as configured.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Subagent Database Interaction (Scoped Block)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/sqlite.md
+
+Illustrates how the VM provides database path and instructions for inserting data into the bindings table within a scoped block, including the execution_id. It uses SQLite to insert or replace a record for a 'result' binding.
+
+```shell
+sqlite3 .prose/runs/20260116-143052-a7b3c9/state.db "
+  INSERT OR REPLACE INTO bindings (name, execution_id, kind, value, source_statement, updated_at)
+  VALUES (
+    'result',
+    43,  -- scoped to this execution
+    'let',
+    'Processed chunk into 3 sub-parts...', 
+    'let result = session "Process chunk"',
+    datetime('now')
+  )
+"
+```
+
+--------------------------------
+
+### Environment Variables for Default Account
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Use environment variables to configure the default Mattermost account.
+
+```APIDOC
+## Environment Variables for Default Account
+
+### Description
+Configure the default Mattermost account using environment variables on the gateway host.
+
+### Method
+Environment Variables
+
+### Endpoint
+N/A
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+None
+
+#### Request Body
+None
+
+### Request Example
+```bash
+export MATTERMOST_BOT_TOKEN="mm-token"
+export MATTERMOST_URL="https://chat.example.com"
+```
+
+### Response
+#### Success Response (200)
+Environment variables set.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Enable Ollama for OpenClaw (Config File)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Configures Ollama integration for OpenClaw directly within its configuration file using the 'openclaw config set' command.
+
+```bash
+openclaw config set models.providers.ollama.apiKey "ollama-local"
+```
+
+--------------------------------
+
+### Combining Parallel Join Strategies and Failure Policies
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to combine different join strategies (like 'first' or 'any') with failure policies (like 'continue' or 'ignore') to create complex parallel execution behaviors. This allows for fine-grained control over how parallel tasks are managed.
+
+```prose
+# Race with resilience
+parallel ("first", on-fail: "continue"):
+  session "Fast but unreliable"
+  session "Slow but reliable"
+
+# Get any 2 results, ignoring failures
+parallel ("any", count: 2, on-fail: "ignore"):
+  session "Approach 1"
+  session "Approach 2"
+  session "Approach 3"
+  session "Approach 4"
+```
+
+--------------------------------
+
+### Configure Multiple Models with Aliases (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+This configuration demonstrates setting a primary model and multiple fallback models, each with a defined alias. This allows for flexible model selection and easier referencing.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "huggingface/deepseek-ai/DeepSeek-V3.2",
+        fallbacks: [
+          "huggingface/meta-llama/Llama-3.3-70B-Instruct",
+          "huggingface/openai/gpt-oss-120b",
+        ],
+      },
+      models: {
+        "huggingface/deepseek-ai/DeepSeek-V3.2": { alias: "DeepSeek V3.2" },
+        "huggingface/meta-llama/Llama-3.3-70B-Instruct": { alias: "Llama 3.3 70B" },
+        "huggingface/openai/gpt-oss-120b": { alias: "GPT-OSS 120B" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Subagent Database Interaction (Root Scope)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/sqlite.md
+
+Demonstrates how the VM provides the database path and instructions for inserting data into the bindings table from the root scope. It uses SQLite to insert or replace a record with details about a 'research' binding.
+
+```shell
+sqlite3 .prose/runs/20260116-143052-a7b3c9/state.db "
+  INSERT OR REPLACE INTO bindings (name, execution_id, kind, value, source_statement, updated_at)
+  VALUES (
+    'research',
+    NULL,  -- root scope
+    'let',
+    'AI safety research covers alignment, robustness...', 
+    'let research = session: researcher',
+    datetime('now')
+  )
+"
+```
+
+--------------------------------
+
+### Install Zalo Personal Plugin for OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/zalouser.md
+
+Installs the Zalo Personal plugin using the OpenClaw CLI. This plugin enables the integration of personal Zalo accounts.
+
+```bash
+openclaw plugins install @openclaw/zalouser
+
+```
+
+```bash
+openclaw plugins install ./extensions/zalouser
+
+```
+
+--------------------------------
+
+### Verify OpenClaw Signal Setup
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/signal.md
+
+Commands to verify the status and connectivity of the OpenClaw Signal integration. These commands help diagnose potential issues with the signal-cli daemon or channel configuration.
+
+```bash
+openclaw doctor
+openclaw channels status --probe
+```
+
+--------------------------------
+
+### Configure Context Pruning Pi Extension
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Implements cache-TTL based context pruning as a Pi extension. This is activated when the context pruning mode is set to 'cache-ttl' in the configuration, managing cache freshness and pruning based on time-to-live settings.
+
+```typescript
+if (cfg?.agents?.defaults?.contextPruning?.mode === "cache-ttl") {
+  setContextPruningRuntime(params.sessionManager, {
+    settings,
+    contextWindowTokens,
+    isToolPrunable,
+    lastCacheTouchAt,
+  });
+  paths.push(resolvePiExtensionPath("context-pruning"));
+}
+```
+
+--------------------------------
+
+### Adapt Agent Tool to Tool Definition (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Adapts tools from pi-agent-core's `AnyAgentTool` type to pi-coding-agent's `ToolDefinition` type. This function maps the `execute` method signature, ensuring compatibility between the two agent core libraries. It handles optional properties like `label` and `description`.
+
+```typescript
+export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
+  return tools.map((tool) => ({
+    name: tool.name,
+    label: tool.label ?? name,
+    description: tool.description ?? "",
+    parameters: tool.parameters,
+    execute: async (toolCallId, params, onUpdate, _ctx, signal) => {
+      // pi-coding-agent signature differs from pi-agent-core
+      return await tool.execute(toolCallId, params, signal, onUpdate);
+    },
+  }));
+}
+```
+
+--------------------------------
+
+### Sandbox Context Resolution (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Resolves the sandbox context when sandbox mode is enabled. This involves setting up constrained tools and paths. The `resolveSandboxContext` function is used, and subsequent operations like read, edit, write, exec, and browser interactions are adapted to the sandboxed environment. Dependencies include `params.config`, `sandboxSessionKey`, and `resolvedWorkspace`.
+
+```typescript
+const sandbox = await resolveSandboxContext({
+  config: params.config,
+  sessionKey: sandboxSessionKey,
+  workspaceDir: resolvedWorkspace,
+});
+
+if (sandboxRoot) {
+  // Use sandboxed read/edit/write tools
+  // Exec runs in container
+  // Browser uses bridge URL
+}
+```
+
+--------------------------------
+
+### Configure OpenClaw for Local iMessage
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/imessage.md
+
+Provides a JSON configuration snippet for OpenClaw to enable iMessage support. It specifies the path to the `imsg` executable and the location of the macOS Messages database.
+
+```json
+{
+  "channels": {
+    "imessage": {
+      "enabled": true,
+      "cliPath": "/usr/local/bin/imsg",
+      "dbPath": "/Users/<you>/Library/Messages/chat.db"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Enable Ollama for OpenClaw (Environment Variable)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/ollama.md
+
+Sets the OLLAMA_API_KEY environment variable to enable Ollama integration with OpenClaw. Any value can be used as Ollama does not require a real API key for local use.
+
+```bash
+export OLLAMA_API_KEY="ollama-local"
+```
+
+--------------------------------
+
+### Configure Multiple Models with Policy Suffixes (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+This example configures a primary model with a policy suffix and includes other models with their own policy suffixes and aliases. This allows for fine-grained control over model selection based on cost or speed.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "huggingface/Qwen/Qwen2.5-7B-Instruct:cheapest" },
+      models: {
+        "huggingface/Qwen/Qwen2.5-7B-Instruct": { alias: "Qwen2.5 7B" },
+        "huggingface/Qwen/Qwen2.5-7B-Instruct:cheapest": { alias: "Qwen2.5 7B (cheap)" },
+        "huggingface/deepseek-ai/DeepSeek-R1:fastest": { alias: "DeepSeek R1 (fast)" },
+        "huggingface/meta-llama/Llama-3.1-8B-Instruct": { alias: "Llama 3.1 8B" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### POST /mattermost/interactions
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Allows external scripts and webhooks to post buttons directly via the Mattermost REST API. It's recommended to use `buildButtonAttachments()` when possible, but raw JSON payloads are supported following specific rules.
+
+```APIDOC
+## POST /mattermost/interactions
+
+### Description
+This endpoint allows direct integration with Mattermost by posting buttons via the REST API. It's designed for external scripts and webhooks to interact with Mattermost without going through the agent's `message` tool.
+
+### Method
+POST
+
+### Endpoint
+`/mattermost/interactions`
+
+### Parameters
+#### Request Body
+- **channel_id** (string) - Required - The ID of the channel where the message will be posted.
+- **message** (string) - Required - The main text message to be displayed.
+- **props** (object) - Required - Contains attachment configurations.
+  - **attachments** (array) - Required - An array of attachment objects.
+    - **actions** (array) - Required - An array of button action objects.
+      - **id** (string) - Required - Alphanumeric identifier for the button (e.g., `mybutton01`). Must be alphanumeric only.
+      - **type** (string) - Required - Must be set to `"button"` for the action to be processed.
+      - **name** (string) - Required - The display label for the button (e.g., "Approve").
+      - **style** (string) - Optional - The visual style of the button (`default`, `primary`, `danger`).
+      - **integration** (object) - Required - Configuration for the button's integration.
+        - **url** (string) - Required - The URL to send the interaction to.
+        - **context** (object) - Required - Custom data sent with the interaction.
+          - **action_id** (string) - Required - Must match the button's `id` for correct message display.
+          - **action** (string) - Required - The specific action to perform (e.g., `approve`).
+          - **_token** (string) - Required - HMAC-SHA256 signed token for verification. See HMAC token generation below.
+
+### Request Example
+```json
+{
+  "channel_id": "<channelId>",
+  "message": "Choose an option:",
+  "props": {
+    "attachments": [
+      {
+        "actions": [
+          {
+            "id": "mybutton01",
+            "type": "button",
+            "name": "Approve",
+            "style": "primary",
+            "integration": {
+              "url": "https://gateway.example.com/mattermost/interactions/default",
+              "context": {
+                "action_id": "mybutton01",
+                "action": "approve",
+                "_token": "<hmac>"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+- **(No specific response body documented for success, typically an acknowledgment or empty response)**
+
+#### Response Example
+```json
+{
+  "status": "success"
+}
+```
+
+### HMAC Token Generation
+To ensure secure interactions, an HMAC-SHA256 token must be generated and included in the `context._token` field. The process is as follows:
+
+1.  **Derive Secret**: Generate a secret key using `HMAC-SHA256(key="openclaw-mattermost-interactions", data=botToken)`.
+2.  **Build Context**: Create the context object containing all fields **except** `_token`.
+3.  **Serialize Context**: Serialize the context object with **sorted keys** and **no spaces** (e.g., using `JSON.stringify` with compact output).
+4.  **Sign Payload**: Sign the serialized context using `HMAC-SHA256(key=secret, data=serializedContext)`.
+5.  **Add Token**: Append the resulting hex digest as `_token` to the context object.
+
+**Python Example for HMAC Generation:**
+```python
+import hmac, hashlib, json
+
+# Assume bot_token is available
+bot_token = "your_bot_token_here"
+
+secret = hmac.new(
+    b"openclaw-mattermost-interactions",
+    bot_token.encode(), hashlib.sha256
+).hexdigest()
+
+ctx = {"action_id": "mybutton01", "action": "approve"} # Add any other custom fields here
+
+# Serialize context with sorted keys and no spaces
+payload = json.dumps(ctx, sort_keys=True, separators=(',', ':'))
+
+token = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+
+context = {**ctx, "_token": token}
+
+print(f"Generated Context with Token: {context}")
+```
+
+**Common HMAC Pitfalls:**
+- Ensure JSON serialization uses `sort_keys=True` and compact separators (`separators=(',', ':')`).
+- Sign **all** context fields except `_token`.
+- The secret must be deterministically derived from the bot token.
+```
+
+--------------------------------
+
+### Multiple Nested Unbounded Loops
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates nesting multiple unbounded loops, allowing for deep iterative refinement or complex multi-stage processes.
+
+```prose
+# Multiple unbounded
+loop until **outer condition** (max: 5):
+  loop until **inner condition** (max: 10):
+    session "Deep iteration"
+```
+
+--------------------------------
+
+### Configure Slack Socket Mode in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/slack.md
+
+This JSON configuration enables Slack integration using Socket Mode. It requires app and bot tokens for authentication and specifies the communication mode.
+
+```json
+{
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "mode": "socket",
+      "appToken": "xapp-...",
+      "botToken": "xoxb-..."
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Mattermost Chat Mode Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Configures the chat mode for Mattermost integration. This example sets the chat mode to 'onchar', meaning OpenClaw will respond to messages starting with specified prefixes, in addition to @mentions.
+
+```json
+{
+  "channels": {
+    "mattermost": {
+      "chatmode": "onchar",
+      "oncharPrefixes": [">", "!"]
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Capture Parallel Results into Variables
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to assign the results of parallel execution branches to named variables for later use. This allows for capturing and referencing outputs from concurrent tasks.
+
+```prose
+parallel:
+  security = session "Security review"
+  perf = session "Performance review"
+  style = session "Style review"
+```
+
+--------------------------------
+
+### Approve iMessage DM Pairing
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/imessage.md
+
+Demonstrates the commands to list pending iMessage pairing requests and approve a specific pairing code. This is necessary for establishing direct message connections.
+
+```bash
+openclaw pairing list imessage
+openclaw pairing approve imessage <CODE>
+```
+
+--------------------------------
+
+### SQL Binding Insertion with Attachment
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+Illustrates an SQL INSERT statement for the 'bindings' table, handling large output values by storing them in an attachment file and referencing the path in 'attachment_path'. It uses ON CONFLICT to update existing records.
+
+```sql
+INSERT INTO openprose.bindings (name, run_id, kind, value, attachment_path, source_statement)
+VALUES (
+  'full_report',
+  '20260116-143052-a7b3c9',
+  'let',
+  'Full analysis report (847KB) - see attachment',
+  'attachments/full_report.md',
+  'let full_report = session "Generate comprehensive report"'
+)
+ON CONFLICT (name, run_id) DO UPDATE
+SET value = EXCLUDED.value, attachment_path = EXCLUDED.attachment_path, updated_at = NOW();
+```
+
+--------------------------------
+
+### Check Signal Pairing State
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/signal.md
+
+Command to list the current pairing state of the Signal channel, used to confirm DM pairing status.
+
+```bash
+openclaw pairing list signal
+```
+
+--------------------------------
+
+### Context with Blocks
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Blocks can capture their results using the 'let' keyword and make these results available as context for subsequent sessions. This enables data flow between different parts of a workflow.
+
+```prose
+# Capture do block result
+let research = do:
+  session "Gather information"
+  session "Analyze patterns"
+
+# Use in subsequent session
+session "Write report"
+  context: research
+```
+
+--------------------------------
+
+### Configure Slack HTTP Events API Mode in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/slack.md
+
+This JSON configuration enables Slack integration using the HTTP Events API. It requires bot token, signing secret, and a webhook path for event subscriptions.
+
+```json
+{
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "mode": "http",
+      "botToken": "xoxb-...",
+      "signingSecret": "your-signing-secret",
+      "webhookPath": "/slack/events"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Immutable Binding (Variable Declaration) in Functional and Kafka
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/alts/kafka.md
+
+Illustrates how to declare immutable variables or constants. These bindings hold values that cannot be changed after their initial assignment, ensuring data integrity.
+
+```prose
+# Functional
+const config = { model: "opus", retries: 3 }
+```
+
+```kafka
+# Kafka
+statute config = { authority: "opus", resubmit: 3 }
+```
+
+--------------------------------
+
+### Approval Workflow with Gateway and Operator UI (Conceptual)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/refactor/clawnet.md
+
+Outlines a proposed centralized approval system where the gateway manages approval records and communicates with operator UIs. This flow ensures that approvals are handled consistently and securely, with clear semantics for resolution and timeouts.
+
+```Pseudocode
+// Gateway receives system.run intent from agent
+function handleRunIntent(agentData) {
+  const approvalRecord = createApprovalRecord(agentData.commandId);
+  broadcastApprovalRequest(approvalRecord);
+}
+
+// Operator UI receives approval request and sends decision
+function sendApprovalDecision(approvalId, decision) { // decision: 'approved' or 'denied'
+  gateway.resolveApproval(approvalId, decision, userScope);
+}
+
+// Gateway processes approval resolution
+function resolveApproval(approvalId, decision, scope) {
+  if (!hasScope(scope, 'operator.approvals')) {
+    reject('Unauthorized');
+    return;
+  }
+  const record = getApprovalRecord(approvalId);
+  if (record.status === 'settled' || isTimeout(record)) {
+    reject('Approval already settled or timed out');
+    return;
+  }
+  record.status = 'settled';
+  record.decision = decision;
+  logApproval(record);
+  if (decision === 'approved') {
+    invokeNodeCommand(record.command);
+  }
+}
+
+```
+
+--------------------------------
+
+### Run Embedded Pi Agent (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Initiates an embedded agent session with specified parameters. It requires session details, workspace configuration, LLM provider information, and callback functions for handling replies. The function returns a result object after the agent completes its task.
+
+```typescript
+import { runEmbeddedPiAgent } from "./agents/pi-embedded-runner.js";
+
+const result = await runEmbeddedPiAgent({
+  sessionId: "user-123",
+  sessionKey: "main:whatsapp:+1234567890",
+  sessionFile: "/path/to/session.jsonl",
+  workspaceDir: "/path/to/workspace",
+  config: openclawConfig,
+  prompt: "Hello, how are you?",
+  provider: "anthropic",
+  model: "claude-sonnet-4-20250514",
+  timeoutMs: 120_000,
+  runId: "run-abc",
+  onBlockReply: async (payload) => {
+    await sendToChannel(payload.text, payload.mediaUrls);
+  },
+});
+```
+
+--------------------------------
+
+### Configure Primary Model with Fallback Models (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+This configuration sets a primary model and defines a list of fallback models to be used if the primary is unavailable. It also includes aliases for the models.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "huggingface/deepseek-ai/DeepSeek-R1",
+        fallbacks: ["huggingface/Qwen/Qwen3-8B"],
+      },
+      models: {
+        "huggingface/deepseek-ai/DeepSeek-R1": { alias: "DeepSeek R1" },
+        "huggingface/Qwen/Qwen3-8B": { alias: "Qwen3 8B" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Initialize Embedded Block Chunker
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Initializes an `EmbeddedBlockChunker` to manage the streaming of text into discrete reply blocks. This is conditionally created if block chunking is enabled via configuration.
+
+```typescript
+const blockChunker = blockChunking ? new EmbeddedBlockChunker(blockChunking) : null;
+```
+
+--------------------------------
+
+### String Interpolation in OpenCLaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to embed variables directly within string literals using curly braces for dynamic string construction.
+
+```OpenCLaw
+let user = "Alice"
+let greeting = "Hello, {user}!"
+```
+
+--------------------------------
+
+### Mattermost Button Payload Structure
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Defines the JSON payload structure for posting buttons directly via the Mattermost REST API. It includes channel ID, message, and attachment configurations with button actions, their styles, and integration details including URL, context, and HMAC token.
+
+```json
+{
+  "channel_id": "<channelId>",
+  "message": "Choose an option:",
+  "props": {
+    "attachments": [
+      {
+        "actions": [
+          {
+            "id": "mybutton01",
+            "type": "button",
+            "name": "Approve",
+            "style": "primary",
+            "integration": {
+              "url": "https://gateway.example.com/mattermost/interactions/default",
+              "context": {
+                "action_id": "mybutton01",
+                "action": "approve",
+                "_token": "<hmac>"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Check iMessage RPC Support
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/imessage.md
+
+Verifies if the 'imsg' binary supports RPC and checks the status of the OpenClaw channels. This is crucial for troubleshooting 'imsg not found or RPC unsupported' errors.
+
+```bash
+imsg rpc --help
+openclaw channels status --probe
+```
+
+--------------------------------
+
+### Configure Multi-modal Single Entry with Explicit Capabilities
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/media-understanding.md
+
+This configuration sets up a single entry for multi-modal understanding, explicitly defining capabilities for image, audio, and video processing using the Google Gemini model.
+
+```json5
+{
+  tools: {
+    media: {
+      image: {
+        models: [
+          {
+            provider: "google",
+            model: "gemini-3-pro-preview",
+            capabilities: ["image", "video", "audio"],
+          },
+        ],
+      },
+      audio: {
+        models: [
+          {
+            provider: "google",
+            model: "gemini-3-pro-preview",
+            capabilities: ["image", "video", "audio"],
+          },
+        ],
+      },
+      video: {
+        models: [
+          {
+            provider: "google",
+            model: "gemini-3-pro-preview",
+            capabilities: ["image", "video", "audio"],
+          },
+        ],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Metadata Fields
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/hooks.md
+
+Configuration options for the metadata.openclaw object, used for CLI integration and hook behavior.
+
+```APIDOC
+## Metadata Fields
+
+The `metadata.openclaw` object supports the following fields:
+
+- **`emoji`** (string) - Display emoji for CLI.
+- **`events`** (Array<string>) - Array of events to listen for.
+- **`export`** (string) - Named export to use (defaults to "default").
+- **`homepage`** (string) - Documentation URL.
+- **`requires`** (object) - Optional requirements for the hook.
+  - **`bins`** (Array<string>) - Required binaries on PATH.
+  - **`anyBins`** (Array<string>) - At least one of these binaries must be present.
+  - **`env`** (Array<string>) - Required environment variables.
+  - **`config`** (Array<string>) - Required config paths.
+  - **`os`** (Array<string>) - Required platforms.
+- **`always`** (boolean) - Bypass eligibility checks.
+- **`install`** (Array<object>) - Installation methods for bundled hooks.
+```
+
+--------------------------------
+
+### Onboard to Together AI with API Key (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/together.md
+
+This command initiates the onboarding process for Together AI using an API key. It prompts the user to store the API key for the Gateway. This is the recommended method for setting up authentication.
+
+```bash
+openclaw onboard --auth-choice together-api-key
+```
+
+--------------------------------
+
+### User Configuration Example for Kilo Gateway
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/design/kilo-gateway-integration.md
+
+This JSON object illustrates the user configuration structure for integrating with the Kilo Gateway. It specifies model settings, including merging strategies and provider-specific details like base URL, API key, and a list of available models with their IDs and names.
+
+```json
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "kilocode": {
+        "baseUrl": "https://api.kilo.ai/api/gateway/",
+        "apiKey": "xxxxx",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "anthropic/claude-opus-4.6",
+            "name": "Anthropic: Claude Opus 4.6"
+          },
+          { "id": "minimax/minimax-m2.5:free", "name": "Minimax: Minimax M2.5" }
+        ]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### OpenClaw Onboarding for Hugging Face API Key
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+Command-line interface commands to onboard OpenClaw with Hugging Face authentication. It supports both interactive and non-interactive modes.
+
+```bash
+openclaw onboard --auth-choice huggingface-api-key
+```
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice huggingface-api-key \
+  --huggingface-api-key "$HF_TOKEN"
+```
+
+--------------------------------
+
+### Install and Verify imsg CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/imessage.md
+
+Installs the `imsg` command-line tool using Homebrew and verifies its installation by checking the help output. This is the first step in setting up local iMessage support.
+
+```bash
+brew install steipete/tap/imsg
+imsg rpc --help
+```
+
+--------------------------------
+
+### SQL for Subagent Database Interaction (Scoped)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+This SQL statement shows how a subagent, within a specific execution scope, inserts or updates a binding. It includes the execution ID to ensure the binding is correctly associated with the current execution frame.
+
+```sql
+psql "$OPENPROSE_POSTGRES_URL" -c "
+  INSERT INTO openprose.bindings (name, run_id, execution_id, kind, value, source_statement)
+  VALUES (
+    'result',
+    '20260116-143052-a7b3c9',
+    43,  -- scoped to this execution
+    'let',
+    E'Processed chunk into 3 sub-parts...', 
+    'let result = session \"Process chunk\"'
+  )
+  ON CONFLICT (name, run_id, COALESCE(execution_id, -1)) DO UPDATE
+  SET value = EXCLUDED.value, updated_at = NOW()
+"
+```
+
+--------------------------------
+
+### Chat Modes Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Configure how Mattermost responds to messages in DMs and channels.
+
+```APIDOC
+## Chat Modes Configuration
+
+### Description
+Set the `chatmode` to control Mattermost's response behavior in channels. DMs are always responded to automatically.
+
+### Method
+Configuration File
+
+### Endpoint
+N/A
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+None
+
+#### Request Body
+- **channels.mattermost.chatmode** (string) - Optional - Controls channel response behavior. Options: `oncall` (default, respond to @mentions), `onmessage` (respond to all messages), `onchar` (respond to messages starting with a prefix).
+- **channels.mattermost.oncharPrefixes** (array of strings) - Optional - List of prefixes to trigger responses when `chatmode` is `onchar`.
+- **channels.mattermost.requireMention** (boolean) - Optional - Legacy setting, honored if `chatmode` is not set. Preferred to use `chatmode`.
+
+### Request Example
+```json5
+{
+  "channels": {
+    "mattermost": {
+      "chatmode": "onchar",
+      "oncharPrefixes": [">", "!"]
+    }
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+Configuration applied.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Enable Inline Buttons for Mattermost Messages
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+This JSON configuration enables the 'inlineButtons' capability for Mattermost channels within OpenClaw. This allows for the creation of messages with clickable buttons that trigger agent responses.
+
+```json
+{
+  "channels": {
+    "mattermost": {
+      "capabilities": ["inlineButtons"]
+    }
+  }
+}
+```
+
+--------------------------------
+
+### VM Loop Tracking - Initialization and Iteration Update
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/sqlite.md
+
+SQL examples for tracking loop execution. The first statement shows the initial insertion of an execution record with loop metadata, including max iterations and condition. The second updates the current iteration count.
+
+```sql
+-- Loop metadata tracks iteration state
+INSERT INTO execution (statement_index, statement_text, status, metadata)
+VALUES (10, 'loop until **analysis complete** (max: 5):', 'executing',
+  '{"loop_id": "l1", "max_iterations": 5, "current_iteration": 0, "condition": "**analysis complete**"}');
+
+-- Update iteration
+UPDATE execution
+SET metadata = json_set(metadata, '$.current_iteration', 2),
+    updated_at = datetime('now')
+WHERE json_extract(metadata, '$.loop_id') = 'l1';
+```
+
+--------------------------------
+
+### Mattermost Plugin Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Instructions for installing the Mattermost plugin using the CLI.
+
+```APIDOC
+## Mattermost Plugin Installation
+
+### Description
+Install the Mattermost plugin for OpenClaw using the npm registry or a local checkout.
+
+### Method
+CLI Command
+
+### Endpoint
+N/A
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+None
+
+#### Request Body
+None
+
+### Request Example
+```bash
+# Install from npm registry
+openclaw plugins install @openclaw/mattermost
+
+# Install from local checkout
+openclaw plugins install ./extensions/mattermost
+```
+
+### Response
+#### Success Response (200)
+Plugin installed successfully.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Force Specific Backend with Provider Suffix (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/huggingface.md
+
+This configuration forces the use of a specific backend provider for a model by appending a ':provider' suffix to the model identifier. An alias is provided for this specific backend instance.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "huggingface/deepseek-ai/DeepSeek-R1:together" },
+      models: {
+        "huggingface/deepseek-ai/DeepSeek-R1:together": { alias: "DeepSeek R1 (Together)" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Multi-Account iMessage Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/imessage.md
+
+Manage multiple iMessage accounts within OpenClaw by configuring specific settings per account. This allows overriding default configurations like CLI path, database path, and access policies for each account.
+
+```json5
+{
+  channels: {
+    imessage: {
+      accounts: {
+        account1: {
+          cliPath: "/path/to/imsg/account1",
+          dbPath: "/Users/bot/Library/Messages/chat.db",
+          allowFrom: ["user1"]
+        },
+        account2: {
+          cliPath: "/path/to/imsg/account2",
+          dbPath: "/Users/bot/Library/Messages/chat.db",
+          groupPolicy: "disabled"
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Telegram and WhatsApp Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Configuration details for Telegram and WhatsApp integrations, including sender IDs and multi-agent routing.
+
+```APIDOC
+## Telegram and WhatsApp Configuration
+
+### Telegram `allowFrom` Parameter
+`channels.telegram.allowFrom` requires the **numeric Telegram user ID** of the human sender, not the bot username. The onboarding wizard can resolve `@username` to a numeric ID, but OpenClaw authorization strictly uses numeric IDs.
+
+**Methods to obtain User ID:**
+*   **Safer (no third-party bot):** DM your bot, then run `openclaw logs --follow` and read `from.id`.
+*   **Official Bot API:** DM your bot, then call `https://api.telegram.org/bot<bot_token>/getUpdates` and read `message.from.id`.
+*   **Third-party (less private):** DM bots like `@userinfobot` or `@getidsbot`.
+
+See [/channels/telegram](/channels/telegram#access-control-dms--groups).
+
+### Multi-Agent Routing for WhatsApp
+Multiple users can share a single WhatsApp number with different OpenClaw instances using multi-agent routing. Bind each sender's WhatsApp DM (peer `kind: "direct"`, sender E.164 format) to a unique `agentId`. This provides each person with their own workspace and session store. Replies will originate from the same WhatsApp account, and DM access control (`channels.whatsapp.dmPolicy` / `channels.whatsapp.allowFrom`) remains global per WhatsApp account.
+
+### Multi-Agent Routing for Different Agent Types
+Yes, you can run different types of agents, such as a fast chat agent and an Opus coding agent. Use multi-agent routing to assign each agent its own default model. Then, bind inbound routes (based on provider account or specific peers) to the respective agents. Example configurations can be found in the [Multi-Agent Routing](/concepts/multi-agent) documentation.
+
+### Documentation Links
+*   [Telegram Channel Configuration](/channels/telegram)
+*   [WhatsApp Channel Configuration](/channels/whatsapp)
+*   [Multi-Agent Routing](/concepts/multi-agent)
+*   [Models](/concepts/models)
+*   [Gateway Configuration](/gateway/configuration)
+```
+
+--------------------------------
+
+### Resolve Authentication Profile Order
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Determines the order of authentication profiles to use based on configuration, store, provider, and preferred profile. It helps in selecting the appropriate API key for requests.
+
+```typescript
+const profileOrder = resolveAuthProfileOrder({ cfg, store: authStore, provider, preferredProfile });
+```

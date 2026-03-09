@@ -1,0 +1,176 @@
+{
+    "snapshotVersion": "2.0.0",
+    "generatedAt": "2026-02-21T15:30:00Z",
+    "source": "src/app/",
+    "routeCount": 33,
+    "routes": [
+        {
+            "path": "/",
+            "file": "page.tsx",
+            "category": "root"
+        },
+        {
+            "path": "/projects",
+            "file": "projects/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]",
+            "file": "projects/[id]/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/overview",
+            "file": "projects/[id]/overview/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/sdk-agent",
+            "file": "projects/[id]/sdk-agent/page.tsx",
+            "category": "agent",
+            "agentMode": "PLANNING_FLOW"
+        },
+        {
+            "path": "/projects/[id]/agent",
+            "file": "projects/[id]/agent/page.tsx",
+            "category": "agent",
+            "agentMode": "CHAT_EDIT"
+        },
+        {
+            "path": "/projects/[id]/flow-agent",
+            "file": "projects/[id]/flow-agent/page.tsx",
+            "category": "agent",
+            "agentMode": "legacy"
+        },
+        {
+            "path": "/projects/[id]/elements",
+            "file": "projects/[id]/elements/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/tasks",
+            "file": "projects/[id]/tasks/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/accounting",
+            "file": "projects/[id]/accounting/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/quote",
+            "file": "projects/[id]/quote/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/receipts",
+            "file": "projects/[id]/receipts/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/knowledge",
+            "file": "projects/[id]/knowledge/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/studio",
+            "file": "projects/[id]/studio/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/projects/[id]/suggested",
+            "file": "projects/[id]/suggested/page.tsx",
+            "category": "projects"
+        },
+        {
+            "path": "/tasks",
+            "file": "tasks/page.tsx",
+            "category": "global"
+        },
+        {
+            "path": "/accounting",
+            "file": "accounting/page.tsx",
+            "category": "global"
+        },
+        {
+            "path": "/customers",
+            "file": "customers/page.tsx",
+            "category": "global"
+        },
+        {
+            "path": "/customers/[customerId]",
+            "file": "customers/[customerId]/page.tsx",
+            "category": "global"
+        },
+        {
+            "path": "/management",
+            "file": "management/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/analytics",
+            "file": "management/analytics/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/catalog",
+            "file": "management/catalog/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/customers",
+            "file": "management/customers/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/employees",
+            "file": "management/employees/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/inventory",
+            "file": "management/inventory/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/prices",
+            "file": "management/prices/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/vendors",
+            "file": "management/vendors/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/web-prices",
+            "file": "management/web-prices/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/purchases",
+            "file": "management/purchases/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/receipts",
+            "file": "management/receipts/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/tracing",
+            "file": "management/tracing/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/proposed",
+            "file": "management/proposed/page.tsx",
+            "category": "management"
+        },
+        {
+            "path": "/management/settings",
+            "file": "management/settings/page.tsx",
+            "category": "management"
+        }
+    ]
+}

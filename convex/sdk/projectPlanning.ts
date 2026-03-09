@@ -11,7 +11,7 @@ import { Id } from '../_generated/dataModel';
 const FINALIZE_PHASES = ['elements', 'tasks', 'budget', 'pricing', 'audit', 'repair', 'package'] as const
 type FinalizePhase = typeof FINALIZE_PHASES[number]
 type PlanningMode = 'separated' | 'combined'
-type PlanningLlmConfig = { model: 'gpt-5-mini' | 'gpt-5.2' }
+type PlanningLlmConfig = { model: 'gpt-5.4' }
 
 const TOOL_BY_PHASE: Record<Exclude<FinalizePhase, 'audit' | 'repair' | 'package'>, string> = {
   elements: 'plan.elements',
@@ -42,9 +42,9 @@ function nextFinalizePhaseForMode(phase: FinalizePhase | null | undefined, mode:
 
 function planningLlmConfigForMode(mode: PlanningMode): PlanningLlmConfig {
   if (mode === 'combined') {
-    return { model: 'gpt-5.2' }
+    return { model: 'gpt-5.4' }
   }
-  return { model: 'gpt-5.2' }
+  return { model: 'gpt-5.4' }
 }
 
 function defaultFinalizePolicy() {
@@ -608,6 +608,10 @@ export const initiatePlanning = action({
       projectId: args.projectId,
       toolId: 'draft.plan_and_questions',
       input: {
+        llm: {
+          model: 'gpt-5.4',
+          reasoningEffort: 'medium',
+        },
         includeQuestions: true,
         groupQuestions: true,
         // Pass full context to LLM
@@ -861,6 +865,10 @@ export const regenerateQuestions = action({
       projectId: args.projectId,
       toolId: 'draft.plan_and_questions',
       input: {
+        llm: {
+          model: 'gpt-5.4',
+          reasoningEffort: 'medium',
+        },
         mode: 'regenerate_questions',
         includeQuestions: true,
         groupQuestions: true,
@@ -1093,7 +1101,7 @@ export const runFinalizePhase = internalAction({
         finalizePolicy: defaultFinalizePolicy(),
       }
       const planningLlm = {
-        model: String(checkpoint.planningModel ?? 'gpt-5.2'),
+        model: String(checkpoint.planningModel ?? 'gpt-5.4'),
       }
 
       if (phase === 'elements' || phase === 'tasks' || phase === 'budget' || phase === 'pricing') {
@@ -1148,7 +1156,11 @@ export const runFinalizePhase = internalAction({
           const result = await runTool(toolId, {
             ...baseInput,
             context: checkpoint.context,
-            llm: phase === 'pricing' ? undefined : planningLlm,
+            llm: phase === 'pricing'
+              ? undefined
+              : phase === 'tasks' || phase === 'budget'
+                ? { ...planningLlm, reasoningEffort: 'medium' }
+                : planningLlm,
           })
           checkpoint.toolOutputs[toolId] = result
           await ctx.runAction(internal.sdk.api.persistFinalizeStageCheckpoint, {
@@ -1177,6 +1189,10 @@ export const runFinalizePhase = internalAction({
           context: checkpoint.context,
           findings: [],
           source: 'planning_finalize_checkpoint',
+          llm: {
+            model: 'gpt-5.4',
+            reasoningEffort: 'medium',
+          },
         })
         const findings = Array.isArray(auditResult?.findings) ? auditResult.findings : []
         const auditIntents = collectIntentsFromResult(auditResult)

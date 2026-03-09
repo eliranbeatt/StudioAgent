@@ -1,0 +1,165 @@
+{
+  "generatedAt": "2026-02-21T14:51:03.328Z",
+  "source": "convex/sdk/prompts.ts",
+  "totalDefinitions": 26,
+  "exportedInFullPrompts": [
+    "ORCHESTRATOR_SYSTEM",
+    "CLARIFY_SYSTEM",
+    "FREE_CHAT_SYSTEM",
+    "THINK_DEEP_SYSTEM",
+    "AUDIT_FIX_SYSTEM",
+    "PRICING_SYSTEM",
+    "PROCUREMENT_SYSTEM",
+    "RECEIPT_SYSTEM",
+    "AUDIT_SYSTEM",
+    "PRINT_QA_SYSTEM",
+    "MAINTENANCE_SYSTEM",
+    "INTAKE_BRIEF_SYSTEM",
+    "PLAN_ELEMENTS_SYSTEM",
+    "PLAN_TASKS_SYSTEM",
+    "PLAN_PHASES_SYSTEM",
+    "COST_BUDGET_SYSTEM",
+    "QUOTE_GENERATE_SYSTEM",
+    "RUNBOOK_INSTALL_SYSTEM",
+    "OPS_DAILY_SYSTEM",
+    "DRAFT_PLAN_AND_QUESTIONS_SYSTEM",
+    "REGENERATE_QUESTIONS_MANUAL_SYSTEM",
+    "CHANGESET_COMPILE_SYSTEM",
+    "CHANGESET_REVIEW_SYSTEM",
+    "ADMIN_RATES_SYSTEM",
+    "ADMIN_MEASUREMENTS_SYSTEM",
+    "KNOWLEDGE_UPDATE_SYSTEM"
+  ],
+  "definitions": [
+    {
+      "name": "ORCHESTRATOR_SYSTEM",
+      "charLength": 14747,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "CLARIFY_SYSTEM",
+      "charLength": 8126,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "FREE_CHAT_SYSTEM",
+      "charLength": 1711,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "THINK_DEEP_SYSTEM",
+      "charLength": 616,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "AUDIT_FIX_SYSTEM",
+      "charLength": 327,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "PRICING_SYSTEM",
+      "charLength": 2092,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "PROCUREMENT_SYSTEM",
+      "charLength": 1879,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "RECEIPT_SYSTEM",
+      "charLength": 1815,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "AUDIT_SYSTEM",
+      "charLength": 2390,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "PRINT_QA_SYSTEM",
+      "charLength": 1216,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "MAINTENANCE_SYSTEM",
+      "charLength": 1590,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "INTAKE_BRIEF_SYSTEM",
+      "charLength": 2486,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "PLAN_ELEMENTS_SYSTEM",
+      "charLength": 1961,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "PLAN_TASKS_SYSTEM",
+      "charLength": 2043,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "PLAN_PHASES_SYSTEM",
+      "charLength": 1271,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "COST_BUDGET_SYSTEM",
+      "charLength": 2741,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "QUOTE_GENERATE_SYSTEM",
+      "charLength": 1684,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "RUNBOOK_INSTALL_SYSTEM",
+      "charLength": 1564,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "OPS_DAILY_SYSTEM",
+      "charLength": 1610,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "DRAFT_PLAN_AND_QUESTIONS_SYSTEM",
+      "charLength": 1977,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "REGENERATE_QUESTIONS_MANUAL_SYSTEM",
+      "charLength": 1147,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "CHANGESET_COMPILE_SYSTEM",
+      "charLength": 4398,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "CHANGESET_REVIEW_SYSTEM",
+      "charLength": 2245,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "ADMIN_RATES_SYSTEM",
+      "charLength": 1331,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "ADMIN_MEASUREMENTS_SYSTEM",
+      "charLength": 1149,
+      "firstLine": "SYSTEM"
+    },
+    {
+      "name": "KNOWLEDGE_UPDATE_SYSTEM",
+      "charLength": 2581,
+      "firstLine": "SYSTEM"
+    }
+  ]
+}

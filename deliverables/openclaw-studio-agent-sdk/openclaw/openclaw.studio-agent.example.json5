@@ -1,0 +1,96 @@
+{
+  gateway: {
+    mode: "local",
+    bind: "loopback",
+    port: 18789,
+    auth: {
+      mode: "token",
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+      allowTailscale: true,
+    },
+    controlUi: {
+      enabled: true,
+      basePath: "/openclaw",
+    },
+  },
+
+  agents: {
+    defaults: {
+      workspace: ".",
+      model: {
+        primary: "${OPENCLAW_PRIMARY_MODEL}",
+        fallbacks: ["openai/gpt-5-mini"],
+      },
+      memorySearch: {
+        extraPaths: ["./MEMORY.md", "./SOUL.md", "./memory"],
+      },
+      compaction: {
+        enabled: true,
+        reserveTokensFloor: 20000,
+        memoryFlush: {
+          enabled: true,
+          softThresholdTokens: 4000,
+          systemPrompt: "Store durable Studio notes now.",
+          prompt: "Write durable updates to MEMORY.md or memory/*.md. Reply NO_REPLY if nothing durable changed.",
+        },
+      },
+      sandbox: {
+        mode: "non-main",
+        perSession: true,
+        workspaceRoot: "./.openclaw-sandboxes",
+        browser: { enabled: false },
+        sessionToolsVisibility: "spawned",
+      },
+    },
+    list: [
+      {
+        id: "studio-assistant",
+        default: true,
+        workspace: ".",
+        tools: {
+          profile: "coding",
+          allow: [
+            "group:fs",
+            "group:runtime",
+            "group:sessions",
+            "group:memory",
+            "message",
+            "web_search",
+          ],
+          deny: ["browser"],
+        },
+      },
+    ],
+  },
+
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: "${TELEGRAM_BOT_TOKEN}",
+      dmPolicy: "allowlist",
+      allowFrom: ["${TELEGRAM_ALLOW_FROM_ID}"],
+    },
+  },
+
+  skills: {
+    load: {
+      extraDirs: ["./skills"],
+      watch: true,
+      watchDebounceMs: 250,
+    },
+  },
+
+  // Optional OpenClaw-native web search.
+  // This package also ships its own Tavily bridge op, so this block is not required.
+  // tools: {
+  //   web: {
+  //     search: {
+  //       enabled: true,
+  //       provider: "brave",
+  //       apiKey: "${BRAVE_API_KEY}",
+  //       maxResults: 5,
+  //       timeoutSeconds: 30,
+  //     },
+  //   },
+  // },
+}

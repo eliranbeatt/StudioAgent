@@ -1,0 +1,166 @@
+{
+    "snapshotVersion": "2.0.0",
+    "generatedAt": "2026-02-21T15:30:00Z",
+    "source": "convex/sdk/prompts.ts",
+    "promptCount": 25,
+    "sdkPrompts": [
+        {
+            "name": "SHARED_REF",
+            "type": "reference",
+            "description": "Canonical enums (work types, stages, sections)"
+        },
+        {
+            "name": "ORCHESTRATOR_SYSTEM",
+            "type": "system",
+            "usedBy": "orchestrator",
+            "approxLines": 291
+        },
+        {
+            "name": "INTAKE_BRIEF_SYSTEM",
+            "type": "system",
+            "usedBy": "intake.parse_brief",
+            "approxLines": 80
+        },
+        {
+            "name": "PLAN_ELEMENTS_SYSTEM",
+            "type": "system",
+            "usedBy": "plan.elements",
+            "approxLines": 100
+        },
+        {
+            "name": "PLAN_TASKS_SYSTEM",
+            "type": "system",
+            "usedBy": "plan.tasks",
+            "approxLines": 150
+        },
+        {
+            "name": "PLAN_PHASES_SYSTEM",
+            "type": "system",
+            "usedBy": "plan.execution_phases",
+            "approxLines": 80
+        },
+        {
+            "name": "COST_BUILD_BUDGET_SYSTEM",
+            "type": "system",
+            "usedBy": "cost.build_budget",
+            "approxLines": 200
+        },
+        {
+            "name": "PRICING_RESOLVE_SYSTEM",
+            "type": "system",
+            "usedBy": "pricing.resolve_lines",
+            "approxLines": 100
+        },
+        {
+            "name": "QUOTE_GENERATE_SYSTEM",
+            "type": "system",
+            "usedBy": "quote.generate",
+            "approxLines": 80
+        },
+        {
+            "name": "PROCUREMENT_SHOPPING_SYSTEM",
+            "type": "system",
+            "usedBy": "procurement.shopping_plan",
+            "approxLines": 100
+        },
+        {
+            "name": "FINANCE_RECEIPT_SYSTEM",
+            "type": "system",
+            "usedBy": "finance.ingest_receipt",
+            "approxLines": 80
+        },
+        {
+            "name": "AUDIT_PROJECT_SYSTEM",
+            "type": "system",
+            "usedBy": "audit.project",
+            "approxLines": 150
+        },
+        {
+            "name": "AUDIT_FIX_PLAN_SYSTEM",
+            "type": "system",
+            "usedBy": "audit.fix_plan",
+            "approxLines": 120
+        },
+        {
+            "name": "MAINT_SYNC_REPAIR_SYSTEM",
+            "type": "system",
+            "usedBy": "maint.sync_and_repair",
+            "approxLines": 100
+        },
+        {
+            "name": "CHAT_FREE_SYSTEM",
+            "type": "system",
+            "usedBy": "chat.free",
+            "approxLines": 60
+        },
+        {
+            "name": "THINK_DEEP_SYSTEM",
+            "type": "system",
+            "usedBy": "think.deep",
+            "approxLines": 80
+        },
+        {
+            "name": "CLARIFY_QUESTIONS_SYSTEM",
+            "type": "system",
+            "usedBy": "clarify.next_questions",
+            "approxLines": 120
+        },
+        {
+            "name": "QA_PRINT_SYSTEM",
+            "type": "system",
+            "usedBy": "qa.print_files",
+            "approxLines": 80
+        },
+        {
+            "name": "RUNBOOK_SYSTEM",
+            "type": "system",
+            "usedBy": "runbook.installation",
+            "approxLines": 100
+        },
+        {
+            "name": "OPS_DAILY_SYSTEM",
+            "type": "system",
+            "usedBy": "ops.daily_plan",
+            "approxLines": 80
+        },
+        {
+            "name": "DRAFT_PLAN_QUESTIONS_SYSTEM",
+            "type": "system",
+            "usedBy": "draft.plan_and_questions",
+            "approxLines": 250
+        },
+        {
+            "name": "CHANGESET_COMPILE_SYSTEM",
+            "type": "system",
+            "usedBy": "changeset.compile",
+            "approxLines": 200
+        },
+        {
+            "name": "CHANGESET_REVIEW_SYSTEM",
+            "type": "system",
+            "usedBy": "changeset.review",
+            "approxLines": 100
+        },
+        {
+            "name": "KNOWLEDGE_SYSTEM",
+            "type": "system",
+            "usedBy": "knowledge.summarize_or_update",
+            "approxLines": 100
+        },
+        {
+            "name": "FULL_PROMPTS",
+            "type": "map",
+            "description": "Runtime map: toolId → prompt string"
+        }
+    ],
+    "skillPromptCount": 37,
+    "skillPromptArchitecture": {
+        "sharedHeaderLines": 198,
+        "sharedHeaderRef": "studioops_v7_1",
+        "addonAvgLines": 65,
+        "v3SharedPrefixes": [
+            "V3_SHARED_Q_PREFIX",
+            "V3_SHARED_BUILD_PREFIX"
+        ]
+    }
+}

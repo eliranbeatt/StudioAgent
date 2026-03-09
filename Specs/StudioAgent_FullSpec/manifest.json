@@ -1,0 +1,186 @@
+{
+  "specVersion": "2.0.0",
+  "generatedAt": "2026-02-21T15:30:00Z",
+  "generator": "Antigravity AI — code-derived full spec",
+  "project": "StudioAgent",
+  "description": "Comprehensive architecture documentation for the StudioAgent AI-powered project management platform",
+  "stats": {
+    "specFiles": 17,
+    "appendices": 3,
+    "snapshots": 10,
+    "totalFiles": 31
+  },
+  "specs": [
+    {
+      "id": "00",
+      "file": "00_System_Overview.md",
+      "title": "System Overview",
+      "description": "Architecture diagram, entity model, lifecycle stages, run modes"
+    },
+    {
+      "id": "01",
+      "file": "01_Runtime_Architecture.md",
+      "title": "Runtime Architecture",
+      "description": "Request lifecycle, dispatch, runner, context, telemetry, knowledge"
+    },
+    {
+      "id": "02",
+      "file": "02_App_Routes_and_User_Flows.md",
+      "title": "App Routes and User Flows",
+      "description": "33 Next.js routes, 3 primary user flows with diagrams"
+    },
+    {
+      "id": "03",
+      "file": "03_Agent_Stacks_Comparison.md",
+      "title": "Agent Stacks Comparison",
+      "description": "SDK Agent vs Skills System, V3 Flow bridge"
+    },
+    {
+      "id": "04",
+      "file": "04_Orchestrator_Design_Current.md",
+      "title": "Orchestrator Design (Current)",
+      "description": "27 tools, delegation policy, chat vs planning behavior"
+    },
+    {
+      "id": "05",
+      "file": "05_Orchestrator_Design_Target_SmartEngine.md",
+      "title": "Target Smart Engine",
+      "description": "Future unified agent vision"
+    },
+    {
+      "id": "06",
+      "file": "06_Data_Model_Full.md",
+      "title": "Data Model Full",
+      "description": "~60 tables, ER diagram, canonical enums"
+    },
+    {
+      "id": "07",
+      "file": "07_Convex_Endpoints_Catalog.md",
+      "title": "Convex Endpoints Catalog",
+      "description": "All API endpoints across SDK, Skills, VNext"
+    },
+    {
+      "id": "08",
+      "file": "08_SDK_Registry_and_Tooling.md",
+      "title": "SDK Registry and Tooling",
+      "description": "27 tool definitions with models, schemas, classification"
+    },
+    {
+      "id": "09",
+      "file": "09_Skills_Registry_and_Gating.md",
+      "title": "Skills Registry and Gating",
+      "description": "37 skills, clarification gating, scheduling graph"
+    },
+    {
+      "id": "10",
+      "file": "10_Prompts_Reference.md",
+      "title": "Prompts Reference",
+      "description": "25 SDK prompts, shared header structure, 37 skill addons"
+    },
+    {
+      "id": "11",
+      "file": "11_Flow_Pipelines_and_Gates.md",
+      "title": "Flow Pipelines and Gates",
+      "description": "SDK planning flow, V3 pipeline (stages A-E), gating"
+    },
+    {
+      "id": "12",
+      "file": "12_ChangeSet_and_Approval_Model.md",
+      "title": "ChangeSet and Approval Model",
+      "description": "11 op kinds, compilation, review, apply, tempId resolution"
+    },
+    {
+      "id": "13",
+      "file": "13_Observability_and_Run_Telemetry.md",
+      "title": "Observability and Run Telemetry",
+      "description": "Run lifecycle, events, message compression, monitoring"
+    },
+    {
+      "id": "14",
+      "file": "14_Security_Secrets_and_Config.md",
+      "title": "Security, Secrets, and Config",
+      "description": "Auth, secrets, config, data safety, validation"
+    },
+    {
+      "id": "15",
+      "file": "15_Implementation_Blueprint_Smart_Agent.md",
+      "title": "Implementation Blueprint: Smart Agent",
+      "description": "Migration strategy, phases, risks, success criteria"
+    },
+    {
+      "id": "16",
+      "file": "16_Acceptance_Criteria_and_Test_Scenarios.md",
+      "title": "Acceptance Criteria and Test Scenarios",
+      "description": "30+ test scenarios across all subsystems"
+    }
+  ],
+  "appendices": [
+    {
+      "file": "appendices/A_UI_Block_Types.md",
+      "title": "UI Block Types",
+      "description": "10 block types with JSON schemas"
+    },
+    {
+      "file": "appendices/B_Work_Types_and_Stages.md",
+      "title": "Work Types and Stages",
+      "description": "Canonical enums with Hebrew labels"
+    },
+    {
+      "file": "appendices/C_Accounting_Deep_Dive.md",
+      "title": "Accounting Deep Dive",
+      "description": "Line types, pricing cascade, task links, budget aggregation"
+    }
+  ],
+  "snapshots": [
+    {
+      "file": "snapshots/sdk_registry.snapshot.json",
+      "source": "convex/sdk/registry.ts",
+      "description": "27 SDK tools"
+    },
+    {
+      "file": "snapshots/skills_catalog.snapshot.json",
+      "source": "convex/skills/registry.ts",
+      "description": "37 skills + 11 V3 flow skills"
+    },
+    {
+      "file": "snapshots/prompts_inventory.snapshot.json",
+      "source": "convex/sdk/prompts.ts",
+      "description": "25 SDK prompts + 37 skill addons"
+    },
+    {
+      "file": "snapshots/schema_tables.snapshot.json",
+      "source": "convex/schema.ts",
+      "description": "~60 tables with relationships"
+    },
+    {
+      "file": "snapshots/changeset_ops.snapshot.json",
+      "source": "convex/sdk/changeset.ts",
+      "description": "15 ChangeSet op kinds"
+    },
+    {
+      "file": "snapshots/enums.snapshot.json",
+      "source": "Multiple sources",
+      "description": "All canonical enums"
+    },
+    {
+      "file": "snapshots/vnext_contracts.snapshot.json",
+      "source": "convex/sdk/vnext/contracts.ts",
+      "description": "VNext stage order and types"
+    },
+    {
+      "file": "snapshots/dispatch_functions.snapshot.json",
+      "source": "convex/sdk/dispatch.ts",
+      "description": "Public actions and internal functions"
+    },
+    {
+      "file": "snapshots/app_routes.snapshot.json",
+      "source": "src/app/",
+      "description": "33 Next.js routes"
+    },
+    {
+      "file": "snapshots/sdk_schemas.snapshot.json",
+      "source": "convex/sdk/schemas.ts",
+      "description": "27 Zod schema validators"
+    }
+  ]
+}

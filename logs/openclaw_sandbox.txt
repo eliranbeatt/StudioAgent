@@ -1,0 +1,2019 @@
+### Per-Agent Sandbox and Tool Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/multi-agent.md
+
+This JavaScript configuration demonstrates setting up individual sandbox and tool restrictions for different agents. It shows a 'personal' agent with sandbox mode 'off' and no tool restrictions, and a 'family' agent with 'all' sandbox mode, 'agent' scope, and a specific tool policy allowing only 'read' and denying others. It also includes an optional Docker setup command for the sandbox.
+
+```javascript
+{
+  agents: {
+    list: [
+      {
+        id: "personal",
+        workspace: "~/.openclaw/workspace-personal",
+        sandbox: {
+          mode: "off",  // No sandbox for personal agent
+        },
+        // No tool restrictions - all tools available
+      },
+      {
+        id: "family",
+        workspace: "~/.openclaw/workspace-family",
+        sandbox: {
+          mode: "all",     // Always sandboxed
+          scope: "agent",  // One container per agent
+          docker: {
+            // Optional one-time setup after container creation
+            setupCommand: "apt-get update && apt-get install -y git curl",
+          },
+        },
+        tools: {
+          allow: ["read"],                    // Only read tool
+          deny: ["exec", "write", "edit", "apply_patch"],    // Deny others
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Recreate Sandbox Containers with openclaw sandbox recreate
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+Removes sandbox containers to force recreation with updated images or configurations. It allows recreation of all containers, specific sessions, agents, or only browser containers, with an option to force without confirmation. This is crucial after updating Docker images or sandbox settings.
+
+```bash
+openclaw sandbox recreate --all
+openclaw sandbox recreate --session main
+openclaw sandbox recreate --agent mybot
+openclaw sandbox recreate --browser
+openclaw sandbox recreate --all --force
+```
+
+--------------------------------
+
+### Sandbox Mode Pitfall: 'non-main'
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+Explains the behavior of `agents.defaults.sandbox.mode: "non-main"`, which bases sandboxing on `session.mainKey` rather than the agent ID. Group/channel sessions are always non-main and thus sandboxed. To prevent sandboxing, set `agents.list[].sandbox.mode: "off"`.
+
+```plaintext
+agents.defaults.sandbox.mode: "non-main"
+agents.list[].sandbox.mode: "off"
+```
+
+--------------------------------
+
+### Minimal Sandbox Enable Example (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandboxing.md
+
+This example demonstrates the minimal configuration required to enable sandbox features in Openclaw. It sets the sandbox mode, scope, and workspace access for default agents.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        mode: "non-main",
+        scope: "session",
+        workspaceAccess: "none",
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Personal and Restricted Family Agents (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+This example demonstrates setting up a personal agent with no sandbox restrictions and a family agent with a restricted toolset running within a Docker sandbox. It shows how to define agent-specific sandbox modes and tool allow/deny lists.
+
+```json
+{
+  "agents": {
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "name": "Personal Assistant",
+        "workspace": "~/.openclaw/workspace",
+        "sandbox": { "mode": "off" }
+      },
+      {
+        "id": "family",
+        "name": "Family Bot",
+        "workspace": "~/.openclaw/workspace-family",
+        "sandbox": {
+          "mode": "all",
+          "scope": "agent"
+        },
+        "tools": {
+          "allow": ["read"],
+          "deny": ["exec", "write", "edit", "apply_patch", "process", "browser"]
+        }
+      }
+    ]
+  },
+  "bindings": [
+    {
+      "agentId": "family",
+      "match": {
+        "provider": "whatsapp",
+        "accountId": "*",
+        "peer": {
+          "kind": "group",
+          "id": "120363424282127706@g.us"
+        }
+      }
+    }
+  ]
+}
+```
+
+--------------------------------
+
+### List Sandbox Containers with openclaw sandbox list
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+Lists all sandbox containers, including their status, configuration, and age. It supports filtering for browser containers and JSON output. This helps in monitoring the state of sandbox environments.
+
+```bash
+openclaw sandbox list
+openclaw sandbox list --browser
+openclaw sandbox list --json
+```
+
+--------------------------------
+
+### Sandbox Configuration Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+Provides an example of the sandbox configuration settings within the `~/.openclaw/openclaw.json` file. It details options for mode, scope, Docker image and prefix, and automatic pruning based on idle time and age.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "mode": "all", // off, non-main, all
+        "scope": "agent", // session, agent, shared
+        "docker": {
+          "image": "openclaw-sandbox:bookworm-slim",
+          "containerPrefix": "openclaw-sbx-",
+          // ... more Docker options
+        },
+        "prune": {
+          "idleHours": 24, // Auto-prune after 24h idle
+          "maxAgeDays": 7, // Auto-prune after 7 days
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Docker Bind Mounts for Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Example configuration for binding host folders into the sandbox environment. This allows persistent storage and access to host files from within the sandbox. Use ':ro' for read-only mounts.
+
+```json
+"agents.defaults.sandbox.docker.binds": ["host:path:mode"]
+```
+
+--------------------------------
+
+### Configure Sandbox Mode for DMs and Groups
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Configuration to set the sandbox mode to 'non-main'. This runs group/channel sessions in Docker while keeping the main DM session on-host, enhancing privacy for personal messages.
+
+```json
+"agents.defaults.sandbox.mode": "non-main"
+```
+
+--------------------------------
+
+### Configure Sandbox Mode in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandbox-vs-tool-policy-vs-elevated.md
+
+Control where tools run using the `agents.defaults.sandbox.mode` configuration. Options include 'off' (run on host), 'non-main' (sandbox non-main sessions), and 'all' (sandbox all sessions). This setting determines the overall sandboxing behavior for agents.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "mode": "all" 
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Inspect Sandbox Policy with openclaw sandbox explain
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+Inspects the effective sandbox mode, scope, workspace access, tool policy, and elevated gates. It can filter by session or agent and output in JSON format. This command is useful for debugging sandbox behavior.
+
+```bash
+openclaw sandbox explain
+openclaw sandbox explain --session agent:main:main
+openclaw sandbox explain --agent work
+openclaw sandbox explain --json
+```
+
+--------------------------------
+
+### Enable Sandbox Browser (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Configuration to enable the sandbox browser for agents. This setting ensures that agents can utilize the browser tool within a sandboxed environment.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        browser: { enabled: true },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Sandbox with Bind Mounts
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/groups.md
+
+Shows how to configure a sandbox environment with bind mounts to allow specific file system access within the sandbox. This example restricts access to only a specified directory.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        mode: "non-main",
+        scope: "session",
+        workspaceAccess: "none",
+        docker: {
+          binds: [
+            // hostPath:containerPath:mode
+            "/home/user/FriendsShared:/data:ro",
+          ],
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Apply Sandbox Configuration Changes
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+Illustrates how to apply changes made to the sandbox configuration. After editing the relevant settings in the OpenClaw configuration file, the `sandbox recreate --all` command is used to ensure that new containers are created with the updated configuration.
+
+```bash
+# Edit config: agents.defaults.sandbox.* (or agents.list[].sandbox.*)
+
+# Recreate to apply new config
+openclaw sandbox recreate --all
+```
+
+--------------------------------
+
+### Different Sandbox Modes per Agent (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+This configuration defines a global default sandbox mode ('non-main', 'session') and then overrides it for specific agents. The 'main' agent is explicitly set to 'off', while the 'public' agent is configured to always run in an 'all' scope sandbox with restricted tools.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "mode": "non-main", 
+        "scope": "session"
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "workspace": "~/.openclaw/workspace",
+        "sandbox": {
+          "mode": "off" 
+        }
+      },
+      {
+        "id": "public",
+        "workspace": "~/.openclaw/workspace-public",
+        "sandbox": {
+          "mode": "all", 
+          "scope": "agent"
+        },
+        "tools": {
+          "allow": ["read"],
+          "deny": ["exec", "write", "edit", "apply_patch"]
+        }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Recreate Containers for a Specific Agent
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+Demonstrates how to target and recreate sandbox containers for a single, specific agent. This is useful when only one agent's environment needs to be updated or reset, minimizing disruption to other agents.
+
+```bash
+# Update only one agent's containers
+openclaw sandbox recreate --agent alfred
+```
+
+--------------------------------
+
+### Agent Sandbox Configuration Overrides
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+Defines how agent-specific sandbox settings override global defaults. This applies to mode, scope, workspace, and various Docker, browser, and prune configurations. Agent settings take precedence unless the sandbox scope is 'shared'.
+
+```plaintext
+agents.list[].sandbox.mode > agents.defaults.sandbox.mode
+agents.list[].sandbox.scope > agents.defaults.sandbox.scope
+agents.list[].sandbox.workspaceRoot > agents.defaults.sandbox.workspaceRoot
+agents.list[].sandbox.workspaceAccess > agents.defaults.sandbox.workspaceAccess
+agents.list[].sandbox.docker.* > agents.defaults.sandbox.docker.*
+agents.list[].sandbox.browser.* > agents.defaults.sandbox.browser.*
+agents.list[].sandbox.prune.* > agents.defaults.sandbox.prune.*
+```
+
+--------------------------------
+
+### Sandbox Context Resolution (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/pi.md
+
+Resolves the sandbox context when sandbox mode is enabled. This involves setting up constrained tools and paths. The `resolveSandboxContext` function is used, and subsequent operations like read, edit, write, exec, and browser interactions are adapted to the sandboxed environment. Dependencies include `params.config`, `sandboxSessionKey`, and `resolvedWorkspace`.
+
+```typescript
+const sandbox = await resolveSandboxContext({
+  config: params.config,
+  sessionKey: sandboxSessionKey,
+  workspaceDir: resolvedWorkspace,
+});
+
+if (sandboxRoot) {
+  // Use sandboxed read/edit/write tools
+  // Exec runs in container
+  // Browser uses bridge URL
+}
+```
+
+--------------------------------
+
+### Sandbox Session Visibility Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/session-tool.md
+
+Configure how session tools are scoped to control cross-session access, particularly within sandboxed environments.
+
+```APIDOC
+## Sandbox Session Visibility
+
+### Description
+Controls the visibility of session tools to limit cross-session access. This is particularly relevant for sandboxed sessions where stricter access controls may be required.
+
+### Method
+N/A (Configuration)
+
+### Endpoint
+N/A (Configuration)
+
+### Parameters
+#### Configuration Options
+- `tools.sessions.visibility` (string: "self" | "tree" | "agent" | "all") - Optional - Defaults to "tree". Defines the scope of session visibility.
+  - `self`: Only the current session key.
+  - `tree`: Current session and sessions spawned by the current session.
+  - `agent`: Any session belonging to the current agent ID.
+  - `all`: Any session (cross-agent access still requires `tools.agentToAgent`).
+- `agents.defaults.sandbox.sessionToolsVisibility` (string: "spawned" | "all") - Optional - Defaults to "spawned". For sandboxed sessions, this clamps visibility.
+  - `spawned`: Clamps visibility to "tree" even if `tools.sessions.visibility` is set to "all".
+  - `all`: Allows visibility as defined by `tools.sessions.visibility`.
+
+### Request Example
+```json5
+{
+  "tools": {
+    "sessions": {
+      "visibility": "tree" 
+    }
+  },
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "sessionToolsVisibility": "spawned" 
+      }
+    }
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+N/A (Configuration)
+
+#### Response Example
+N/A (Configuration)
+```
+
+--------------------------------
+
+### Configure Work Agent with Shared Sandbox (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+This configuration sets up a work agent that utilizes a shared Docker sandbox environment. It defines specific tool permissions, allowing read, write, apply_patch, and exec operations while denying browser and gateway access.
+
+```json
+{
+  "agents": {
+    "list": [
+      {
+        "id": "personal",
+        "workspace": "~/.openclaw/workspace-personal",
+        "sandbox": { "mode": "off" }
+      },
+      {
+        "id": "work",
+        "workspace": "~/.openclaw/workspace-work",
+        "sandbox": {
+          "mode": "all",
+          "scope": "shared",
+          "workspaceRoot": "/tmp/work-sandboxes"
+        },
+        "tools": {
+          "allow": ["read", "write", "apply_patch", "exec"],
+          "deny": ["browser", "gateway", "discord"]
+        }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Configure Host Browser Control in Sandboxed Sessions (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/chrome-extension.md
+
+This configuration allows sandboxed sessions to control the host browser. It's necessary when the browser tool is restricted by default in a sandboxed environment and you need to interact with the host's Chrome instance. Ensure the tool policy does not deny browser access and specify `target="host"` when calling the browser tool if needed.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        browser: {
+          allowHostControl: true
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Use Custom Sandbox Docker Image (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Configuration to specify a custom Docker image for the sandbox. This allows users to provide their own pre-built sandbox image.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: { docker: { image: "my-openclaw-sbx" } },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Openclaw Agent Docker Sandboxing
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+This JSON configuration defines the settings for Docker sandboxing within Openclaw agents. It includes options for sandbox mode, workspace access, Docker image details, resource limits, and browser sandboxing.
+
+```json5
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "mode": "non-main",
+        "scope": "agent",
+        "workspaceAccess": "none",
+        "workspaceRoot": "~/.openclaw/sandboxes",
+        "docker": {
+          "image": "openclaw-sandbox:bookworm-slim",
+          "containerPrefix": "openclaw-sbx-",
+          "workdir": "/workspace",
+          "readOnlyRoot": true,
+          "tmpfs": ["/tmp", "/var/tmp", "/run"],
+          "network": "none",
+          "user": "1000:1000",
+          "capDrop": ["ALL"],
+          "env": { "LANG": "C.UTF-8" },
+          "setupCommand": "apt-get update && apt-get install -y git curl jq",
+          "pidsLimit": 256,
+          "memory": "1g",
+          "memorySwap": "2g",
+          "cpus": 1,
+          "ulimits": {
+            "nofile": { "soft": 1024, "hard": 2048 },
+            "nproc": 256
+          },
+          "seccompProfile": "/path/to/seccomp.json",
+          "apparmorProfile": "openclaw-sandbox",
+          "dns": ["1.1.1.1", "8.8.8.8"],
+          "extraHosts": ["internal.service:10.0.0.5"],
+          "binds": ["/home/user/source:/source:rw"]
+        },
+        "browser": {
+          "enabled": false,
+          "image": "openclaw-sandbox-browser:bookworm-slim",
+          "network": "openclaw-sandbox-browser",
+          "cdpPort": 9222,
+          "cdpSourceRange": "172.21.0.1/32",
+          "vncPort": 5900,
+          "noVncPort": 6080,
+          "headless": false,
+          "enableNoVnc": true,
+          "allowHostControl": false,
+          "autoStart": true,
+          "autoStartTimeoutMs": 12000
+        },
+        "prune": {
+          "idleHours": 24,
+          "maxAgeDays": 7
+        }
+      }
+    }
+  },
+  "tools": {
+    "sandbox": {
+      "tools": {
+        "allow": [
+          "exec",
+          "process",
+          "read",
+          "write",
+          "edit",
+          "apply_patch",
+          "sessions_list",
+          "sessions_history",
+          "sessions_send",
+          "sessions_spawn",
+          "session_status"
+        ],
+        "deny": ["browser", "canvas", "nodes", "cron", "discord", "gateway"]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Sandbox Session Visibility Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/session-tool.md
+
+Illustrates JSON5 configuration for controlling session tool visibility, particularly within sandboxed environments. It shows options for 'self', 'tree', 'agent', and 'all' visibility.
+
+```json5
+{
+  "tools": {
+    "sessions": {
+      "visibility": "tree"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "sessionToolsVisibility": "spawned"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Update Docker Image and Recreate Containers
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+This sequence demonstrates the process of updating the sandbox Docker image and then recreating the containers to apply the changes. It involves pulling the new image, tagging it, updating the OpenClaw configuration, and finally using the `sandbox recreate` command.
+
+```bash
+# Pull new image
+docker pull openclaw-sandbox:latest
+docker tag openclaw-sandbox:latest openclaw-sandbox:bookworm-slim
+
+# Update config to use new image
+# Edit config: agents.defaults.sandbox.docker.image (or agents.list[].sandbox.docker.image)
+
+# Recreate containers
+openclaw sandbox recreate --all
+```
+
+--------------------------------
+
+### Sandbox Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Configures the sandbox environment for executing code securely. It specifies the mode, persistence per session, workspace root, and detailed Docker settings including image, work directory, read-only root, tmpfs mounts, network, and user.
+
+```json
+{
+  "sandbox": {
+    "mode": "non-main",
+    "perSession": true,
+    "workspaceRoot": "~/.openclaw/sandboxes",
+    "docker": {
+      "image": "openclaw-sandbox:bookworm-slim",
+      "workdir": "/workspace",
+      "readOnlyRoot": true,
+      "tmpfs": ["/tmp", "/var/tmp", "/run"],
+      "network": "none",
+      "user": "1000:1000"
+    },
+    "browser": {
+      "enabled": false
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Build Custom Sandbox Docker Image (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Builds a custom Docker image for the sandbox environment using a specified Dockerfile. This allows for greater control over the sandbox's contents and configuration.
+
+```bash
+docker build -t my-openclaw-sbx -f Dockerfile.sandbox .
+```
+
+--------------------------------
+
+### Require Child Runtimes to be Sandboxed During Delegation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This setting enforces that any delegated sub-agent runs must be executed within a sandboxed environment. If the target child runtime is not sandboxed, the `sessions_spawn` call will fail.
+
+```json
+{
+  "agents": {
+    "list": [
+      {
+        "subagents": {
+          "allowAgents": ["known-safe-agent-id"],
+          "sessions_spawn": {
+            "sandbox": "require"
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Enable Agent Sandboxing (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Configures agent sandboxing to run sessions in isolated Docker containers for enhanced security. Supports different modes and scopes for isolation.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        mode: "non-main",  // off | non-main | all
+        scope: "agent",    // session | agent | shared
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Build Default OpenClaw Sandbox Image
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandboxing.md
+
+This bash script command builds the default OpenClaw sandbox image. This image is a minimal environment and does not include runtimes like Node.js.
+
+```bash
+scripts/sandbox-setup.sh
+```
+
+--------------------------------
+
+### Apply setupCommand Changes
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/sandbox.md
+
+Shows how to recreate sandbox containers after modifying the `setupCommand`. This ensures that any changes to the agent's setup process are reflected in the newly created containers. It can be applied to all containers or just a specific agent.
+
+```bash
+openclaw sandbox recreate --all
+# or just one agent:
+openclaw sandbox recreate --agent family
+```
+
+--------------------------------
+
+### Disable Openclaw Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandbox-vs-tool-policy-vs-elevated.md
+
+This configuration disables the sandbox entirely, allowing all tools to run without restrictions. This can be set globally or on a per-agent basis. Use with caution as it bypasses security checks.
+
+```properties
+agents.defaults.sandbox.mode=off
+```
+
+```properties
+agents.list[].sandbox.mode=off
+```
+
+--------------------------------
+
+### Build OpenClaw Sandbox Browser Image
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandboxing.md
+
+This bash script command builds the specialized sandbox browser image for OpenClaw. This image is optimized for running browser-based workloads within a containerized environment.
+
+```bash
+scripts/sandbox-browser-setup.sh
+```
+
+--------------------------------
+
+### Openclaw Sandbox Mode Explanation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandbox-vs-tool-policy-vs-elevated.md
+
+Explains how to handle unexpected sandboxing in non-main sessions. In 'non-main' mode, group/channel keys are not considered main. Users can either use the main session key or switch the mode to 'off'.
+
+```text
+In "non-main" mode, group/channel keys are _not_ main. Use the main session key (shown by `sandbox explain`) or switch mode to `"off"`.
+```
+
+--------------------------------
+
+### Configure No Workspace Access in Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This configuration snippet shows how to disable workspace access entirely for agents within a sandbox. Tools will operate on a separate sandbox workspace, not the agent's own.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "workspaceAccess": "none"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Build OpenClaw Sandbox Image with Common Tools
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandboxing.md
+
+This bash script command builds an OpenClaw sandbox image that includes common development tools such as curl, jq, Node.js, Python3, and Git. This image can be specified using `agents.defaults.sandbox.docker.image`.
+
+```bash
+scripts/sandbox-common-setup.sh
+```
+
+--------------------------------
+
+### Build Common OpenCLAW Sandbox Image
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+This bash script builds a common OpenCLAW sandbox Docker image, `openclaw-sandbox-common:bookworm-slim`, which includes pre-installed build tooling like Node.js, Go, and Rust. This image can be used to speed up build processes within the sandbox.
+
+```bash
+#!/bin/bash
+scripts/sandbox-common-setup.sh
+```
+
+--------------------------------
+
+### Configure Sandbox Pruning Strategy (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Sets the pruning strategy for sandbox containers based on idle time and maximum age. This helps manage resources by automatically removing unused or old containers.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        prune: {
+          idleHours: 24,
+          maxAgeDays: 7
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Default OpenCLAW Sandbox Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+This JSON5 configuration defines the default settings for OpenCLAW sandboxes. It specifies the sandbox mode, scope, workspace access, Docker image, network settings, resource limits, and pruning policies. These defaults can be overridden on a per-agent basis.
+
+```json5
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "mode": "non-main", // off | non-main | all
+        "scope": "agent", // session | agent | shared (agent is default)
+        "workspaceAccess": "none", // none | ro | rw
+        "workspaceRoot": "~/.openclaw/sandboxes",
+        "docker": {
+          "image": "openclaw-sandbox:bookworm-slim",
+          "workdir": "/workspace",
+          "readOnlyRoot": true,
+          "tmpfs": ["/tmp", "/var/tmp", "/run"],
+          "network": "none",
+          "user": "1000:1000",
+          "capDrop": ["ALL"],
+          "env": { "LANG": "C.UTF-8" },
+          "setupCommand": "apt-get update && apt-get install -y git curl jq",
+          "pidsLimit": 256,
+          "memory": "1g",
+          "memorySwap": "2g",
+          "cpus": 1,
+          "ulimits": {
+            "nofile": { "soft": 1024, "hard": 2048 },
+            "nproc": 256,
+          },
+          "seccompProfile": "/path/to/seccomp.json",
+          "apparmorProfile": "openclaw-sandbox",
+          "dns": ["1.1.1.1", "8.8.8.8"],
+          "extraHosts": ["internal.service:10.0.0.5"],
+        },
+        "prune": {
+          "idleHours": 24, // 0 disables idle pruning
+          "maxAgeDays": 7, // 0 disables max-age pruning
+        },
+      },
+    },
+  },
+  "tools": {
+    "sandbox": {
+      "tools": {
+        "allow": [
+          "exec",
+          "process",
+          "read",
+          "write",
+          "edit",
+          "sessions_list",
+          "sessions_history",
+          "sessions_send",
+          "sessions_spawn",
+          "session_status",
+        ],
+        "deny": ["browser", "canvas", "nodes", "cron", "discord", "gateway"],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Allow Tools in Openclaw Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandbox-vs-tool-policy-vs-elevated.md
+
+Configure the sandbox to allow specific tools by removing them from the deny list or adding them to the allow list. This can be managed globally or per-agent. This is the recommended approach for enabling specific tools.
+
+```properties
+tools.sandbox.tools.deny
+```
+
+```properties
+agents.list[].tools.sandbox.tools.deny
+```
+
+```properties
+tools.sandbox.tools.allow
+```
+
+```properties
+agents.list[].tools.sandbox.tools.allow
+```
+
+--------------------------------
+
+### Use Custom Sandbox Browser Image (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Configuration to specify a custom Docker image for the sandbox browser. This allows users to provide their own pre-built browser image instead of using the default.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: { browser: { image: "my-openclaw-browser" } },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Read-Write Workspace Access in Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This configuration snippet illustrates enabling read-write access to the agent's workspace from within a sandbox. The workspace will be mounted at `/workspace`.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "workspaceAccess": "rw"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Read-Only Workspace Access in Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This configuration snippet demonstrates how to set up a read-only workspace access for agents within a sandbox environment. It prevents agents from modifying files in their workspace.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "workspaceAccess": "ro"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Build OpenClaw Sandbox Images
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Scripts to build the main sandbox image and an optional browser image for OpenClaw. These are essential for setting up the development and execution environment.
+
+```bash
+scripts/sandbox-setup.sh           # main sandbox image
+scripts/sandbox-browser-setup.sh   # optional browser image
+```
+
+--------------------------------
+
+### Enable Agent Sandbox with Docker Gateway
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Enables the Docker gateway sandbox by setting the `OPENCLAW_SANDBOX` environment variable to `1` before running the `docker-setup.sh` script. This allows for Docker-isolated agent tools within a containerized gateway environment.
+
+```bash
+export OPENCLAW_SANDBOX=1
+./docker-setup.sh
+```
+
+--------------------------------
+
+### Custom Docker Socket Path for Sandbox
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Configures the Docker gateway sandbox to use a custom Docker socket path, such as for rootless Docker setups. This is achieved by exporting both `OPENCLAW_SANDBOX` and `OPENCLAW_DOCKER_SOCKET` before running `docker-setup.sh`.
+
+```bash
+export OPENCLAW_SANDBOX=1
+export OPENCLAW_DOCKER_SOCKET=/run/user/1000/docker.sock
+./docker-setup.sh
+```
+
+--------------------------------
+
+### Build Default OpenCLAW Sandbox Image
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+This bash script is used to build the default OpenCLAW sandbox Docker image, named `openclaw-sandbox:bookworm-slim`. It relies on the `Dockerfile.sandbox` file for the build instructions.
+
+```bash
+#!/bin/bash
+scripts/sandbox-setup.sh
+```
+
+--------------------------------
+
+### Tool Restriction Filtering Order
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+Illustrates the hierarchical order in which tool restrictions are applied, from specific tool profiles to broader agent and sandbox policies. Each level can restrict tools further, but cannot override denials from earlier levels.
+
+```plaintext
+1. Tool profile (tools.profile or agents.list[].tools.profile)
+2. Provider tool profile (tools.byProvider[provider].profile or agents.list[].tools.byProvider[provider].profile)
+3. Global tool policy (tools.allow / tools.deny)
+4. Provider tool policy (tools.byProvider[provider].allow/deny)
+5. Agent-specific tool policy (agents.list[].tools.allow/deny)
+6. Agent provider policy (agents.list[].tools.byProvider[provider].allow/deny)
+7. Sandbox tool policy (tools.sandbox.tools or agents.list[].tools.sandbox.tools)
+8. Subagent tool policy (tools.subagents.tools, if applicable)
+```
+
+--------------------------------
+
+### Configure OpenClaw Agent Sandboxing for Host Browser Access
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/browser-login.md
+
+This JSON configuration snippet demonstrates how to allow host browser control within a sandboxed OpenClaw agent. By setting `allowHostControl` to `true`, the agent can interact with the main browser instance, which is recommended for strict sites like X/Twitter.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        mode: "non-main",
+        browser: {
+          allowHostControl: true,
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Check and Build Openclaw Sandbox Docker Image
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/ansible.md
+
+This snippet shows how to check if the 'openclaw-sandbox' Docker image exists and how to build it using the provided setup script. Ensure you are in the correct directory before executing.
+
+```bash
+sudo docker images | grep openclaw-sandbox
+```
+
+```bash
+cd /opt/openclaw/openclaw
+sudo -u openclaw ./scripts/sandbox-setup.sh
+```
+
+--------------------------------
+
+### Configure Agent with Full Access (No Sandbox)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON configuration defines an agent with full access, disabling sandboxing. The agent is assigned a dedicated workspace. This setup is suitable for personal agents where unrestricted access is desired.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "personal",
+        workspace: "~/.openclaw/workspace-personal",
+        sandbox: { mode: "off" },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Migration: Single Agent to Multi-Agent Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+Demonstrates the structural change from a single-agent configuration to a multi-agent setup. The example shows how `agents.defaults` and `agents.list` replace older agent configurations, with the 'main' agent having its sandbox mode set to 'off'.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.openclaw/workspace",
+      "sandbox": {
+        "mode": "non-main"
+      }
+    }
+  },
+  "tools": {
+    "sandbox": {
+      "tools": {
+        "allow": ["read", "write", "apply_patch", "exec"],
+        "deny": []
+      }
+    }
+  }
+}
+```
+
+```json
+{
+  "agents": {
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "workspace": "~/.openclaw/workspace",
+        "sandbox": { "mode": "off" }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Global Coding Profile with Messaging-Only Agent (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+This example illustrates setting a default 'coding' tool profile for all agents and then overriding it for a specific 'support' agent to be messaging-only, with explicit allowance for the 'slack' tool.
+
+```json
+{
+  "tools": { "profile": "coding" },
+  "agents": {
+    "list": [
+      {
+        "id": "support",
+        "tools": { "profile": "messaging", "allow": ["slack"] }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Use Common Sandbox Image in OpenCLAW Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+This JSON5 configuration snippet demonstrates how to specify the use of the `openclaw-sandbox-common:bookworm-slim` image for OpenCLAW agents. This allows agents to leverage the pre-installed build tools in the common image.
+
+```json5
+{
+  "agents": {
+    "defaults": {
+      "sandbox": { "docker": { "image": "openclaw-sandbox-common:bookworm-slim" } },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Elevated Execution in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandbox-vs-tool-policy-vs-elevated.md
+
+Enable and configure elevated execution for running commands on the host when sandboxed. This involves setting `tools.elevated.enabled` and optionally `agents.list[].tools.elevated.enabled`. Sender allowlists like `tools.elevated.allowFrom.<provider>` can further restrict access.
+
+```json
+{
+  "tools": {
+    "elevated": {
+      "enabled": true,
+      "allowFrom": {
+        "myprovider": ["agent:main:main"]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Tool Groups in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandbox-vs-tool-policy-vs-elevated.md
+
+Define tool policies using groups for shorthand. This example shows how to allow runtime, filesystem, session, and memory-related tools when sandboxed. Tool policies determine which tools are available and callable within OpenClaw sessions.
+
+```json
+{
+  "tools": {
+    "sandbox": {
+      "tools": {
+        "allow": ["group:runtime", "group:fs", "group:sessions", "group:memory"]
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Tool Restriction Example: Safe Execution Agent
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+A JSON configuration for an agent designed for safe execution, preventing file modifications. It allows 'read', 'exec', and 'process' tools while denying file system and browser-related operations.
+
+```json
+{
+  "tools": {
+    "allow": ["read", "exec", "process"],
+    "deny": ["write", "edit", "apply_patch", "browser", "gateway"]
+  }
+}
+```
+
+--------------------------------
+
+### Tool Restriction Example: Read-only Agent
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+A JSON configuration for an agent that is restricted to read-only operations. It explicitly allows the 'read' tool and denies common file modification and execution tools.
+
+```json
+{
+  "tools": {
+    "allow": ["read"],
+    "deny": ["exec", "write", "edit", "apply_patch", "process"]
+  }
+}
+```
+
+--------------------------------
+
+### Tool Restriction Example: Communication-only Agent
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+A JSON configuration for an agent focused solely on communication tasks. It allows specific session management tools and denies all other potentially sensitive operations like file access or execution.
+
+```json
+{
+  "tools": {
+    "sessions": { "visibility": "tree" },
+    "allow": ["sessions_list", "sessions_send", "sessions_history", "session_status"],
+    "deny": ["exec", "write", "edit", "apply_patch", "read", "browser"]
+  }
+}
+```
+
+--------------------------------
+
+### Configure Docker Bind Mounts in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/sandboxing.md
+
+This JSON configuration demonstrates how to set up custom host-to-container directory mounts for Docker sandboxes in OpenClaw. It shows global default binds and per-agent overrides, including read-only and read-write modes.
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        docker: {
+          binds: ["/home/user/source:/source:ro", "/var/data/myapp:/data:ro"],
+        },
+      },
+    },
+    list: [
+      {
+        id: "build",
+        sandbox: {
+          docker: {
+            binds: ["/mnt/cache:/cache:rw"],
+          },
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Elevated Mode Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+Explains the global and agent-specific configuration for elevated tool access. `tools.elevated` sets the global baseline, while `agents.list[].tools.elevated` can further restrict it per agent. Both must permit access for elevated tools to function.
+
+```plaintext
+tools.elevated (global baseline, sender-based allowlist)
+agents.list[].tools.elevated (further restriction per agent)
+```
+
+--------------------------------
+
+### Install Lume Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+This bash script downloads and installs the Lume tool, which is used for managing macOS virtual machines. Ensure your environment is configured to execute shell scripts.
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/lume/scripts/install.sh)"
+```
+
+--------------------------------
+
+### Openclaw Agent Read-Only Workspace Access Profile (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configures an agent with read-only access to its workspace and specific tools. The sandbox is enabled for all scopes, but filesystem operations are limited to reading. This profile enhances security by preventing accidental modifications.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "family",
+        workspace: "~/.openclaw/workspace-family",
+        sandbox: { mode: "all", scope: "agent", workspaceAccess: "ro" },
+        tools: {
+          allow: [
+            "read",
+            "sessions_list",
+            "sessions_history",
+            "sessions_send",
+            "sessions_spawn",
+            "session_status",
+          ],
+          deny: ["write", "edit", "apply_patch", "exec", "process", "browser"],
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Stop and Run VM Headlessly
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Stops the running 'openclaw' VM and then restarts it in headless mode (without a display). This allows the VM and OpenClaw's gateway to run in the background.
+
+```bash
+lume stop openclaw
+lume run openclaw --no-display
+```
+
+--------------------------------
+
+### Configure Family Agent for WhatsApp Group
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/multi-agent.md
+
+This JSON configuration binds a dedicated family agent to a specific WhatsApp group. It includes mention patterns for triggering the agent and defines a tight tool policy, allowing only specific operations like 'exec' and 'read' while denying others. The sandbox is set to 'all' mode with 'agent' scope.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "family",
+        name: "Family",
+        workspace: "~/.openclaw/workspace-family",
+        identity: { name: "Family Bot" },
+        groupChat: {
+          mentionPatterns: ["@family", "@familybot", "@Family Bot"],
+        },
+        sandbox: {
+          mode: "all",
+          scope: "agent",
+        },
+        tools: {
+          allow: [
+            "exec",
+            "read",
+            "sessions_list",
+            "sessions_history",
+            "sessions_send",
+            "sessions_spawn",
+            "session_status",
+          ],
+          deny: ["write", "edit", "apply_patch", "browser", "canvas", "nodes", "cron"],
+        },
+      },
+    ],
+  },
+  bindings: [
+    {
+      agentId: "family",
+      match: {
+        channel: "whatsapp",
+        peer: { kind: "group", id: "120363999999999999@g.us" },
+      },
+    },
+  ],
+}
+```
+
+--------------------------------
+
+### Configure Session Targeting Visibility (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Defines which sessions can be targeted by session tools like `sessions_list`, `sessions_history`, and `sessions_send`. Options include 'self', 'tree', 'agent', and 'all', with 'tree' being the default. Sandboxing can override this setting.
+
+```json5
+{
+  tools: {
+    sessions: {
+      // "self" | "tree" | "agent" | "all"
+      visibility: "tree",
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Openclaw Agent Messaging-Only Access Profile (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Sets up an agent with no filesystem access, restricted to messaging tools. The sandbox is enabled, and `workspaceAccess` is set to `none`. This profile is ideal for agents that only need to communicate via various platforms without interacting with the local filesystem.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "public",
+        workspace: "~/.openclaw/workspace-public",
+        sandbox: { mode: "all", scope: "agent", workspaceAccess: "none" },
+        tools: {
+          allow: [
+            "sessions_list",
+            "sessions_history",
+            "sessions_send",
+            "sessions_spawn",
+            "session_status",
+            "whatsapp",
+            "telegram",
+            "slack",
+            "discord",
+            "gateway",
+          ],
+          deny: [
+            "read",
+            "write",
+            "edit",
+            "apply_patch",
+            "exec",
+            "process",
+            "browser",
+            "canvas",
+            "nodes",
+            "cron",
+            "gateway",
+            "image",
+          ],
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Configure Agent with Read-Only Tools and Workspace
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This JSON configuration sets up an agent with a sandboxed environment and read-only access to both the workspace and specific tools. It explicitly denies write, edit, execute, and browser-related operations, making it suitable for family or work agents requiring limited permissions.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "family",
+        workspace: "~/.openclaw/workspace-family",
+        sandbox: {
+          mode: "all",
+          scope: "agent",
+          workspaceAccess: "ro",
+        },
+        tools: {
+          allow: ["read"],
+          deny: ["write", "edit", "apply_patch", "exec", "process", "browser"],
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Build/Create with Codex using Flags
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/coding-agent/SKILL.md
+
+Commands to build or create code using Codex. The `--full-auto` flag enables auto-approval for sandboxed operations, suitable for building. The `--yolo` flag disables sandbox and approvals for faster, but more dangerous, operations, recommended for refactoring.
+
+```bash
+# Quick one-shot (auto-approves) - remember PTY!
+bash pty:true workdir:~/project command:"codex exec --full-auto 'Build a dark mode toggle'"
+
+# Background for longer work
+bash pty:true workdir:~/project background:true command:"codex --yolo 'Refactor the auth module'"
+```
+
+--------------------------------
+
+### Ensure ApplyPatch Operates Only Within Workspace
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/index.md
+
+This configuration ensures that the `apply_patch` tool can only modify files within the designated workspace directory, even when sandboxing is disabled. Setting this to `false` allows `apply_patch` to affect files outside the workspace.
+
+```json
+{
+  "tools": {
+    "exec": {
+      "applyPatch": {
+        "workspaceOnly": true
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Global Tool Allow/Deny Policy
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Sets a global policy for which tools are allowed or denied. The deny list takes precedence over the allow list. This configuration is case-insensitive and supports wildcard characters for broader matching. It is applied regardless of whether the Docker sandbox is active.
+
+```json5
+{
+  tools: { deny: ["browser", "canvas"] },
+}
+```
+
+--------------------------------
+
+### Tool Group Shorthands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+Defines shorthand group names used in tool policies to represent collections of related tools. These simplify configuration by allowing a single group name to apply multiple specific tool permissions.
+
+```plaintext
+- group:runtime: exec, bash, process
+- group:fs: read, write, edit, apply_patch
+- group:sessions: sessions_list, sessions_history, sessions_send, sessions_spawn, session_status
+- group:memory: memory_search, memory_get
+- group:ui: browser, canvas
+- group:automation: cron, gateway
+- group:messaging: message
+- group:nodes: nodes
+- group:openclaw: all built-in OpenClaw tools (excludes provider plugins)
+```
+
+--------------------------------
+
+### Add Local Bin to PATH
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Appends the Lume executable directory to your Zsh shell's PATH environment variable and sources the configuration to make the `lume` command available. This is necessary if `~/.local/bin` is not already in your PATH.
+
+```bash
+echo 'export PATH="$PATH:$HOME/.local/bin"' >> ~/.zshrc && source ~/.zshrc
+```
+
+--------------------------------
+
+### Troubleshooting: Check Docker Status
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/ansible.md
+
+Command to verify if the Docker service is running. This is useful for diagnosing issues related to Docker sandbox environments or if Docker itself is not functioning correctly.
+
+```bash
+sudo systemctl status docker
+```
+
+--------------------------------
+
+### Configure BlueBubbles iMessage Integration for OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+This JSON configuration snippet sets up the BlueBubbles channel within OpenClaw, enabling iMessage integration. It requires the server URL, API password, and the webhook path for communication with the BlueBubbles service.
+
+```json
+{
+  "channels": {
+    "bluebubbles": {
+      "serverUrl": "http://localhost:1234",
+      "password": "your-api-password",
+      "webhookPath": "/bluebubbles-webhook"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Create macOS VM with Lume
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Creates a new macOS virtual machine named 'openclaw' using the latest available macOS IPSW. This command initiates the VM creation process, which includes downloading the OS image.
+
+```bash
+lume create openclaw --os macos --ipsw latest
+```
+
+--------------------------------
+
+### Configure OpenClaw Channels
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Edits the OpenClaw configuration file to define channels like WhatsApp and Telegram. This JSON snippet shows how to configure message policies and authentication details.
+
+```json
+{
+  "channels": {
+    "whatsapp": {
+      "dmPolicy": "allowlist",
+      "allowFrom": ["+15551234567"]
+    },
+    "telegram": {
+      "botToken": "YOUR_BOT_TOKEN"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### PATH Handling in OpenClaw Exec
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/exec.md
+
+Explains how the PATH environment variable is handled for different execution hosts (gateway, sandbox, node) and how to prepend custom paths.
+
+```APIDOC
+## PATH Handling
+
+### Description
+Details the behavior of the `PATH` environment variable based on the `host` setting (`gateway`, `sandbox`, `node`) and how `env.PATH` overrides are managed. It also covers the default `PATH` for the daemon on macOS and Linux, and how `tools.exec.pathPrepend` can be used.
+
+### Host Settings for PATH
+
+- **`host=gateway`**: Merges the login shell `PATH` into the execution environment. `env.PATH` overrides are rejected for host execution. The daemon uses a minimal `PATH`:
+  - macOS: `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`
+  - Linux: `/usr/local/bin`, `/usr/bin`, `/bin`
+
+- **`host=sandbox`**: Executes `sh -lc` inside the container. OpenClaw prepends `env.PATH` after profile sourcing. `tools.exec.pathPrepend` is applicable.
+
+- **`host=node`**: Only non-blocked environment overrides are sent to the node. `env.PATH` overrides are rejected for host execution and ignored by node hosts. For additional PATH entries on a node, configure the node host service environment or install tools in standard locations.
+
+### Per-Agent Node Binding
+
+Use the agent list index in the configuration to bind agents to specific nodes:
+
+```bash
+openclaw config get agents.list
+openclaw config set agents.list[0].tools.exec.node "node-id-or-name"
+```
+
+### Control UI
+
+The Nodes tab in the Control UI provides a panel for "Exec node binding" settings.
+```
+
+--------------------------------
+
+### Get VM IP Address
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Retrieves the IP address assigned to the 'openclaw' virtual machine. This IP address is crucial for establishing an SSH connection to the VM.
+
+```bash
+lume get openclaw
+```
+
+--------------------------------
+
+### Verify Lume Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Checks if the Lume command-line tool is installed and accessible by printing its version number. This confirms that the installation was successful and the tool is ready to use.
+
+```bash
+lume --version
+```
+
+--------------------------------
+
+### Install OpenClaw and Daemon
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Installs the OpenClaw package globally using npm and then runs the onboard command to set up the OpenClaw daemon. This prepares the VM for running OpenClaw services.
+
+```bash
+npm install -g openclaw@latest
+openclaw onboard --install-daemon
+```
+
+--------------------------------
+
+### Nested Sub-Agents and Auto-archive
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/subagents.md
+
+Information on the maximum spawn depth for sub-agents and the auto-archiving process for sessions.
+
+```APIDOC
+## Nested Sub-Agents and Auto-archive
+
+### Nested Sub-Agents
+
+- **Default Behavior**: Sub-agents cannot spawn their own sub-agents (`maxSpawnDepth: 1`).
+- **Nesting Enabled**: Setting `maxSpawnDepth: 2` allows one level of nesting, enabling the orchestrator pattern (main ? orchestrator sub-agent ? worker sub-sub-agents).
+
+### Auto-archive
+
+- **Default Archive Period**: Sub-agent sessions are automatically archived after `agents.defaults.subagents.archiveAfterMinutes` (default: 60 minutes).
+- **Archive Process**: Archiving uses `sessions.delete` and renames the transcript to `*.deleted.<timestamp>` in the same folder.
+- **`cleanup: "delete"`**: Archives immediately after the announce step, but still keeps the transcript via renaming.
+- **Best Effort**: Auto-archive is best-effort; pending timers are lost if the gateway restarts.
+- **`runTimeoutSeconds` vs. Auto-archive**: `runTimeoutSeconds` only stops the run; it does not auto-archive the session. The session remains until auto-archive.
+- **Scope**: Auto-archive applies to both depth-1 and depth-2 sessions.
+```
+
+--------------------------------
+
+### Login to OpenClaw Channels
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Initiates the login process for OpenClaw channels, which typically involves scanning a QR code for services like WhatsApp. This command authenticates OpenClaw with the specified messaging platforms.
+
+```bash
+openclaw channels login
+```
+
+--------------------------------
+
+### Secure Docker Run Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/SECURITY.md
+
+An example of how to run the OpenClaw Docker image with enhanced security settings. It uses `--read-only` for filesystem protection and `--cap-drop=ALL` to limit container capabilities.
+
+```bash
+docker run --read-only --cap-drop=ALL \
+  -v openclaw-data:/app/data \
+  openclaw/openclaw:latest
+```
+
+--------------------------------
+
+### Optimize Dockerfile for Faster Rebuilds with Layer Caching
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+This Dockerfile example demonstrates how to optimize rebuild times by strategically ordering commands to leverage Docker's layer caching. Dependencies are copied and installed before the rest of the application code, ensuring that `pnpm install` is only re-run when lockfiles or package metadata change.
+
+```dockerfile
+FROM node:22-bookworm
+
+# Install Bun (required for build scripts)
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+RUN corepack enable
+
+WORKDIR /app
+
+# Cache dependencies unless package metadata changes
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY ui/package.json ./ui/package.json
+COPY scripts ./scripts
+
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+RUN pnpm build
+RUN pnpm ui:install
+RUN pnpm ui:build
+
+ENV NODE_ENV=production
+
+CMD ["node","dist/index.js"]
+```
+
+--------------------------------
+
+### Switching Models for Daily Tasks and Coding
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Demonstrates how to switch between different AI models for distinct tasks. This can be done per session using slash commands or by setting a default model and overriding it when needed. Sub-agents can also be configured with specific default models.
+
+```text
+/model gpt-5.2
+/model openai-codex/gpt-5.4
+```
+
+--------------------------------
+
+### Configure Caddy Reverse Proxy for Webhook Path (Caddyfile)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/googlechat.md
+
+This Caddyfile configuration directs requests to `/googlechat` to the OpenClaw gateway running on `localhost:18789`. Other paths are not proxied, effectively making them inaccessible.
+
+```caddy
+your-domain.com {
+    reverse_proxy /googlechat* localhost:18789
+}
+```
+
+--------------------------------
+
+### Check OpenClaw Status
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Connects to the running macOS VM via SSH and executes the `openclaw status` command to check the operational status of the OpenClaw gateway. This is useful for verifying that OpenClaw is running correctly in the background.
+
+```bash
+ssh youruser@192.168.64.X "openclaw status"
+```
+
+--------------------------------
+
+### SSH into macOS VM
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Connects to the macOS virtual machine via SSH using the specified username and the VM's IP address. Replace 'youruser' and '192.168.64.X' with your actual username and the VM's IP.
+
+```bash
+ssh youruser@192.168.64.X
+```
+
+--------------------------------
+
+### Trust Bun Lifecycle Scripts
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/bun.md
+
+Explicitly trusts lifecycle scripts for specified packages when Bun blocks them by default. This is a workaround for potential runtime issues caused by Bun's security measures.
+
+```shell
+bun pm trust @whiskeysockets/baileys protobufjs
+```
+
+--------------------------------
+
+### Create IAM Role for EC2 Bedrock Access
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/bedrock.md
+
+These bash commands create an IAM role (`EC2-Bedrock-Access`) and an instance profile with the `AmazonBedrockFullAccess` policy. This role is then attached to a specified EC2 instance, granting it the necessary permissions to interact with Amazon Bedrock services.
+
+```bash
+# 1. Create IAM role and instance profile
+aws iam create-role --role-name EC2-Bedrock-Access \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {"Service": "ec2.amazonaws.com"},
+      "Action": "sts:AssumeRole"
+    }]
+  }'
+
+aws iam attach-role-policy --role-name EC2-Bedrock-Access \
+  --policy-arn arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+
+aws iam create-instance-profile --instance-profile-name EC2-Bedrock-Access
+aws iam add-role-to-instance-profile \
+  --instance-profile-name EC2-Bedrock-Access \
+  --role-name EC2-Bedrock-Access
+
+# 2. Attach to your EC2 instance
+aws ec2 associate-iam-instance-profile \
+  --instance-id i-xxxxx \
+  --iam-instance-profile Name=EC2-Bedrock-Access
+
+# 3. On the EC2 instance, enable discovery
+openclaw config set models.bedrockDiscovery.enabled true
+openclaw config set models.bedrockDiscovery.region us-east-1
+
+# 4. Set the workaround env vars
+echo 'export AWS_PROFILE=default' >> ~/.bashrc
+echo 'export AWS_REGION=us-east-1' >> ~/.bashrc
+source ~/.bashrc
+
+# 5. Verify models are discovered
+openclaw models list
+```

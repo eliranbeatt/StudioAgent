@@ -131,9 +131,7 @@ export const getSkillAndGateStatus = internalQuery({
           q.eq("projectId", args.projectId).eq("targetSkillId", args.skillId)
         )
         .order("desc")
-        .first(); // In real app, check conversationId too or assume project-wide satisfaction?
-      // Plan said: "if no satisfied session -> run gate". 
-      // Let's assume project-wide satisfaction for now to avoid repeating questions.
+        .first(); 
 
       if (!session || !session.isSatisfied) {
         isGateBlocked = true;
@@ -350,14 +348,14 @@ export const buildContext = internalQuery({
         estimatedHours:
           t.estimatedHours ?? (t.estimatedMinutes !== undefined ? t.estimatedMinutes / 60 : undefined),
         elementId: t.elementId,
-        category: t.category, // Added category as it's needed for the skill
-        descriptionHe: t.description, // Mapping description to descriptionHe as best effort
+        category: t.category, 
+        descriptionHe: t.description, 
       })),
       laborWorkLines: workLines.map((line: any) => ({
         id: line._id,
         elementId: line.elementId,
-        roleHe: line.roleHe, // Matches schema field
-        titleHe: line.roleHe ?? line.title, // For AI matching logic
+        roleHe: line.roleHe, 
+        titleHe: line.roleHe ?? line.title, 
         workType: line.workType,
         hoursPlanned: line.plannedQuantity ?? 0,
         hoursActual: 0,
@@ -444,8 +442,6 @@ export const saveRunResult = internalMutation({
     const hasChangeSetBlock = Array.isArray(blocks) && blocks.some((b: any) => b?.type === "ChangeSetBlock");
 
     const run = await ctx.db.get(args.runId);
-    // Removed isPricingSkill logic that forced webPriceOps into the blocks.
-    // We now trust the LLM to output the parsed ChangeSetBlock.
     const suppressSuggestions = run?.inputParams?.source === "flow_runner";
     if (suppressSuggestions) {
       blocks = (Array.isArray(blocks) ? blocks : []).filter((b: any) =>
@@ -464,9 +460,9 @@ export const saveRunResult = internalMutation({
       if (memoryDocs) {
         for (const doc of memoryDocs) {
           if (!doc?.kind || !doc?.contentMd_he) continue;
-          const id = await ctx.runMutation(internal.memory.upsertMemoryDoc, {
+          await ctx.runMutation(internal.memory.upsertMemoryDoc, {
             projectId: args.projectId,
-            kind: String(doc.kind),
+            kind: String(doc.kind) as any,
             title_he: typeof doc.title_he === "string" ? doc.title_he : undefined,
             contentMd_he: String(doc.contentMd_he),
           });
@@ -696,35 +692,28 @@ export const saveRunResult = internalMutation({
       });
     }
 
-    // Post-process ChangeSets
     for (const block of blocks) {
       if (block.type === "ChangeSetBlock" && block.changeSet) {
         const titleHe = block.titleHe ?? block.title_he;
         const summaryHe = block.summaryHe ?? block.summary_he;
 
-        // Normalize ops to match schema { kind, payload }
         const rawOps = Array.isArray(block.changeSet.ops) ? block.changeSet.ops : [];
 
-        // MACRO EXPANSION: task.syncFromLabor
-        // Goal: fetch authoritative data from workLine and generate strict task.patch
         const syncOps = rawOps.filter((op: any) => (op.kind === "task.syncFromLabor" || op.op === "task.syncFromLabor"));
         if (syncOps.length > 0) {
-          // 1. Gather IDs
           const workLineIds = [...new Set(syncOps.map((op: any) => op.payload?.workLineId).filter((id: any) => typeof id === "string"))];
           const taskIds = [...new Set(syncOps.map((op: any) => op.payload?.taskId).filter((id: any) => typeof id === "string"))];
 
-          // 2. Fetch Work Lines & Existing Links
           const [workLines, existingLinks] = await Promise.all([
             Promise.all(workLineIds.map((id: string) => ctx.db.get(id as any))),
             ctx.db.query("taskAccountingLinks")
               .withIndex("by_project", (q: any) => q.eq("projectId", args.projectId))
-              .collect() // Fetching all for project might be heavy, but safe for now. Optimally we'd filter.
+              .collect() 
           ]);
 
           const workLineMap = new Map();
           workLines.forEach((wl: any) => { if (wl) workLineMap.set(wl._id, wl); });
 
-          // 3. Expand Ops
           for (let i = 0; i < rawOps.length; i++) {
             const op = rawOps[i];
             if (op.kind === "task.syncFromLabor" || op.op === "task.syncFromLabor") {
@@ -732,27 +721,20 @@ export const saveRunResult = internalMutation({
               const targetTaskId = op.payload?.taskId;
 
               if (wl && targetTaskId) {
-                // A. Generate Task Patch
                 rawOps[i] = {
                   kind: "task.patch",
                   payload: {
                     taskId: targetTaskId,
                     fields: {
-                      title: wl.roleHe || wl.title, // Enforce title sync
-                      estimatedHours: wl.plannedQuantity, // Enforce hours sync
+                      title: wl.roleHe || wl.title, 
+                      estimatedHours: wl.plannedQuantity, 
                     }
                   }
                 };
 
-                // B. Enforce 1:1 Linkage (Clean up messy links)
-                // Findings existing links for this Task OR this WorkLine
                 const relatedLinks = existingLinks.filter((l: any) =>
                   l.taskId === targetTaskId || l.workLineId === wl._id
                 );
-
-                // We want EXACTLY ONE link: { taskId: targetTaskId, workLineId: wl._id }
-                // Any link that involves either side but isn't THIS specific pair must be deleted.
-                // Any link that IS this pair must be kept (or created if missing).
 
                 let linkExists = false;
 
@@ -762,11 +744,6 @@ export const saveRunResult = internalMutation({
                   if (isCorrectPair) {
                     linkExists = true;
                   } else {
-                    // It's a conflict! 
-                    // e.g. Task is linked to OldWorkLine, or WorkLine is linked to OtherTask
-                    // We generate a delete op.
-                    // Check if we already added a delete op (to avoid dups)? 
-                    // The Set in ops normalized list will handle it or we just append.
                     rawOps.push({
                       kind: "taskAccountingLink.delete",
                       payload: { linkId: link._id }
@@ -787,8 +764,6 @@ export const saveRunResult = internalMutation({
                 }
 
               } else {
-                // Fallback if workLine not found: just ignore or let it fail downstream? 
-                // We'll mark it unknown so it gets filtered or tracked
                 rawOps[i] = { kind: "unknown", payload: { error: "WorkLine not found for sync", ...op.payload } };
               }
             }
@@ -797,13 +772,13 @@ export const saveRunResult = internalMutation({
         const normalizedOps = coercePricingFallbackOps(
           coerceDuplicateLineCreates(
             rawOps.map((op: any) => {
-              if (op.kind && op.payload) return op; // Already correct
+              if (op.kind && op.payload) return op; 
 
               let kind = op.kind ?? op.op;
               const payload = { ...op };
               delete payload.kind;
               delete payload.op;
-              delete payload.entity; // Remove entity/action from payload as they are metadata for kind mapping
+              delete payload.entity; 
               delete payload.action;
 
               if (!kind && op.entity && op.action) {
@@ -814,7 +789,6 @@ export const saveRunResult = internalMutation({
                   if (a === "update") kind = "task.patch";
                   if (a === "archive") {
                     kind = "task.patch";
-                    // Ensure fields object exists
                     if (!payload.fields) payload.fields = {};
                     payload.fields.status = "archived";
                   }
@@ -832,7 +806,6 @@ export const saveRunResult = internalMutation({
                 }
               }
 
-              // Compatibility Fix: Normalize "update" to "patch" if the model guessed wrong
               if (kind === "task.update") kind = "task.patch";
               if (kind === "workLine.update") kind = "workLine.patch";
               if (kind === "materialLine.update") kind = "materialLine.patch";
@@ -869,7 +842,6 @@ export const saveRunResult = internalMutation({
       }
     }
 
-    // Auto-create Clarification Session if QuestionsBlock is present
     const questionsBlock = blocks.find((b: any) => b.type === "QuestionsBlock");
     if (questionsBlock && questionsBlock.questions && questionsBlock.questions.length > 0) {
       const questionsRun = await ctx.db.get(args.runId);
@@ -1027,7 +999,6 @@ export const submitClarifications = mutation({
       }
     };
 
-    // 1. Find the session (using filter fallback for robustness)
     const session = await ctx.db
       .query("clarificationSessions")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
@@ -1035,7 +1006,6 @@ export const submitClarifications = mutation({
       .first();
 
     if (!session) {
-      // Fallback check with filter (in case index is lagging or misnamed)
       const fallback = await ctx.db
         .query("clarificationSessions")
         .filter(q => q.eq(q.field("conversationId"), args.conversationId))
@@ -1046,7 +1016,6 @@ export const submitClarifications = mutation({
         console.error(`[submitClarifications] No session found for conv ${args.conversationId}`);
         throw new Error("No active clarification session found (DB empty for this conv)");
       }
-      // Use fallback
       await ctx.db.patch(fallback._id, {
         answers: args.answersById,
         isSatisfied: true,
@@ -1066,7 +1035,6 @@ export const submitClarifications = mutation({
       return { success: true, targetSkillId: fallback.targetSkillId };
     }
 
-    // 2. Update session
     await ctx.db.patch(session._id, {
       answers: args.answersById,
       isSatisfied: true,
@@ -1075,7 +1043,6 @@ export const submitClarifications = mutation({
 
     await persistClarificationAnswers(ctx, session, args.answersById);
 
-    // 3. Add User Message to chat
     await ctx.db.insert("agentMessages", {
       conversationId: args.conversationId,
       role: "user",
@@ -1269,8 +1236,6 @@ export const getGateSkill = internalQuery({
   }
 });
 
-// --- Helpers ---
-
 function normalizeQuestionKey(text?: string) {
   if (!text) return "";
   return String(text).trim().toLowerCase();
@@ -1283,7 +1248,6 @@ function sanitizeKeys(obj: any): any {
   if (obj && typeof obj === "object") {
     const newObj: any = {};
     for (const key of Object.keys(obj)) {
-      // Allow only non-control ASCII characters (32-126)
       if (/^[\x20-\x7E]+$/.test(key)) {
         newObj[key] = sanitizeKeys(obj[key]);
       } else {

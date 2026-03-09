@@ -1,0 +1,532 @@
+{
+    "snapshotVersion": "2.0.0",
+    "generatedAt": "2026-02-21T15:30:00Z",
+    "source": "convex/skills/registry.ts",
+    "skillCount": 37,
+    "categories": {
+        "knowledge": [
+            "knowledge",
+            "HELLO_WORLD_TEST",
+            "CLARIFICATIONS_GATE",
+            "CONTEXT_GENERATION",
+            "CHANGESET_REVIEWER"
+        ],
+        "planning": [
+            "PROJECT_BRIEF_BUILDER",
+            "ELEMENTS_BUILDER_FULL",
+            "TASKS_BUILDER_FULL",
+            "ACCOUNTING_BUILDER_FULL",
+            "QUOTE_WRITER_FULL",
+            "BUILD_PLANNER",
+            "OVERHEAD_AND_LOGISTICS_COMPLETER",
+            "QUOTE_BUILD_OR_FIX",
+            "setLaborRates",
+            "confirmMeasurements"
+        ],
+        "tasks": [
+            "ELEMENTS_TO_TASKS_SYNC",
+            "TASKS_CRITICAL_PATH_POLISH",
+            "TASK_ACCOUNTING_MAPPING_REPAIR",
+            "TASKS_SYNC_FROM_LABOR_LINES",
+            "TASKS_ENRICH_FROM_ACCOUNTING_BATCH",
+            "DAILY_EXECUTION_PLANNER"
+        ],
+        "review": [
+            "GAP_AUDIT",
+            "RISK_REVIEW",
+            "COST_VARIANCE_ANALYZER",
+            "BOM_DUPLICATE_ANALYZER",
+            "FINAL_AUDIT_FIXER",
+            "PRINT_QA"
+        ],
+        "shopping": [
+            "SHOPPING_PLANNER_WEB",
+            "BUYING_ASSISTANT_WEB",
+            "RESEARCH_INSPIRATION_WEB",
+            "RESEARCH_PRICING_ESTIMATES_WEB",
+            "PRICING_LOOKUP_CATALOG_BATCH",
+            "PRICING_RESEARCH_WEB_BATCH",
+            "PRICING_ESTIMATE_FALLBACK_BATCH",
+            "RECEIPT_PARSE_AND_MAP"
+        ],
+        "v3_flow": [
+            "V3_Q_A_INTAKE",
+            "V3_Q_B_PLAN",
+            "V3_Q_C_COST",
+            "V3_Q_D_POLISH_APPROVALS",
+            "V3_Q_E_QUOTE",
+            "V3_BUILD_A_MEMORYDOCS",
+            "V3_BUILD_B_PLAN",
+            "V3_BUILD_BC_COMBINED_PLAN_ACCOUNTING",
+            "V3_BUILD_C_ACCOUNTING",
+            "V3_BUILD_D_POLISH",
+            "V3_BUILD_E_QUOTE"
+        ]
+    },
+    "skills": [
+        {
+            "skillId": "knowledge",
+            "labelHe": "אורקסטרטור",
+            "category": "knowledge",
+            "flow": "ideation",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "HELLO_WORLD_TEST",
+            "labelHe": "Test",
+            "category": "knowledge",
+            "flow": "ideation",
+            "model": "gpt-4o-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "CLARIFICATIONS_GATE",
+            "labelHe": "שאלות הבהרה",
+            "category": "knowledge",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": false
+        },
+        {
+            "skillId": "CONTEXT_GENERATION",
+            "labelHe": "איסוף ידע",
+            "category": "knowledge",
+            "flow": "ideation",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "CHANGESET_REVIEWER",
+            "labelHe": "סקירת שינויים",
+            "category": "review",
+            "flow": "review",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": false
+        },
+        {
+            "skillId": "PROJECT_BRIEF_BUILDER",
+            "labelHe": "בניית בריף",
+            "category": "planning",
+            "flow": "ideation",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": false
+        },
+        {
+            "skillId": "ELEMENTS_BUILDER_FULL",
+            "labelHe": "תכנון אלמנטים",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": true,
+            "isEnabled": true
+        },
+        {
+            "skillId": "TASKS_BUILDER_FULL",
+            "labelHe": "תכנון משימות",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5.2",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": true,
+            "isEnabled": true
+        },
+        {
+            "skillId": "ACCOUNTING_BUILDER_FULL",
+            "labelHe": "תכנון תקציב",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5.2",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": true,
+            "isEnabled": true
+        },
+        {
+            "skillId": "QUOTE_WRITER_FULL",
+            "labelHe": "הפקת הצעת מחיר",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": true,
+            "isEnabled": true
+        },
+        {
+            "skillId": "ELEMENTS_TO_TASKS_SYNC",
+            "labelHe": "סנכרון אלמנטים למשימות",
+            "category": "tasks",
+            "flow": "execution",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "TASKS_CRITICAL_PATH_POLISH",
+            "labelHe": "נתיב קריטי",
+            "category": "tasks",
+            "flow": "review",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "TASK_ACCOUNTING_MAPPING_REPAIR",
+            "labelHe": "תיקון מיפוי תקציב",
+            "category": "tasks",
+            "flow": "review",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "GAP_AUDIT",
+            "labelHe": "בדיקת חוסרים",
+            "category": "review",
+            "flow": "review",
+            "model": "gpt-5-mini",
+            "outputContract": "suggestions",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "RISK_REVIEW",
+            "labelHe": "סקירת סיכונים",
+            "category": "review",
+            "flow": "review",
+            "model": "gpt-5-mini",
+            "outputContract": "suggestions",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "COST_VARIANCE_ANALYZER",
+            "labelHe": "ניתוח עלויות",
+            "category": "review",
+            "flow": "optimization",
+            "model": "gpt-5-mini",
+            "outputContract": "suggestions",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": false
+        },
+        {
+            "skillId": "DAILY_EXECUTION_PLANNER",
+            "labelHe": "תכנון יומי",
+            "category": "tasks",
+            "flow": "execution",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": false
+        },
+        {
+            "skillId": "INSTALL_RUNBOOK_BUILDER",
+            "labelHe": "הוראות התקנה",
+            "category": "planning",
+            "flow": "execution",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "SHOPPING_PLANNER_WEB",
+            "labelHe": "תכנון קניות",
+            "category": "shopping",
+            "flow": "execution",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": true,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "BUYING_ASSISTANT_WEB",
+            "labelHe": "עוזר קניות",
+            "category": "shopping",
+            "flow": "execution",
+            "model": "gpt-5-mini",
+            "outputContract": "suggestions",
+            "webSearch": true,
+            "requiresClarifications": false,
+            "isEnabled": false
+        },
+        {
+            "skillId": "RESEARCH_INSPIRATION_WEB",
+            "labelHe": "צ'אט יועץ",
+            "category": "knowledge",
+            "flow": "ideation",
+            "model": "gpt-5-mini",
+            "outputContract": "suggestions",
+            "webSearch": true,
+            "requiresClarifications": false,
+            "isEnabled": false
+        },
+        {
+            "skillId": "RESEARCH_PRICING_ESTIMATES_WEB",
+            "labelHe": "הערכת מחירים",
+            "category": "shopping",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": true,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "PRINT_QA",
+            "labelHe": "בקרת דפוס",
+            "category": "review",
+            "flow": "execution",
+            "model": "gpt-5-mini",
+            "outputContract": "suggestions",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "RECEIPT_PARSE_AND_MAP",
+            "labelHe": "פענוח קבלות",
+            "category": "shopping",
+            "flow": "optimization",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": false
+        },
+        {
+            "skillId": "BOM_DUPLICATE_ANALYZER",
+            "labelHe": "זיהוי כפילויות",
+            "category": "review",
+            "flow": "review",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "BUILD_PLANNER",
+            "labelHe": "תכנון ביצוע",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "TASKS_SYNC_FROM_LABOR_LINES",
+            "labelHe": "סנכרון עבודה",
+            "category": "tasks",
+            "flow": "execution",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "PRICING_LOOKUP_CATALOG_BATCH",
+            "labelHe": "בדיקת מחירון",
+            "category": "shopping",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "PRICING_RESEARCH_WEB_BATCH",
+            "labelHe": "מחקר מחיר באינטרנט",
+            "category": "shopping",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": true,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "PRICING_ESTIMATE_FALLBACK_BATCH",
+            "labelHe": "הערכת מחיר חליפית",
+            "category": "shopping",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "TASKS_ENRICH_FROM_ACCOUNTING_BATCH",
+            "labelHe": "העשרת משימות",
+            "category": "tasks",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "OVERHEAD_AND_LOGISTICS_COMPLETER",
+            "labelHe": "השלמות לוגיסטיקה",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "QUOTE_BUILD_OR_FIX",
+            "labelHe": "בניית הצעת מחיר",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "FINAL_AUDIT_FIXER",
+            "labelHe": "תיקונים סופיים",
+            "category": "review",
+            "flow": "review",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "setLaborRates",
+            "labelHe": "עדכון תעריפים",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "changeset",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        },
+        {
+            "skillId": "confirmMeasurements",
+            "labelHe": "אישור מידות",
+            "category": "planning",
+            "flow": "planning",
+            "model": "gpt-5-mini",
+            "outputContract": "blocks",
+            "webSearch": false,
+            "requiresClarifications": false,
+            "isEnabled": true
+        }
+    ],
+    "v3FlowSkills": [
+        {
+            "skillId": "V3_Q_A_INTAKE",
+            "stage": "A",
+            "type": "questions",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_Q_B_PLAN",
+            "stage": "B",
+            "type": "questions",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_Q_C_COST",
+            "stage": "C",
+            "type": "questions",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_Q_D_POLISH_APPROVALS",
+            "stage": "D",
+            "type": "questions",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_Q_E_QUOTE",
+            "stage": "E",
+            "type": "questions",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_BUILD_A_MEMORYDOCS",
+            "stage": "A",
+            "type": "builder",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_BUILD_B_PLAN",
+            "stage": "B",
+            "type": "builder",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_BUILD_BC_COMBINED_PLAN_ACCOUNTING",
+            "stage": "B",
+            "type": "builder",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_BUILD_C_ACCOUNTING",
+            "stage": "C",
+            "type": "builder",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_BUILD_D_POLISH",
+            "stage": "D",
+            "type": "builder",
+            "model": "gpt-5-mini"
+        },
+        {
+            "skillId": "V3_BUILD_E_QUOTE",
+            "stage": "E",
+            "type": "builder",
+            "model": "gpt-5-mini"
+        }
+    ]
+}

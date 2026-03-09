@@ -188,7 +188,11 @@ function formatSchemaErrors(errors: any): string {
 function resolveRuntimeLlm(input: any, toolDef: any) {
   const llm = input && typeof input === 'object' ? (input as any).llm : undefined
   const model = typeof llm?.model === 'string' && llm.model.trim() ? llm.model.trim() : toolDef.model
-  return { model }
+  const reasoningEffort =
+    typeof llm?.reasoningEffort === 'string' && llm.reasoningEffort.trim()
+      ? llm.reasoningEffort.trim()
+      : undefined
+  return { model, reasoningEffort }
 }
 
 async function buildToolHandlers(args: {
@@ -312,6 +316,7 @@ async function runAgentInternal(args: {
       args.ctx,
       {
         model: runtimeLlm.model,
+        reasoning_effort: runtimeLlm.reasoningEffort,
         temperature: toolDef.temperature,
         messages,
         tools,
@@ -427,6 +432,7 @@ export async function runToolInternal(args: {
       systemPrompt: toolDef.systemPrompt,
       userContent: userMessage,
       model: runtimeLlm.model,
+      reasoningEffort: runtimeLlm.reasoningEffort,
       temperature: toolDef.temperature,
       projectId: args.projectId,
       conversationId: args.conversationId,

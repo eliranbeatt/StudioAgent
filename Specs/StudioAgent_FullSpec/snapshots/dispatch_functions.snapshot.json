@@ -1,0 +1,68 @@
+{
+    "snapshotVersion": "2.0.0",
+    "generatedAt": "2026-02-21T15:30:00Z",
+    "source": "convex/sdk/dispatch.ts",
+    "stats": {
+        "totalLines": 3670,
+        "totalFunctions": 83
+    },
+    "publicActions": [
+        {
+            "name": "startRun",
+            "type": "action",
+            "description": "Main entry point for new runs"
+        },
+        {
+            "name": "handleUserMessage",
+            "type": "action",
+            "description": "Process user message in conversation"
+        },
+        {
+            "name": "submitAnswers",
+            "type": "action",
+            "description": "Submit QA answers during planning"
+        },
+        {
+            "name": "approveChangeSet",
+            "type": "action",
+            "description": "Approve pending changeset"
+        },
+        {
+            "name": "rejectChangeSet",
+            "type": "action",
+            "description": "Reject pending changeset"
+        },
+        {
+            "name": "cancelRun",
+            "type": "action",
+            "description": "Cancel active run"
+        },
+        {
+            "name": "regenerateQuestions",
+            "type": "action",
+            "description": "Trigger question regeneration"
+        }
+    ],
+    "internalFunctions": [
+        {
+            "name": "parseUserInput",
+            "description": "Detect intent (planning vs chat)"
+        },
+        {
+            "name": "handlePlanningFlow",
+            "description": "Manage structured planning pipeline"
+        },
+        {
+            "name": "handleChatMode",
+            "description": "Route free-form conversation"
+        },
+        {
+            "name": "processToolResult",
+            "description": "Handle tool output"
+        },
+        {
+            "name": "processSkillResult",
+            "description": "Handle skill output, apply changesets"
+        }
+    ]
+}

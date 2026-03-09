@@ -1,0 +1,2081 @@
+### Inspect and Manage Skills
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+The `skills` command allows users to list, inspect, and check the readiness of available skills. Options include filtering for eligible skills, outputting in JSON format, and verbosely displaying missing requirements. It suggests using `npx clawhub` for managing skills.
+
+```bash
+openclaw skills list
+openclaw skills info <name>
+openclaw skills check
+openclaw skills --eligible
+openclaw skills --json
+openclaw skills -v
+```
+
+--------------------------------
+
+### Skills Configuration Schema Example (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/skills-config.md
+
+An example of the skills configuration structure in JSON5 format. This schema defines options for managing bundled skills, loading custom skill directories, setting installation preferences for Node.js package managers, and configuring individual skills with enablement, environment variables, and API keys.
+
+```json5
+{
+  skills: {
+    allowBundled: ["gemini", "peekaboo"],
+    load: {
+      extraDirs: ["~/Projects/agent-scripts/skills", "~/Projects/oss/some-skill-pack/skills"],
+      watch: true,
+      watchDebounceMs: 250,
+    },
+    install: {
+      preferBrew: true,
+      nodeManager: "npm", 
+    },
+    entries: {
+      "nano-banana-pro": {
+        enabled: true,
+        apiKey: { source: "env", provider: "default", id: "GEMINI_API_KEY" }, 
+        env: {
+          GEMINI_API_KEY: "GEMINI_KEY_HERE",
+        },
+      },
+      peekaboo: { enabled: true },
+      sag: { enabled: false },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Agent Skills Assignment
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates how to import and assign skills to an agent. Skills must be imported before they can be used by an agent.
+
+```prose
+use "@anthropic/web-search"
+use "@anthropic/summarizer" as summarizer
+
+agent researcher:
+  skills: ["web-search", "summarizer"]
+```
+
+--------------------------------
+
+### Install and Update OpenClaw Skills
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Commands to install new skills from ClawHub and update all installed skills. Skills are installed into the local `./skills` directory or a configured OpenClaw workspace.
+
+```bash
+clawhub install <skill-slug>
+clawhub update --all
+```
+
+--------------------------------
+
+### Publish a Single Skill using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command publishes a single skill to the ClawHub registry. It requires the path to the skill directory and specifies the slug, name, version, and tags for the skill.
+
+```bash
+clawhub publish ./my-skill --slug my-skill --name "My Skill" --version 1.0.0 --tags latest
+```
+
+--------------------------------
+
+### Sync and Backup Multiple Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command scans local skill directories and uploads any new or updated skills to the ClawHub registry. The `--all` flag ensures that all found skills are uploaded without prompts.
+
+```bash
+clawhub sync --all
+```
+
+--------------------------------
+
+### Skills Configuration Example
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+An example JSON5 configuration for skills management. It defines specific skill entries with their configurations, API keys, and environment variables, as well as settings for watching skill directories.
+
+```json5
+{
+  skills: {
+    entries: {
+      "nano-banana-pro": {
+        enabled: true,
+        apiKey: "${GEMINI_API_KEY}",
+        env: {
+          GEMINI_API_KEY: "${GEMINI_API_KEY}",
+        },
+        config: {
+          endpoint: "https://api.example.com",
+          model: "nano-pro",
+        },
+      },
+      peekaboo: { enabled: true },
+      sag: { enabled: false },
+    },
+    load: {
+      watch: true,
+      watchDebounceMs: 250,
+      extraDirs: ["~/.shared-skills"],
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Skills Management: Listing and Information
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Commands to list available agent skills and retrieve detailed information about a specific skill. Supports filtering for eligible skills and outputting in JSON format.
+
+```bash
+openclaw skills list
+openclaw skills list --eligible --json
+openclaw skills info <skill-name>
+```
+
+--------------------------------
+
+### Skill Metadata for Gating (Markdown)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/skills.md
+
+Defines skill metadata in Markdown frontmatter, including requirements like binaries, environment variables, and configuration flags for load-time filtering.
+
+```markdown
+---
+name: nano-banana-pro
+description: Generate or edit images via Gemini 3 Pro Image
+metadata:
+  {
+    "openclaw":
+      {
+        "requires": { "bins": ["uv"], "env": ["GEMINI_API_KEY"], "config": ["browser.enabled"] },
+        "primaryEnv": "GEMINI_API_KEY",
+      },
+  }
+---
+
+```
+
+--------------------------------
+
+### Skill Command Invocation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/slash-commands.md
+
+Allows invoking user-defined skills as slash commands. Skill names are sanitized and may have numeric suffixes for collisions. Skills can be routed directly to a tool.
+
+```shell
+/skill <name> [input]
+/prose
+```
+
+--------------------------------
+
+### Agent Skills and Permissions in OpenCLaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Shows how to define skills for an agent and specify permissions using a rules-based block.
+
+```OpenCLaw
+agent MyAgent:
+  skills: ["search", "analyze"]
+  permissions:
+    allow: "read" from "external_data"
+```
+
+--------------------------------
+
+### Skill Configuration Overrides (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/skills.md
+
+Allows overriding bundled and managed skill settings, including enabling/disabling, providing API keys, and setting custom environment variables or configuration parameters.
+
+```json5
+{
+  skills: {
+    entries: {
+      "nano-banana-pro": {
+        enabled: true,
+        apiKey: { source: "env", provider: "default", id: "GEMINI_API_KEY" }, // or plaintext string
+        env: {
+          GEMINI_API_KEY: "GEMINI_KEY_HERE",
+        },
+        config: {
+          endpoint: "https://example.invalid",
+          model: "nano-pro",
+        },
+      },
+      peekaboo: { enabled: true },
+      sag: { enabled: false },
+    },
+  },
+}
+
+```
+
+--------------------------------
+
+### Configure Skills in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Defines how OpenClaw loads and manages skills. It allows specifying bundled skills, custom directories for skill scripts, and installation preferences for Node.js package managers. API keys for skills can be configured via environment variables or plaintext.
+
+```json5
+{
+  skills: {
+    allowBundled: ["gemini", "peekaboo"],
+    load: {
+      extraDirs: ["~/Projects/agent-scripts/skills"],
+    },
+    install: {
+      preferBrew: true,
+      nodeManager: "npm", // npm | pnpm | yarn
+    },
+    entries: {
+      "nano-banana-pro": {
+        apiKey: { source: "env", provider: "default", id: "GEMINI_API_KEY" }, // or plaintext string
+        env: { GEMINI_API_KEY: "GEMINI_KEY_HERE" },
+      },
+      peekaboo: { enabled: true },
+      sag: { enabled: false },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Format Available Skills List for Prompt (XML)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/system-prompt.md
+
+This XML structure represents the available skills list injected by OpenClaw. It includes the file path for each skill, instructing the model to use 'read' to load the SKILL.md. This format helps keep the base prompt concise while enabling targeted skill usage.
+
+```xml
+<available_skills>
+  <skill>
+    <name>...</name>
+    <description>...</description>
+    <location>...</location>
+  </skill>
+</available_skills>
+```
+
+--------------------------------
+
+### Update All Installed Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command updates all skills that have been previously installed and have newer versions available in the registry. It's a convenient way to keep all your skills up-to-date.
+
+```bash
+clawhub update --all
+```
+
+--------------------------------
+
+### Installer Specification for Skills (Markdown)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/skills.md
+
+Specifies installation methods for skills using metadata, including package manager details like Homebrew formulas or download URLs. Supports platform-specific installations.
+
+```markdown
+---
+name: gemini
+description: Use Gemini CLI for coding assistance and Google search lookups.
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "??",
+        "requires": { "bins": ["gemini"] },
+        "install":
+          [
+            {
+              "id": "brew",
+              "kind": "brew",
+              "formula": "gemini-cli",
+              "bins": ["gemini"],
+              "label": "Install Gemini CLI (brew)",
+            },
+          ],
+      },
+  }
+---
+
+```
+
+--------------------------------
+
+### Search for Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command shows how to search for skills within the ClawHub registry. The query is passed as a string argument to the `search` command.
+
+```bash
+clawhub search "postgres backups"
+```
+
+--------------------------------
+
+### Skills Management: Checking and Installation
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Check skill requirements and install or update skills from ClawHub. Ensures the agent has the necessary tools and capabilities.
+
+```bash
+openclaw skills check
+npx clawhub install <skill-slug>
+npx clawhub update --all
+npx clawhub sync --all
+```
+
+--------------------------------
+
+### Download New Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command illustrates how to download and install a new skill pack from the ClawHub registry. Replace `my-skill-pack` with the actual slug of the skill you wish to install.
+
+```bash
+clawhub install my-skill-pack
+```
+
+--------------------------------
+
+### Weather Skill API
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/weather/SKILL.md
+
+This section details how to use the Weather Skill to get current weather conditions and forecasts. It outlines when to use the skill, when not to use it, and provides examples for various query types.
+
+```APIDOC
+## Weather Skill API
+
+### Description
+Provides current weather conditions and forecasts for a specified location using the wttr.in service.
+
+### Method
+GET
+
+### Endpoint
+`https://wttr.in/[location]`
+
+### Parameters
+#### Path Parameters
+- **location** (string) - Required - The city, region, or airport code for which to retrieve weather information.
+
+#### Query Parameters
+- **format** (string) - Optional - Specifies the output format. Common formats include `3` (one-line summary), `0` (detailed current conditions), `v2` (week forecast), `j1` (JSON output).
+- **[format_code]** (string) - Optional - Used with `format=%c+%t+%w` etc. to customize output fields. See Format Codes below.
+
+#### Request Body
+This endpoint does not require a request body.
+
+### Request Example
+```bash
+# One-line summary for London
+curl "https://wttr.in/London?format=3"
+
+# Detailed current conditions for New York
+curl "https://wttr.in/New+York?0"
+
+# 3-day forecast for London
+curl "https://wttr.in/London"
+
+# Week forecast for London
+curl "https://wttr.in/London?format=v2"
+
+# Specific day forecast (e.g., tomorrow)
+curl "https://wttr.in/London?1"
+
+# Custom formatted output
+curl "https://wttr.in/London?format=%l:+%c+%t+%w"
+
+# JSON output
+curl "https://wttr.in/London?format=j1"
+
+# PNG image output
+curl "https://wttr.in/London.png"
+```
+
+### Response
+#### Success Response (200)
+The response format depends on the `format` query parameter. It can range from a simple text string to a JSON object or an image.
+
+**Example (JSON format `j1`):**
+```json
+{
+  "current_condition": [
+    {
+      "FeelsLikeC": "15",
+      "FeelsLikeF": "59",
+      "cloudcover": "75",
+      "humidity": "60",
+      "observation_time": "09:00 AM BST",
+      "precipMM": "0.5",
+      "pressure": "1012",
+      "temp_C": "17",
+      "temp_F": "63",
+      "visibility": "10",
+      "weathercode": "116",
+      "weatherdesc": [
+        {
+          "value": "Partly cloudy"
+        }
+      ],
+      "weatherIconUrl": [
+        {
+          "value": "[icon_url]"
+        }
+      ],
+      "winddir16Point": "SW",
+      "winddirDegree": "220",
+      "windspeedKmph": "15",
+      "windspeedMiles": "9"
+    }
+  ],
+  "nearest_area": [
+    {
+      "areaName": [
+        {
+          "value": "London"
+        }
+      ],
+      "country": [
+        {
+          "value": "United Kingdom"
+        }
+      ],
+      "latitude": "51.52",
+      "longitude": "-0.11",
+      "population": "7556900",
+      "region": [
+        {
+          "value": "England"
+        }
+      ],
+      "weatherUrl": [
+        {
+          "value": "[weather_url]"
+        }
+      ]
+    }
+  ],
+  "request": [
+    {
+      "query": "London",
+      "type": "City"
+    }
+  ],
+  "weather": [
+    {
+      "date": "2023-10-27",
+      "precipMM": "0.5",
+      "tempMaxC": "18",
+      "tempMaxF": "64",
+      "tempMinC": "10",
+      "tempMinF": "50",
+      "weathercode": "116",
+      "weatherdesc": [
+        {
+          "value": "Partly cloudy"
+        }
+      ],
+      "weatherIconUrl": [
+        {
+          "value": "[icon_url]"
+        }
+      ],
+      "winddir16Point": "SW",
+      "winddirDegree": "220",
+      "windspeedKmph": "15",
+      "windspeedMiles": "9"
+    }
+  ]
+}
+```
+
+### Format Codes
+- `%c` — Weather condition emoji
+- `%t` — Temperature
+- `%f` — "Feels like"
+- `%w` — Wind
+- `%h` — Humidity
+- `%p` — Precipitation
+- `%l` — Location
+
+### Notes
+- No API key is required.
+- The service may have rate limits; avoid excessive requests.
+- Supports global cities and airport codes (e.g., `wttr.in/ORD`).
+```
+
+--------------------------------
+
+### List Installed Skills with ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/clawhub/SKILL.md
+
+Lists all skills currently installed via the ClawHub CLI. This command provides a summary of the local skill management.
+
+```bash
+clawhub list
+```
+
+--------------------------------
+
+### Skill Management Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Manages skills, allowing bundled skills like 'gemini' and 'peekaboo', specifying extra directories for loading skills, and configuring installation preferences such as preferring Brew and using npm as the node manager.
+
+```json
+{
+  "skills": {
+    "allowBundled": ["gemini", "peekaboo"],
+    "load": {
+      "extraDirs": ["~/Projects/agent-scripts/skills"]
+    },
+    "install": {
+      "preferBrew": true,
+      "nodeManager": "npm"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Update Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/clawhub/SKILL.md
+
+Updates installed skills to their latest versions or a specific version. The 'update' command can target a single skill or all installed skills. Options like --force and --no-input provide further control over the update process.
+
+```bash
+clawhub update my-skill
+clawhub update my-skill --version 1.2.3
+clawhub update --all
+clawhub update my-skill --force
+clawhub update --all --no-input --force
+```
+
+--------------------------------
+
+### Define SKILL.md Metadata and Instructions (Markdown)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/creating-skills.md
+
+This example shows the basic structure of a SKILL.md file. It includes YAML frontmatter for metadata like the skill's name and description, followed by Markdown instructions for the LLM.
+
+```markdown
+---
+name: hello_world
+description: A simple skill that says hello.
+---
+
+# Hello World Skill
+
+When the user asks for a greeting, use the `echo` tool to say "Hello from your custom skill!".
+```
+
+--------------------------------
+
+### Create Skill Directory (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/creating-skills.md
+
+This command creates a new directory for your custom skill within the OpenClaw workspace. It ensures the parent directories exist if they don't already.
+
+```bash
+mkdir -p ~/.openclaw/workspace/skills/hello-world
+```
+
+--------------------------------
+
+### Override Skill Metadata for Linux Compatibility
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Markdown frontmatter used to override skill metadata, specifically to allow a macOS-only skill to be recognized and run on a Linux Gateway. This involves updating the 'os' field to include 'linux' and ensuring required binaries are available.
+
+```markdown
+---
+name: apple-notes
+description: Manage Apple Notes via the memo CLI on macOS.
+metadata: { "openclaw": { "os": ["darwin", "linux"], "requires": { "bins": ["memo"] } } }
+---
+
+```
+
+--------------------------------
+
+### Specific Skill Entry Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Configures specific skill entries, enabling 'nano-banana-pro' with its API key and environment variables, and enabling the 'peekaboo' skill.
+
+```json
+{
+  "skills": {
+    "entries": {
+      "nano-banana-pro": {
+        "enabled": true,
+        "apiKey": "GEMINI_KEY_HERE",
+        "env": {
+          "GEMINI_API_KEY": "GEMINI_KEY_HERE"
+        }
+      },
+      "peekaboo": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Install Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/clawhub/SKILL.md
+
+Installs a specified skill from the ClawHub registry. Users can install the latest version or a specific version using the --version flag. The skill will be downloaded and placed in the default or specified working directory.
+
+```bash
+clawhub install my-skill
+clawhub install my-skill --version 1.2.3
+```
+
+--------------------------------
+
+### Publish Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/clawhub/SKILL.md
+
+Publishes a local skill directory to the ClawHub registry. This requires specifying the skill's path, slug, name, version, and changelog. Authentication is necessary before publishing.
+
+```bash
+clawhub publish ./my-skill --slug my-skill --name "My Skill" --version 1.2.0 --changelog "Fixes + docs"
+```
+
+--------------------------------
+
+### OpenCLaw Skills Management (npm/pnpm)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Process for managing OpenCLaw skills, including checking requirements and installing optional dependencies. Users can choose between npm and pnpm as node managers. Homebrew may be used on macOS for certain dependencies.
+
+```text
+- Reads the available skills and checks requirements.
+- Lets you choose a node manager: **npm / pnpm** (bun not recommended).
+- Installs optional dependencies (some use Homebrew on macOS).
+```
+
+--------------------------------
+
+### Manage GitHub CI/Workflow Runs
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+Commands to interact with GitHub Actions CI/workflow runs. Includes listing recent runs, viewing specific runs (with options for logs), and re-running failed jobs. Requires specifying the repository.
+
+```bash
+# List recent runs
+gh run list --repo owner/repo --limit 10
+
+# View specific run
+gh run view <run-id> --repo owner/repo
+
+# View failed step logs only
+gh run view <run-id> --repo owner/repo --log-failed
+
+# Re-run failed jobs
+gh run rerun <run-id> --failed --repo owner/repo
+```
+
+--------------------------------
+
+### Move a Card
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Moves a card to a different list within the same or another board.
+
+```APIDOC
+## PUT /1/cards/{cardId}
+
+### Description
+Moves a specified card to a different list. This endpoint can also be used to update other card properties like closing it.
+
+### Method
+PUT
+
+### Endpoint
+https://api.trello.com/1/cards/{cardId}
+
+### Path Parameters
+- **cardId** (string) - Required - The ID of the card to move.
+
+### Query Parameters
+- **key** (string) - Required - Your Trello API key.
+- **token** (string) - Required - Your Trello API token.
+
+### Request Body
+- **idList** (string) - Required - The ID of the new list to move the card to.
+
+### Request Example
+```bash
+curl -s -X PUT "https://api.trello.com/1/cards/{cardId}?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+  -d "idList={newListId}"
+```
+
+### Response
+#### Success Response (200)
+- **id** (string) - The ID of the updated card.
+- **idList** (string) - The ID of the new list the card has been moved to.
+
+#### Response Example
+```json
+{
+  "id": "cardId",
+  "idList": "newListId"
+}
+```
+```
+
+--------------------------------
+
+### Setup GitHub CLI Authentication
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+Commands to authenticate the GitHub CLI (`gh`) with your GitHub account. This is a one-time setup process required before using most `gh` commands.
+
+```bash
+# Authenticate (one-time)
+gh auth login
+
+# Verify
+gh auth status
+```
+
+--------------------------------
+
+### Structured JSON Output with `gh` CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+Demonstrates how to use the `--json` flag with `gh` commands to get structured output, combined with `--jq` for filtering and transforming the data. Useful for scripting and programmatic access.
+
+```bash
+gh issue list --repo owner/repo --json number,title --jq '.[] | "\(.number): \(.title)"'
+gh pr list --json number,title,state,mergeable --jq '.[] | select(.mergeable == "MERGEABLE")'
+```
+
+--------------------------------
+
+### Manage GitHub Issues
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+Common `gh` CLI commands for managing GitHub issues, including listing open issues, creating new issues, and closing existing ones. Requires specifying the repository.
+
+```bash
+# List issues
+gh issue list --repo owner/repo --state open
+
+# Create issue
+gh issue create --title "Bug: something broken" --body "Details..."
+
+# Close issue
+gh issue close 42 --repo owner/repo
+```
+
+--------------------------------
+
+### List Cards in a List
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Retrieves all cards within a specified Trello list.
+
+```APIDOC
+## GET /1/lists/{listId}/cards
+
+### Description
+Retrieves all cards within a specified Trello list.
+
+### Method
+GET
+
+### Endpoint
+https://api.trello.com/1/lists/{listId}/cards
+
+### Path Parameters
+- **listId** (string) - Required - The ID of the list.
+
+### Query Parameters
+- **key** (string) - Required - Your Trello API key.
+- **token** (string) - Required - Your Trello API token.
+
+### Request Example
+```bash
+curl -s "https://api.trello.com/1/lists/{listId}/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN"
+```
+
+### Response
+#### Success Response (200)
+- **id** (string) - The unique identifier for the card.
+- **name** (string) - The name of the card.
+- **desc** (string) - The description of the card.
+- **idList** (string) - The ID of the list this card belongs to.
+
+#### Response Example
+```json
+[
+  {
+    "id": "cardId",
+    "name": "Card Title",
+    "desc": "Card description",
+    "idList": "listId"
+  }
+]
+```
+```
+
+--------------------------------
+
+### Manage GitHub Pull Requests
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+Common `gh` CLI commands for managing pull requests, including listing, checking CI status, viewing details, creating, and merging PRs. Assumes `owner/repo` is specified or you are in a repository directory.
+
+```bash
+# List PRs
+gh pr list --repo owner/repo
+
+# Check CI status
+gh pr checks 55 --repo owner/repo
+
+# View PR details
+gh pr view 55 --repo owner/repo
+
+# Create PR
+gh pr create --title "feat: add feature" --body "Description"
+
+# Merge PR
+gh pr merge 55 --squash --repo owner/repo
+```
+
+--------------------------------
+
+### Canvas Control Actions (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/canvas/SKILL.md
+
+Examples of bash commands to control the canvas on a node, including navigating to a new URL, capturing a screenshot, or hiding the canvas.
+
+```bash
+canvas action:navigate node:<node-id> url:<new-url>
+canvas action:snapshot node:<node-id>
+canvas action:hide node:<node-id>
+```
+
+--------------------------------
+
+### Query GitHub API
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+Examples of using the `gh api` command to query the GitHub API for specific data, such as pull request details, repository labels, or repository statistics. Utilizes `--jq` for filtering and extracting specific fields.
+
+```bash
+# Get PR with specific fields
+gh api repos/owner/repo/pulls/55 --jq '.title, .state, .user.login'
+
+# List all labels
+gh api repos/owner/repo/labels --jq '.[].name'
+
+# Get repo stats
+gh api repos/owner/repo --jq '{stars: .stargazers_count, forks: .forks_count}'
+```
+
+--------------------------------
+
+### Quick Weather Responses (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/weather/SKILL.md
+
+Generate quick, formatted responses for common weather queries using curl and wttr.in. These examples demonstrate how to retrieve specific weather details like location, condition, temperature, wind, humidity, and precipitation for concise answers. Requires the 'curl' binary.
+
+```bash
+# "What's the weather?"
+curl -s "wttr.in/London?format=%l:+%c+%t+(feels+like+%f),+%w+wind,+%h+humidity"
+
+# "Will it rain?"
+curl -s "wttr.in/London?format=%l:+%c+%p"
+
+# "Weekend forecast"
+curl "wttr.in/London?format=v2"
+```
+
+--------------------------------
+
+### Create a Card
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Creates a new card in a specified Trello list.
+
+```APIDOC
+## POST /1/cards
+
+### Description
+Creates a new card in a specified Trello list with a given name and description.
+
+### Method
+POST
+
+### Endpoint
+https://api.trello.com/1/cards
+
+### Query Parameters
+- **key** (string) - Required - Your Trello API key.
+- **token** (string) - Required - Your Trello API token.
+
+### Request Body
+- **idList** (string) - Required - The ID of the list where the card will be created.
+- **name** (string) - Required - The title of the card.
+- **desc** (string) - Optional - The description of the card.
+
+### Request Example
+```bash
+curl -s -X POST "https://api.trello.com/1/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+  -d "idList={listId}" \
+  -d "name=Card Title" \
+  -d "desc=Card description"
+```
+
+### Response
+#### Success Response (200)
+- **id** (string) - The unique identifier for the newly created card.
+- **name** (string) - The name of the card.
+- **desc** (string) - The description of the card.
+- **idList** (string) - The ID of the list the card was created in.
+
+#### Response Example
+```json
+{
+  "id": "newCardId",
+  "name": "Card Title",
+  "desc": "Card description",
+  "idList": "listId"
+}
+```
+```
+
+--------------------------------
+
+### List Lists in a Board
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Retrieves all lists within a specified Trello board.
+
+```APIDOC
+## GET /1/boards/{boardId}/lists
+
+### Description
+Retrieves all lists (columns) within a specified Trello board.
+
+### Method
+GET
+
+### Endpoint
+https://api.trello.com/1/boards/{boardId}/lists
+
+### Path Parameters
+- **boardId** (string) - Required - The ID of the board.
+
+### Query Parameters
+- **key** (string) - Required - Your Trello API key.
+- **token** (string) - Required - Your Trello API token.
+
+### Request Example
+```bash
+curl -s "https://api.trello.com/1/boards/{boardId}/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN"
+```
+
+### Response
+#### Success Response (200)
+- **id** (string) - The unique identifier for the list.
+- **name** (string) - The name of the list.
+- **idBoard** (string) - The ID of the board this list belongs to.
+
+#### Response Example
+```json
+[
+  {
+    "id": "listId",
+    "name": "List Name",
+    "idBoard": "boardId"
+  }
+]
+```
+```
+
+--------------------------------
+
+### List Boards
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Retrieves a list of all boards accessible by the authenticated user.
+
+```APIDOC
+## GET /1/members/me/boards
+
+### Description
+Retrieves a list of all boards accessible by the authenticated user. The output can be filtered to include specific fields.
+
+### Method
+GET
+
+### Endpoint
+https://api.trello.com/1/members/me/boards
+
+### Query Parameters
+- **key** (string) - Required - Your Trello API key.
+- **token** (string) - Required - Your Trello API token.
+- **fields** (string) - Optional - Comma-separated list of fields to include in the response (e.g., 'name,id').
+
+### Request Example
+```bash
+curl -s "https://api.trello.com/1/members/me/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&fields=name,id"
+```
+
+### Response
+#### Success Response (200)
+- **id** (string) - The unique identifier for the board.
+- **name** (string) - The name of the board.
+
+#### Response Example
+```json
+[
+  {
+    "name": "Board Name",
+    "id": "boardId"
+  }
+]
+```
+```
+
+--------------------------------
+
+### Create HTML Content (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/canvas/SKILL.md
+
+A bash script to create a simple HTML file named 'my-game.html' within the specified canvas root directory.
+
+```bash
+cat > ~/clawd/canvas/my-game.html << 'HTML'
+<!DOCTYPE html>
+<html>
+<head><title>My Game</title></head>
+<body>
+  <h1>Hello Canvas!</h1>
+</body>
+</html>
+HTML
+```
+
+--------------------------------
+
+### Get Weather Forecasts (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/weather/SKILL.md
+
+Fetch weather forecasts for a specified location using curl and wttr.in. This allows retrieval of multi-day forecasts, including a 3-day forecast, a week forecast, or forecasts for a specific day. Requires the 'curl' binary.
+
+```bash
+# 3-day forecast
+curl "wttr.in/London"
+
+# Week forecast
+curl "wttr.in/London?format=v2"
+
+# Specific day (0=today, 1=tomorrow, 2=day after)
+curl "wttr.in/London?1"
+```
+
+--------------------------------
+
+### Present Canvas Content (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/canvas/SKILL.md
+
+An example command to present HTML content on a specific OpenClaw node using the 'present' action and providing the full URL of the content.
+
+```bash
+canvas action:present node:mac-63599bc4-b54d-4392-9048-b97abd58343a target:http://peters-mac-studio-1.sheep-coho.ts.net:18793/__openclaw__/canvas/snake.html
+```
+
+--------------------------------
+
+### Get Current Weather Conditions (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/weather/SKILL.md
+
+Retrieve current weather conditions for a specified location using curl and wttr.in. This command can provide a one-line summary or detailed current conditions. It requires the 'curl' binary to be installed.
+
+```bash
+# One-line summary
+curl "wttr.in/London?format=3"
+
+# Detailed current conditions
+curl "wttr.in/London?0"
+
+# Specific city
+curl "wttr.in/New+York?format=3"
+```
+
+--------------------------------
+
+### Use Airport Codes for Weather (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/weather/SKILL.md
+
+Retrieve weather information for a location using its airport code via curl and wttr.in. This demonstrates the flexibility of the service in recognizing standard airport designators. Requires the 'curl' binary.
+
+```bash
+curl wttr.in/ORD
+```
+
+--------------------------------
+
+### Add a Comment to a Card
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Adds a comment to a specified Trello card.
+
+```APIDOC
+## POST /1/cards/{cardId}/actions/comments
+
+### Description
+Adds a comment to a specified Trello card.
+
+### Method
+POST
+
+### Endpoint
+https://api.trello.com/1/cards/{cardId}/actions/comments
+
+### Path Parameters
+- **cardId** (string) - Required - The ID of the card to add a comment to.
+
+### Query Parameters
+- **key** (string) - Required - Your Trello API key.
+- **token** (string) - Required - Your Trello API token.
+
+### Request Body
+- **text** (string) - Required - The content of the comment.
+
+### Request Example
+```bash
+curl -s -X POST "https://api.trello.com/1/cards/{cardId}/actions/comments?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+  -d "text=Your comment here"
+```
+
+### Response
+#### Success Response (200)
+- **id** (string) - The ID of the comment action.
+- **data.text** (string) - The content of the comment.
+
+#### Response Example
+```json
+{
+  "id": "commentId",
+  "data": {
+    "text": "Your comment here"
+  }
+}
+```
+```
+
+--------------------------------
+
+### Get All Cards on a Trello Board
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Retrieves all cards present on a given Trello board. This command fetches board data and then uses jq to extract the card name and its associated list ID.
+
+```bash
+curl -s "https://api.trello.com/1/boards/{boardId}/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq '.[] | {name, list: .idList}'
+```
+
+--------------------------------
+
+### Workflow with External Programs and Permissions
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+This example illustrates a workflow that utilizes external programs for web searching and file writing. It defines agents with specific skills and permissions, including restricting bash access, and demonstrates how to initiate research and writing sessions.
+
+```prose
+# Import external programs
+use "@anthropic/web-search"
+use "@anthropic/file-writer" as file-writer
+
+# Define a secure research agent
+agent researcher:
+  model: sonnet
+  prompt: "You are a research assistant"
+  skills: ["web-search"]
+  permissions:
+    read: ["*.md", "*.txt"]
+    bash: deny
+
+# Define a writer agent
+agent writer:
+  model: opus
+  prompt: "You create documentation"
+  skills: ["file-writer"]
+  permissions:
+    write: ["docs/"]
+    bash: deny
+
+# Execute workflow
+session: researcher
+  prompt: "Research AI safety topics"
+
+session: writer
+  prompt: "Write a summary document"
+
+```
+
+--------------------------------
+
+### List Trello Cards in a List
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Fetches all cards contained within a specific Trello list. This operation requires a list ID and uses curl to query the Trello API, with jq formatting the output to show card name, ID, and description.
+
+```bash
+curl -s "https://api.trello.com/1/lists/{listId}/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq '.[] | {name, id, desc}'
+```
+
+--------------------------------
+
+### Move Trello Card to Another List
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Moves an existing Trello card to a different list. This is achieved via a PUT request to the Trello API, requiring the card ID and the ID of the new list.
+
+```bash
+curl -s -X PUT "https://api.trello.com/1/cards/{cardId}?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+  -d "idList={newListId}"
+```
+
+--------------------------------
+
+### List Trello Lists in a Board
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Retrieves all lists within a specified Trello board. The command sends a GET request to the Trello API, requiring a board ID, and uses jq to extract the name and ID of each list.
+
+```bash
+curl -s "https://api.trello.com/1/boards/{boardId}/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq '.[] | {name, id}'
+```
+
+--------------------------------
+
+### Format Weather Output (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/weather/SKILL.md
+
+Customize the output format for weather information retrieved from wttr.in using curl. Supports various format options including one-liners, JSON output, and image generation. Requires the 'curl' binary.
+
+```bash
+# One-liner
+curl "wttr.in/London?format=%l:+%c+%t+%w"
+
+# JSON output
+curl "wttr.in/London?format=j1"
+
+# PNG image
+curl "wttr.in/London.png"
+```
+
+--------------------------------
+
+### PR Review Summary Template
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+A bash script template to generate a summary for a pull request, including title, body, author, and basic stats, followed by its CI checks. It uses `gh pr view` with `--json` and `--jq` for data extraction.
+
+```bash
+# Get PR overview for review
+PR=55 REPO=owner/repo
+echo "## PR #$PR Summary"
+gh pr view $PR --repo $REPO --json title,body,author,additions,deletions,changedFiles \
+  --jq '"**\(.title)** by @\(.author.login)\n\n\(.body)\n\n?? +\(.additions) -\(.deletions) across \(.changedFiles) files"'
+gh pr checks $PR --repo $REPO
+```
+
+--------------------------------
+
+### Authenticate with ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/clawhub/SKILL.md
+
+Logs into the ClawHub registry for publishing skills. After successful login, 'clawhub whoami' can be used to verify the authenticated user. This is a prerequisite for publishing new or updated skills.
+
+```bash
+clawhub login
+clawhub whoami
+```
+
+--------------------------------
+
+### Running Prose Programs from Various Sources (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/SKILL.md
+
+Demonstrates how to execute OpenProse programs using the 'prose run' command. It covers running local files, programs from direct URLs, and programs from a registry using shorthand notation. The resolution rules for remote programs are also outlined.
+
+```bash
+# Direct URL — any fetchable URL works
+prose run https://raw.githubusercontent.com/openprose/prose/main/skills/open-prose/examples/48-habit-miner.prose
+
+# Registry shorthand — handle/slug resolves to p.prose.md
+prose run irl-danb/habit-miner
+prose run alice/code-review
+```
+
+--------------------------------
+
+### Using Remote Prose Programs in .prose Files (Prose)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/SKILL.md
+
+Illustrates how to import and use remote OpenProse programs within a .prose file. This includes importing directly from a URL and using registry shorthands, which follow the same resolution rules as the 'prose run' command.
+
+```prose
+use "https://example.com/my-program.prose"  # Direct URL
+use "alice/research" as research             # Registry shorthand
+```
+
+--------------------------------
+
+### Archive a Card
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Archives (closes) a specified Trello card.
+
+```APIDOC
+## PUT /1/cards/{cardId} (Archive)
+
+### Description
+Archives (closes) a specified Trello card. This uses the same endpoint as moving a card but with a different parameter.
+
+### Method
+PUT
+
+### Endpoint
+https://api.trello.com/1/cards/{cardId}
+
+### Path Parameters
+- **cardId** (string) - Required - The ID of the card to archive.
+
+### Query Parameters
+- **key** (string) - Required - Your Trello API key.
+- **token** (string) - Required - Your Trello API token.
+
+### Request Body
+- **closed** (boolean) - Required - Set to `true` to archive the card.
+
+### Request Example
+```bash
+curl -s -X PUT "https://api.trello.com/1/cards/{cardId}?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+  -d "closed=true"
+```
+
+### Response
+#### Success Response (200)
+- **id** (string) - The ID of the archived card.
+- **closed** (boolean) - Will be `true` if the card was successfully archived.
+
+#### Response Example
+```json
+{
+  "id": "cardId",
+  "closed": true
+}
+```
+```
+
+--------------------------------
+
+### Switching Models for Daily Tasks and Coding
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Demonstrates how to switch between different AI models for distinct tasks. This can be done per session using slash commands or by setting a default model and overriding it when needed. Sub-agents can also be configured with specific default models.
+
+```text
+/model gpt-5.2
+/model openai-codex/gpt-5.4
+```
+
+--------------------------------
+
+### Agent-Specific Tool Profile and Allowlist
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/index.md
+
+Demonstrates setting a global 'coding' profile while configuring a specific agent ('support') to use a 'messaging' profile with only 'slack' allowed. This allows fine-grained control over tool access per agent.
+
+```json5
+{
+  tools: { profile: "coding" },
+  agents: {
+    list: [
+      {
+        id: "support",
+        tools: { profile: "messaging", allow: ["slack"] },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Configure Optional Tool Allowlist in JSON5
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/agent-tools.md
+
+Demonstrates how to enable optional tools for an agent by adding their names or plugin IDs to the agent's tool allowlist. This configuration specifies which tools the agent is permitted to use.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "main",
+        tools: {
+          allow: [
+            "workflow_tool", // specific tool name
+            "workflow", // plugin id (enables all tools from that plugin)
+            "group:plugins", // all plugin tools
+          ],
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Install ClawHub CLI with pnpm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Installs the ClawHub command-line interface globally using pnpm. ClawHub is used for managing and installing OpenClaw skills.
+
+```bash
+pnpm add -g clawhub
+```
+
+--------------------------------
+
+### Install ClawHub CLI with npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Installs the ClawHub command-line interface globally using npm. ClawHub is used for managing and installing OpenClaw skills.
+
+```bash
+npm i -g clawhub
+```
+
+--------------------------------
+
+### Sanitize Tool Call Inputs (TypeScript)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/transcript-hygiene.md
+
+Drops assistant tool-call blocks that are missing both 'input' and 'arguments' to prevent provider rejections. This function is applied during the session history sanitization process. It ensures that tool calls have valid input parameters before being processed.
+
+```TypeScript
+import {
+  sanitizeToolCallInputs
+} from "src/agents/session-transcript-repair.ts";
+
+// Example usage within sanitizeSessionHistory:
+sanitizeToolCallInputs(session.messages);
+```
+
+--------------------------------
+
+### Example Agent Definitions
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Provides various examples of agent definitions, showcasing different configurations including model selection, prompts, skills, and permissions.
+
+```prose
+# Define a research agent agent researcher:
+  model: sonnet
+  prompt: "You are a research assistant skilled at finding and synthesizing information"
+
+# Define a writing agent agent writer:
+  model: opus
+  prompt: "You are a technical writer who creates clear, concise documentation"
+
+# Agent with only model agent quick:
+  model: haiku
+
+# Agent with only prompt agent expert:
+  prompt: "You are a domain expert"
+
+# Agent with skills agent web-researcher:
+  model: sonnet
+  skills: ["web-search", "summarizer"]
+
+# Agent with permissions agent file-handler:
+  permissions:
+    read: ["*.md", "*.txt"]
+    write: ["output/"]
+    bash: deny
+```
+
+--------------------------------
+
+### Agent Definition Syntax
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Defines the basic structure for declaring an agent, including its model, prompt, skills, and permissions. This is the foundational syntax for agent configuration.
+
+```prose
+agent name:
+  model: sonnet
+  prompt: "System prompt for this agent"
+  skills: ["skill1", "skill2"]
+  permissions:
+    read: ["*.md"]
+    bash: deny
+```
+
+--------------------------------
+
+### Tool Group Shorthands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+Defines shorthand group names used in tool policies to represent collections of related tools. These simplify configuration by allowing a single group name to apply multiple specific tool permissions.
+
+```plaintext
+- group:runtime: exec, bash, process
+- group:fs: read, write, edit, apply_patch
+- group:sessions: sessions_list, sessions_history, sessions_send, sessions_spawn, session_status
+- group:memory: memory_search, memory_get
+- group:ui: browser, canvas
+- group:automation: cron, gateway
+- group:messaging: message
+- group:nodes: nodes
+- group:openclaw: all built-in OpenClaw tools (excludes provider plugins)
+```
+
+--------------------------------
+
+### Get Tailscale Hostname (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/canvas/SKILL.md
+
+A bash command to retrieve the Tailscale hostname of the current machine, used for constructing canvas URLs.
+
+```bash
+tailscale status --json | jq -r '.Self.DNSName' | sed 's/.$//'
+```
+
+--------------------------------
+
+### Openclaw Onboard - Interactive Mode
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/onboard.md
+
+Initiates the interactive onboarding wizard for guided setup of gateway, workspace, auth, channels, and skills.
+
+```APIDOC
+## POST /openclaw onboard
+
+### Description
+This command launches an interactive wizard to guide users through the setup process for Openclaw components, including gateway, workspace, authentication, channels, and skills. It supports both local and remote gateway configurations.
+
+### Method
+CLI COMMAND
+
+### Endpoint
+`openclaw onboard`
+
+### Parameters
+#### Query Parameters
+- `--flow` (string) - Optional - Specifies the onboarding flow. Options include `quickstart` (minimal prompts, auto-generates gateway token) and `manual` (full prompts for port/bind/auth).
+- `--mode` (string) - Optional - Specifies the mode of operation. Example: `remote`.
+- `--remote-url` (string) - Optional - Required when `mode` is `remote`. The WebSocket secure URL for the remote gateway.
+
+### Request Example
+```bash
+openclaw onboard
+openclaw onboard --flow quickstart
+openclaw onboard --flow manual
+openclaw onboard --mode remote --remote-url wss://gateway-host:18789
+```
+
+### Response
+#### Success Response (200)
+Onboarding wizard completes successfully, and components are configured.
+
+#### Response Example
+(Interactive prompts and output will vary based on user input and configuration.)
+```
+
+--------------------------------
+
+### Configure Tool Profiles with Deny List
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/index.md
+
+Apply a tool profile and simultaneously deny specific tools using `tools.profile` and `tools.deny`. This example sets the 'coding' profile but denies execution and process-related tools globally.
+
+```json5
+{
+  tools: {
+    profile: "coding",
+    deny: ["group:runtime"],
+  },
+}
+```
+
+--------------------------------
+
+### Get Gateway Bind Mode (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/canvas/SKILL.md
+
+A bash command to retrieve the current gateway bind mode setting from the OpenClaw configuration file.
+
+```bash
+cat ~/.openclaw/openclaw.json | jq '.gateway.bind'
+```
+
+--------------------------------
+
+### Perform Recent Web Search
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/web.md
+
+Shows how to use the `web_search` tool to find recent information by specifying the `freshness` parameter to 'week'.
+
+```javascript
+await web_search({
+  query: "TMBG interview",
+  freshness: "week",
+});
+```
+
+--------------------------------
+
+### OpenProse Agent Definition
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/examples/README.md
+
+Shows how to define an agent in OpenProse, specifying its model, system prompt, skills, and permissions for file access and bash execution.
+
+```prose
+agent name:
+  model: sonnet                     # haiku, sonnet, opus
+  prompt: "System prompt"
+  skills: ["skill1", "skill2"]
+  permissions:
+    read: ["*.md"]
+    bash: deny
+```
+
+--------------------------------
+
+### Combining Parallel Join Strategies and Failure Policies
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to combine different join strategies (like 'first' or 'any') with failure policies (like 'continue' or 'ignore') to create complex parallel execution behaviors. This allows for fine-grained control over how parallel tasks are managed.
+
+```prose
+# Race with resilience
+parallel ("first", on-fail: "continue"):
+  session "Fast but unreliable"
+  session "Slow but reliable"
+
+# Get any 2 results, ignoring failures
+parallel ("any", count: 2, on-fail: "ignore"):
+  session "Approach 1"
+  session "Approach 2"
+  session "Approach 3"
+  session "Approach 4"
+```
+
+--------------------------------
+
+### Common Workflow: Search and Engage
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Find relevant posts using the `search` command, then engage with them by liking or replying. This workflow helps in discovering and interacting with content related to specific topics.
+
+```bash
+# 1. Search for relevant posts
+xurl search "topic of interest" -n 10
+# 2. Like an interesting one
+xurl like POST_ID_FROM_RESULTS
+# 3. Reply to it
+xurl reply POST_ID_FROM_RESULTS "Great point!"
+```
+
+--------------------------------
+
+### Archive Trello Card
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Archives a specified Trello card, effectively closing it. This operation uses a PUT request to the Trello API and requires the card ID.
+
+```bash
+curl -s -X PUT "https://api.trello.com/1/cards/{cardId}?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+  -d "closed=true"
+```
+
+--------------------------------
+
+### Configuration for bootstrap-extra-files Hook
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/hooks.md
+
+Provides the JSON configuration for the `bootstrap-extra-files` hook, which injects additional bootstrap files like AGENTS.md and TOOLS.md during agent bootstrapping. It specifies the paths to these files.
+
+```json
+{
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "bootstrap-extra-files": {
+          "enabled": true,
+          "paths": ["packages/*/AGENTS.md", "packages/*/TOOLS.md"]
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Canvas Node Interaction
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/index.md
+
+Interacts with the Canvas node for presenting, evaluating, and capturing snapshots. Supports A2UI for accessibility-based interactions.
+
+```shell
+# Present the canvas
+openclaw canvas present
+
+# Evaluate JavaScript in the canvas context
+openclaw canvas eval --code "console.log('Hello from canvas')"
+
+# Take a snapshot of the canvas
+openclaw canvas snapshot --output /tmp/canvas.png
+
+# Push text to A2UI
+openclaw nodes canvas a2ui push --node <id> --text "Hello from A2UI"
+```
+
+--------------------------------
+
+### OpenProse VM Banner
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/SKILL.md
+
+This is the initial banner displayed when the OpenProse VM is first invoked in a session. It serves as a visual indicator that the VM has started and is ready for execution.
+
+```text
++-------------------------------------+
+¦         ? OpenProse VM ?            ¦
+¦       A new kind of computer        ¦
++-------------------------------------+
+```
+
+--------------------------------
+
+### Map Input Items to Tool Calls (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/lobster.md
+
+This example illustrates mapping input items, such as email messages, into subsequent tool calls. It uses `gog.gmail.search` to find recent emails and then pipes the results to `openclaw.invoke`. The `--each` flag processes each item individually, and `--item-key message` specifies the key for the item. The `--args-json` provides structured arguments for the invoked tool.
+
+```bash
+gog.gmail.search --query 'newer_than:1d' \
+  | openclaw.invoke --tool message --action send --each --item-key message --args-json '{"provider":"telegram","to":"..."}'
+```
+
+--------------------------------
+
+### Set Trello Environment Variables
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Configure the necessary environment variables for Trello API authentication. This involves setting TRELLO_API_KEY and TRELLO_TOKEN, which are obtained from the Trello developer site.
+
+```bash
+export TRELLO_API_KEY="your-api-key"
+export TRELLO_TOKEN="your-token"
+```
+
+--------------------------------
+
+### Pass Parallel Results Using Object Shorthand
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates using object shorthand to pass multiple parallel results as context to a subsequent session. The `{ security, perf, style }` syntax is a concise way to include these variables.
+
+```prose
+parallel:
+  security = session "Security review"
+  perf = session "Performance review"
+  style = session "Style review"
+
+session "Synthesize all reviews"
+  context: { security, perf, style }
+```
+
+--------------------------------
+
+### Add Comment to Trello Card
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Adds a comment to a specific Trello card. The command uses a POST request to the Trello API, requiring the card ID and the text content of the comment.
+
+```bash
+curl -s -X POST "https://api.trello.com/1/cards/{cardId}/actions/comments?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+  -d "text=Your comment here"
+```
+
+--------------------------------
+
+### Control Flow: Blocks and Sequences in OpenCLaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates explicit sequential execution using `do:` blocks and inline sequences using the `->` operator.
+
+```OpenCLaw
+do "First step"
+  session "Process data"
+do "Sequential steps"
+  session "Step 1" -> session "Step 2"
+```
+
+--------------------------------
+
+### Canvas URL Path Structure (HTTP)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/canvas/SKILL.md
+
+Illustrates how the canvas host serves files, mapping URL paths with the '/__openclaw__/canvas/' prefix to files within the configured root directory.
+
+```http
+http://<host>:18793/__openclaw__/canvas/index.html  ? ~/clawd/canvas/index.html
+http://<host>:18793/__openclaw__/canvas/games/snake.html ? ~/clawd/canvas/games/snake.html
+```
+
+--------------------------------
+
+### Perform Web Search with web_search
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/index.md
+
+Searches the web using the Brave Search API. Requires a Brave API key and can be enabled via tool configuration. Responses are cached for performance.
+
+```text
+web_search("latest AI advancements", {
+  count: 5
+})
+```
+
+--------------------------------
+
+### Canvas Host Configuration (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/canvas/SKILL.md
+
+Configuration for the Canvas Host, specifying whether it's enabled, the port it listens on, the root directory for HTML content, and if live reload is active.
+
+```json
+{
+  "canvasHost": {
+    "enabled": true,
+    "port": 18793,
+    "root": "/Users/you/clawd/canvas",
+    "liveReload": true
+  },
+  "gateway": {
+    "bind": "auto"
+  }
+}
+```
+
+--------------------------------
+
+### Context with Blocks
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Blocks can capture their results using the 'let' keyword and make these results available as context for subsequent sessions. This enables data flow between different parts of a workflow.
+
+```prose
+# Capture do block result
+let research = do:
+  session "Gather information"
+  session "Analyze patterns"
+
+# Use in subsequent session
+session "Write report"
+  context: research
+```
+
+--------------------------------
+
+### SSH Wrapper for macOS Binaries on Linux
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+A bash script to create an SSH wrapper for macOS command-line tools, allowing them to be executed remotely from a Linux host. This is part of an advanced method to run macOS-only skills on Linux.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+exec ssh -T user@mac-host /opt/homebrew/bin/memo "$@"
+```
+
+--------------------------------
+
+### Execute Shell Commands with exec
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/index.md
+
+Runs shell commands within the workspace. Supports background execution, timeouts, elevated privileges, and security configurations. It can also manage processes via the 'process' tool.
+
+```text
+exec("ls -l", {
+  timeout: 60,
+  elevated: true,
+  host: "gateway",
+  security: "full"
+})
+```
+
+```text
+exec("sleep 10", {
+  background: true
+})
+```
+
+--------------------------------
+
+### Combining Retry and Try/Catch for Resilience
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Shows how to combine retry mechanisms within a try block and provide fallback logic in the catch block. This pattern offers robust handling for operations that might fail multiple times.
+
+```prose
+try:
+  session "Call external service"
+    retry: 3
+    backoff: exponential
+catch:
+  session "All retries failed, use fallback"
+```
+
+--------------------------------
+
+### Create Trello Card
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/trello/SKILL.md
+
+Creates a new card in a specified Trello list. This uses a POST request to the Trello API, allowing the user to provide a list ID, card title, and description.
+
+```bash
+curl -s -X POST "https://api.trello.com/1/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+  -d "idList={listId}" \
+  -d "name=Card Title" \
+  -d "desc=Card description"
+```
+
+--------------------------------
+
+### Run sherpa-onnx-tts for TTS Generation (Windows Batch)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/sherpa-onnx-tts/SKILL.md
+
+This command illustrates how to run the sherpa-onnx-tts skill on Windows using Node.js. It specifies the output file and the text to be synthesized, similar to the bash example.
+
+```batch
+node {baseDir}\bin\sherpa-onnx-tts -o tts.wav "Hello from local TTS."
+```

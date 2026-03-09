@@ -1,0 +1,197 @@
+{
+  "snapshotVersion": "2.0.0",
+  "generatedAt": "2026-02-21T15:30:00Z",
+  "source": "convex/sdk/registry.ts",
+  "toolCount": 27,
+  "tools": [
+    {
+      "id": "orchestrator",
+      "kind": "agent",
+      "model": "gpt-5.2",
+      "schemaName": "orchestrator.response",
+      "description": "Top-level orchestrator"
+    },
+    {
+      "id": "context.get",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "context.response",
+      "description": "Fetch project data by packs"
+    },
+    {
+      "id": "knowledge.summarize_or_update",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "knowledge.response",
+      "description": "Update project knowledge doc"
+    },
+    {
+      "id": "web_search",
+      "kind": "tool",
+      "model": null,
+      "schemaName": "web_search.response",
+      "description": "Internet search"
+    },
+    {
+      "id": "clarify.next_questions",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "clarify.next_questions",
+      "description": "Iterative clarification loops"
+    },
+    {
+      "id": "chat.free",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "chat.free.response",
+      "description": "Free-form conversation"
+    },
+    {
+      "id": "think.deep",
+      "kind": "agent",
+      "model": "gpt-5.2",
+      "schemaName": "think.deep.response",
+      "description": "Deep strategy analysis"
+    },
+    {
+      "id": "intake.parse_brief",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "intake.parse_brief",
+      "description": "Extract structured brief"
+    },
+    {
+      "id": "plan.elements",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "plan.elements",
+      "description": "Generate element intents"
+    },
+    {
+      "id": "plan.tasks",
+      "kind": "tool",
+      "model": "gpt-5.2",
+      "schemaName": "plan.tasks",
+      "description": "Generate task intents"
+    },
+    {
+      "id": "plan.execution_phases",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "plan.execution_phases",
+      "description": "Phase plan with gates"
+    },
+    {
+      "id": "draft.plan_and_questions",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "draft.plan_and_questions",
+      "description": "Planning flow entry"
+    },
+    {
+      "id": "cost.build_budget",
+      "kind": "tool",
+      "model": "gpt-5.2",
+      "schemaName": "cost.build_budget",
+      "description": "Generate budget"
+    },
+    {
+      "id": "pricing.resolve_lines",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "pricing.resolve_lines",
+      "description": "Resolve prices"
+    },
+    {
+      "id": "quote.generate",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "quote.generate",
+      "description": "Client-facing quote"
+    },
+    {
+      "id": "procurement.shopping_plan",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "procurement.shopping_plan",
+      "description": "Procurement planning"
+    },
+    {
+      "id": "finance.ingest_receipt",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "finance.ingest_receipt",
+      "description": "Parse receipts"
+    },
+    {
+      "id": "audit.project",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "audit.project",
+      "description": "Plan completeness review"
+    },
+    {
+      "id": "audit.fix_plan",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "audit.fix_plan",
+      "description": "Convert findings to repair intents"
+    },
+    {
+      "id": "maint.sync_and_repair",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "maint.sync_and_repair",
+      "description": "Link repair and dedup"
+    },
+    {
+      "id": "qa.print_files",
+      "kind": "agent",
+      "model": "gpt-5-mini",
+      "schemaName": "qa.print_files",
+      "description": "Print file QA"
+    },
+    {
+      "id": "runbook.installation",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "runbook.installation",
+      "description": "Install-day runbook"
+    },
+    {
+      "id": "ops.daily_plan",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "ops.daily_plan",
+      "description": "Daily execution plan"
+    },
+    {
+      "id": "changeset.compile",
+      "kind": "tool",
+      "model": "gpt-5.2",
+      "schemaName": "changeset.compile",
+      "description": "Compile intents to ops"
+    },
+    {
+      "id": "changeset.review",
+      "kind": "tool",
+      "model": "gpt-5-mini",
+      "schemaName": "changeset.review",
+      "description": "PR-style validation"
+    },
+    {
+      "id": "changeset.apply",
+      "kind": "tool",
+      "model": null,
+      "schemaName": null,
+      "description": "Apply approved ChangeSet"
+    },
+    {
+      "id": "finalize.build_structured_package",
+      "kind": "tool",
+      "model": "gpt-5.2",
+      "schemaName": "finalize.structured_package",
+      "description": "Build final package"
+    }
+  ]
+}

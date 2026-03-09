@@ -1,0 +1,147 @@
+{
+    "snapshotVersion": "2.0.0",
+    "generatedAt": "2026-02-21T15:30:00Z",
+    "enums": {
+        "workTypes": [
+            {
+                "key": "carpentry",
+                "labelHe": "נגרות"
+            },
+            {
+                "key": "metal_fab",
+                "labelHe": "מסגרות/ברזל"
+            },
+            {
+                "key": "paint_finish",
+                "labelHe": "צביעה/גימור"
+            },
+            {
+                "key": "printing_graphics",
+                "labelHe": "פרינט/גרפיקה"
+            },
+            {
+                "key": "props_sculpt",
+                "labelHe": "פיסול/אביזרים"
+            },
+            {
+                "key": "rigging_install",
+                "labelHe": "הקמה/התקנה"
+            },
+            {
+                "key": "transport_logistics",
+                "labelHe": "הובלה/לוגיסטיקה"
+            },
+            {
+                "key": "purchasing",
+                "labelHe": "רכש/קניות"
+            },
+            {
+                "key": "management",
+                "labelHe": "ניהול"
+            }
+        ],
+        "taskStages": [
+            "prep",
+            "build",
+            "finish",
+            "qa",
+            "pack",
+            "transport",
+            "install",
+            "teardown",
+            "management"
+        ],
+        "sectionKeys": [
+            "materials_wood",
+            "materials_metal",
+            "materials_paint",
+            "materials_print",
+            "materials_props",
+            "consumables",
+            "packaging",
+            "transport",
+            "meals",
+            "equipment_rental",
+            "permits",
+            "storage",
+            "teardown",
+            "management",
+            "labor_direct"
+        ],
+        "runStatuses": [
+            "running",
+            "paused",
+            "blocked",
+            "needs_input",
+            "awaiting_approval",
+            "completed",
+            "failed",
+            "cancelled"
+        ],
+        "pipelineStages": [
+            "intake",
+            "planning",
+            "costing",
+            "quote",
+            "review",
+            "execution"
+        ],
+        "vnextStageOrder": [
+            "brief",
+            "scope",
+            "concept",
+            "tasks",
+            "budget",
+            "pricing",
+            "ops",
+            "quote",
+            "audit",
+            "compile"
+        ],
+        "lineTypes": [
+            "material",
+            "work"
+        ],
+        "pricingSourceCodes": [
+            "catalog",
+            "web",
+            "receipt",
+            "estimate"
+        ],
+        "outputContracts": [
+            "blocks",
+            "changeset",
+            "suggestions"
+        ],
+        "skillCategories": [
+            "planning",
+            "tasks",
+            "knowledge",
+            "review",
+            "shopping"
+        ],
+        "skillFlows": [
+            "ideation",
+            "planning",
+            "execution",
+            "review",
+            "optimization"
+        ],
+        "blockTypes": [
+            "ChatBlock",
+            "SuggestionsBlock",
+            "QuestionsBlock",
+            "ChangeSetBlock",
+            "ReviewBlock",
+            "ShoppingPlanBlock",
+            "PrintQaBlock",
+            "ReceiptBlock",
+            "RunbookBlock",
+            "DailyPlanBlock"
+        ],
+        "runModes": [
+            "PLANNING_FLOW",
+            "CHAT_EDIT"
+        ]
+    }
+}

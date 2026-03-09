@@ -1,0 +1,1943 @@
+### Configure Plugins in OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Manages the enabling, loading, and configuration of plugins within OpenClaw. It supports allowlisting and denylisting plugins, specifying custom load paths, and configuring individual plugin settings like API keys, environment variables, and prompt injection behavior. Configuration changes require a gateway restart.
+
+```json5
+{
+  plugins: {
+    enabled: true,
+    allow: ["voice-call"],
+    deny: [],
+    load: {
+      paths: ["~/Projects/oss/voice-call-extension"],
+    },
+    entries: {
+      "voice-call": {
+        enabled: true,
+        hooks: {
+          allowPromptInjection: false,
+        },
+        config: { provider: "twilio" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure OpenClaw Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Provides interactive and non-interactive methods for managing OpenClaw configuration. The `configure` command launches a wizard, while `config` offers direct get, set, unset, file, and validate operations. It supports JSON5 or raw string values and can validate configurations against a schema.
+
+```bash
+openclaw config get <path>
+openclaw config set <path> <value>
+openclaw config unset <path>
+openclaw config file
+openclaw config validate
+openclaw config validate --json
+```
+
+--------------------------------
+
+### config.apply (Full Configuration Replacement)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Applies a full configuration replacement to the Openclaw gateway. This RPC validates and writes the entire configuration, followed by a gateway restart. It supports options for providing the configuration as a JSON5 string, specifying a base hash for optimistic concurrency control, and configuring restart behavior.
+
+```APIDOC
+## POST /config.apply
+
+### Description
+Validates and applies the full configuration, then restarts the Gateway. This operation replaces the entire configuration.
+
+### Method
+POST
+
+### Endpoint
+/config.apply
+
+### Parameters
+#### Query Parameters
+- **raw** (string) - Required - JSON5 payload for the entire config.
+- **baseHash** (string) - Optional - Config hash from `config.get` (required when config exists).
+- **sessionKey** (string) - Optional - Session key for the post-restart wake-up ping.
+- **note** (string) - Optional - Note for the restart sentinel.
+- **restartDelayMs** (integer) - Optional - Delay before restart (default 2000).
+
+### Request Example
+```json
+{
+  "raw": "{ agents: { defaults: { workspace: \"~/.openclaw/workspace\" } } }",
+  "baseHash": "<hash>",
+  "sessionKey": "agent:main:whatsapp:dm:+15555550123"
+}
+```
+
+### Response
+#### Success Response (200)
+- **message** (string) - Confirmation message indicating the configuration has been applied and a restart is pending.
+
+#### Response Example
+```json
+{
+  "message": "Configuration applied. Gateway restart initiated."
+}
+```
+```
+
+--------------------------------
+
+### Migration: Single Agent to Multi-Agent Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/multi-agent-sandbox-tools.md
+
+Demonstrates the structural change from a single-agent configuration to a multi-agent setup. The example shows how `agents.defaults` and `agents.list` replace older agent configurations, with the 'main' agent having its sandbox mode set to 'off'.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.openclaw/workspace",
+      "sandbox": {
+        "mode": "non-main"
+      }
+    }
+  },
+  "tools": {
+    "sandbox": {
+      "tools": {
+        "allow": ["read", "write", "apply_patch", "exec"],
+        "deny": []
+      }
+    }
+  }
+}
+```
+
+```json
+{
+  "agents": {
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "workspace": "~/.openclaw/workspace",
+        "sandbox": { "mode": "off" }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Configure Channel Settings (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Defines how to set up various communication channels like WhatsApp, Telegram, and Discord. Includes provider-specific configurations and a general DM policy pattern.
+
+```json5
+{
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: "123:abc",
+      dmPolicy: "pairing",   // pairing | allowlist | open | disabled
+      allowFrom: ["tg:123"], // only for allowlist/open
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Hooks Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configure the Hooks system for integrating external services and automating workflows.
+
+```APIDOC
+## Hooks Configuration
+
+### Description
+Configure the Openclaw Hooks system for integrating external services and automating workflows.
+
+### Method
+N/A (Configuration)
+
+### Endpoint
+N/A (Configuration)
+
+### Parameters
+#### Hooks Configuration Object
+- **enabled** (boolean) - Enables the hooks system. Default `true`.
+- **token** (string) - Shared secret for authentication.
+- **path** (string) - The base path for hook endpoints. Default `/hooks`.
+- **maxBodyBytes** (integer) - Maximum allowed request body size in bytes. Default `262144`.
+- **defaultSessionKey** (string) - Default session key for hook agent runs. Default `hook:ingress`.
+- **allowRequestSessionKey** (boolean) - Allows callers of `/hooks/agent` to set `sessionKey`. Default `false`.
+- **allowedSessionKeyPrefixes** (string array) - Optional prefix allowlist for explicit `sessionKey` values. Example: `["hook:"]`.
+- **allowedAgentIds** (string array) - Restricts explicit agent routing. `*` or omitted allows all, `[]` denies all.
+- **presets** (string array) - Predefined hook presets. Example: `["gmail"]`.
+- **transformsDir** (string) - Directory for custom transform modules. Example: `~/.openclaw/hooks/transforms`.
+- **mappings** (array) - Array of hook mapping configurations.
+  - **match** (object) - Matching criteria for a hook.
+    - **path** (string) - Matches sub-path after `/hooks` (e.g., `gmail` for `/hooks/gmail`).
+    - **source** (string) - Matches a payload field for generic paths.
+  - **action** (string) - The action to perform (e.g., `agent`).
+  - **agentId** (string) - Routes to a specific agent.
+  - **wakeMode** (string) - How to wake the agent (`now` or `next-heartbeat`).
+  - **name** (string) - Name of the hook mapping.
+  - **sessionKey** (string) - Session key template for the hook agent run.
+  - **messageTemplate** (string) - Template for the message sent to the agent.
+  - **deliver** (boolean) - Whether to send the final reply to a channel.
+  - **channel** (string) - The channel to send the reply to. Defaults to `last`.
+  - **model** (string) - Overrides the LLM model for this hook run.
+  - **transform** (object) - Configuration for custom transform modules.
+    - **module** (string) - Relative path to the transform module within `transformsDir`.
+
+### Authentication
+- **Authorization: Bearer `<token>`**
+- **x-openclaw-token: `<token>`**
+
+### Request Example
+```json
+{
+  "hooks": {
+    "enabled": true,
+    "token": "shared-secret",
+    "path": "/hooks",
+    "maxBodyBytes": 262144,
+    "defaultSessionKey": "hook:ingress",
+    "allowRequestSessionKey": false,
+    "allowedSessionKeyPrefixes": ["hook:"],
+    "allowedAgentIds": ["hooks", "main"],
+    "presets": ["gmail"],
+    "transformsDir": "~/.openclaw/hooks/transforms",
+    "mappings": [
+      {
+        "match": { "path": "gmail" },
+        "action": "agent",
+        "agentId": "hooks",
+        "wakeMode": "now",
+        "name": "Gmail",
+        "sessionKey": "hook:gmail:{{messages[0].id}}",
+        "messageTemplate": "From: {{messages[0].from}}\nSubject: {{messages[0].subject}}\n{{messages[0].snippet}}",
+        "deliver": true,
+        "channel": "last",
+        "model": "openai/gpt-5.2-mini"
+      }
+    ]
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+Configuration is applied. No specific response body for configuration changes.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Configure Openclaw Project
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/onboard.md
+
+The `openclaw configure` command is used to set up and manage the configuration settings for your Openclaw project. It allows for interactive configuration or can be used in conjunction with other flags for scripting.
+
+```bash
+openclaw configure
+```
+
+--------------------------------
+
+### Specific Skill Entry Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Configures specific skill entries, enabling 'nano-banana-pro' with its API key and environment variables, and enabling the 'peekaboo' skill.
+
+```json
+{
+  "skills": {
+    "entries": {
+      "nano-banana-pro": {
+        "enabled": true,
+        "apiKey": "GEMINI_KEY_HERE",
+        "env": {
+          "GEMINI_API_KEY": "GEMINI_KEY_HERE"
+        }
+      },
+      "peekaboo": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Gateway Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+This JSON5 snippet defines the configuration for the Openclaw Gateway. It includes settings for mode, port, binding, authentication, Tailscale integration, Control UI, and remote connections. Authentication options range from none to token, password, and trusted-proxy, with configurable rate limiting.
+
+```json5
+{
+  "gateway": {
+    "mode": "local", // local | remote
+    "port": 18789,
+    "bind": "loopback",
+    "auth": {
+      "mode": "token", // none | token | password | trusted-proxy
+      "token": "your-token",
+      // password: "your-password", // or OPENCLAW_GATEWAY_PASSWORD
+      // trustedProxy: { userHeader: "x-forwarded-user" }, // for mode=trusted-proxy; see /gateway/trusted-proxy-auth
+      "allowTailscale": true,
+      "rateLimit": {
+        "maxAttempts": 10,
+        "windowMs": 60000,
+        "lockoutMs": 300000,
+        "exemptLoopback": true,
+      },
+    },
+    "tailscale": {
+      "mode": "off", // off | serve | funnel
+      "resetOnExit": false,
+    },
+    "controlUi": {
+      "enabled": true,
+      "basePath": "/openclaw",
+      // root: "dist/control-ui",
+      // allowedOrigins: ["https://control.example.com"], // required for non-loopback Control UI
+      // dangerouslyAllowHostHeaderOriginFallback: false, // dangerous Host-header origin fallback mode
+      // allowInsecureAuth: false,
+      // dangerouslyDisableDeviceAuth: false,
+    },
+    "remote": {
+      "url": "ws://gateway.tailnet:18789",
+      "transport": "ssh", // ssh | direct
+      "token": "your-token",
+      // password: "your-password",
+    },
+    "trustedProxies": ["10.0.0.1"],
+    // Optional. Default false.
+    "allowRealIpFallback": false,
+    "tools": {
+      // Additional /tools/invoke HTTP denies
+      "deny": ["browser"],
+      // Remove tools from the default HTTP deny list
+      "allow": ["gateway"],
+    },
+  },
+}
+
+```
+
+--------------------------------
+
+### config.patch (Partial Configuration Update)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Merges a partial configuration update into the existing Openclaw configuration using JSON merge patch semantics. This RPC allows for targeted modifications without replacing the entire configuration. It also handles gateway restarts similar to `config.apply`.
+
+```APIDOC
+## POST /config.patch
+
+### Description
+Merges a partial update into the existing config using JSON merge patch semantics. Objects merge recursively, `null` deletes a key, and arrays replace. Restart behavior matches `config.apply`.
+
+### Method
+POST
+
+### Endpoint
+/config.patch
+
+### Parameters
+#### Query Parameters
+- **raw** (string) - Required - JSON5 with just the keys to change.
+- **baseHash** (string) - Required - Config hash from `config.get`.
+- **sessionKey** (string) - Optional - Session key for the post-restart wake-up ping.
+- **note** (string) - Optional - Note for the restart sentinel.
+- **restartDelayMs** (integer) - Optional - Delay before restart (default 2000).
+
+### Request Example
+```json
+{
+  "raw": "{ channels: { telegram: { groups: { \"*\": { requireMention: false } } } } }",
+  "baseHash": "<hash>"
+}
+```
+
+### Response
+#### Success Response (200)
+- **message** (string) - Confirmation message indicating the partial configuration has been applied and a restart is pending.
+
+#### Response Example
+```json
+{
+  "message": "Partial configuration applied. Gateway restart initiated."
+}
+```
+```
+
+--------------------------------
+
+### Web Search Tool Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/web.md
+
+Configuration examples for enabling and setting up different web search providers like Perplexity, Brave, and Gemini.
+
+```APIDOC
+## Perplexity Search Configuration
+
+### Description
+Configure the Perplexity search provider for web searches.
+
+### Method
+Configuration
+
+### Endpoint
+N/A
+
+### Parameters
+#### Request Body
+- **tools.web.search.enabled** (boolean) - Optional - Enable or disable web search. Defaults to true.
+- **tools.web.search.provider** (string) - Required - Set to "perplexity".
+- **tools.web.search.perplexity.apiKey** (string) - Optional - Your Perplexity API key. Can be omitted if `PERPLEXITY_API_KEY` environment variable is set.
+
+### Request Example
+```json
+{
+  "tools": {
+    "web": {
+      "search": {
+        "enabled": true,
+        "provider": "perplexity",
+        "perplexity": {
+          "apiKey": "pplx-..."
+        }
+      }
+    }
+  }
+}
+```
+
+## Brave Search Configuration
+
+### Description
+Configure the Brave search provider for web searches.
+
+### Method
+Configuration
+
+### Endpoint
+N/A
+
+### Parameters
+#### Request Body
+- **tools.web.search.enabled** (boolean) - Optional - Enable or disable web search. Defaults to true.
+- **tools.web.search.provider** (string) - Required - Set to "brave".
+- **tools.web.search.apiKey** (string) - Optional - Your Brave API key. Can be omitted if `BRAVE_API_KEY` environment variable is set.
+
+### Request Example
+```json
+{
+  "tools": {
+    "web": {
+      "search": {
+        "enabled": true,
+        "provider": "brave",
+        "apiKey": "BSA..."
+      }
+    }
+  }
+}
+```
+
+## Gemini Search Configuration
+
+### Description
+Configure the Gemini (Google Search grounding) provider for web searches.
+
+### Method
+Configuration
+
+### Endpoint
+N/A
+
+### Parameters
+#### Request Body
+- **tools.web.search.provider** (string) - Required - Set to "gemini".
+- **tools.web.search.gemini.apiKey** (string) - Optional - Your Gemini API key. Can be omitted if `GEMINI_API_KEY` environment variable is set.
+- **tools.web.search.gemini.model** (string) - Optional - The Gemini model to use. Defaults to "gemini-2.5-flash".
+
+### Request Example
+```json
+{
+  "tools": {
+    "web": {
+      "search": {
+        "provider": "gemini",
+        "gemini": {
+          "apiKey": "AIza...",
+          "model": "gemini-2.5-flash"
+        }
+      }
+    }
+  }
+}
+```
+
+**Environment Alternative:** Set `GEMINI_API_KEY` in the Gateway environment or `~/.openclaw/.env` file.
+```
+
+--------------------------------
+
+### Gateway and Networking Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Configures the gateway for local operation, specifying port, bind address, and control UI settings. It also details authentication methods, Tailscale integration, remote connection settings, and hot-reloading behavior.
+
+```json
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "loopback",
+    "controlUi": {
+      "enabled": true,
+      "basePath": "/openclaw"
+    },
+    "auth": {
+      "mode": "token",
+      "token": "gateway-token",
+      "allowTailscale": true
+    },
+    "tailscale": {
+      "mode": "serve",
+      "resetOnExit": false
+    },
+    "remote": {
+      "url": "ws://gateway.tailnet:18789",
+      "token": "remote-token"
+    },
+    "reload": {
+      "mode": "hybrid",
+      "debounceMs": 300
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Agent Persistence Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to configure agent memory persistence. It shows execution-scoped, project-scoped, and custom path persistence options.
+
+```prose
+# Execution-scoped persistence (memory dies with run) agent captain:
+  model: opus
+  persist: true
+  prompt: "You coordinate and review"
+
+# Project-scoped persistence (memory survives across runs) agent advisor:
+  model: opus
+  persist: project
+  prompt: "You provide architectural guidance"
+
+# Custom path persistence agent shared:
+  model: opus
+  persist: ".prose/custom/shared-agent/"
+  prompt: "Shared across programs"
+```
+
+--------------------------------
+
+### Recommended OpenClaw Starter Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+A comprehensive starter configuration for OpenClaw, including identity settings, agent model selection, and more detailed channel configurations like requiring mentions in WhatsApp groups. This setup is suitable for a more robust and personalized assistant experience.
+
+```json5
+{
+  identity: {
+    name: "Clawd",
+    theme: "helpful assistant",
+    emoji: "??",
+  },
+  agent: {
+    workspace: "~/.openclaw/workspace",
+    model: { primary: "anthropic/claude-sonnet-4-5" },
+  },
+  channels: {
+    whatsapp: {
+      allowFrom: ["+15555550123"],
+      groups: { "*": { requireMention: true } },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Perplexity Web Search
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/web.md
+
+Enables and configures the Perplexity web search provider. Requires an API key, which can be set via environment variable PERPLEXITY_API_KEY or directly in the configuration.
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        enabled: true,
+        provider: "perplexity",
+        perplexity: {
+          apiKey: "pplx-...", // optional if PERPLEXITY_API_KEY is set
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Gmail Integration Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configure the Gmail integration for the Openclaw Gateway, including account details, push subscriptions, and serving options.
+
+```APIDOC
+## Gmail Integration Configuration
+
+### Description
+Configure the Gmail integration for the Openclaw Gateway. This allows the gateway to automatically start `gog gmail watch serve` on boot when configured.
+
+### Method
+N/A (Configuration)
+
+### Endpoint
+N/A (Configuration)
+
+### Parameters
+#### Hooks Gmail Configuration Object
+- **account** (string) - Required - The Gmail account email address.
+- **topic** (string) - Required - The Google Cloud Pub/Sub topic name.
+- **subscription** (string) - Required - The Google Cloud Pub/Sub subscription name.
+- **pushToken** (string) - Required - A shared token for push notifications.
+- **hookUrl** (string) - Required - The URL where the gateway will receive push notifications.
+- **includeBody** (boolean) - Optional - Whether to include the email body in notifications. Default `true`.
+- **maxBytes** (integer) - Optional - Maximum bytes to include for the email body. Default `20000`.
+- **renewEveryMinutes** (integer) - Optional - How often to renew the push subscription in minutes. Default `720`.
+- **serve** (object) - Configuration for the internal server to handle push notifications.
+  - **bind** (string) - The IP address to bind the server to. Default `127.0.0.1`.
+  - **port** (integer) - The port for the server to listen on. Default `8788`.
+  - **path** (string) - The path for the server to listen on. Default `/`.
+- **tailscale** (object) - Optional - Tailscale configuration for exposing the serve endpoint.
+  - **mode** (string) - Tailscale mode (`funnel`).
+  - **path** (string) - The Tailscale funnel path.
+- **model** (string) - Optional - The LLM model to use for processing Gmail content.
+- **thinking** (string) - Optional - Controls thinking process display for Gmail processing (`on` or `off`).
+
+### Environment Variable
+- **OPENCLAW_SKIP_GMAIL_WATCHER** (integer) - Set to `1` to disable the automatic start of `gog gmail watch serve`.
+
+### Request Example
+```json
+{
+  "hooks": {
+    "gmail": {
+      "account": "openclaw@gmail.com",
+      "topic": "projects/my-project/topics/gog-gmail-watch",
+      "subscription": "gog-gmail-watch-push",
+      "pushToken": "shared-push-token",
+      "hookUrl": "http://127.0.0.1:18789/hooks/gmail",
+      "includeBody": true,
+      "maxBytes": 20000,
+      "renewEveryMinutes": 720,
+      "serve": {
+        "bind": "127.0.0.1",
+        "port": 8788,
+        "path": "/"
+      },
+      "tailscale": {
+        "mode": "funnel",
+        "path": "/gmail-pubsub"
+      },
+      "model": "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+      "thinking": "off"
+    }
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+Configuration is applied. Gateway will manage the Gmail watcher service as configured.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Configure Telegram Bots per Agent
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/multi-agent.md
+
+This JSON5 configuration defines how to set up individual Telegram bots for different agents. It maps agent IDs to specific workspace directories and configures bindings to route messages from Telegram accounts to the appropriate agents. Bot tokens are specified within the channel configuration.
+
+```json5
+{
+  agents: {
+    list: [
+      { id: "main", workspace: "~/.openclaw/workspace-main" },
+      { id: "alerts", workspace: "~/.openclaw/workspace-alerts" },
+    ],
+  },
+  bindings: [
+    { agentId: "main", match: { channel: "telegram", accountId: "default" } },
+    { agentId: "alerts", match: { channel: "telegram", accountId: "alerts" } },
+  ],
+  channels: {
+    telegram: {
+      accounts: {
+        default: {
+          botToken: "123456:ABC...",
+          dmPolicy: "pairing",
+        },
+        alerts: {
+          botToken: "987654:XYZ...",
+          dmPolicy: "allowlist",
+          allowFrom: ["tg:123456789"],
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure IRC Channel
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Enables and configures the IRC channel integration. Supports direct message policies and NickServ authentication. The 'password' for NickServ can be set using an environment variable. Full IRC channel configuration is detailed in the dedicated IRC documentation.
+
+```json5
+{
+  channels: {
+    irc: {
+      enabled: true,
+      dmPolicy: "pairing",
+      configWrites: true,
+      nickserv: {
+        enabled: true,
+        service: "NickServ",
+        password: "${IRC_NICKSERV_PASSWORD}",
+        register: false,
+        registerEmail: "bot@example.com",
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Discord Bot Configuration - JSON5
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+This JSON5 configuration defines the settings for the Discord bot. It includes token, message limits, guild-specific configurations, thread binding options, voice channel settings, and streaming modes. Ensure sensitive information like tokens are handled securely.
+
+```json5
+{
+  channels: {
+    discord: {
+      enabled: true,
+      token: "your-bot-token",
+      mediaMaxMb: 8,
+      allowBots: false,
+      actions: {
+        reactions: true,
+        stickers: true,
+        polls: true,
+        permissions: true,
+        messages: true,
+        threads: true,
+        pins: true,
+        search: true,
+        memberInfo: true,
+        roleInfo: true,
+        roles: false,
+        channelInfo: true,
+        voiceStatus: true,
+        events: true,
+        moderation: false,
+      },
+      replyToMode: "off", // off | first | all
+      dmPolicy: "pairing",
+      allowFrom: ["1234567890", "123456789012345678"],
+      dm: { enabled: true, groupEnabled: false, groupChannels: ["openclaw-dm"] },
+      guilds: {
+        "123456789012345678": {
+          slug: "friends-of-openclaw",
+          requireMention: false,
+          ignoreOtherMentions: true,
+          reactionNotifications: "own",
+          users: ["987654321098765432"],
+          channels: {
+            general: { allow: true },
+            help: {
+              allow: true,
+              requireMention: true,
+              users: ["987654321098765432"],
+              skills: ["docs"],
+              systemPrompt: "Short answers only.",
+            },
+          },
+        },
+      },
+      historyLimit: 20,
+      textChunkLimit: 2000,
+      chunkMode: "length", // length | newline
+      streaming: "off", // off | partial | block | progress (progress maps to partial on Discord)
+      maxLinesPerMessage: 17,
+      ui: {
+        components: {
+          accentColor: "#5865F2",
+        },
+      },
+      threadBindings: {
+        enabled: true,
+        idleHours: 24,
+        maxAgeHours: 0,
+        spawnSubagentSessions: false, // opt-in for sessions_spawn({ thread: true })
+      },
+      voice: {
+        enabled: true,
+        autoJoin: [
+          {
+            guildId: "123456789012345678",
+            channelId: "234567890123456789",
+          },
+        ],
+        daveEncryption: true,
+        decryptionFailureTolerance: 24,
+        tts: {
+          provider: "openai",
+          openai: { voice: "alloy" },
+        },
+      },
+      retry: {
+        attempts: 3,
+        minDelayMs: 500,
+        maxDelayMs: 30000,
+        jitter: 0.1,
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Plugin Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/plugin.md
+
+Defines how to configure plugin behavior, including enabling/disabling, allow/deny lists, and loading paths. Configuration changes require a gateway restart. Unknown plugin IDs or channel keys result in errors.
+
+```json5
+{
+  plugins: {
+    enabled: true,
+    allow: ["voice-call"],
+    deny: ["untrusted-plugin"],
+    load: { paths: ["~/Projects/oss/voice-call-extension"] },
+    entries: {
+      "voice-call": { enabled: true, config: { provider: "twilio" } },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Heartbeat Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Configures the heartbeat mechanism for monitoring agent status. It specifies the interval, model to use, target for status updates, direct policy, recipient, prompt, and acknowledgment character limit.
+
+```json
+{
+  "heartbeat": {
+    "every": "30m",
+    "model": "anthropic/claude-sonnet-4-5",
+    "target": "last",
+    "directPolicy": "allow",
+    "to": "+15555550123",
+    "prompt": "HEARTBEAT",
+    "ackMaxChars": 300
+  }
+}
+```
+
+--------------------------------
+
+### Configure Logging Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configures logging behavior, including the log level, file path, console output format, and sensitive data redaction patterns. Sensitive data redaction can be controlled globally or by specific patterns.
+
+```json5
+{
+  logging: {
+    level: "info",
+    file: "/tmp/openclaw/openclaw.log",
+    consoleLevel: "info",
+    consoleStyle: "pretty", // pretty | compact | json
+    redactSensitive: "tools", // off | tools
+    redactPatterns: ["\\bTOKEN\\b\\s*[=:]\\s*(["']?)([^\\s"']+)\1"],
+  },
+}
+```
+
+--------------------------------
+
+### Configure Provider-Specific Tool Profiles
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Allows for fine-grained control over tool availability based on specific providers or models. The configuration follows a hierarchy: base profile, then provider profile, and finally the allow/deny lists. This enables customized toolsets for different AI models or services.
+
+```json5
+{
+  tools: {
+    profile: "coding",
+    byProvider: {
+      "google-antigravity": { profile: "minimal" },
+      "openai/gpt-5.2": { allow: ["group:fs", "sessions_list"] },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure a Single OpenClaw Agent
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Defines the configuration for a single OpenClaw agent, including its ID, model, workspace, identity, and runtime settings. This JSON5 structure allows for detailed per-agent overrides.
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "main",
+        default: true,
+        name: "Main Agent",
+        workspace: "~/.openclaw/workspace",
+        agentDir: "~/.openclaw/agents/main/agent",
+        model: "anthropic/claude-opus-4-6", // or { primary, fallbacks }
+        params: { cacheRetention: "none" }, // overrides matching defaults.models params by key
+        identity: {
+          name: "Samantha",
+          theme: "helpful sloth",
+          emoji: "??",
+          avatar: "avatars/samantha.png",
+        },
+        groupChat: { mentionPatterns: ["@openclaw"] },
+        sandbox: { mode: "off" },
+        runtime: {
+          type: "acp",
+          acp: {
+            agent: "codex",
+            backend: "acpx",
+            mode: "persistent",
+            cwd: "/workspace/openclaw",
+          },
+        },
+        subagents: { allowAgents: ["*"] },
+        tools: {
+          profile: "coding",
+          allow: ["browser"],
+          deny: ["canvas"],
+          elevated: { enabled: true },
+        },
+      },
+    ],
+  },
+}
+```
+
+--------------------------------
+
+### Feishu Drive Configuration (YAML)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/feishu/skills/feishu-drive/SKILL.md
+
+Configuration snippet for enabling the Feishu Drive tool within the application. This YAML structure specifies channel configurations and tool enablement, with 'drive: true' activating the Feishu Drive functionality by default.
+
+```yaml
+channels:
+  feishu:
+    tools:
+      drive: true
+```
+
+--------------------------------
+
+### OpenClaw CLI Configuration Commands (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Examples of using the OpenClaw CLI for configuration management. These commands allow for interactive setup, getting, setting, and unsetting configuration values. They provide a convenient way to manage settings without directly editing the config file.
+
+```bash
+openclaw onboard       # full setup wizard
+openclaw configure     # config wizard
+```
+
+```bash
+openclaw config get agents.defaults.workspace
+openclaw config set agents.defaults.heartbeat.every "2h"
+openclaw config unset tools.web.search.apiKey
+```
+
+--------------------------------
+
+### Configure Heartbeat Behavior (OpenClaw)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/heartbeat.md
+
+This configuration snippet shows how to adjust the default heartbeat behavior in OpenClaw. You can control whether OK messages, alerts, and the indicator are shown. This allows for fully silent operation, indicator-only notifications, or specific channel configurations.
+
+```yaml
+channels.defaults.heartbeat: { showOk: false, showAlerts: false, useIndicator: false }
+channels.defaults.heartbeat: { showOk: false, showAlerts: false, useIndicator: true }
+channels.telegram.heartbeat: { showOk: true }
+```
+
+--------------------------------
+
+### Configure config hot reload modes
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Configure the Gateway's automatic configuration reload behavior. Options include 'hybrid' (default, auto-applies safe changes and restarts for critical ones), 'hot' (only hot-applies safe changes), 'restart' (restarts on any change), and 'off' (disables watching).
+
+```json5
+{
+  gateway: {
+    reload: { mode: "hybrid", debounceMs: 300 },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Brave Web Search
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/web.md
+
+Enables and configures the Brave web search provider. Requires an API key, which can be set via environment variable BRAVE_API_KEY or directly in the configuration.
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        enabled: true,
+        provider: "brave",
+        apiKey: "BSA...", // optional if BRAVE_API_KEY is set
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Himalaya Signature and Download Directory Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/himalaya/references/configuration.md
+
+Configures the email signature and the directory where downloaded attachments are saved. The signature can include newlines and a delimiter, while the downloads directory can be set to a custom path. These settings apply to a specific account.
+
+```toml
+[accounts.default]
+signature = "Best regards,\nYour Name"
+signature-delim = "-- \n"
+
+```
+
+```toml
+[accounts.default]
+downloads-dir = "~/Downloads/himalaya"
+
+```
+
+--------------------------------
+
+### Configure Default Agent Workspace
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Sets the default workspace directory for agents. This configuration is typically placed in the OpenClaw configuration file. It ensures agents use a consistent location for their files and memory.
+
+```json5
+{
+  agents: {
+    defaults: {
+      workspace: "~/.openclaw/workspace"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### WhatsApp Channel Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configures the WhatsApp channel, including message policies, allowed senders, media limits, and group settings. It supports multi-account setups and defines how messages are chunked and read receipts are handled.
+
+```json5
+{
+  channels: {
+    whatsapp: {
+      dmPolicy: "pairing", // pairing | allowlist | open | disabled
+      allowFrom: ["+15555550123", "+447700900123"],
+      textChunkLimit: 4000,
+      chunkMode: "length", // length | newline
+      mediaMaxMb: 50,
+      sendReadReceipts: true, // blue ticks (false in self-chat mode)
+      groups: {
+        "*": { requireMention: true },
+      },
+      groupPolicy: "allowlist",
+      groupAllowFrom: ["+15551234567"],
+    },
+  },
+  web: {
+    enabled: true,
+    heartbeatSeconds: 60,
+    reconnect: {
+      initialMs: 2000,
+      maxMs: 120000,
+      factor: 1.4,
+      jitter: 0.2,
+      maxAttempts: 0,
+    },
+  },
+}
+```
+
+```json5
+{
+  channels: {
+    whatsapp: {
+      accounts: {
+        default: {},
+        personal: {},
+        biz: {
+          // authDir: "~/.openclaw/credentials/whatsapp/biz",
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Webhook Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Enables and configures webhooks, setting the path, token, available presets, transforms directory, and defining a specific 'gmail-hook' mapping with its matching criteria, action, session key, message and text templates, and transformation module.
+
+```json
+{
+  "hooks": {
+    "enabled": true,
+    "path": "/hooks",
+    "token": "shared-secret",
+    "presets": ["gmail"],
+    "transformsDir": "~/.openclaw/hooks/transforms",
+    "mappings": [
+      {
+        "id": "gmail-hook",
+        "match": {
+          "path": "gmail"
+        },
+        "action": "agent",
+        "wakeMode": "now",
+        "name": "Gmail",
+        "sessionKey": "hook:gmail:{{messages[0].id}}",
+        "messageTemplate": "From: {{messages[0].from}}\nSubject: {{messages[0].subject}}",
+        "textTemplate": "{{messages[0].snippet}}",
+        "deliver": true,
+        "channel": "last",
+        "to": "+15555550123",
+        "thinking": "low",
+        "timeoutSeconds": 300,
+        "transform": {
+          "module": "gmail.js",
+          "export": "transformGmail"
+        }
+      }
+    ]
+  }
+}
+```
+
+--------------------------------
+
+### Use Environment Variable Substitution in Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Demonstrates how to reference environment variables within string values in the OpenClaw configuration using the `${VAR_NAME}` syntax. This enables dynamic configuration based on the runtime environment. It outlines rules for variable naming, error handling for missing variables, escaping, and usage within included files and inline values.
+
+```json5
+{
+  gateway: { auth: { token: "${OPENCLAW_GATEWAY_TOKEN}" } },
+  models: { providers: { custom: { apiKey: "${CUSTOM_API_KEY}" } } },
+}
+```
+
+--------------------------------
+
+### Configure Kimi Coding Provider
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+This JSON configuration sets up the Kimi Coding provider for the 'kimi-coding/k2p5' model. It's an Anthropic-compatible provider. Users need to set the KIMI_API_KEY environment variable.
+
+```json5
+{
+  env: { KIMI_API_KEY: "sk-..." },
+  agents: {
+    defaults: {
+      model: { primary: "kimi-coding/k2p5" },
+      models: { "kimi-coding/k2p5": { alias: "Kimi K2.5" } },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure BlueBubbles Channel
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+This configuration enables the BlueBubbles integration for OpenClaw, which is the recommended path for iMessage. It requires basic setup and can be further configured via the '/channels/bluebubbles' documentation.
+
+```json5
+{
+  channels: {
+    bluebubbles: {
+      enabled: true,
+      dmPolicy: "pairing",
+      // serverUrl, password, webhookPath, group controls, and advanced actions:
+      // see /channels/bluebubbles
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Per-Hook Configuration with Environment Variables
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/hooks.md
+
+Illustrates how to apply custom configurations to individual hooks, including setting environment variables for a specific hook entry. This allows for tailored hook behavior.
+
+```json
+{
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "my-hook": {
+          "enabled": true,
+          "env": {
+            "MY_CUSTOM_VAR": "value"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Media Understanding (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Configures inbound media understanding for audio and video processing. It allows specifying concurrency, enabling/disabling features, setting size limits, defining access rules, and configuring models for audio transcription and video analysis. Supports both API providers and CLI commands.
+
+```json5
+{
+  tools: {
+    media: {
+      concurrency: 2,
+      audio: {
+        enabled: true,
+        maxBytes: 20971520,
+        scope: {
+          default: "deny",
+          rules: [{ action: "allow", match: { chatType: "direct" } }],
+        },
+        models: [
+          { provider: "openai", model: "gpt-4o-mini-transcribe" },
+          { type: "cli", command: "whisper", args: ["--model", "base", "{{MediaPath}}"] },
+        ],
+      },
+      video: {
+        enabled: true,
+        maxBytes: 52428800,
+        models: [{ provider: "google", model: "gemini-3-flash-preview" }],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Himalaya Notmuch Backend Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/himalaya/references/configuration.md
+
+Configuration for using the Notmuch backend, which allows Himalaya to interact with local mail stored and indexed by Notmuch. This requires specifying the backend type as 'notmuch' and providing the path to the Notmuch database.
+
+```toml
+[accounts.local]
+email = "user@example.com"
+
+backend.type = "notmuch"
+backend.db-path = "~/.mail/.notmuch"
+
+```
+
+--------------------------------
+
+### Configure Pi Compaction Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/session-management-compaction.md
+
+Defines the JSON5 configuration for Pi's compaction settings, including enabling compaction and specifying token reserves. These settings control how much data is retained before compaction occurs.
+
+```json5
+{
+  compaction: {
+    enabled: true,
+    reserveTokens: 16384,
+    keepRecentTokens: 20000,
+  },
+}
+```
+
+--------------------------------
+
+### Split configuration into multiple files ($include)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Organize large configuration files using the `$include` directive. This allows for modularity by referencing other JSON5 files. `$include` can be used for single file replacements, deep merging arrays of files, or merging sibling keys.
+
+```json5
+// ~/.openclaw/openclaw.json
+{
+  gateway: { port: 18789 },
+  agents: { $include: "./agents.json5" },
+  broadcast: {
+    $include: ["./clients/a.json5", "./clients/b.json5"],
+  },
+}
+```
+
+--------------------------------
+
+### Configure Kimi Coding Provider
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/moonshot.md
+
+JSON configuration snippet for setting up the Kimi Coding provider. It specifies the environment variable for the API key and defines the default model for Kimi Coding, aliasing it for easier reference.
+
+```json5
+{
+  env: { KIMI_API_KEY: "sk-..." },
+  agents: {
+    defaults: {
+      model: { primary: "kimi-coding/k2p5" },
+      models: {
+        "kimi-coding/k2p5": { alias: "Kimi K2.5" },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Himalaya Multiple Account Setup
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/himalaya/references/configuration.md
+
+Illustrates how to configure multiple email accounts within Himalaya. Each account is defined under a unique key (e.g., 'personal', 'work') within the `[accounts]` section. Users can switch between accounts using the `--account` flag in commands.
+
+```toml
+[accounts.personal]
+email = "personal@example.com"
+default = true
+# ... backend config ...
+
+[accounts.work]
+email = "work@company.com"
+# ... backend config ...
+
+```
+
+```bash
+himalaya --account work envelope list
+
+```
+
+--------------------------------
+
+### Browser Configuration Example
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+An example JSON5 configuration object for browser settings. This includes enabling the browser, setting default profiles, specifying executable paths, and configuring remote debugging ports.
+
+```json5
+{
+  browser: {
+    enabled: true,
+    defaultProfile: "openclaw",
+    color: "#FF4500",
+    executablePath: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    profiles: {
+      openclaw: { cdpPort: 18800, color: "#FF4500" },
+      work: { cdpPort: 18801, color: "#0066CC" },
+      remote: { cdpUrl: "http://10.0.0.42:9222", color: "#00AA00" },
+    },
+    ssrfPolicy: {
+      dangerouslyAllowPrivateNetwork: true,
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Sandbox Session Visibility Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/session-tool.md
+
+Illustrates JSON5 configuration for controlling session tool visibility, particularly within sandboxed environments. It shows options for 'self', 'tree', 'agent', and 'all' visibility.
+
+```json5
+{
+  "tools": {
+    "sessions": {
+      "visibility": "tree"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "sessionToolsVisibility": "spawned"
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Conditional Logic for Configuration Loading
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/antipatterns.md
+
+Demonstrates how to check for the existence of a configuration file and load it if present, otherwise use default settings. This pattern helps manage application configuration gracefully.
+
+```prose
+let config_exists = session "Check if config file exists"
+
+if **config file exists**:
+  session "Load configuration from file"
+else:
+  session "Use default configuration"
+```
+
+--------------------------------
+
+### Cron Job Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Enables and configures cron jobs, specifying the store location for job data, maximum concurrent runs, session retention period, and settings for the run log size and line retention.
+
+```json
+{
+  "cron": {
+    "enabled": true,
+    "store": "~/.openclaw/cron/cron.json",
+    "maxConcurrentRuns": 2,
+    "sessionRetention": "24h",
+    "runLog": {
+      "maxBytes": "2mb",
+      "keepLines": 2000
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Run openclaw configure CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/configure.md
+
+Executes the interactive configuration wizard for Openclaw. This command can be used to set up credentials, devices, agent defaults, and more. It can also be used with specific sections to focus the configuration process.
+
+```bash
+openclaw configure
+openclaw configure --section model --section channels
+```
+
+--------------------------------
+
+### Sandbox Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Configures the sandbox environment for executing code securely. It specifies the mode, persistence per session, workspace root, and detailed Docker settings including image, work directory, read-only root, tmpfs mounts, network, and user.
+
+```json
+{
+  "sandbox": {
+    "mode": "non-main",
+    "perSession": true,
+    "workspaceRoot": "~/.openclaw/sandboxes",
+    "docker": {
+      "image": "openclaw-sandbox:bookworm-slim",
+      "workdir": "/workspace",
+      "readOnlyRoot": true,
+      "tmpfs": ["/tmp", "/var/tmp", "/run"],
+      "network": "none",
+      "user": "1000:1000"
+    },
+    "browser": {
+      "enabled": false
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Tool Execution Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Configures settings for tool execution, including background process timing, execution timeouts, and cleanup intervals.
+
+```json
+{
+  "tools": {
+    "exec": {
+      "backgroundMs": 10000,
+      "timeoutSec": 1800,
+      "cleanupMs": 1800000
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configure Sub-Agent Tool Access (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/subagents.md
+
+This JSON5 configuration snippet demonstrates how to define tool access policies for sub-agents. It shows how to deny specific tools and optionally set an allow-list, with 'deny' taking precedence. This configuration is crucial for controlling the capabilities of sub-agents within the OpenCLAW system.
+
+```json5
+{
+  agents: {
+    defaults: {
+      subagents: {
+        maxConcurrent: 1,
+      },
+    },
+  },
+  tools: {
+    subagents: {
+      tools: {
+        // deny wins
+        deny: ["gateway", "cron"],
+        // if allow is set, it becomes allow-only (deny still wins)
+        // allow: ["read", "exec", "process"]
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Fix Configuration Errors
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/signal.md
+
+Command to automatically fix common configuration validation errors after making edits to the OpenClaw configuration.
+
+```bash
+openclaw doctor --fix
+```
+
+--------------------------------
+
+### General Web Search Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/web.md
+
+Provides general configuration options for the web search tool, including enabling the tool, setting an API key (example for Brave), and defining parameters like max results, timeout, and cache TTL.
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        enabled: true,
+        apiKey: "BRAVE_API_KEY_HERE", // optional if BRAVE_API_KEY is set
+        maxResults: 5,
+        timeoutSeconds: 30,
+        cacheTtlMinutes: 15,
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Microsoft Teams Channel
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+Enables and configures the Microsoft Teams channel integration. Requires 'enabled' and 'configWrites' to be set to true. Further configuration details like appId, appPassword, and webhook are available in the dedicated Microsoft Teams documentation.
+
+```json5
+{
+  channels: {
+    msteams: {
+      enabled: true,
+      configWrites: true,
+      // appId, appPassword, tenantId, webhook, team/channel policies:
+      // see /channels/msteams
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Minimal OpenClaw Configuration (JSON5)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+A minimal example of an OpenClaw configuration file (`~/.openclaw/openclaw.json`). It demonstrates how to set default agent workspaces and configure allowed WhatsApp contacts. This file uses JSON5 format, which supports comments and trailing commas.
+
+```json5
+// ~/.openclaw/openclaw.json
+{
+  agents: { defaults: { workspace: "~/.openclaw/workspace" } },
+  channels: { whatsapp: { allowFrom: ["+15555550123"] } },
+}
+```
+
+--------------------------------
+
+### Configure web_fetch Tool Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/web.md
+
+This JSON5 configuration defines the operational parameters for the web_fetch tool. It includes settings for enabling the web fetcher, maximum character limits for content, response byte caps, timeouts, cache duration, redirect limits, user agent strings, and specific configurations for the Firecrawl integration, such as API keys and base URLs.
+
+```json5
+{
+  tools: {
+    web: {
+      fetch: {
+        enabled: true,
+        maxChars: 50000,
+        maxCharsCap: 50000,
+        maxResponseBytes: 2000000,
+        timeoutSeconds: 30,
+        cacheTtlMinutes: 15,
+        maxRedirects: 3,
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        readability: true,
+        firecrawl: {
+          enabled: true,
+          apiKey: "FIRECRAWL_API_KEY_HERE", // optional if FIRECRAWL_API_KEY is set
+          baseUrl: "https://api.firecrawl.dev",
+          onlyMainContent: true,
+          maxAgeMs: 86400000, // ms (1 day)
+          timeoutSeconds: 60,
+        },
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Configure Google Chat Channel for Openclaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
+
+This JSON configuration enables and sets up the Google Chat channel for Openclaw. It specifies authentication details using a service account file, defines audience and webhook paths, and configures direct messaging and group policies. It also enables reaction notifications.
+
+```json5
+{
+  channels: {
+    googlechat: {
+      enabled: true,
+      serviceAccountFile: "/path/to/service-account.json",
+      audienceType: "app-url",
+      audience: "https://gateway.example.com/googlechat",
+      webhookPath: "/googlechat",
+      botUser: "users/1234567890",
+      dm: {
+        enabled: true,
+        policy: "pairing",
+        allowFrom: ["users/1234567890"],
+      },
+      groupPolicy: "allowlist",
+      groups: {
+        "spaces/AAAA": { allow: true, requireMention: true },
+      },
+      actions: { reactions: true },
+      typingIndicator: "message",
+      mediaMaxMb: 20,
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Sandbox Session Visibility Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/session-tool.md
+
+Configure how session tools are scoped to control cross-session access, particularly within sandboxed environments.
+
+```APIDOC
+## Sandbox Session Visibility
+
+### Description
+Controls the visibility of session tools to limit cross-session access. This is particularly relevant for sandboxed sessions where stricter access controls may be required.
+
+### Method
+N/A (Configuration)
+
+### Endpoint
+N/A (Configuration)
+
+### Parameters
+#### Configuration Options
+- `tools.sessions.visibility` (string: "self" | "tree" | "agent" | "all") - Optional - Defaults to "tree". Defines the scope of session visibility.
+  - `self`: Only the current session key.
+  - `tree`: Current session and sessions spawned by the current session.
+  - `agent`: Any session belonging to the current agent ID.
+  - `all`: Any session (cross-agent access still requires `tools.agentToAgent`).
+- `agents.defaults.sandbox.sessionToolsVisibility` (string: "spawned" | "all") - Optional - Defaults to "spawned". For sandboxed sessions, this clamps visibility.
+  - `spawned`: Clamps visibility to "tree" even if `tools.sessions.visibility` is set to "all".
+  - `all`: Allows visibility as defined by `tools.sessions.visibility`.
+
+### Request Example
+```json5
+{
+  "tools": {
+    "sessions": {
+      "visibility": "tree" 
+    }
+  },
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "sessionToolsVisibility": "spawned" 
+      }
+    }
+  }
+}
+```
+
+### Response
+#### Success Response (200)
+N/A (Configuration)
+
+#### Response Example
+N/A (Configuration)
+```
+
+--------------------------------
+
+### Skill Management Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-examples.md
+
+Manages skills, allowing bundled skills like 'gemini' and 'peekaboo', specifying extra directories for loading skills, and configuring installation preferences such as preferring Brew and using npm as the node manager.
+
+```json
+{
+  "skills": {
+    "allowBundled": ["gemini", "peekaboo"],
+    "load": {
+      "extraDirs": ["~/Projects/agent-scripts/skills"]
+    },
+    "install": {
+      "preferBrew": true,
+      "nodeManager": "npm"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Configuration Schema RPC Endpoints
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/experiments/onboarding-config-protocol.md
+
+These endpoints provide access to the configuration schema and allow for schema lookups within a specific path.
+
+```APIDOC
+## RPC Endpoints for Configuration Schema
+
+### Description
+Provides endpoints to retrieve the overall configuration schema and to perform lookups for specific configuration paths, including associated UI hints.
+
+### Methods and Endpoints
+
+#### `config.schema`
+
+- **Method**: POST (Assumed)
+- **Endpoint**: `/gateway/rpc` (Assumed)
+- **Description**: Retrieves the complete configuration schema and associated UI hints.
+- **Parameters**:
+  - **Path Parameters**: None
+  - **Query Parameters**: None
+  - **Request Body**:
+    - `{}` (empty object) - No specific parameters required.
+
+### Request Example
+```json
+{
+  "method": "config.schema",
+  "params": {}
+}
+```
+
+### Response Example (Success)
+```json
+{
+  "schema": { ... },
+  "uiHints": { ... },
+  "version": "1.2.0",
+  "generatedAt": "2023-10-27T10:00:00Z"
+}
+```
+
+#### `config.schema.lookup`
+
+- **Method**: POST (Assumed)
+- **Endpoint**: `/gateway/rpc` (Assumed)
+- **Description**: Retrieves the configuration schema and UI hint for a specific configuration path.
+- **Parameters**:
+  - **Path Parameters**: None
+  - **Query Parameters**: None
+  - **Request Body**:
+    - `path` (string) - Required - The configuration path to look up (e.g., "project.name").
+
+### Request Example
+```json
+{
+  "method": "config.schema.lookup",
+  "params": {
+    "path": "project.dependencies"
+  }
+}
+```
+
+### Response Example (Success)
+```json
+{
+  "path": "project.dependencies",
+  "schema": { ... },
+  "hint": { ... },
+  "hintPath": "project.dependencies",
+  "children": [
+    { "path": "project.dependencies.0" },
+    { "path": "project.dependencies.1" }
+  ]
+}
+```
+
+### General Config Schema Response Fields
+- `schema` (object) - The JSON schema definition for the configuration or path.
+- `uiHints` (object) - Keyed by path, contains optional metadata for rendering UI elements (label, help, group, order, advanced, sensitive, placeholder).
+- `version` (string) - The version of the configuration schema.
+- `generatedAt` (string) - The timestamp when the schema was generated.
+- `path` (string) - The configuration path being looked up (for `lookup` endpoint).
+- `hint` (object) - UI hint metadata for the specific path (for `lookup` endpoint).
+- `hintPath` (string) - The path associated with the hint (for `lookup` endpoint).
+- `children` (array) - An array of child paths for the given path (for `lookup` endpoint).
+```

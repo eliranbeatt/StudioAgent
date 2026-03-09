@@ -1,0 +1,52 @@
+{
+  "snapshotVersion": "2.0.0",
+  "generatedAt": "2026-02-21T15:30:00Z",
+  "source": "convex/sdk/vnext/contracts.ts",
+  "stageOrder": [
+    "brief",
+    "scope",
+    "concept",
+    "tasks",
+    "budget",
+    "pricing",
+    "ops",
+    "quote",
+    "audit",
+    "compile"
+  ],
+  "types": {
+    "VNextStageKey": "Union of stageOrder values",
+    "QuestionBlockOption": {
+      "value": "string",
+      "labelHe": "string"
+    },
+    "QuestionBlock": {
+      "id": "string",
+      "textHe": "string",
+      "type": "text | date | select | number",
+      "optionsHe": "string[]?"
+    },
+    "StageArtifactMap": "Record<VNextStageKey, { questions?, answers?, changeset?, metadata? }>",
+    "PlanSpec": "Structured specification for buildTargetPlanSpec()",
+    "CompileInput": "Input for compileDeterministicChangeSet()"
+  },
+  "pipeline": {
+    "questionSkills": {
+      "A": "V3_Q_A_INTAKE",
+      "B": "V3_Q_B_PLAN",
+      "C": "V3_Q_C_COST",
+      "D": "V3_Q_D_POLISH_APPROVALS",
+      "E": "V3_Q_E_QUOTE"
+    },
+    "builderSkills": {
+      "A": "V3_BUILD_A_MEMORYDOCS",
+      "B": [
+        "V3_BUILD_B_PLAN",
+        "V3_BUILD_BC_COMBINED_PLAN_ACCOUNTING"
+      ],
+      "C": "V3_BUILD_C_ACCOUNTING",
+      "D": "V3_BUILD_D_POLISH",
+      "E": "V3_BUILD_E_QUOTE"
+    }
+  }
+}

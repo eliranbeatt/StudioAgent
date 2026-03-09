@@ -1,0 +1,1862 @@
+### Memory Recall CLI Command Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/experiments/research/memory.md
+
+Demonstrates how to use the OpenClaw CLI to recall memory entries. This command fetches the most recent 25 entries from the last 30 days.
+
+```bash
+openclaw memory recall "…" --k 25 --since 30d
+```
+
+--------------------------------
+
+### Install CodexBar CLI using Shell Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/references/codexbar-cli.md
+
+This command installs the CodexBar CLI by executing a shell script located in the ./bin directory. It is a straightforward installation method for users who have access to the repository.
+
+```shell
+./bin/install-codexbar-cli.sh
+```
+
+--------------------------------
+
+### Memory Reflection CLI Command Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/experiments/research/memory.md
+
+Shows how to trigger the memory reflection process using the OpenClaw CLI. This command processes memory entries from the last 7 days.
+
+```bash
+openclaw memory reflect --since 7d
+```
+
+--------------------------------
+
+### Get Usage Snapshot with CodexBar CLI (JSON Output)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/references/codexbar-cli.md
+
+This command retrieves a usage snapshot from web or CLI sources and formats the output as pretty-printed JSON. It's useful for analyzing token consumption across different providers.
+
+```shell
+codexbar usage --format json --pretty
+```
+
+--------------------------------
+
+### Oracle CLI Manual Paste Fallback
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/oracle/SKILL.md
+
+Demonstrates how to render the Oracle CLI output for manual pasting, useful as a fallback or when direct execution is not feasible. The `--copy` flag is an alias for `--copy-markdown`.
+
+```bash
+oracle --render --copy -p "<task>" --file "src/**"
+```
+
+--------------------------------
+
+### Run Live CLI Backend Smoke Test with OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/testing.md
+
+This command executes live smoke tests for the Gateway and agent pipeline using a local CLI backend. It requires specific environment variables to be set for enabling the live test and CLI backend, and optionally allows overriding default model, command, arguments, and environment variable clearing.
+
+```bash
+OPENCLAW_LIVE_CLI_BACKEND=1 \
+  OPENCLAW_LIVE_CLI_BACKEND_MODEL="claude-cli/claude-sonnet-4-6" \
+  pnpm test:live src/gateway/gateway-cli-backend.live.test.ts
+```
+
+--------------------------------
+
+### Oracle CLI Browser Execution
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/oracle/SKILL.md
+
+Illustrates how to run the Oracle CLI using the browser engine with a specific model. This is the recommended workflow for long-running tasks and interactive sessions.
+
+```bash
+oracle --engine browser --model gpt-5.2-pro -p "<task>" --file "src/**"
+```
+
+--------------------------------
+
+### Manage Allowlist Entries via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/approvals.md
+
+Add or remove executable paths from the allowlist for exec approvals. You can specify a target node and agent, or apply changes globally.
+
+```bash
+openclaw approvals allowlist add "~/Projects/**/bin/rg"
+openclaw approvals allowlist add --agent main --node <id|name|ip> "/usr/bin/uptime"
+openclaw approvals allowlist add --agent "*" "/usr/bin/uname"
+
+openclaw approvals allowlist remove "~/Projects/**/bin/rg"
+```
+
+--------------------------------
+
+### gog CLI Calendar Command Examples
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/gog/SKILL.md
+
+Examples for interacting with Google Calendar using the gog CLI. This includes listing events, creating events (with and without color), updating events, and viewing available event colors.
+
+```bash
+# Calendar list events
+gog calendar events <calendarId> --from <iso> --to <iso>
+
+# Calendar create event
+gog calendar create <calendarId> --summary "Title" --from <iso> --to <iso>
+
+# Calendar create with color
+gog calendar create <calendarId> --summary "Title" --from <iso> --to <iso> --event-color 7
+
+# Calendar update event
+gog calendar update <calendarId> <eventId> --summary "New Title" --event-color 4
+
+# Calendar show colors
+gog calendar colors
+```
+
+--------------------------------
+
+### gog CLI Gmail Command Examples
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/gog/SKILL.md
+
+Examples demonstrating various Gmail operations using the gog CLI, including searching emails, sending messages (plain text, multi-line, stdin, HTML), managing drafts, and replying.
+
+```bash
+# Gmail search
+gog gmail search 'newer_than:7d' --max 10
+
+# Gmail messages search (per email, ignores threading)
+gog gmail messages search "in:inbox from:ryanair.com" --max 20 --account you@example.com
+
+# Gmail send (plain)
+gog gmail send --to a@b.com --subject "Hi" --body "Hello"
+
+# Gmail send (multi-line)
+gog gmail send --to a@b.com --subject "Hi" --body-file ./message.txt
+
+# Gmail send (stdin)
+gog gmail send --to a@b.com --subject "Hi" --body-file -
+
+# Gmail send (HTML)
+gog gmail send --to a@b.com --subject "Hi" --body-html "<p>Hello</p>"
+
+# Gmail draft
+gog gmail drafts create --to a@b.com --subject "Hi" --body-file ./message.txt
+
+# Gmail send draft
+gog gmail drafts send <draftId>
+
+# Gmail reply
+gog gmail send --to a@b.com --subject "Re: Hi" --body "Reply" --reply-to-message-id <msgId>
+```
+
+--------------------------------
+
+### Oracle CLI Preview and Token Estimation
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/oracle/SKILL.md
+
+Shows how to preview the Oracle CLI payload and estimate token usage without executing the task. This is useful for understanding the scope of the request and potential costs.
+
+```bash
+oracle --dry-run summary -p "<task>" --file "src/**" --file "!**/*.test.*"
+oracle --dry-run full -p "<task>" --file "src/**"
+oracle --dry-run summary --files-report -p "<task>" --file "src/**"
+```
+
+--------------------------------
+
+### OpenClaw Models CLI Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/models.md
+
+Provides a comprehensive list of OpenClaw Models CLI commands for managing model configurations, including listing, setting, aliases, and fallbacks.
+
+```bash
+openclaw models list
+openclaw models status
+openclaw models set <provider/model>
+openclaw models set-image <provider/model>
+
+openclaw models aliases list
+openclaw models aliases add <alias> <provider/model>
+openclaw models aliases remove <alias>
+
+openclaw models fallbacks list
+openclaw models fallbacks add <provider/model>
+openclaw models fallbacks remove <provider/model>
+openclaw models fallbacks clear
+
+openclaw models image-fallbacks list
+openclaw models image-fallbacks add <provider/model>
+openclaw models image-fallbacks remove <provider/model>
+openclaw models image-fallbacks clear
+```
+
+--------------------------------
+
+### Connect to Gateway using CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Example of how to connect to the OpenClaw Gateway using the command-line interface (CLI) with a WebSocket URL and token.
+
+```bash
+openclaw tui --url ws://<host>:18789 --token <token>
+```
+
+--------------------------------
+
+### Oracle CLI File Inclusion and Exclusion
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/oracle/SKILL.md
+
+Provides examples of how to specify files and directories to include or exclude when using the Oracle CLI's `--file` option. It also details default ignored directories and behavior regarding `.gitignore`.
+
+```bash
+--file "src/**"
+--file src/index.ts
+--file docs --file README.md
+--file "src/**" --file "!src/**/*.test.ts" --file "!**/*.snap"
+```
+
+--------------------------------
+
+### Oracle CLI Help and Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/oracle/SKILL.md
+
+Demonstrates how to get help for the Oracle CLI and how to install it using npx if the binary is not found. It's important to use `npx` and avoid `pnpx` due to sqlite bindings.
+
+```bash
+oracle --help
+npx -y @steipete/oracle --help
+```
+
+--------------------------------
+
+### CLI Command to Send Message Between OpenClaw Agents
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+This command demonstrates how to send a message from one OpenClaw agent to another using the CLI. It specifies the message content, delivery channel, and the chat ID to reply to. Ensure the target Gateway is accessible and the channel is configured.
+
+```bash
+openclaw agent --message "Hello from local bot" --deliver --channel telegram --reply-to <chat-id>
+```
+
+--------------------------------
+
+### Get Exec Approvals via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/approvals.md
+
+Retrieve exec approvals for the local host, a specific node, or the gateway. Commands target the local approvals file by default, but can be directed to a gateway or node using flags.
+
+```bash
+openclaw approvals get
+openclaw approvals get --node <id|name|ip>
+openclaw approvals get --gateway
+```
+
+--------------------------------
+
+### Upload Media Files
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Upload media files such as images and videos. The CLI can auto-detect media types or you can specify them explicitly. It also provides functionality to check the processing status of uploaded media.
+
+```bash
+# Upload a file (auto-detects type for images/videos)
+xurl media upload photo.jpg
+xurl media upload video.mp4
+
+# Specify type and category explicitly
+xurl media upload --media-type image/jpeg --category tweet_image photo.jpg
+
+# Check processing status (videos need server-side processing)
+xurl media status MEDIA_ID
+xurl media status --wait MEDIA_ID    # poll until done
+```
+
+--------------------------------
+
+### Oracle CLI Session Management
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/oracle/SKILL.md
+
+Demonstrates how to manage Oracle CLI sessions, including listing recent sessions and attaching to a specific session. Using `--slug` helps in creating readable session IDs.
+
+```bash
+oracle status --hours 72
+oracle session <id> --render
+oracle --slug "<3-5 words>"
+```
+
+--------------------------------
+
+### Run openclaw configure CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/configure.md
+
+Executes the interactive configuration wizard for Openclaw. This command can be used to set up credentials, devices, agent defaults, and more. It can also be used with specific sections to focus the configuration process.
+
+```bash
+openclaw configure
+openclaw configure --section model --section channels
+```
+
+--------------------------------
+
+### Peekaboo CLI Quickstart Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/peekaboo/SKILL.md
+
+Demonstrates basic Peekaboo CLI commands for checking permissions, listing applications, capturing annotated screenshots, clicking elements, and typing text. These commands provide a quick introduction to the tool's capabilities.
+
+```bash
+peekaboo permissions
+peekaboo list apps --json
+peekaboo see --annotate --path /tmp/peekaboo-see.png
+peekaboo click --on B1
+peekaboo type "Hello" --return
+```
+
+--------------------------------
+
+### Enable Node.js Module Compile Cache for Faster CLI Startup
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/raspberry-pi.md
+
+This script enhances CLI startup performance on Raspberry Pi by enabling Node.js's module compile cache. It adds an export for `NODE_COMPILE_CACHE` to `~/.bashrc`, creates the cache directory, and sets `OPENCLAW_NO_RESPAWN` to prevent extra startup costs. Subsequent CLI runs will benefit from the cached compiled modules.
+
+```bash
+grep -q 'NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache' ~/.bashrc || cat >> ~/.bashrc <<'EOF'
+export NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
+mkdir -p /var/tmp/openclaw-compile-cache
+export OPENCLAW_NO_RESPAWN=1
+EOF
+source ~/.bashrc
+```
+
+--------------------------------
+
+### Set Exec Approvals from File via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/approvals.md
+
+Replace existing exec approvals with those defined in a JSON file. This can be done for the local host, a specific node, or the gateway.
+
+```bash
+openclaw approvals set --file ./exec-approvals.json
+openclaw approvals set --node <id|name|ip> --file ./exec-approvals.json
+openclaw approvals set --gateway --file ./exec-approvals.json
+```
+
+--------------------------------
+
+### Mouse and Gesture Input Simulation with Peekaboo CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/peekaboo/SKILL.md
+
+Commands for simulating mouse movements, drags, swipes, and scrolling. Supports smooth movements and specifying coordinates or element identifiers.
+
+```bash
+peekaboo move 500,300 --smooth
+peekaboo drag --from B1 --to T2
+peekaboo swipe --from-coords 100,500 --to-coords 100,200 --duration 800
+peekaboo scroll --direction down --amount 6 --smooth
+```
+
+--------------------------------
+
+### Location Get Command CLI Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/location-command.md
+
+An example of how to invoke the 'location.get' command using the OpenClaw CLI tool.
+
+```bash
+openclaw nodes location get --node <id>
+```
+
+--------------------------------
+
+### Openclaw Config CLI Examples (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/config.md
+
+Demonstrates various ways to use the `openclaw config` command for managing settings. This includes getting, setting, unsetting values, and validating the configuration. Paths can be specified using dot or bracket notation.
+
+```bash
+openclaw config file
+openclaw config get browser.executablePath
+openclaw config set browser.executablePath "/usr/bin/google-chrome"
+openclaw config set agents.defaults.heartbeat.every "2h"
+openclaw config set agents.list[0].tools.exec.node "node-id-or-name"
+openclaw config unset tools.web.search.apiKey
+openclaw config validate
+openclaw config validate --json
+```
+
+```bash
+openclaw config get agents.defaults.workspace
+openclaw config get agents.list[0].id
+```
+
+```bash
+openclaw config get agents.list
+openclaw config set agents.list[1].tools.exec.node "node-id-or-name"
+```
+
+```bash
+openclaw config set agents.defaults.heartbeat.every "0m"
+openclaw config set gateway.port 19001 --strict-json
+openclaw config set channels.whatsapp.groups '["*"]' --strict-json
+```
+
+```bash
+openclaw config validate
+openclaw config validate --json
+```
+
+--------------------------------
+
+### Summarize Content from URLs, Files, and YouTube (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/summarize/SKILL.md
+
+Demonstrates basic usage of the summarize CLI tool for different input types. It shows how to summarize a URL, a local PDF file, and a YouTube video.
+
+```bash
+summarize "https://example.com" --model google/gemini-3-flash-preview
+summarize "/path/to/file.pdf" --model google/gemini-3-flash-preview
+summarize "https://youtu.be/dQw4w9WgXcQ" --youtube auto
+```
+
+--------------------------------
+
+### Install wacli using Homebrew
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/wacli/SKILL.md
+
+Installs the wacli CLI tool using the Homebrew package manager. This is a convenient way to install and manage the tool on macOS and Linux systems.
+
+```bash
+brew install steipete/tap/wacli
+```
+
+--------------------------------
+
+### Verify 1Password CLI Installation and Version
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/1password/SKILL.md
+
+Checks if the 1Password CLI is installed and displays its version. This command is used for initial verification.
+
+```bash
+op --version
+```
+
+--------------------------------
+
+### Update OpenClaw using the CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+These commands demonstrate how to update OpenClaw using its command-line interface. Options include specifying update channels (stable, beta, dev), tags, and controlling whether the gateway restarts. It also shows how to automate updates with `--yes` and restart the gateway separately.
+
+```bash
+openclaw update
+openclaw update status
+openclaw update --channel stable|beta|dev
+openclaw update --tag <dist-tag|version>
+openclaw update --no-restart
+```
+
+```bash
+openclaw update --yes --no-restart
+openclaw gateway restart
+```
+
+--------------------------------
+
+### gog CLI Drive, Contacts, Sheets, Docs Examples
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/gog/SKILL.md
+
+Demonstrates common operations for Google Drive, Contacts, Sheets, and Docs using the gog CLI. Includes searching Drive, listing contacts, and various operations for Sheets (get, update, append, clear, metadata) and Docs (export, cat).
+
+```bash
+# Drive search
+gog drive search "query" --max 10
+
+# Contacts list
+gog contacts list --max 20
+
+# Sheets get
+gog sheets get <sheetId> "Tab!A1:D10" --json
+
+# Sheets update
+gog sheets update <sheetId> "Tab!A1:B2" --values-json '[["A","B"],["1","2"]' --input USER_ENTERED
+
+# Sheets append
+gog sheets append <sheetId> "Tab!A:C" --values-json '[["x","y","z"]]' --insert INSERT_ROWS
+
+# Sheets clear
+gog sheets clear <sheetId> "Tab!A2:Z"
+
+# Sheets metadata
+gog sheets metadata <sheetId> --json
+
+# Docs export
+gog docs export <docId> --format txt --out /tmp/doc.txt
+
+# Docs cat
+gog docs cat <docId>
+```
+
+--------------------------------
+
+### CodexBar CLI Usage
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/references/codexbar-cli.md
+
+Retrieve usage statistics for CodexBar, supporting both web and CLI sources. The output can be formatted as JSON and pretty-printed.
+
+```APIDOC
+## GET /usage
+
+### Description
+Retrieves usage statistics for CodexBar, supporting both web and CLI sources. The output can be formatted as JSON and pretty-printed.
+
+### Method
+GET
+
+### Endpoint
+/usage
+
+### Query Parameters
+- **format** (string) - Optional - Specifies the output format. Supported values: 'json'.
+- **pretty** (boolean) - Optional - If true, pretty-prints the JSON output.
+- **provider** (string) - Optional - Filters usage by provider. Supported values: 'all', 'codex', 'claude'.
+
+### Request Example
+```json
+{
+  "example": "codexbar usage --format json --pretty"
+}
+```
+
+### Response
+#### Success Response (200)
+- **usageData** (array) - An array containing usage statistics.
+
+#### Response Example
+```json
+{
+  "example": "[ { \"provider\": \"codex\", \"source\": \"cli\", \"updatedAt\": \"2023-10-27T10:00:00Z\", \"sessionTokens\": 1500, \"sessionCostUSD\": 0.015, \"last30DaysTokens\": 30000, \"last30DaysCostUSD\": 0.30, \"daily\": [ { \"date\": \"2023-10-26\", \"inputTokens\": 100, \"outputTokens\": 200, \"cacheReadTokens\": 50, \"cacheCreationTokens\": 25, \"totalTokens\": 375, \"totalCost\": 0.00375, \"modelsUsed\": [ \"gpt-4\" ], \"modelBreakdowns\": [ { \"modelName\": \"gpt-4\", \"cost\": 0.00375 } ] } ], \"totals\": { \"totalInputTokens\": 1500, \"totalOutputTokens\": 1500, \"cacheReadTokens\": 750, \"cacheCreationTokens\": 375, \"totalTokens\": 3750, \"totalCost\": 0.0375 } } ]"
+}
+```
+```
+
+--------------------------------
+
+### Non-Interactive OpenClaw Onboarding for Cloudflare AI Gateway (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/cloudflare-ai-gateway.md
+
+Non-interactive command-line execution for onboarding Cloudflare AI Gateway with OpenClaw, specifying all necessary details.
+
+```bash
+openclaw onboard --non-interactive \
+  --mode local \
+  --auth-choice cloudflare-ai-gateway-api-key \
+  --cloudflare-ai-gateway-account-id "your-account-id" \
+  --cloudflare-ai-gateway-gateway-id "your-gateway-id" \
+  --cloudflare-ai-gateway-api-key "$CLOUDFLARE_AI_GATEWAY_API_KEY"
+```
+
+--------------------------------
+
+### Perf CLI for Startup Measurement and Hotspot Extraction
+
+Source: https://github.com/openclaw/openclaw/blob/main/apps/android/README.md
+
+Scripts to perform low-noise, deterministic startup measurements and extract performance hotspots using simpleperf. These scripts provide compact CLI output and detailed JSON snapshots.
+
+```bash
+cd apps/android
+./scripts/perf-startup-benchmark.sh
+./scripts/perf-startup-hotspots.sh
+```
+
+--------------------------------
+
+### Install xurl using Shell Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Installs the xurl CLI tool by downloading and executing an installation script from GitHub. This method is cross-platform and installs to `~/.local/bin`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xdevplatform/xurl/main/install.sh | bash
+```
+
+--------------------------------
+
+### Setup and Run Gmail Pub/Sub with OpenClaw CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/webhooks.md
+
+Commands to set up and run Gmail Pub/Sub event handling using the OpenClaw CLI. This requires specifying an account for setup and then running the integration to process events.
+
+```bash
+openclaw webhooks gmail setup --account you@example.com
+openclaw webhooks gmail run
+```
+
+--------------------------------
+
+### Install 1Password CLI using Homebrew
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/1password/SKILL.md
+
+Installs the 1Password CLI tool using the Homebrew package manager. This is a prerequisite for using `op` commands.
+
+```bash
+brew install 1password-cli
+```
+
+--------------------------------
+
+### Install wacli using Go modules
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/wacli/SKILL.md
+
+Installs the wacli CLI tool using Go modules. This method is suitable for Go developers or users who prefer managing Go installations directly.
+
+```bash
+go install github.com/steipete/wacli/cmd/wacli@latest
+```
+
+--------------------------------
+
+### Manage Plugins via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/plugin.md
+
+Provides a comprehensive list of OpenClaw CLI commands for managing plugins, including listing, installing (from local paths, tarballs, zip, npm), updating, enabling, disabling, and running diagnostics.
+
+```bash
+openclaw plugins list
+openclaw plugins info <id>
+openclaw plugins install <path>                 # copy a local file/dir into ~/.openclaw/extensions/<id>
+openclaw plugins install ./extensions/voice-call # relative path ok
+openclaw plugins install ./plugin.tgz           # install from a local tarball
+openclaw plugins install ./plugin.zip           # install from a local zip
+openclaw plugins install -l ./extensions/voice-call # link (no copy) for dev
+openclaw plugins install @openclaw/voice-call # install from npm
+openclaw plugins install @openclaw/voice-call --pin # store exact resolved name@version
+openclaw plugins update <id>
+openclaw plugins update --all
+openclaw plugins enable <id>
+openclaw plugins disable <id>
+openclaw plugins doctor
+```
+
+--------------------------------
+
+### OpenClaw CLI Media Sending
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Demonstrates how to send a message with an attached media file using the OpenClaw CLI. Outbound attachments require a 'MEDIA:<path-or-url>' line. Ensure the target channel supports media and the file size is within provider limits.
+
+```bash
+openclaw message send --target +15555550123 --message "Here you go" --media /path/to/file.png
+```
+
+--------------------------------
+
+### List Installed Skills with ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/clawhub/SKILL.md
+
+Lists all skills currently installed via the ClawHub CLI. This command provides a summary of the local skill management.
+
+```bash
+clawhub list
+```
+
+--------------------------------
+
+### Setup GitHub CLI Authentication
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+Commands to authenticate the GitHub CLI (`gh`) with your GitHub account. This is a one-time setup process required before using most `gh` commands.
+
+```bash
+# Authenticate (one-time)
+gh auth login
+
+# Verify
+gh auth status
+```
+
+--------------------------------
+
+### Register CLI Command
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/plugin.md
+
+Demonstrates how to register a new command-line interface (CLI) command using the OpenClaw API. This allows plugins to add custom commands to the CLI.
+
+```typescript
+export default function (api) {
+  api.registerCli(
+    ({ program }) => {
+      program.command("mycmd").action(() => {
+        console.log("Hello");
+      });
+    },
+    { commands: ["mycmd"] },
+  );
+}
+```
+
+--------------------------------
+
+### CLI Command to List Openclaw Hooks
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/hooks.md
+
+Provides examples of the `openclaw hooks list` command for displaying available hooks. Options include filtering by eligibility and enabling verbose or JSON output.
+
+```bash
+# List all hooks
+openclaw hooks list
+
+# Show only eligible hooks
+openclaw hooks list --eligible
+
+# Verbose output (show missing requirements)
+openclaw hooks list --verbose
+
+# JSON output
+openclaw hooks list --json
+```
+
+--------------------------------
+
+### Set Browser Executable Path (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/browser.md
+
+Command-line interface command to set the executable path for the browser OpenClaw should use. This overrides automatic detection.
+
+```bash
+openclaw config set browser.executablePath "/usr/bin/google-chrome"
+```
+
+--------------------------------
+
+### gog CLI Authentication Setup
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/gog/SKILL.md
+
+Steps to set up authentication for the gog CLI. This involves providing client secret credentials and authorizing specific Google services for an account.
+
+```bash
+gog auth credentials /path/to/client_secret.json
+gog auth add you@gmail.com --services gmail,calendar,drive,contacts,docs,sheets
+gog auth list
+```
+
+--------------------------------
+
+### OpenClaw CLI Commands for Model Management (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/model-providers.md
+
+These bash commands demonstrate essential OpenClaw CLI operations for managing AI models. They cover onboarding with authentication, setting a specific model, and listing available models.
+
+```bash
+openclaw onboard --auth-choice opencode-zen
+openclaw models set opencode/claude-opus-4-6
+openclaw models list
+```
+
+--------------------------------
+
+### Example: Listing groups (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/directory.md
+
+Demonstrates how to list groups within a channel. It includes commands for a general list, filtering groups by a query (e.g., 'work'), and retrieving members of a specific group by its ID.
+
+```bash
+openclaw directory groups list --channel zalouser
+openclaw directory groups list --channel zalouser --query "work"
+openclaw directory groups members --channel zalouser --group-id <id>
+```
+
+--------------------------------
+
+### Install OpenHue CLI using Homebrew
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openhue/SKILL.md
+
+This command installs the OpenHue CLI using the Homebrew package manager. It ensures the 'openhue' binary is available in your system's PATH.
+
+```bash
+brew install openhue/cli/openhue-cli
+```
+
+--------------------------------
+
+### App and Window Management with Peekaboo CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/peekaboo/SKILL.md
+
+Commands for launching, focusing, resizing, and quitting applications. These commands interact directly with the operating system's window manager.
+
+```bash
+peekaboo app launch "Safari" --open https://example.com
+peekaboo window focus --app Safari --window-title "Example"
+peekaboo window set-bounds --app Safari --x 50 --y 50 --width 1200 --height 800
+peekaboo app quit --app Safari
+```
+
+--------------------------------
+
+### Authenticate xurl with OAuth2
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Authenticates the xurl CLI tool using the OAuth2 flow. This command initiates the process for the user to grant access to their X account.
+
+```bash
+xurl auth oauth2
+```
+
+--------------------------------
+
+### Manage Devices and Nodes via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/index.md
+
+CLI commands for listing, approving, and rejecting device pairings, as well as checking the status and describing nodes. These commands are essential for managing node connections and ensuring they are properly paired with the gateway.
+
+```bash
+openclaw devices list
+openclaw devices approve <requestId>
+openclaw devices reject <requestId>
+openclaw nodes status
+openclaw nodes describe --node <idOrNameOrIp>
+```
+
+--------------------------------
+
+### Manage Tmux Session for 1Password CLI Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/1password/SKILL.md
+
+Sets up and manages a dedicated tmux session for running 1Password CLI commands. This ensures consistent authentication and avoids re-prompts.
+
+```bash
+SOCKET_DIR="${OPENCLAW_TMUX_SOCKET_DIR:-${CLAWDBOT_TMUX_SOCKET_DIR:-${TMPDIR:-/tmp}/openclaw-tmux-sockets}}"
+mkdir -p "$SOCKET_DIR"
+SOCKET="$SOCKET_DIR/openclaw-op.sock"
+SESSION="op-auth-$(date +%Y%m%d-%H%M%S)"
+
+tmux -S "$SOCKET" new -d -s "$SESSION" -n shell
+tmux -S "$SOCKET" send-keys -t "$SESSION":0.0 -- "op signin --account my.1password.com" Enter
+tmux -S "$SOCKET" send-keys -t "$SESSION":0.0 -- "op whoami" Enter
+tmux -S "$SOCKET" send-keys -t "$SESSION":0.0 -- "op vault list" Enter
+tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION":0.0 -S -200
+tmux -S "$SOCKET" kill-session -t "$SESSION"
+```
+
+--------------------------------
+
+### Get All Provider Usage Snapshot with CodexBar CLI (JSON Output)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/references/codexbar-cli.md
+
+This command fetches usage data for all configured providers and presents it in a pretty-printed JSON format. This provides a comprehensive overview of token usage across the entire system.
+
+```shell
+codexbar --provider all --format json
+```
+
+--------------------------------
+
+### Update to OpenClaw Dev Channel (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Updates the OpenClaw installation to the development channel, which corresponds to the main branch of the Git repository. This command switches the installation to build from source.
+
+```bash
+openclaw update --channel dev
+```
+
+--------------------------------
+
+### Gateway CLI Helpers
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Provides helper commands for interacting with the Gateway via RPC. Supports calling arbitrary methods, checking health, status, discovery, and service management.
+
+```bash
+openclaw gateway call config.apply --params '{"setting": "value"}'
+openclaw gateway health --url http://localhost:9000
+```
+
+--------------------------------
+
+### Translate Audio with Whisper CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openai-whisper/SKILL.md
+
+Command to transcribe and translate an audio file into English using the Whisper CLI. Supports various output formats like SRT for subtitles.
+
+```bash
+whisper /path/audio.m4a --task translate --output_format srt
+```
+
+--------------------------------
+
+### Get Local Cost Usage for All Providers with CodexBar CLI (JSON Output)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/references/codexbar-cli.md
+
+This command provides a local cost usage report for all supported providers, formatted as JSON. It's useful for a consolidated view of expenses across different services.
+
+```shell
+codexbar cost --format json
+```
+
+--------------------------------
+
+### Benchmark CLI Startup Performance
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/test.md
+
+Benchmarks the startup performance of various OpenClaw CLI commands. It allows specifying the number of runs and a custom timeout for the commands.
+
+```bash
+pnpm tsx scripts/bench-cli-startup.ts
+```
+
+```bash
+pnpm tsx scripts/bench-cli-startup.ts --runs 12
+```
+
+```bash
+pnpm tsx scripts/bench-cli-startup.ts --entry dist/entry.js --timeout-ms 45000
+```
+
+--------------------------------
+
+### Oracle CLI Remote Browser Host Setup
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/oracle/SKILL.md
+
+Shows how to set up a remote browser host for the Oracle CLI and how a client can connect to it. This allows for distributed or remote execution of browser-based tasks.
+
+```bash
+# Host:
+oracle serve --host 0.0.0.0 --port 9473 --token <secret>
+
+# Client:
+oracle --engine browser --remote-host <host:port> --remote-token <secret> -p "<task>" --file "src/**"
+```
+
+--------------------------------
+
+### CLI Commands to View Command Logs
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/automation/hooks.md
+
+Provides bash commands for viewing and filtering the command log file generated by the `command-logger` hook. Includes examples using `tail`, `jq`, and `grep`.
+
+```bash
+# View recent commands
+tail -n 20 ~/.openclaw/logs/commands.log
+
+# Pretty-print with jq
+cat ~/.openclaw/logs/commands.log | jq .
+
+# Filter by action
+grep '"action":"new"' ~/.openclaw/logs/commands.log | jq .
+```
+
+--------------------------------
+
+### Menu, Menubar, and Dock Interactions with Peekaboo CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/peekaboo/SKILL.md
+
+Commands for interacting with application menus, the system menubar, and launching applications from the dock. Supports clicking menu items by name or path, and listing menubar items.
+
+```bash
+peekaboo menu click --app Safari --item "New Window"
+peekaboo menu click --app TextEdit --path "Format > Font > Show Fonts"
+peekaboo menu click-extra --title "WiFi"
+peekaboo dock launch Safari
+peekaboo menubar list --json
+```
+
+--------------------------------
+
+### Codex CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/coding-agent/SKILL.md
+
+Information regarding the default model used by the Codex CLI.
+
+```APIDOC
+## Codex CLI
+
+### Description
+This section provides details about the default model configuration for the Codex CLI.
+
+### Default Model
+- **Model**: `gpt-5.2-codex` is the default model used by the Codex CLI. This setting is typically configured in `~/.codex/config.toml`.
+```
+
+--------------------------------
+
+### Run OpenClaw Gateway CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/gateway.md
+
+Starts a local OpenClaw Gateway process. Requires `gateway.mode=local` in configuration by default. Options control port, binding, authentication, and verbosity.
+
+```bash
+openclaw gateway
+
+```
+
+```bash
+openclaw gateway run
+
+```
+
+--------------------------------
+
+### Control Hue Rooms with OpenHue CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openhue/SKILL.md
+
+These commands allow control over entire rooms, including turning all lights in a room on/off and setting a uniform brightness level.
+
+```bash
+# Turn off entire room
+openhue set room "Bedroom" --off
+
+# Set room brightness
+openhue set room "Bedroom" --on --brightness 30
+```
+
+--------------------------------
+
+### CLI Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/voice-call/README.md
+
+Command-line interface commands for interacting with the Voice Call plugin, including initiating calls, managing ongoing calls, and retrieving status.
+
+```APIDOC
+## CLI Commands
+
+### Description
+Interact with the Voice Call plugin using the OpenClaw CLI for various call management tasks.
+
+### Method
+CLI Command
+
+### Endpoint
+N/A
+
+### Commands
+- **`openclaw voicecall call --to "<phone_number>" --message "<message_text>"`**: Initiates a new voice call.
+  - `--to`: The recipient's phone number.
+  - `--message`: The message to be spoken to the recipient.
+- **`openclaw voicecall continue --call-id "<call_id>" --message "<message_text>"`**: Continues an ongoing call with a new message.
+  - `--call-id`: The ID of the call to continue.
+  - `--message`: The message to speak in the ongoing call.
+- **`openclaw voicecall speak --call-id "<call_id>" --message "<message_text>"`**: Speaks a message in an ongoing call without changing the call state.
+  - `--call-id`: The ID of the call.
+  - `--message`: The message to speak.
+- **`openclaw voicecall end --call-id "<call_id>"`**: Ends an ongoing voice call.
+  - `--call-id`: The ID of the call to end.
+- **`openclaw voicecall status --call-id "<call_id>"`**: Retrieves the status of a specific voice call.
+  - `--call-id`: The ID of the call.
+- **`openclaw voicecall tail`**: Streams logs related to voice calls.
+- **`openclaw voicecall expose --mode <mode>`**: Exposes the webhook endpoint using a specified tunnel mode (e.g., 'funnel').
+  - `--mode`: The tunneling mode to use.
+
+### Request Example
+```bash
+openclaw voicecall call --to "+15555550123" --message "Hello from OpenClaw"
+openclaw voicecall end --call-id "call_abc123"
+```
+
+### Response
+CLI output indicating success or failure of the command, and relevant information like call IDs or status.
+
+### Error Handling
+- Invalid phone numbers or call IDs will result in errors.
+- Incorrect command syntax will display usage information.
+- Network or provider issues may cause call initiation or management failures.
+```
+
+--------------------------------
+
+### Keyboard Input Simulation with Peekaboo CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/peekaboo/SKILL.md
+
+Commands for simulating keyboard input, including hotkeys, pressing individual keys like Escape, and typing text with optional delays. Supports newline characters for multi-line input.
+
+```bash
+peekaboo hotkey --keys "cmd,shift,t"
+peekaboo press escape
+peekaboo type "Line 1\nLine 2" --delay 10
+```
+
+--------------------------------
+
+### Install CLI with JSON Output using install-cli.sh
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs the Openclaw CLI using a dedicated script, outputting results in JSON format and specifying a custom installation prefix. This is useful for programmatic integration.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --json --prefix /opt/openclaw
+```
+
+--------------------------------
+
+### Install Things 3 CLI using Go
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/things-mac/SKILL.md
+
+Installs the Things 3 CLI using the Go build tool. This is the recommended method for Apple Silicon Macs. Ensure Go is installed and configured.
+
+```bash
+GOBIN=/opt/homebrew/bin go install github.com/ossianhempel/things3-cli/cmd/things@latest
+```
+
+--------------------------------
+
+### Tail Gateway Log File via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Command to follow the gateway log file in real-time using the OpenClaw CLI. Supports various output modes like pretty-printed, plain text, and JSON, with options to control colorization and formatting.
+
+```bash
+openclaw logs --follow
+```
+
+```bash
+openclaw logs --follow --json
+```
+
+```bash
+openclaw logs --follow --plain
+```
+
+```bash
+openclaw logs --follow --no-color
+```
+
+--------------------------------
+
+### Manage Multiple Apps and Authentication
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Configure and switch between different application credentials for authentication. This allows you to manage requests for multiple apps or environments (e.g., production, staging).
+
+```bash
+# App credentials must already be configured manually outside agent/LLM context.
+# Authenticate users on each pre-configured app
+xurl auth default prod
+xurl auth oauth2                       # authenticates on prod app
+
+xurl auth default staging
+xurl auth oauth2                       # authenticates on staging app
+
+# Switch between them
+xurl auth default prod alice           # prod app, alice user
+xurl --app staging /2/users/me         # one-off request against staging
+```
+
+--------------------------------
+
+### Install OpenClaw Gateway Service (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/linux.md
+
+Commands to install and manage the OpenClaw Gateway service using the command-line interface. This includes onboarding, installation, configuration, and repair functionalities.
+
+```bash
+openclaw onboard --install-daemon
+
+```
+
+```bash
+openclaw gateway install
+
+```
+
+```bash
+openclaw configure
+
+```
+
+```bash
+openclaw doctor
+
+```
+
+--------------------------------
+
+### Setup openclaw dns CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/dns.md
+
+Commands to set up the `openclaw dns` CLI. The `--apply` flag is used to apply the configuration. This is relevant for users wanting to integrate wide-area discovery with Tailscale and CoreDNS.
+
+```bash
+openclaw dns setup
+openclaw dns setup --apply
+```
+
+--------------------------------
+
+### Onboard BlueBubbles via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/bluebubbles.md
+
+Initiates the BlueBubbles onboarding process using the OpenClaw command-line interface. Requires server URL and password.
+
+```bash
+openclaw onboard
+```
+
+```bash
+openclaw channels add bluebubbles --http-url http://192.168.1.100:1234 --password <password>
+```
+
+--------------------------------
+
+### Peekaboo CLI: See -> Click -> Type Flow
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/peekaboo/SKILL.md
+
+Illustrates a common and reliable workflow using Peekaboo CLI: first, capture an annotated screenshot of a specific application window using `see`, then click a UI element using `click`, and finally type text into a field using `type`. This sequence is useful for automating login forms or other interactive elements.
+
+```bash
+peekaboo see --app Safari --window-title "Login" --annotate --path /tmp/see.png
+peekaboo click --on B3 --app Safari
+peekaboo type "user@example.com" --app Safari
+peekaboo press tab --count 1 --app Safari
+peekaboo type "supersecret" --app Safari --return
+```
+
+--------------------------------
+
+### Control Canvas Display (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/index.md
+
+Manages the display of content within the node's canvas (WebView). Commands include presenting a target URL, hiding the canvas, navigating to a URL, and evaluating JavaScript within the canvas context.
+
+```bash
+openclaw nodes canvas present --node <idOrNameOrIp> --target https://example.com
+openclaw nodes canvas hide --node <idOrNameOrIp>
+openclaw nodes canvas navigate https://example.com --node <idOrNameOrIp>
+openclaw nodes canvas eval --node <idOrNameOrIp> --js "document.title"
+```
+
+--------------------------------
+
+### Summarize Model Usage with model_usage.py (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/SKILL.md
+
+Execute the `model_usage.py` script to get per-model cost summaries. Options include specifying the provider (codex/claude), mode (current/all), and output format. This script requires the CodexBar CLI to be installed.
+
+```bash
+python {baseDir}/scripts/model_usage.py --provider codex --mode current
+python {baseDir}/scripts/model_usage.py --provider codex --mode all
+python {baseDir}/scripts/model_usage.py --provider claude --mode all --format json --pretty
+```
+
+--------------------------------
+
+### List All Tags in Bear with Grizzly CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/bear-notes/SKILL.md
+
+Demonstrates how to list all tags present in Bear notes using the grizzly CLI. This command requires a Bear API token and outputs the list of tags in JSON format.
+
+```bash
+grizzly tags --enable-callback --json --token-file ~/.config/grizzly/token
+```
+
+--------------------------------
+
+### Get Local Cost Usage for Codex and Claude with CodexBar CLI (JSON Output)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/references/codexbar-cli.md
+
+This command calculates and displays the local cost usage specifically for Codex and Claude providers, formatted as pretty-printed JSON. It's essential for monitoring costs associated with these specific services.
+
+```shell
+codexbar cost --provider codex|claude --format json --pretty
+```
+
+--------------------------------
+
+### Example: Listing peers/contacts (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/directory.md
+
+Illustrates how to list peers or contacts associated with a channel. It shows a basic list command, a command with a query to filter by name, and a command to limit the number of results returned.
+
+```bash
+openclaw directory peers list --channel zalouser
+openclaw directory peers list --channel zalouser --query "name"
+openclaw directory peers list --channel zalouser --limit 50
+```
+
+--------------------------------
+
+### CLI Model Entry Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/media-understanding.md
+
+Defines a model entry of type 'cli' for media understanding. It specifies the command, arguments, size limits, timeout, and capabilities. CLI templates can use special variables like {{MediaPath}}.
+
+```json
+{
+  "type": "cli",
+  "command": "gemini",
+  "args": [
+    "-m",
+    "gemini-3-flash",
+    "--allowed-tools",
+    "read_file",
+    "Read the media at {{MediaPath}} and describe it in <= {{MaxChars}} characters."
+  ],
+  "maxChars": 500,
+  "maxBytes": 52428800,
+  "timeoutSeconds": 120,
+  "capabilities": ["video", "image"]
+}
+```
+
+--------------------------------
+
+### Open openclaw tui CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/tui.md
+
+Opens the terminal UI connected to the Gateway. This command can resolve configured gateway authentication SecretRefs for token/password authentication using environment variables, files, or execution providers.
+
+```bash
+openclaw tui
+```
+
+```bash
+openclaw tui --url ws://127.0.0.1:18789 --token <token>
+```
+
+```bash
+openclaw tui --session main --deliver
+```
+
+--------------------------------
+
+### List Hue Resources with OpenHue CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openhue/SKILL.md
+
+These commands list available lights, rooms, and scenes connected to your Philips Hue Bridge. They are useful for discovering device names and scene identifiers.
+
+```bash
+openhue get light
+openhue get room
+openhue get scene
+```
+
+--------------------------------
+
+### Send Text Messages via wacli
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/wacli/SKILL.md
+
+Commands to send text messages to individual contacts or groups using the wacli CLI. Requires specifying the recipient's JID and the message content.
+
+```bash
+wacli send text --to "+14155551212" --message "Hello! Are you free at 3pm?"
+wacli send text --to "1234567890-123456789@g.us" --message "Running 5 min late."
+```
+
+--------------------------------
+
+### Structured JSON Output with `gh` CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/github/SKILL.md
+
+Demonstrates how to use the `--json` flag with `gh` commands to get structured output, combined with `--jq` for filtering and transforming the data. Useful for scripting and programmatic access.
+
+```bash
+gh issue list --repo owner/repo --json number,title --jq '.[] | "\(.number): \(.title)"'
+gh pr list --json number,title,state,mergeable --jq '.[] | select(.mergeable == "MERGEABLE")'
+```
+
+--------------------------------
+
+### Install xurl using Go
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Installs the xurl CLI tool using the Go programming language's build tools. This is an option for developers who use Go and have it set up in their environment.
+
+```bash
+go install github.com/xdevplatform/xurl@latest
+```
+
+--------------------------------
+
+### Open and Read Bear Notes by ID with Grizzly CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/bear-notes/SKILL.md
+
+Shows how to open and read a specific Bear note using its ID with the grizzly CLI. This command utilizes callbacks to retrieve data and outputs it in JSON format.
+
+```bash
+grizzly open-note --id "NOTE_ID" --enable-callback --json
+```
+
+--------------------------------
+
+### OpenAI API Key CLI Setup for OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/openai.md
+
+Configure OpenClaw to use OpenAI models via an API key. This method is suitable for direct API access and usage-based billing. The CLI command initiates the onboarding process with the specified authentication choice.
+
+```bash
+openclaw onboard --auth-choice openai-api-key
+# or non-interactive
+openclaw onboard --openai-api-key "$OPENAI_API_KEY"
+```
+
+--------------------------------
+
+### Control OpenClaw Browser Profile via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/browser.md
+
+Command-line interface commands to manage the OpenClaw browser profile, including checking status, starting, opening URLs, and taking snapshots. These commands interact with the local OpenClaw control service.
+
+```bash
+openclaw browser --browser-profile openclaw status
+openclaw browser --browser-profile openclaw start
+openclaw browser --browser-profile openclaw open https://example.com
+openclaw browser --browser-profile openclaw snapshot
+```
+
+--------------------------------
+
+### Send Email from Stdin CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/himalaya/references/message-composition.md
+
+Sends an email where the content is provided via standard input. This is useful for piping email content from other commands or files.
+
+```bash
+cat message.txt | himalaya template send
+```
+
+--------------------------------
+
+### Search Bear Notes by Tag using Grizzly CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/bear-notes/SKILL.md
+
+Shows how to search for notes associated with a specific tag using the grizzly CLI's `open-tag` command. This command enables callbacks and outputs results in JSON format.
+
+```bash
+grizzly open-tag --name "work" --enable-callback --json
+```
+
+--------------------------------
+
+### Append Text to Bear Notes with Grizzly CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/bear-notes/SKILL.md
+
+Illustrates how to append additional content to an existing Bear note using the grizzly CLI. This operation requires a Bear API token and specifies the note ID and append mode.
+
+```bash
+echo "Additional content" | grizzly add-text --id "NOTE_ID" --mode append --token-file ~/.config/grizzly/token
+```
+
+--------------------------------
+
+### OpenClaw Onboarding for Cloudflare AI Gateway (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/cloudflare-ai-gateway.md
+
+Command-line interface command to onboard Cloudflare AI Gateway with OpenClaw, using an API key for authentication.
+
+```bash
+openclaw onboard --auth-choice cloudflare-ai-gateway-api-key
+```
+
+--------------------------------
+
+### OpenClaw CLI Configuration Commands (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration.md
+
+Examples of using the OpenClaw CLI for configuration management. These commands allow for interactive setup, getting, setting, and unsetting configuration values. They provide a convenient way to manage settings without directly editing the config file.
+
+```bash
+openclaw onboard       # full setup wizard
+openclaw configure     # config wizard
+```
+
+```bash
+openclaw config get agents.defaults.workspace
+openclaw config set agents.defaults.heartbeat.every "2h"
+openclaw config unset tools.web.search.apiKey
+```
+
+--------------------------------
+
+### Configure Secrets Interactively (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/secrets.md
+
+Commands for interactively configuring secret providers and mappings, running preflight checks, and applying changes. Supports various flags to customize the configuration flow.
+
+```bash
+openclaw secrets configure
+openclaw secrets configure --plan-out /tmp/openclaw-secrets-plan.json
+openclaw secrets configure --apply --yes
+openclaw secrets configure --providers-only
+openclaw secrets configure --skip-provider-setup
+openclaw secrets configure --agent ops
+openclaw secrets configure --json
+```
+
+--------------------------------
+
+### Switching Models in Chat Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/models.md
+
+Demonstrates interactive commands for switching AI models within a chat session. These commands allow dynamic model selection without restarting the session.
+
+```bash
+/model
+/model list
+/model 3
+/model openai/gpt-5.2
+/model status
+```
+
+--------------------------------
+
+### Transcribe Audio with Whisper CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openai-whisper/SKILL.md
+
+Basic command to transcribe an audio file using the Whisper CLI. Allows specifying the audio file path, model size, output format, and output directory. Models are automatically downloaded and cached.
+
+```bash
+whisper /path/audio.mp3 --model medium --output_format txt --output_dir .
+```
+
+--------------------------------
+
+### Run OpenClaw Gateway CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/start/setup.md
+
+Executes the OpenClaw Gateway directly from the built project using Node.js. This is useful for development or when running the Gateway manually with specific port and verbosity settings.
+
+```bash
+node openclaw.mjs gateway --port 18789 --verbose
+```
+
+--------------------------------
+
+### Openclaw Directory CLI Reference
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/directory.md
+
+This section details the `openclaw directory` command and its subcommands for managing contacts, groups, and self information within different channels. It also covers common flags and ID formats.
+
+```APIDOC
+## `openclaw directory`
+
+Directory lookups for channels that support it (contacts/peers, groups, and “me”).
+
+### Common flags
+
+- `--channel <name>`: channel id/alias (required when multiple channels are configured; auto when only one is configured)
+- `--account <id>`: account id (default: channel default)
+- `--json`: output JSON
+
+### Notes
+
+- `directory` is meant to help you find IDs you can paste into other commands (especially `openclaw message send --target ...`).
+- For many channels, results are config-backed (allowlists / configured groups) rather than a live provider directory.
+- Default output is `id` (and sometimes `name`) separated by a tab; use `--json` for scripting.
+
+### Using results with `message send`
+
+```bash
+openclaw directory peers list --channel slack --query "U0"
+openclaw message send --channel slack --target user:U012ABCDEF --message "hello"
+```
+
+### ID formats (by channel)
+
+- WhatsApp: `+15551234567` (DM), `1234567890-1234567890@g.us` (group)
+- Telegram: `@username` or numeric chat id; groups are numeric ids
+- Slack: `user:U…` and `channel:C…`
+- Discord: `user:<id>` and `channel:<id>`
+- Matrix (plugin): `user:@user:server`, `room:!roomId:server`, or `#alias:server`
+- Microsoft Teams (plugin): `user:<id>` and `conversation:<id>`
+- Zalo (plugin): user id (Bot API)
+- Zalo Personal / `zalouser` (plugin): thread id (DM/group) from `zca` (`me`, `friend list`, `group list`)
+
+## Self (“me”)
+
+```bash
+openclaw directory self --channel zalouser
+```
+
+## Peers (contacts/users)
+
+```bash
+openclaw directory peers list --channel zalouser
+openclaw directory peers list --channel zalouser --query "name"
+openclaw directory peers list --channel zalouser --limit 50
+```
+
+## Groups
+
+```bash
+openclaw directory groups list --channel zalouser
+openclaw directory groups list --channel zalouser --query "work"
+openclaw directory groups members --channel zalouser --group-id <id>
+```
+```
+
+--------------------------------
+
+### Verify OpenClaw Installation with CLI Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/index.md
+
+After installation, use these command-line interface (CLI) commands to verify that OpenClaw is functioning correctly. These commands check for configuration issues, display the gateway status, and launch the user interface.
+
+```bash
+openclaw doctor         # check for config issues
+openclaw status         # gateway status
+openclaw dashboard      # open the browser UI
+```
+
+--------------------------------
+
+### CLI Setup for Kilo Gateway API Key
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/kilocode.md
+
+Configure the Kilo Gateway API key using the OpenClaw CLI or by setting an environment variable. This key is essential for authenticating requests to the Kilo Gateway.
+
+```bash
+openclaw onboard --kilocode-api-key <key>
+```
+
+```bash
+export KILOCODE_API_KEY="your-api-key"
+```
+
+--------------------------------
+
+### Create Bear Notes using Grizzly CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/bear-notes/SKILL.md
+
+Demonstrates how to create new notes in Bear using the grizzly CLI. It shows examples of creating notes with content piped from echo, specifying titles and tags, and creating empty notes.
+
+```bash
+echo "Note content here" | grizzly create --title "My Note" --tag work
+grizzly create --title "Quick Note" --tag inbox < /dev/null
+```
+
+--------------------------------
+
+### Install OpenClaw CLI with Bash Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs the OpenClaw CLI using a curl command to download and execute a bash script. Supports default installation, custom prefixes and versions, JSON output for automation, and running onboarding.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash
+```
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --prefix /opt/openclaw --version latest
+```
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --json --prefix /opt/openclaw
+```
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --onboard
+```
+
+--------------------------------
+
+### Peekaboo CLI: Target by Window ID
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/peekaboo/SKILL.md
+
+Shows how to target UI elements and perform actions within a specific application window using its unique ID. This is useful when dealing with multiple instances of the same application or when window titles might not be unique. Commands include listing windows, clicking elements, and typing text.
+
+```bash
+peekaboo list windows --app "Visual Studio Code" --json
+peekaboo click --window-id 12345 --coords 120,160
+peekaboo type "Hello from Peekaboo" --window-id 12345
+```
+
+--------------------------------
+
+### Peekaboo CLI: Capture Screenshots and Analyze
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/peekaboo/SKILL.md
+
+Demonstrates capturing different types of screenshots using the `image` and `see` commands. It includes capturing the entire screen, analyzing screen content with a prompt, and capturing specific window content. The `--retina` flag is used for high-resolution captures.
+
+```bash
+peekaboo image --mode screen --screen-index 0 --retina --path /tmp/screen.png
+peekaboo image --app Safari --window-title "Dashboard" --analyze "Summarize KPIs"
+peekaboo see --mode screen --screen-index 0 --analyze "Summarize the dashboard"
+```
+
+--------------------------------
+
+### gog CLI Email Formatting Examples
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/gog/SKILL.md
+
+Illustrates different methods for formatting email bodies when sending messages via the gog CLI. Covers plain text via stdin, multi-line messages using heredocs, and HTML formatting for rich content.
+
+```bash
+# Example (plain text via stdin):
+gog gmail send --to recipient@example.com \
+  --subject "Meeting Follow-up" \
+  --body-file - <<'EOF'
+Hi Name,
+
+Thanks for meeting today. Next steps:
+- Item one
+- Item two
+
+Best regards,
+Your Name
+EOF
+
+# Example (HTML list):
+gog gmail send --to recipient@example.com \
+  --subject "Meeting Follow-up" \
+  --body-html "<p>Hi Name,</p><p>Thanks for meeting today. Here are the next steps:</p><ul><li>Item one</li><li>Item two</li></ul><p>Best regards,<br>Your Name</p>"
+```
+
+--------------------------------
+
+### Install QMD CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/memory.md
+
+Instructions for installing the QMD CLI using Bun. This is a prerequisite for enabling the QMD backend in OpenClaw.
+
+```bash
+bun install -g https://github.com/tobi/qmd
+```
+
+--------------------------------
+
+### Configure CLI Remote Defaults for Gateway Access
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/remote.md
+
+This JSON configuration snippet sets the default remote gateway URL and token for CLI commands. When the gateway is loopback-only, this configuration, combined with an active SSH tunnel, allows CLI tools to connect to the remote gateway.
+
+```json5
+{
+  "gateway": {
+    "mode": "remote",
+    "remote": {
+      "url": "ws://127.0.0.1:18789",
+      "token": "your-token"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Control Hue Lights with OpenHue CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openhue/SKILL.md
+
+Commands to control individual Hue lights, including turning them on/off, adjusting brightness, setting color temperature, and changing color. Supports color names and hex codes.
+
+```bash
+# Turn on/off
+openhue set light "Bedroom Lamp" --on
+openhue set light "Bedroom Lamp" --off
+
+# Brightness (0-100)
+openhue set light "Bedroom Lamp" --on --brightness 50
+
+# Color temperature (warm to cool: 153-500 mirek)
+openhue set light "Bedroom Lamp" --on --temperature 300
+
+# Color (by name or hex)
+openhue set light "Bedroom Lamp" --on --color red
+openhue set light "Bedroom Lamp" --on --rgb "#FF5500"
+```

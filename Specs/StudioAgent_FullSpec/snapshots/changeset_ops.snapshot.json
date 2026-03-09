@@ -1,0 +1,131 @@
+{
+    "snapshotVersion": "2.0.0",
+    "generatedAt": "2026-02-21T15:30:00Z",
+    "changeSetOpKinds": [
+        {
+            "kind": "element.create",
+            "requiredFields": [
+                "tempId",
+                "element.title",
+                "element.type",
+                "element.status"
+            ]
+        },
+        {
+            "kind": "element.patch",
+            "requiredFields": [
+                "elementId",
+                "fields"
+            ]
+        },
+        {
+            "kind": "task.create",
+            "requiredFields": [
+                "tempId",
+                "elementTempOrId",
+                "fields.title",
+                "fields.status",
+                "fields.stage",
+                "fields.workType",
+                "fields.workTypeLabelHe",
+                "fields.estimatedHours",
+                "fields.checklist"
+            ]
+        },
+        {
+            "kind": "task.patch",
+            "requiredFields": [
+                "taskId",
+                "fields"
+            ]
+        },
+        {
+            "kind": "task.syncFromLabor",
+            "requiredFields": [
+                "taskId",
+                "workLineId"
+            ]
+        },
+        {
+            "kind": "task.delete",
+            "requiredFields": [
+                "taskId"
+            ]
+        },
+        {
+            "kind": "materialLine.create",
+            "requiredFields": [
+                "tempId",
+                "taskTempOrId",
+                "fields.itemName",
+                "fields.quantity",
+                "fields.uomCode",
+                "fields.sectionKey",
+                "fields.sectionLabelHe",
+                "fields.plannedUnitCost",
+                "fields.plannedTotalCost"
+            ]
+        },
+        {
+            "kind": "materialLine.patch",
+            "requiredFields": [
+                "lineId",
+                "fields"
+            ]
+        },
+        {
+            "kind": "materialLine.delete",
+            "requiredFields": [
+                "lineId"
+            ]
+        },
+        {
+            "kind": "workLine.create",
+            "requiredFields": [
+                "tempId",
+                "taskTempOrId",
+                "fields.roleHe",
+                "fields.sectionKey",
+                "fields.sectionLabelHe",
+                "fields.plannedQuantity",
+                "fields.rateTypeCode",
+                "fields.plannedUnitCost",
+                "fields.plannedTotalCost"
+            ]
+        },
+        {
+            "kind": "workLine.delete",
+            "requiredFields": [
+                "lineId"
+            ]
+        },
+        {
+            "kind": "taskAccountingLink.create",
+            "requiredFields": [
+                "taskId",
+                "lineType",
+                "allocatedHours"
+            ]
+        },
+        {
+            "kind": "taskAccountingLink.delete",
+            "requiredFields": [
+                "linkId"
+            ]
+        },
+        {
+            "kind": "accountingLine.delete",
+            "requiredFields": [
+                "lineId"
+            ]
+        },
+        {
+            "kind": "catalogPriceRecord.create",
+            "requiredFields": [
+                "payload.fields.sourceType",
+                "payload.fields.amount",
+                "payload.fields.url"
+            ]
+        }
+    ]
+}

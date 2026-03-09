@@ -1,0 +1,2104 @@
+### Non-interactive Git Install with install.sh
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs Openclaw non-interactively using the Git method via a shell script. Environment variables are used to configure the installation.
+
+```bash
+OPENCLAW_INSTALL_METHOD=git OPENCLAW_NO_PROMPT=1 \
+  curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash
+```
+
+--------------------------------
+
+### Install OpenClaw Skipping Onboarding (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+This command installs OpenClaw while skipping the initial onboarding process. The `--no-onboard` flag is passed to the installation script, preventing any interactive onboarding steps after the installation is complete. This is useful for automated or headless installations.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-onboard
+```
+
+--------------------------------
+
+### Install OpenClaw with Local Node Runtime (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+This script is designed for environments where a system-wide Node.js installation is not desired. It installs a local Node.js runtime within a specified prefix (defaulting to `~/.openclaw`), ensures Git is available, and then installs OpenClaw using npm under that prefix. This approach isolates the OpenClaw installation and its Node.js dependency.
+
+```bash
+#!/bin/bash
+
+# Default prefix
+PREFIX="${HOME}/.openclaw"
+
+# Default Node.js version
+NODE_VERSION="22.22.0"
+
+# --- Install local Node runtime ---
+NODE_DIR="${PREFIX}/tools/node-v${NODE_VERSION}"
+NODE_TARBALL="node-v${NODE_VERSION}-linux-x64.tar.gz"
+NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}"
+
+if [ ! -d "${NODE_DIR}" ]; then
+  echo "Downloading Node.js ${NODE_VERSION}..."
+  mkdir -p "${PREFIX}/tools"
+  curl -fsSL "${NODE_URL}" -o "/tmp/${NODE_TARBALL}"
+  tar -xzf "/tmp/${NODE_TARBALL}" -C "${PREFIX}/tools"
+  mv "${PREFIX}/tools/node-v${NODE_VERSION}-linux-x64" "${NODE_DIR}"
+  rm "/tmp/${NODE_TARBALL}"
+  echo "Node.js installed to ${NODE_DIR}"
+fi
+
+# Add Node.js to PATH for this script
+export PATH="${NODE_DIR}/bin:${PATH}"
+
+# --- Ensure Git ---
+if ! command -v git &> /dev/null; then
+  echo "Git not found. Attempting to install..."
+  if command -v apt-get &> /dev/null; then
+    sudo apt-get update && sudo apt-get install -y git
+  elif command -v dnf &> /dev/null; then
+    sudo dnf install -y git
+  elif command -v yum &> /dev/null; then
+    sudo yum install -y git
+  elif command -v brew &> /dev/null; then
+    brew install git
+  else
+    echo "Could not automatically install Git. Please install it manually."
+    exit 1
+  fi
+  echo "Git installed."
+fi
+
+# --- Install OpenClaw under prefix ---
+echo "Installing OpenClaw to ${PREFIX} using npm..."
+npm install -g openclaw --prefix "${PREFIX}"
+
+# Create wrapper script
+OPENCLAW_BIN_DIR="${PREFIX}/bin"
+mkdir -p "${OPENCLAW_BIN_DIR}"
+
+cat << EOF > "${OPENCLAW_BIN_DIR}/openclaw"
+#!/bin/bash
+
+# Find the npm-installed openclaw executable
+OPENCLAW_EXEC="${PREFIX}/lib/node_modules/openclaw/bin/openclaw.js"
+
+if [ -f "$OPENCLAW_EXEC" ]; then
+  node "$OPENCLAW_EXEC" "$@"
+else
+  echo "Error: OpenClaw executable not found at $OPENCLAW_EXEC"
+  exit 1
+fi
+EOF
+
+chmod +x "${OPENCLAW_BIN_DIR}/openclaw"
+
+echo "OpenClaw installed successfully to ${PREFIX}"
+echo "Add ${OPENCLAW_BIN_DIR} to your PATH to use the 'openclaw' command globally."
+
+```
+
+--------------------------------
+
+### Install CLI with JSON Output using install-cli.sh
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs the Openclaw CLI using a dedicated script, outputting results in JSON format and specifying a custom installation prefix. This is useful for programmatic integration.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --json --prefix /opt/openclaw
+```
+
+--------------------------------
+
+### Install Homebrew on Linux
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Provides the command to install Homebrew on a Linux system. It includes steps to download and execute the installation script, configure the shell environment, and install packages. Ensure the brew bin directory is in the systemd service PATH if running OpenClaw via systemd.
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.profile
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+brew install <formula>
+```
+
+--------------------------------
+
+### Install OpenClaw via Installer Script (macOS/Linux/WSL2)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/index.md
+
+Downloads and executes the OpenClaw installer script for macOS, Linux, and WSL2. This script handles Node.js detection and installation, and optionally launches the onboarding wizard.
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash
+```
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard
+```
+
+--------------------------------
+
+### Install OpenClaw via Installer Script (Windows PowerShell)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/index.md
+
+Downloads and executes the OpenClaw installer script for Windows using PowerShell. This script manages Node.js installation and can initiate the onboarding process.
+
+```powershell
+iwr -useb https://openclaw.ai/install.ps1 | iex
+```
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -NoOnboard
+```
+
+--------------------------------
+
+### Install Openclaw using PowerShell (Custom Git Directory)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs Openclaw using the Git method and specifies a custom directory for the Git checkout. This allows for flexible installation locations.
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -InstallMethod git -GitDir "C:\openclaw"
+```
+
+--------------------------------
+
+### Install OpenClaw using pnpm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/index.md
+
+Installs the latest version of OpenClaw globally using pnpm, approves necessary build scripts, and then initiates the onboarding process with daemon installation. Note that pnpm requires explicit approval for packages with build scripts.
+
+```bash
+pnpm add -g openclaw@latest
+pnpm approve-builds -g        # approve openclaw, node-llama-cpp, sharp, etc.
+openclaw onboard --install-daemon
+```
+
+--------------------------------
+
+### Re-run Installer with Verbose Output (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Executes the OpenClaw installer script with verbose output enabled. This is helpful for debugging installation issues by providing detailed logs of the process. Supports standard, beta, and git-based installations.
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --verbose
+```
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --beta --verbose
+```
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git --verbose
+```
+
+--------------------------------
+
+### Install Openclaw using PowerShell (Git Method)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs Openclaw using the Git method via PowerShell. This method is useful if you prefer managing the installation through Git.
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -InstallMethod git
+```
+
+--------------------------------
+
+### Install OpenClaw CLI with Bash Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs the OpenClaw CLI using a curl command to download and execute a bash script. Supports default installation, custom prefixes and versions, JSON output for automation, and running onboarding.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash
+```
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --prefix /opt/openclaw --version latest
+```
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --json --prefix /opt/openclaw
+```
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --onboard
+```
+
+--------------------------------
+
+### Installer Specification for Skills (Markdown)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/skills.md
+
+Specifies installation methods for skills using metadata, including package manager details like Homebrew formulas or download URLs. Supports platform-specific installations.
+
+```markdown
+---
+name: gemini
+description: Use Gemini CLI for coding assistance and Google search lookups.
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "??",
+        "requires": { "bins": ["gemini"] },
+        "install":
+          [
+            {
+              "id": "brew",
+              "kind": "brew",
+              "formula": "gemini-cli",
+              "bins": ["gemini"],
+              "label": "Install Gemini CLI (brew)",
+            },
+          ],
+      },
+  }
+---
+
+```
+
+--------------------------------
+
+### Manual OpenClaw Installation Prerequisites
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/ansible.md
+
+Installs necessary prerequisites for manual OpenClaw installation using Ansible. This includes `ansible` and `git` on Debian/Ubuntu systems. Requires root or sudo privileges.
+
+```bash
+sudo apt update && sudo apt install -y ansible git
+```
+
+--------------------------------
+
+### Install OpenClaw using npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/index.md
+
+Installs the latest version of OpenClaw globally using npm and then runs the onboarding process with daemon installation. Includes a workaround for potential 'sharp' build errors by forcing prebuilt binaries.
+
+```bash
+npm install -g openclaw@latest
+openclaw onboard --install-daemon
+```
+
+```bash
+SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install -g openclaw@latest
+```
+
+--------------------------------
+
+### Install OpenClaw with Default Settings (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+This command downloads and executes the OpenClaw installation script using default settings. It fetches the script over HTTPS and pipes it directly to bash for execution. No specific configurations or flags are provided, so the script will proceed with its default behavior.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash
+```
+
+--------------------------------
+
+### Automated OpenClaw Installation Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/ansible.md
+
+This script downloads and executes the OpenClaw Ansible installation. It's a one-command solution for deploying OpenClaw with security hardening. Ensure you have `curl` installed.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/openclaw/openclaw-ansible/main/install.sh | bash
+```
+
+--------------------------------
+
+### Install OpenClaw Beta Version (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Installs the beta version of OpenClaw using a curl command to download and execute the installation script. This method is suitable for macOS and Linux environments.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --beta
+```
+
+--------------------------------
+
+### OpenClaw Installation Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Installs OpenClaw using a curl script, with an option to install from a git checkout for development purposes. This script handles downloading and setting up OpenClaw. The `--install-method git` flag is useful for agents that need to inspect the source code.
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git
+
+```
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash
+
+```
+
+--------------------------------
+
+### Install Openclaw using PowerShell (Default)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs Openclaw using the default PowerShell script. This is the simplest method for a quick setup.
+
+```powershell
+iwr -useb https://openclaw.ai/install.ps1 | iex
+```
+
+--------------------------------
+
+### Perform a Dry Run Installation with PowerShell
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Executes the Openclaw installation script in dry run mode using PowerShell. This will show the actions that would be taken without actually performing the installation.
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -DryRun
+```
+
+--------------------------------
+
+### Install xurl using Shell Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Installs the xurl CLI tool by downloading and executing an installation script from GitHub. This method is cross-platform and installs to `~/.local/bin`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xdevplatform/xurl/main/install.sh | bash
+```
+
+--------------------------------
+
+### Runtime and Installation Options
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Details on recommended runtimes and different installation methods for OpenClaw.
+
+```APIDOC
+## Runtime and Installation Options
+
+### Bun Support
+Bun is not recommended due to observed runtime bugs, particularly with WhatsApp and Telegram. Node.js is recommended for stable gateways. If experimenting with Bun, use it on a non-production gateway without WhatsApp or Telegram.
+
+### Homebrew on Linux
+Homebrew supports Linux (Linuxbrew). Quick setup:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.profile
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+brew install <formula>
+```
+
+For OpenClaw via systemd, ensure the service PATH includes the brew bin directory. Recent builds also prepend common user bin directories and honor environment variables like `PNPM_HOME`, `NPM_CONFIG_PREFIX`, `BUN_INSTALL`, etc., on Linux systemd services.
+
+### Installation Methods
+
+*   **Hackable (git) Install:**
+    *   Provides a full source checkout, allowing for local builds and code/documentation patching.
+    *   Best suited for contributors.
+
+*   **npm install:**
+    *   Installs the global CLI without the repository.
+    *   Best for users who want to "just run it."
+    *   Updates are managed via npm dist-tags.
+
+### Documentation Links
+*   [Getting started](/start/getting-started)
+*   [Updating](/install/updating)
+```
+
+--------------------------------
+
+### Perform a Dry Run of OpenClaw Installation (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+This command simulates the OpenClaw installation process without making any actual changes to your system. The `--dry-run` flag allows you to preview the actions the installation script would take, including file modifications and command executions. This is a safe way to understand the installation's impact before committing to it.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --dry-run
+```
+
+--------------------------------
+
+### Install wacli using Go modules
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/wacli/SKILL.md
+
+Installs the wacli CLI tool using Go modules. This method is suitable for Go developers or users who prefer managing Go installations directly.
+
+```bash
+go install github.com/steipete/wacli/cmd/wacli@latest
+```
+
+--------------------------------
+
+### Install OpenClaw Gateway Service for a Profile
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+This bash command installs the OpenClaw Gateway as a service for a specific profile. This ensures the gateway runs with the correct configuration and state associated with that profile.
+
+```bash
+openclaw --profile <name> gateway install
+```
+
+--------------------------------
+
+### Build and Install OpenClaw from Source
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/index.md
+
+Clones the OpenClaw repository, installs dependencies, builds the UI and the project, links the CLI globally, and runs the onboarding process. This method is suitable for contributors or those wanting to run from a local checkout.
+
+```bash
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
+pnpm install
+pnpm ui:build
+pnpm build
+pnpm link --global
+openclaw onboard --install-daemon
+```
+
+--------------------------------
+
+### Non-interactive npm Install with install.sh
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs Openclaw non-interactively using the npm method via a shell script. This is suitable for automated environments.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-prompt --no-onboard
+```
+
+--------------------------------
+
+### Install and Update OpenClaw Skills
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Commands to install new skills from ClawHub and update all installed skills. Skills are installed into the local `./skills` directory or a configured OpenClaw workspace.
+
+```bash
+clawhub install <skill-slug>
+clawhub update --all
+```
+
+--------------------------------
+
+### Install Zalo Personal Plugin from Local Folder (Development)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/zalouser.md
+
+Installs the Zalo Personal plugin from a local directory, suitable for development purposes. It involves installing the plugin and its dependencies, followed by restarting the Gateway.
+
+```bash
+openclaw plugins install ./extensions/zalouser
+cd ./extensions/zalouser && pnpm install
+```
+
+--------------------------------
+
+### Install OpenClaw using Git Method (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+This command installs OpenClaw using the Git method. The `--install-method git` flag (or its alias `--git`) instructs the script to clone the repository directly, which can be useful for development or when specific Git versions are required. This method might be preferred if you need to work with the source code directly.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --install-method git
+```
+
+--------------------------------
+
+### Skip Onboarding with PowerShell Install
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs Openclaw using PowerShell while skipping the onboarding process. This is useful for automated deployments where onboarding is not required.
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -NoOnboard
+```
+
+--------------------------------
+
+### Install Docker on Ubuntu/Debian VPS
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/hetzner.md
+
+Installs Docker and its dependencies on a Debian or Ubuntu based Hetzner VPS. This involves updating package lists, installing git and curl, and then executing the official Docker installation script. It concludes with verification commands to check the installed Docker and Docker Compose versions.
+
+```bash
+apt-get update
+apt-get install -y git curl ca-certificates
+curl -fsSL https://get.docker.com | sh
+
+docker --version
+docker compose version
+```
+
+--------------------------------
+
+### Verify OpenClaw Installation with CLI Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/index.md
+
+After installation, use these command-line interface (CLI) commands to verify that OpenClaw is functioning correctly. These commands check for configuration issues, display the gateway status, and launch the user interface.
+
+```bash
+openclaw doctor         # check for config issues
+openclaw status         # gateway status
+openclaw dashboard      # open the browser UI
+```
+
+--------------------------------
+
+### Debug Openclaw Installation with PowerShell
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Enables PowerShell debugging to trace the execution of the Openclaw installation script. This is useful for diagnosing installation issues. Remember to disable tracing afterwards.
+
+```powershell
+# install.ps1 has no dedicated -Verbose flag yet.
+Set-PSDebug -Trace 1
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -NoOnboard
+Set-PSDebug -Trace 0
+```
+
+--------------------------------
+
+### Install CodexBar CLI using Shell Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/references/codexbar-cli.md
+
+This command installs the CodexBar CLI by executing a shell script located in the ./bin directory. It is a straightforward installation method for users who have access to the repository.
+
+```shell
+./bin/install-codexbar-cli.sh
+```
+
+--------------------------------
+
+### Install OpenClaw CLI with PowerShell Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs the OpenClaw CLI on Windows using a PowerShell script. It ensures PowerShell 5+, Node.js 22+, and then proceeds with installation via npm or git, followed by post-install tasks.
+
+```powershell
+# Ensure PowerShell 5+ and Node.js 22+ are installed.
+# Installation methods include npm or git clone.
+# Post-install tasks update PATH and run 'openclaw doctor'.
+# Example usage (actual script content not provided in source):
+# .install.ps1
+```
+
+--------------------------------
+
+### Local Workspace acpx Plugin Install (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/acp-agents.md
+
+Installs the acpx plugin from a local path, typically used during development. This allows for testing local changes to the plugin before publishing.
+
+```bash
+openclaw plugins install ./extensions/acpx
+```
+
+--------------------------------
+
+### Install Dependencies and Watch Gateway
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/start/setup.md
+
+Installs project dependencies using pnpm and starts the Gateway in watch mode. This command is essential for the bleeding-edge development workflow, enabling hot reloading on TypeScript changes.
+
+```bash
+pnpm install
+pnpm gateway:watch
+```
+
+--------------------------------
+
+### Execute install.sh script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Downloads and executes the install.sh script from openclaw.ai. This script is used for installing OpenClaw on macOS, Linux, and WSL. It can also be used to display help information.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash
+```
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --help
+```
+
+--------------------------------
+
+### Install OpenClaw with Hackable Git Install
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+This command downloads and installs OpenClaw using the hackable git method, which provides the full source and local documentation. This is recommended for asking questions about the repository to your AI assistant.
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git
+```
+
+--------------------------------
+
+### Install Things 3 CLI using Go
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/things-mac/SKILL.md
+
+Installs the Things 3 CLI using the Go build tool. This is the recommended method for Apple Silicon Macs. Ensure Go is installed and configured.
+
+```bash
+GOBIN=/opt/homebrew/bin go install github.com/ossianhempel/things3-cli/cmd/things@latest
+```
+
+--------------------------------
+
+### Install OpenClaw on Ubuntu Droplet
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/digitalocean.md
+
+Installs OpenClaw on an Ubuntu-based DigitalOcean droplet. It first updates the system, then installs Node.js 22 from NodeSource, followed by OpenClaw itself using a curl script. Finally, it verifies the installation.
+
+```bash
+# Update system
+apt update && apt upgrade -y
+
+# Install Node.js 22
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt install -y nodejs
+
+# Install OpenClaw
+curl -fsSL https://openclaw.ai/install.sh | bash
+
+# Verify
+openclaw --version
+```
+
+--------------------------------
+
+### Install OpenClaw and Run Onboarding Wizard
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Installs OpenClaw globally using npm or pnpm and initiates an interactive onboarding process. Supports non-interactive setup with specific provider authentication and daemon installation.
+
+```bash
+# Install OpenClaw globally (requires Node >= 22)
+npm install -g openclaw@latest
+# or: pnpm add -g openclaw@latest
+
+# Run the onboarding wizard with daemon installation
+openclaw onboard --install-daemon
+
+# Non-interactive installation with specific provider
+openclaw onboard --non-interactive \
+  --auth-choice anthropic-api-key \
+  --anthropic-api-key "sk-ant-..." \
+  --gateway-port 18789 \
+  --gateway-bind loopback \
+  --install-daemon
+```
+
+--------------------------------
+
+### Install Extra Apt Packages into Docker Image
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Install system packages, such as build tools or media libraries, directly into the Docker image by setting OPENCLAW_DOCKER_APT_PACKAGES before running docker-setup.sh. This ensures packages are available even if the container is deleted, as they are installed during the image build process. The variable accepts a space-separated list of apt package names.
+
+```bash
+export OPENCLAW_DOCKER_APT_PACKAGES="ffmpeg build-essential"
+./docker-setup.sh
+```
+
+--------------------------------
+
+### Install ClawHub CLI with pnpm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Installs the ClawHub command-line interface globally using pnpm. ClawHub is used for managing and installing OpenClaw skills.
+
+```bash
+pnpm add -g clawhub
+```
+
+--------------------------------
+
+### Install Voice Call Plugin from npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Installs the Voice Call plugin using npm. This is the recommended method for installation. After installation, the OpenClaw Gateway must be restarted for the plugin to become active.
+
+```bash
+openclaw plugins install @openclaw/voice-call
+```
+
+--------------------------------
+
+### Install Zalo Plugin (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/zalo/README.md
+
+Provides commands to install the Zalo channel plugin for OpenClaw. Supports installation from a local checkout or via npm.
+
+```bash
+openclaw plugins install ./extensions/zalo
+```
+
+```bash
+openclaw plugins install @openclaw/zalo
+```
+
+--------------------------------
+
+### Install ClawHub CLI with npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Installs the ClawHub command-line interface globally using npm. ClawHub is used for managing and installing OpenClaw skills.
+
+```bash
+npm i -g clawhub
+```
+
+--------------------------------
+
+### Mattermost Plugin Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Instructions for installing the Mattermost plugin using the CLI.
+
+```APIDOC
+## Mattermost Plugin Installation
+
+### Description
+Install the Mattermost plugin for OpenClaw using the npm registry or a local checkout.
+
+### Method
+CLI Command
+
+### Endpoint
+N/A
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+None
+
+#### Request Body
+None
+
+### Request Example
+```bash
+# Install from npm registry
+openclaw plugins install @openclaw/mattermost
+
+# Install from local checkout
+openclaw plugins install ./extensions/mattermost
+```
+
+### Response
+#### Success Response (200)
+Plugin installed successfully.
+
+#### Response Example
+N/A
+```
+
+--------------------------------
+
+### Install Synology Chat Plugin
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/synology-chat.md
+
+Installs the Synology Chat plugin from a local checkout directory. This is a prerequisite for using Synology Chat integration with OpenClaw.
+
+```bash
+openclaw plugins install ./extensions/synology-chat
+```
+
+--------------------------------
+
+### OpenCLaw Daemon Installation (Linux/WSL2)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Instructions for installing the OpenCLaw daemon on Linux and Windows via WSL2 using systemd user units. The wizard attempts to enable lingering for continuous operation and may prompt for sudo privileges.
+
+```bash
+# Linux (and Windows via WSL2): systemd user unit
+# Wizard attempts to enable lingering via `loginctl enable-linger <user>` so the Gateway stays up after logout.
+# May prompt for sudo (writes `/var/lib/systemd/linger`); it tries without sudo first.
+```
+
+--------------------------------
+
+### Install and Get Extension Path (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/assets/chrome-extension/README.md
+
+Commands to install the OpenClaw browser extension and retrieve its installation path. These commands are executed in a bash environment.
+
+```bash
+openclaw browser extension install
+openclaw browser extension path
+```
+
+--------------------------------
+
+### Clone and Prepare OpenClaw Ansible Repository
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/ansible.md
+
+Clones the openclaw-ansible repository and installs required Ansible collections. This is part of the manual installation process.
+
+```bash
+# Clone repository
+git clone https://github.com/openclaw/openclaw-ansible.git
+cd openclaw-ansible
+
+# Install Ansible collections
+ansible-galaxy collection install -r requirements.yml
+```
+
+--------------------------------
+
+### Install Feishu Plugin for OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/feishu.md
+
+Installs the Feishu plugin for OpenClaw. Supports installation from the official registry or a local checkout for development.
+
+```bash
+openclaw plugins install @openclaw/feishu
+
+```
+
+```bash
+openclaw plugins install ./extensions/feishu
+
+```
+
+--------------------------------
+
+### LINE Plugin Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/line.md
+
+Instructions for installing the LINE plugin for OpenClaw, including local checkout.
+
+```APIDOC
+## LINE Plugin Installation
+
+Install the LINE plugin using the OpenClaw CLI:
+
+```bash
+openclaw plugins install @openclaw/line
+```
+
+For local checkout from a git repository:
+
+```bash
+openclaw plugins install ./extensions/line
+```
+```
+
+--------------------------------
+
+### Install and Verify Claude CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/providers/claude-max-api-proxy.md
+
+Installs the claude-max-api-proxy globally using npm and verifies that the Claude CLI is installed and authenticated. Requires Node.js 20+.
+
+```bash
+# Requires Node.js 20+ and Claude Code CLI
+npm install -g claude-max-api-proxy
+
+# Verify Claude CLI is authenticated
+claude --version
+```
+
+--------------------------------
+
+### Install OpenClaw Chrome Extension
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Commands to install the OpenClaw browser extension and retrieve its path. This extension is necessary for browser takeover functionality.
+
+```bash
+openclaw browser extension install
+openclaw browser extension path
+```
+
+--------------------------------
+
+### OpenClaw Onboarding Wizard
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Initiates the OpenClaw onboarding process, which can include setting up the gateway and building UI assets. The `--install-daemon` flag is used to configure OpenClaw as a background service. This command is typically run after installation.
+
+```bash
+openclaw onboard --install-daemon
+
+```
+
+```bash
+pnpm openclaw onboard
+
+```
+
+--------------------------------
+
+### Install OpenClaw Gateway Service (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/linux.md
+
+Commands to install and manage the OpenClaw Gateway service using the command-line interface. This includes onboarding, installation, configuration, and repair functionalities.
+
+```bash
+openclaw onboard --install-daemon
+
+```
+
+```bash
+openclaw gateway install
+
+```
+
+```bash
+openclaw configure
+
+```
+
+```bash
+openclaw doctor
+
+```
+
+--------------------------------
+
+### Execute install-cli.sh script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Downloads and executes the install-cli.sh script from openclaw.ai. This script installs Node.js and OpenClaw into a local prefix (~/.openclaw) without requiring root privileges on macOS, Linux, and WSL. It can also display help.
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash
+```
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | bash -s -- --help
+```
+
+--------------------------------
+
+### Install Gateway Service (CLI)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/windows.md
+
+Commands to install the OpenClaw gateway service within a WSL2 environment. This can be done using the 'openclaw onboard' command with the '--install-daemon' flag, or directly with 'openclaw gateway install'. 'openclaw configure' can also be used to select the Gateway service.
+
+```bash
+openclaw onboard --install-daemon
+```
+
+```bash
+openclaw gateway install
+```
+
+```bash
+openclaw configure
+```
+
+--------------------------------
+
+### Setup Local PostgreSQL on Linux (Debian/Ubuntu)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+Steps to install and manage PostgreSQL on Debian/Ubuntu systems. This involves using apt to install the package, starting the service, creating a database, and setting the connection URL in the .prose/.env file.
+
+```bash
+sudo apt install postgresql
+sudo systemctl start postgresql
+sudo -u postgres createdb myproject
+echo "OPENPROSE_POSTGRES_URL=postgresql:///myproject" >> .prose/.env
+```
+
+--------------------------------
+
+### Execute install.ps1 script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Downloads and executes the install.ps1 script from openclaw.ai using PowerShell. This script installs OpenClaw on Windows. It supports various flags for customization, such as specifying tags, disabling onboarding, and performing a dry run.
+
+```powershell
+iwr -useb https://openclaw.ai/install.ps1 | iex
+```
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -Tag beta -NoOnboard -DryRun
+```
+
+--------------------------------
+
+### Install OpenClaw Prerequisites
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/exe-dev.md
+
+Installs necessary packages like git, curl, jq, ca-certificates, and openssl on the Ubuntu VM. These are required for downloading and running the OpenClaw installation script and its dependencies.
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl jq ca-certificates openssl
+```
+
+--------------------------------
+
+### Install and Verify imsg CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/imessage.md
+
+Installs the `imsg` command-line tool using Homebrew and verifies its installation by checking the help output. This is the first step in setting up local iMessage support.
+
+```bash
+brew install steipete/tap/imsg
+imsg rpc --help
+```
+
+--------------------------------
+
+### Manual Plugin Installation (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/voice-call/README.md
+
+Manually installs the @openclaw/voice-call plugin by copying it into the global extensions folder. This method is useful for development purposes. It involves creating a directory, copying the plugin files, and installing its dependencies.
+
+```bash
+mkdir -p ~/.openclaw/extensions
+cp -R extensions/voice-call ~/.openclaw/extensions/voice-call
+cd ~/.openclaw/extensions/voice-call && pnpm install
+```
+
+--------------------------------
+
+### Install Google Chrome on Linux
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/browser-linux-troubleshooting.md
+
+Installs the official Google Chrome stable package, which bypasses snap confinement issues that interfere with OpenClaw. Includes commands for downloading, installing, and fixing potential dependency errors.
+
+```bash
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo dpkg -i google-chrome-stable_current_amd64.deb
+sudo apt --fix-broken install -y  # if there are dependency errors
+```
+
+--------------------------------
+
+### Switching OpenClaw Install from npm to Git
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Instructions to switch from an npm-based OpenClaw installation to a git-based one. This involves cloning the repository, installing dependencies, building the project, and reconfiguring the gateway service. It does not affect user data.
+
+```bash
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
+pnpm install
+pnpm build
+openclaw doctor
+openclaw gateway restart
+```
+
+--------------------------------
+
+### Install signal-cli on Linux (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/signal.md
+
+This script downloads, extracts, and installs the latest native Linux build of signal-cli, making it available system-wide. It requires curl and tar, and installs to /opt with a symlink in /usr/local/bin.
+
+```bash
+VERSION=$(curl -Ls -o /dev/null -w %{url_effective} https://github.com/AsamK/signal-cli/releases/latest | sed -e 's/^.*\/v//')
+curl -L -O "https://github.com/AsamK/signal-cli/releases/download/v${VERSION}/signal-cli-${VERSION}-Linux-native.tar.gz"
+sudo tar xf "signal-cli-${VERSION}-Linux-native.tar.gz" -C /opt
+sudo ln -sf /opt/signal-cli /usr/local/bin/
+signal-cli --version
+```
+
+--------------------------------
+
+### Verify Lume Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Checks if the Lume command-line tool is installed and accessible by printing its version number. This confirms that the installation was successful and the tool is ready to use.
+
+```bash
+lume --version
+```
+
+--------------------------------
+
+### Switching OpenClaw Install from Git to npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Instructions to switch from a git-based OpenClaw installation back to an npm-based one. This involves installing the latest version globally via npm and then reconfiguring the gateway service. It does not affect user data.
+
+```bash
+npm install -g openclaw@latest
+openclaw doctor
+openclaw gateway restart
+```
+
+--------------------------------
+
+### Verify 1Password CLI Installation and Version
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/1password/SKILL.md
+
+Checks if the 1Password CLI is installed and displays its version. This command is used for initial verification.
+
+```bash
+op --version
+```
+
+--------------------------------
+
+### Install wacli using Homebrew
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/wacli/SKILL.md
+
+Installs the wacli CLI tool using the Homebrew package manager. This is a convenient way to install and manage the tool on macOS and Linux systems.
+
+```bash
+brew install steipete/tap/wacli
+```
+
+--------------------------------
+
+### Install OpenClaw and Daemon
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+Installs the OpenClaw package globally using npm and then runs the onboard command to set up the OpenClaw daemon. This prepares the VM for running OpenClaw services.
+
+```bash
+npm install -g openclaw@latest
+openclaw onboard --install-daemon
+```
+
+--------------------------------
+
+### Install OpenClaw Twitch Plugin (npm)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/twitch/README.md
+
+Installs the OpenClaw Twitch plugin using npm. This is the standard method for installing published packages.
+
+```bash
+openclaw plugins install @openclaw/twitch
+```
+
+--------------------------------
+
+### Install LINE Plugin for OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/line.md
+
+Commands to install the LINE plugin for OpenClaw, either from the official registry or a local git repository checkout.
+
+```bash
+openclaw plugins install @openclaw/line
+```
+
+```bash
+openclaw plugins install ./extensions/line
+```
+
+--------------------------------
+
+### Install Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/clawhub/SKILL.md
+
+Installs a specified skill from the ClawHub registry. Users can install the latest version or a specific version using the --version flag. The skill will be downloaded and placed in the default or specified working directory.
+
+```bash
+clawhub install my-skill
+clawhub install my-skill --version 1.2.3
+```
+
+--------------------------------
+
+### Install OpenClaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/exe-dev.md
+
+Downloads and executes the official OpenClaw installation script from their CDN. This command fetches the latest version and runs the setup process non-interactively.
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash
+```
+
+--------------------------------
+
+### OpenClaw Channel and Install Metadata Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/plugin.md
+
+Illustrates how channel plugins can expose onboarding metadata through `openclaw.channel` and installation hints via `openclaw.install` within their `package.json`. This allows the core catalog to remain data-free, with details like channel ID, labels, documentation paths, and installation preferences managed separately.
+
+```json
+{
+  "name": "@openclaw/nextcloud-talk",
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "channel": {
+      "id": "nextcloud-talk",
+      "label": "Nextcloud Talk",
+      "selectionLabel": "Nextcloud Talk (self-hosted)",
+      "docsPath": "/channels/nextcloud-talk",
+      "docsLabel": "nextcloud-talk",
+      "blurb": "Self-hosted chat via Nextcloud Talk webhook bots.",
+      "order": 65,
+      "aliases": ["nc-talk", "nc"]
+    },
+    "install": {
+      "npmSpec": "@openclaw/nextcloud-talk",
+      "localPath": "extensions/nextcloud-talk",
+      "defaultChoice": "npm"
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Install Playwright Browsers in Docker
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Command to install necessary Playwright browsers within a Docker environment. This is part of enabling full features when using the default security-first Docker image.
+
+```bash
+node /app/node_modules/playwright-core/cli.js install chromium
+```
+
+--------------------------------
+
+### Install OpenClaw CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/index.md
+
+Installs the OpenClaw command-line interface globally using npm. This command requires Node.js and npm to be installed on your system. It fetches the latest stable version of OpenClaw.
+
+```bash
+npm install -g openclaw@latest
+```
+
+--------------------------------
+
+### Onboard and Install OpenClaw Daemon
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/index.md
+
+Executes the OpenClaw onboarding process and installs it as a system daemon. This command simplifies the setup by automating initial configuration and service management. It's a crucial step for running OpenClaw in the background.
+
+```bash
+openclaw onboard --install-daemon
+```
+
+--------------------------------
+
+### Update System Packages and Install Build Tools (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/oracle.md
+
+Connects to the OCI instance via SSH and updates the system's package list and installed packages. It also installs `build-essential`, which is necessary for compiling certain dependencies on ARM architecture.
+
+```bash
+# Connect via public IP
+ssh ubuntu@YOUR_PUBLIC_IP
+
+# Update system
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y build-essential
+```
+
+--------------------------------
+
+### Install Zalo Personal Plugin from npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/zalouser.md
+
+Installs the Zalo Personal plugin from the npm registry using the OpenClaw CLI. After installation, the Gateway process needs to be restarted for the plugin to become active.
+
+```bash
+openclaw plugins install @openclaw/zalouser
+```
+
+--------------------------------
+
+### OpenCLaw Daemon Installation (macOS)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/reference/wizard.md
+
+Instructions for installing the OpenCLaw daemon on macOS using LaunchAgents. This method requires a logged-in user session. For headless operation, a custom LaunchDaemon is necessary.
+
+```bash
+# macOS: LaunchAgent
+# Requires a logged-in user session; for headless, use a custom LaunchDaemon (not shipped).
+```
+
+--------------------------------
+
+### Install an Official OpenClaw Plugin
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/plugin.md
+
+Command to install an official OpenClaw plugin from the registry. This example shows installing the Voice Call plugin. Only npm registry specs are supported.
+
+```bash
+openclaw plugins install @openclaw/voice-call
+```
+
+--------------------------------
+
+### Install 1Password CLI using Homebrew
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/1password/SKILL.md
+
+Installs the 1Password CLI tool using the Homebrew package manager. This is a prerequisite for using `op` commands.
+
+```bash
+brew install 1password-cli
+```
+
+--------------------------------
+
+### Install OpenClaw CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/README.md
+
+Installs the OpenClaw command-line interface globally using npm or pnpm. It also includes an option to install the Gateway daemon for persistent background operation.
+
+```bash
+npm install -g openclaw@latest
+# or: pnpm add -g openclaw@latest
+
+openclaw onboard --install-daemon
+```
+
+--------------------------------
+
+### Install Gateway Services with Profiles
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/multiple-gateways.md
+
+This snippet shows how to install the Gateway as a service for different profiles. This ensures that each gateway instance runs as an independent service, managed by the system.
+
+```bash
+openclaw --profile main gateway install
+openclaw --profile rescue gateway install
+```
+
+--------------------------------
+
+### openclaw plugins install <path-or-spec>
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/plugins.md
+
+Installs a new plugin from a local path or a package specifier.
+
+```APIDOC
+## openclaw plugins install <path-or-spec>
+
+### Description
+Installs a new plugin. Accepts a local path to the plugin directory or a package specifier (e.g., npm package name).
+
+### Method
+CLI COMMAND
+
+### Endpoint
+N/A
+
+### Parameters
+#### Path Parameters
+- **path-or-spec** (string) - Required - Path to the plugin directory or package specifier.
+
+#### Query Parameters
+- **-l, --link** (boolean) - Optional - Avoid copying a local directory; add it to `plugins.load.paths`.
+- **--pin** (boolean) - Optional - For npm installs, save the resolved exact spec (`name@version`) in `plugins.installs`.
+
+#### Request Body
+None
+
+### Request Example
+```bash
+openclaw plugins install ./my-local-plugin
+openclaw plugins install my-npm-package
+openclaw plugins install -l ./my-plugin
+openclaw plugins install my-npm-package --pin
+```
+
+### Response
+#### Success Response (200)
+Confirmation message indicating successful installation.
+
+#### Response Example
+```
+Plugin 'my-local-plugin' installed successfully.
+```
+```
+
+--------------------------------
+
+### Install and Enable acpx Plugin (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/acp-agents.md
+
+Commands to install the acpx plugin for OpenClaw and then enable it via the configuration. This is a prerequisite for using the acpx backend.
+
+```bash
+openclaw plugins install acpx
+openclaw config set plugins.entries.acpx.enabled true
+```
+
+--------------------------------
+
+### Install Playwright Browsers in Docker Container
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+Install Playwright browsers directly within a running openclaw-cli container without relying on npx. This command executes the Playwright CLI installation script for Chromium. This is useful for power-user configurations where system dependencies are baked into the image.
+
+```bash
+docker compose run --rm openclaw-cli \
+  node /app/node_modules/playwright-core/cli.js install chromium
+```
+
+--------------------------------
+
+### Install OpenClaw Gateway Plugins
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/plugins.md
+
+This command installs OpenClaw Gateway plugins from a specified path or npm specification. It supports various archive formats and offers options to link local directories without copying. Security is emphasized, recommending pinned versions for npm installs. Note that Git/URL/file specs are rejected, and dependency installs run with `--ignore-scripts`.
+
+```bash
+openclaw plugins install <path-or-spec>
+openclaw plugins install <npm-spec> --pin
+openclaw plugins install -l ./my-plugin
+```
+
+--------------------------------
+
+### Installing Pinned ACPX Version (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/acpx/skills/acp-router/SKILL.md
+
+This bash command installs a specific pinned version of ACPX within the plugin-local extensions directory. It navigates to the extension directory, runs npm install with specific flags to omit dev dependencies and avoid saving to package.json, and targets the pinned ACPX version.
+
+```bash
+cd extensions/acpx && npm install --omit=dev --no-save acpx@<pinnedVersion>
+```
+
+--------------------------------
+
+### Override SHARP_IGNORE_GLOBAL_LIBVIPS with install.sh
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/installer.md
+
+Installs Openclaw using the shell script while overriding the default behavior of ignoring system libvips for the 'sharp' package. This forces 'sharp' to build against the system libvips.
+
+```bash
+SHARP_IGNORE_GLOBAL_LIBVIPS=0 curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash
+```
+
+--------------------------------
+
+### Install OpenClaw Browser Extension (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/browser.md
+
+Command to install the OpenClaw browser extension. This is typically done in development or for unpacked extensions. It requires enabling developer mode in Chrome and loading the unpacked extension.
+
+```bash
+openclaw browser extension install
+```
+
+--------------------------------
+
+### Install xurl using npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Installs the xurl CLI tool globally using npm (Node Package Manager). This method is suitable for users who have Node.js and npm installed.
+
+```bash
+npm install -g @xdevplatform/xurl
+```
+
+--------------------------------
+
+### Reset OpenClaw Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Commands to completely reset OpenClaw to its default state while keeping it installed. This includes a non-interactive reset and re-running the onboarding process.
+
+```bash
+openclaw reset
+
+```
+
+```bash
+openclaw reset --scope full --yes --non-interactive
+openclaw onboard --install-daemon
+
+```
+
+```bash
+openclaw gateway --dev --reset
+
+```
+
+--------------------------------
+
+### Oracle CLI Help and Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/oracle/SKILL.md
+
+Demonstrates how to get help for the Oracle CLI and how to install it using npx if the binary is not found. It's important to use `npx` and avoid `pnpx` due to sqlite bindings.
+
+```bash
+oracle --help
+npx -y @steipete/oracle --help
+```
+
+--------------------------------
+
+### Install QMD CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/memory.md
+
+Instructions for installing the QMD CLI using Bun. This is a prerequisite for enabling the QMD backend in OpenClaw.
+
+```bash
+bun install -g https://github.com/tobi/qmd
+```
+
+--------------------------------
+
+### Install obsidian-cli using Homebrew
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/obsidian/SKILL.md
+
+Installs the obsidian-cli tool using the Homebrew package manager. This is a prerequisite for using most obsidian-cli commands.
+
+```shell
+brew install yakitrak/yakitrak/obsidian-cli
+```
+
+--------------------------------
+
+### Verify psql Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+This command verifies the installation of the psql command-line tool, which is a prerequisite for using PostgreSQL state management. It checks if the tool is accessible in the system's PATH and displays its version.
+
+```bash
+psql --version    # Should output: psql (PostgreSQL) 16.x
+```
+
+--------------------------------
+
+### OpenClaw Teams Plugin Installation
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/msteams.md
+
+Install the OpenClaw Teams plugin either from npm or a local checkout. This command adds the necessary components to OpenClaw for Teams integration.
+
+```bash
+openclaw plugins install @openclaw/msteams
+```
+
+```bash
+openclaw plugins install ./extensions/msteams
+```
+
+--------------------------------
+
+### Install Mattermost Plugin from Local Checkout
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/mattermost.md
+
+Installs the Mattermost plugin for OpenClaw from a local git repository checkout. This is useful when developing or testing the plugin directly.
+
+```bash
+openclaw plugins install ./extensions/mattermost
+```
+
+--------------------------------
+
+### Install OpenClaw from Source (WSL)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/windows.md
+
+Steps to clone the OpenClaw repository, install dependencies using pnpm, build the project, and run the initial onboarding process within the WSL2 environment.
+
+```bash
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
+pnpm install
+pnpm ui:build # auto-installs UI deps on first run
+pnpm build
+openclaw onboard
+```
+
+--------------------------------
+
+### Install Dependencies with Bun
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/bun.md
+
+Installs project dependencies using Bun. It ignores the pnpm-lock.yaml file. The `--no-save` flag prevents writing to the lockfile, avoiding repository churn.
+
+```shell
+bun install
+bun install --no-save
+```
+
+--------------------------------
+
+### Install Nextcloud Talk Plugin from Local Checkout
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/nextcloud-talk.md
+
+Installs the Nextcloud Talk plugin from a local git repository checkout, useful when developing or testing the plugin.
+
+```bash
+openclaw plugins install ./extensions/nextcloud-talk
+```
+
+--------------------------------
+
+### Install Voice Call Plugin from Local Folder
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md
+
+Installs the Voice Call plugin from a local directory, typically used for development or when not using a published package. It involves installing dependencies within the plugin's directory and then restarting the Gateway.
+
+```bash
+openclaw plugins install ./extensions/voice-call
+cd ./extensions/voice-call && pnpm install
+```
+
+--------------------------------
+
+### Install Lume Script
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/macos-vm.md
+
+This bash script downloads and installs the Lume tool, which is used for managing macOS virtual machines. Ensure your environment is configured to execute shell scripts.
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/lume/scripts/install.sh)"
+```
+
+--------------------------------
+
+### Install and Login Tailscale on VPS
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Installs Tailscale on a Virtual Private Server (VPS) using a curl script and logs in the VPS to the Tailscale network. This enables secure connectivity to the VPS from other devices on the same Tailnet.
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+--------------------------------
+
+### Install OpenClaw (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/oracle.md
+
+Downloads and executes the OpenClaw installation script. It then sources the bashrc file to ensure OpenClaw commands are available in the current shell session. Users are prompted to defer bot hatching.
+
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash
+source ~/.bashrc
+```
+
+--------------------------------
+
+### Install OpenClaw Twitch Plugin (Local Checkout)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/twitch/README.md
+
+Installs the OpenClaw Twitch plugin by referencing a local directory. This is useful for development or when the plugin is not yet published to npm.
+
+```bash
+openclaw plugins install ./extensions/twitch
+```
+
+--------------------------------
+
+### Install and Configure Tailscale (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/oracle.md
+
+Installs Tailscale on the OCI instance using a script and configures it to enable Tailscale SSH and set the hostname. This allows secure SSH access to the instance via the Tailscale network without needing a public IP.
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --ssh --hostname=openclaw
+
+tailscale status
+```
+
+--------------------------------
+
+### Install Nextcloud Talk Plugin via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/nextcloud-talk.md
+
+Installs the Nextcloud Talk plugin from the npm registry using the OpenClaw CLI.
+
+```bash
+openclaw plugins install @openclaw/nextcloud-talk
+```
+
+--------------------------------
+
+### Install OpenClaw CLI using npm
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/mac/bundled-gateway.md
+
+Installs the OpenClaw CLI globally using npm. Requires Node.js version 22 or higher. This command is essential for local mode operation of the macOS Gateway.
+
+```bash
+npm install -g openclaw@<version>
+```
+
+--------------------------------
+
+### Skills Management: Checking and Installation
+
+Source: https://context7.com/openclaw/openclaw/llms.txt
+
+Check skill requirements and install or update skills from ClawHub. Ensures the agent has the necessary tools and capabilities.
+
+```bash
+openclaw skills check
+npx clawhub install <skill-slug>
+npx clawhub update --all
+npx clawhub sync --all
+```
+
+--------------------------------
+
+### Install Tlon Plugin from Local Checkout
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/tlon.md
+
+Installs the Tlon plugin directly from a local Git repository checkout. This is useful for development or when testing a specific version.
+
+```bash
+openclaw plugins install ./extensions/tlon
+```
+
+--------------------------------
+
+### Install Matrix Plugin from Local Checkout
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/matrix.md
+
+Installs the Matrix plugin for OpenClaw from a local git repository checkout. This is useful during development or when running OpenClaw from a git repo.
+
+```bash
+openclaw plugins install ./extensions/matrix
+```
+
+--------------------------------
+
+### Install OpenHue CLI using Homebrew
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/openhue/SKILL.md
+
+This command installs the OpenHue CLI using the Homebrew package manager. It ensures the 'openhue' binary is available in your system's PATH.
+
+```bash
+brew install openhue/cli/openhue-cli
+```
+
+--------------------------------
+
+### Bootstrap OpenClaw Setup
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/start/setup.md
+
+Initializes the OpenClaw environment by setting up necessary configurations and directories. This command is used for both initial setup and potentially re-running setup steps.
+
+```bash
+openclaw setup
+```
+
+--------------------------------
+
+### Download New Skills using ClawHub CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/clawhub.md
+
+This command illustrates how to download and install a new skill pack from the ClawHub registry. Replace `my-skill-pack` with the actual slug of the skill you wish to install.
+
+```bash
+clawhub install my-skill-pack
+```
+
+--------------------------------
+
+### Install OpenClaw Twitch Plugin
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/twitch.md
+
+Commands to install the Twitch plugin for OpenClaw, either from the npm registry or a local checkout. Requires OpenClaw CLI.
+
+```bash
+openclaw plugins install @openclaw/twitch
+```
+
+```bash
+openclaw plugins install ./extensions/twitch
+```
+
+--------------------------------
+
+### Install xurl using Go
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
+
+Installs the xurl CLI tool using the Go programming language's build tools. This is an option for developers who use Go and have it set up in their environment.
+
+```bash
+go install github.com/xdevplatform/xurl@latest
+```
+
+--------------------------------
+
+### Install Matrix Plugin via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/matrix.md
+
+Installs the Matrix plugin for OpenClaw using the npm registry. This is the standard method for adding the plugin to your OpenClaw installation.
+
+```bash
+openclaw plugins install @openclaw/matrix
+```
+
+--------------------------------
+
+### Install Dependencies and Build swabble (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/Swabble/README.md
+
+This snippet shows the basic commands to install necessary development dependencies using Homebrew, build the swabble project using Swift Package Manager, and then run setup commands for configuration and serving.
+
+```bash
+# Install deps
+brew install swiftformat swiftlint
+
+# Build
+swift build
+
+# Write default config (~/.config/swabble/config.json)
+swift run swabble setup
+
+# Run foreground daemon
+swift run swabble serve
+
+# Test your hook
+swift run swabble test-hook "hello world"
+
+# Transcribe a file to SRT
+swift run swabble transcribe /path/to/audio.m4a --format srt --output out.srt
+```
+
+--------------------------------
+
+### Install and Manage Node Host as a Service
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/index.md
+
+Commands to install and restart a node host as a service. This allows the node host to run in the background and automatically start on system boot.
+
+```bash
+openclaw node install --host <gateway-host> --port 18789 --display-name "Build Node"
+openclaw node restart
+```
+
+--------------------------------
+
+### Install ClawDock Shell Helpers (Bash)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+This command downloads the `clawdock-helpers.sh` script and saves it to `~/.clawdock/`. This script provides convenient shell commands for managing OpenClaw Docker containers.
+
+```bash
+mkdir -p ~/.clawdock && curl -sL https://raw.githubusercontent.com/openclaw/openclaw/main/scripts/shell-helpers/clawdock-helpers.sh -o ~/.clawdock/clawdock-helpers.sh
+```
+
+--------------------------------
+
+### Install Zalo Plugin via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/channels/zalo.md
+
+Instructions for installing the Zalo plugin using the OpenCLAW command-line interface. This is a prerequisite for using Zalo bot features.
+
+```bash
+openclaw plugins install @openclaw/zalo
+```
+
+```bash
+openclaw plugins install ./extensions/zalo
+```
+
+--------------------------------
+
+### Run OpenClaw Ansible Playbook
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/ansible.md
+
+Executes the OpenClaw Ansible playbook for installation or configuration updates. This script automates the deployment process. It can be run multiple times as it is idempotent.
+
+```bash
+# Run playbook script
+./run-playbook.sh
+
+# Or run directly (then manually execute /tmp/openclaw-setup.sh after)
+# ansible-playbook playbook.yml --ask-become-pass
+```
+
+--------------------------------
+
+### Optimize Dockerfile for Faster Rebuilds with Layer Caching
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/docker.md
+
+This Dockerfile example demonstrates how to optimize rebuild times by strategically ordering commands to leverage Docker's layer caching. Dependencies are copied and installed before the rest of the application code, ensuring that `pnpm install` is only re-run when lockfiles or package metadata change.
+
+```dockerfile
+FROM node:22-bookworm
+
+# Install Bun (required for build scripts)
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+RUN corepack enable
+
+WORKDIR /app
+
+# Cache dependencies unless package metadata changes
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY ui/package.json ./ui/package.json
+COPY scripts ./scripts
+
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+RUN pnpm build
+RUN pnpm ui:install
+RUN pnpm ui:build
+
+ENV NODE_ENV=production
+
+CMD ["node","dist/index.js"]
+```
+
+--------------------------------
+
+### Install sag CLI using Homebrew
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/sag/SKILL.md
+
+This snippet shows how to install the sag command-line tool using the Homebrew package manager. It ensures the 'sag' binary is available in your system's PATH.
+
+```bash
+brew install steipete/tap/sag
+```
+
+--------------------------------
+
+### Verify Installed Binaries in OpenClaw Gateway Container
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/install/gcp.md
+
+Executes commands within the running `openclaw-gateway` container to verify that the essential binaries (`gog`, `goplaces`, `wacli`) have been correctly installed and are accessible in the system's PATH. This confirms the success of the Docker image build process.
+
+```bash
+docker compose exec openclaw-gateway which gog
+docker compose exec openclaw-gateway which goplaces
+docker compose exec openclaw-gateway which wacli
+```

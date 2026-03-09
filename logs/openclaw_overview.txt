@@ -1,0 +1,2122 @@
+### Bridge Protocol Overview
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/gateway/bridge-protocol.md
+
+An overview of the legacy Bridge protocol, its purpose, and its differences from the newer Gateway protocol.
+
+```APIDOC
+## Bridge Protocol (Legacy Node Transport)
+
+### Description
+The Bridge protocol is a **legacy** node transport mechanism that uses TCP with a JSON Lines (JSONL) format. It was designed to provide a secure boundary with a limited API surface compared to the full Gateway API. New node clients are recommended to use the unified Gateway WebSocket protocol instead.
+
+**Note:** Current OpenClaw builds do not include the TCP bridge listener, and legacy `bridge.*` configuration keys are no longer supported. This documentation is for historical reference.
+
+### Key Features
+- **Security Boundary**: Exposes a small allowlist of functionalities instead of the entire gateway API.
+- **Pairing and Node Identity**: Node admission is managed by the gateway and tied to a per-node token.
+- **Discovery**: Nodes can discover gateways via Bonjour on LAN or connect directly over a tailnet.
+- **Loopback WS**: The full WebSocket control plane remains local unless tunneled via SSH.
+
+### Transport Details
+- **Protocol**: TCP with JSON object per line (JSONL).
+- **TLS**: Optional support when `bridge.tls.enabled` is true.
+- **Default Port**: Legacy default listener port was `18790` (not active in current builds).
+- **TLS Discovery**: When TLS is enabled, Bonjour/mDNS TXT records include `bridgeTls=1` and `bridgeTlsSha256`. These TXT records are unauthenticated and should not be used as an authoritative pin without out-of-band verification.
+```
+
+--------------------------------
+
+### Gateway Overview
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/architecture.md
+
+The Gateway acts as a central hub for all messaging surfaces, managing connections from control-plane clients and nodes over WebSockets.
+
+```APIDOC
+## Gateway Architecture Overview
+
+### Description
+The Openclaw Gateway is a single, long-lived process responsible for managing all messaging integrations (e.g., WhatsApp, Telegram, Slack). It exposes a WebSocket API for control-plane clients and nodes to connect and interact.
+
+### Components
+- **Gateway**: Manages provider connections, exposes a typed WebSocket API, validates incoming data, and emits various events.
+- **Control-Plane Clients**: Applications like the macOS app, CLI, or web UI that connect to the Gateway via WebSocket for sending requests and subscribing to events.
+- **Nodes**: Devices (macOS, iOS, Android, headless) that also connect via WebSocket, declaring `role: node` and providing device-specific capabilities and commands.
+
+### Connection Details
+- **Control-Plane Clients**: Connect to the Gateway's configured bind host (default `127.0.0.1:18789`) over WebSocket.
+- **Nodes**: Connect to the same WebSocket server but identify with `role: node` and specify their capabilities.
+- **Canvas Host**: Served by the Gateway's HTTP server under `/__openclaw__/canvas/` and `/__openclaw__/a2ui/` on the same port.
+
+### Key Invariants
+- Exactly one Gateway per host manages a single WhatsApp session.
+- A mandatory handshake process must be completed upon connection.
+- Events are not replayed; clients are responsible for refreshing on data gaps.
+```
+
+--------------------------------
+
+### Complete Example with Parallel Reviews and Context
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+A comprehensive example showcasing parallel execution for multiple review tasks (security, performance, style) and then combining their results into a unified report using context.
+
+```prose
+agent reviewer:
+  model: sonnet
+
+# Run parallel reviews
+parallel:
+  sec = session: reviewer
+    prompt: "Review for security issues"
+  perf = session: reviewer
+    prompt: "Review for performance issues"
+  style = session: reviewer
+    prompt: "Review for style issues"
+
+# Combine all reviews
+session "Create unified review report"
+  context: { sec, perf, style }
+```
+
+--------------------------------
+
+### Gateway WebSocket Protocol Frames
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/concepts/typebox.md
+
+Overview of the three types of frames used in the Gateway WebSocket protocol: Request, Response, and Event.
+
+```APIDOC
+## Gateway WebSocket Protocol Frames
+
+### Description
+
+The Gateway WebSocket protocol uses three distinct frame types for communication between clients and the server: Request, Response, and Event.
+
+### Frame Types
+
+- **Request Frame**: Used by the client to send a request to the server.
+  - **Structure**: `{ type: "req", id, method, params }`
+  - **Example**: `{ "type": "req", "id": "c1", "method": "connect", "params": { ... } }`
+
+- **Response Frame**: Used by the server to respond to a client's request.
+  - **Structure**: `{ type: "res", id, ok, payload | error }`
+  - **Example**: `{ "type": "res", "id": "c1", "ok": true, "payload": { "type": "hello-ok", ... } }`
+
+- **Event Frame**: Used by the server to push notifications or data to the client.
+  - **Structure**: `{ type: "event", event, payload, seq?, stateVersion? }`
+  - **Example**: `{ "type": "event", "event": "tick", "payload": { "ts": 1730000000 }, "seq": 12 }`
+
+### Connection Flow
+
+The initial communication must be a `connect` request from the client, followed by a `hello-ok` response from the server. Subsequent communication involves method calls and event subscriptions.
+```
+
+--------------------------------
+
+### Complete Example: Research and Report Generation
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+This example demonstrates defining agents, gathering research using 'let' variables, analyzing findings with context, and writing a final report using multiple contexts.
+
+```prose
+agent researcher:
+  model: sonnet
+  prompt: "You are a research assistant"
+
+agent writer:
+  model: opus
+  prompt: "You are a technical writer"
+
+# Gather research
+let research = session: researcher
+  prompt: "Research quantum computing developments"
+
+# Analyze findings
+let analysis = session: researcher
+  prompt: "Analyze the key findings"
+  context: research
+
+# Write the final report using both contexts
+const report = session: writer
+  prompt: "Write a comprehensive report"
+  context: [research, analysis]
+```
+
+--------------------------------
+
+### Environment Override for Diagnostics Flags (Shell)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Provides a one-off environment variable override for diagnostic flags. This allows for temporary activation of specific debug logs for troubleshooting purposes.
+
+```shell
+OPENCLAW_DIAGNOSTICS=telegram.http,telegram.payload
+```
+
+--------------------------------
+
+### Sequential Session Execution in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates how multiple sessions are executed one after another. Each session must complete before the next one begins.
+
+```prose
+session "First task"
+session "Second task"
+session "Third task"
+```
+
+--------------------------------
+
+### Export Diagnostics to OpenTelemetry (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Configures Openclaw to export diagnostic data to an OpenTelemetry collector via OTLP/HTTP. This setup enables the `diagnostics-otel` plugin and specifies connection details for the collector.
+
+```json
+{
+  "plugins": {
+    "allow": ["diagnostics-otel"],
+    "entries": {
+      "diagnostics-otel": {
+        "enabled": true
+      }
+    }
+  },
+  "diagnostics": {
+    "enabled": true,
+    "otel": {
+      "enabled": true,
+      "endpoint": "http://otel-collector:4318",
+      "protocol": "http/protobuf",
+      "serviceName": "openclaw-gateway",
+      "traces": true,
+      "metrics": true,
+      "logs": true,
+      "sampleRate": 0.2,
+      "flushIntervalMs": 60000
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Consensus Building Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Shows how loops can be used to facilitate consensus among experts, iterating until agreement is reached or a maximum number of discussion rounds occur.
+
+```prose
+parallel:
+  opinion1 = session "Get first expert opinion"
+  opinion2 = session "Get second expert opinion"
+
+loop until **experts have reached consensus** (max: 5):
+  session "Identify points of disagreement"
+    context: { opinion1, opinion2 }
+  session "Facilitate discussion to resolve differences"
+
+session "Document the final consensus"
+```
+
+--------------------------------
+
+### Combining Parallel Join Strategies and Failure Policies
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to combine different join strategies (like 'first' or 'any') with failure policies (like 'continue' or 'ignore') to create complex parallel execution behaviors. This allows for fine-grained control over how parallel tasks are managed.
+
+```prose
+# Race with resilience
+parallel ("first", on-fail: "continue"):
+  session "Fast but unreliable"
+  session "Slow but reliable"
+
+# Get any 2 results, ignoring failures
+parallel ("any", count: 2, on-fail: "ignore"):
+  session "Approach 1"
+  session "Approach 2"
+  session "Approach 3"
+  session "Approach 4"
+```
+
+--------------------------------
+
+### Enable Diagnostics (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Enables the generation of diagnostic events within Openclaw. This configuration is typically used when diagnostics need to be accessed by plugins or custom sinks without an explicit exporter.
+
+```json
+{
+  "diagnostics": {
+    "enabled": true
+  }
+}
+```
+
+--------------------------------
+
+### Check Status of All tmux Sessions
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/tmux/SKILL.md
+
+Iterates through multiple tmux sessions, capturing and displaying the last 5 lines of output from each. This provides a quick overview of the status of parallel worker sessions.
+
+```bash
+for s in shared worker-2 worker-3 worker-4 worker-5 worker-6 worker-7 worker-8; do
+  echo "=== $s ==="
+  tmux capture-pane -t $s -p 2>/dev/null | tail -5
+done
+```
+
+--------------------------------
+
+### Nested Conditional Logic
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Presents an example of nested if/else statements, where conditions are evaluated within other conditional blocks. This allows for hierarchical decision-making based on multiple criteria.
+
+```prose
+if **the request is authenticated**:
+  if **the user has admin privileges**:
+    session "Process admin request"
+  else:
+    session "Process standard user request"
+else:
+  session "Return authentication error"
+```
+
+--------------------------------
+
+### Monitor System Memory Usage
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/digitalocean.md
+
+Provides commands to monitor the memory usage on the DigitalOcean droplet. `free -h` shows a human-readable overview of memory and swap usage, while `htop` provides an interactive process viewer.
+
+```bash
+free -h
+htop
+```
+
+--------------------------------
+
+### Iterative Improvement Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+An example of using a loop to iteratively improve a draft until it meets a quality standard, with a maximum number of revision cycles.
+
+```prose
+session "Write an initial draft"
+
+loop until **the draft is polished and ready for review** (max: 5):
+  session "Review the current draft and identify issues"
+  session "Revise the draft to address the issues"
+
+session "Present the final draft"
+```
+
+--------------------------------
+
+### Run OpenClaw Status and Diagnostic Commands
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/troubleshooting.md
+
+Execute a sequence of OpenClaw CLI commands to quickly assess the status of the system, gateway, and channels. This is the first step in diagnosing issues, providing a rapid overview of potential problems.
+
+```bash
+openclaw status
+openclaw status --all
+openclaw gateway probe
+openclaw gateway status
+openclaw doctor
+openclaw channels status --probe
+openclaw logs --follow
+```
+
+--------------------------------
+
+### Basic Opinion Structure
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/experiments/research/memory.md
+
+Defines the structure for storing opinions within the memory system. Each opinion includes the statement, confidence level, update timestamp, and links to supporting/contradicting evidence.
+
+```json
+{
+  "statement": "Peter prefers concise replies on WhatsApp.",
+  "confidence": 0.95,
+  "last_updated": "2025-11-27T10:00:00Z",
+  "evidence": {
+    "supporting": ["fact_id_1", "fact_id_2"],
+    "contradicting": []
+  }
+}
+```
+
+--------------------------------
+
+### Context Serialization Strategy
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/in-context.md
+
+Outlines strategies for serializing context based on its size, ranging from verbatim passing for small contexts to extracting essentials for very large ones. It also provides the format for context provision.
+
+```text
+Context provided:
+---
+research: "Key findings about AI safety..."
+analysis: "Risk assessment shows..."
+---
+```
+
+--------------------------------
+
+### Override Log Level with CLI Option
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Shows how to override the log level for a specific command execution using the `--log-level` CLI option. This takes precedence over environment variables and configuration files for that particular command.
+
+```bash
+openclaw --log-level debug gateway run
+```
+
+--------------------------------
+
+### Nested Loop Example 2
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Shows a fixed-iteration loop nested inside an unbounded loop, demonstrating flexibility in structuring iterative processes.
+
+```prose
+# Fixed inside unbounded
+loop until **all batches processed** (max: 5):
+  repeat 3:
+    session "Process batch item"
+```
+
+--------------------------------
+
+### Configure General Logging Settings
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Defines comprehensive logging configurations in `~/.openclaw/openclaw.json`. This includes setting log levels for file and console output, specifying console formatting styles, and configuring sensitive data redaction patterns.
+
+```json
+{
+  "logging": {
+    "level": "info",
+    "file": "/tmp/openclaw/openclaw-YYYY-MM-DD.log",
+    "consoleLevel": "info",
+    "consoleStyle": "pretty",
+    "redactSensitive": "tools",
+    "redactPatterns": ["sk-.*"]
+  }
+}
+```
+
+--------------------------------
+
+### Filter Channel-Specific Logs via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Command to retrieve logs specifically for a given channel using the OpenClaw CLI. This is useful for isolating and debugging issues related to a particular communication channel like WhatsApp or Telegram.
+
+```bash
+openclaw channels logs --channel whatsapp
+```
+
+--------------------------------
+
+### Input/Output Bindings Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/in-context.md
+
+Demonstrates how inputs are received and outputs are defined within a program. Inputs are passed from the caller, and outputs are prepared to be returned to the caller.
+
+```text
+[Input] Inputs received:
+   topic = "quantum computing" (from caller)
+   depth = "deep" (from caller)
+
+[Output] output findings = "Research shows..." (will return to caller)
+[Output] output sources = ["arxiv:2401.1234", ...] (will return to caller)
+```
+
+--------------------------------
+
+### Display Issues in Markdown Table
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/gh-issues/SKILL.md
+
+This snippet provides an example of how to display fetched GitHub issues in a markdown table format. The table includes columns for the issue number, title, and labels, facilitating a clear overview for the user.
+
+```markdown
+| #   | Title                         | Labels        |
+| --- | ----------------------------- | ------------- |
+| 42  | Fix null pointer in parser    | bug, critical |
+| 37  | Add retry logic for API calls | enhancement   |
+```
+
+--------------------------------
+
+### Complete Pipeline Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+A comprehensive example in OpenProse demonstrating chained pipeline operations: filtering articles by relevance, mapping them to summaries, reducing summaries into a combined document, and finally formatting the result.
+
+```prose
+# Define a collection
+let articles = ["AI breakthroughs", "Climate solutions", "Space exploration"]
+
+# Process with chained operations
+let summaries = articles
+  | filter:
+      session "Is this topic relevant to technology? Answer yes or no."
+        context: item
+  | map:
+      session "Write a compelling one-paragraph summary"
+        context: item
+  | reduce(combined, summary):
+      session "Merge this summary into the combined document"
+        context: [combined, summary]
+
+# Present the final result
+session "Format and present the combined summaries"
+  context: summaries
+```
+
+--------------------------------
+
+### Live System Resource Monitoring with htop
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/platforms/raspberry-pi.md
+
+This command launches `htop`, an interactive process viewer for Unix-like systems. It provides a real-time, color-coded overview of running processes, CPU usage, memory usage, and system load, allowing for dynamic performance monitoring.
+
+```bash
+htop
+```
+
+--------------------------------
+
+### Quality Threshold Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates using a 'loop while' construct to continuously improve a document until a desired quality score is achieved, with a maximum number of improvement cycles.
+
+```prose
+let draft = session "Create initial document"
+
+loop while **quality score is below threshold** (max: 10):
+  draft = session "Review and improve the document"
+    context: draft
+  session "Calculate new quality score"
+
+session "Finalize the document"
+  context: draft
+```
+
+--------------------------------
+
+### Configure Diagnostics Flags (JSON)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Configures specific diagnostic flags to enable targeted debug logging. Flags are case-insensitive and support wildcards, allowing for granular control over log output without altering the global logging level.
+
+```json
+{
+  "diagnostics": {
+    "flags": ["telegram.http"]
+  }
+}
+```
+
+--------------------------------
+
+### Structured Workflow Example in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/antipatterns.md
+
+Illustrates a well-structured workflow using meaningful names for sessions and explicit contexts, improving readability and maintainability compared to unstructured code.
+
+```prose
+# Good: Clear intent
+# Phase 1: Research
+let research = session "Gather background information"
+
+# Phase 2: Analysis
+let analysis = session "Analyze research findings"
+  context: research
+
+# Phase 3: Parallel evaluation
+parallel:
+  technical_eval = session "Technical feasibility assessment"
+    context: analysis
+  business_eval = session "Business viability assessment"
+    context: analysis
+
+# Phase 4: Synthesis
+session "Create final recommendation"
+  context: { technical_eval, business_eval }
+```
+
+--------------------------------
+
+### Get All Provider Usage Snapshot with CodexBar CLI (JSON Output)
+
+Source: https://github.com/openclaw/openclaw/blob/main/skills/model-usage/references/codexbar-cli.md
+
+This command fetches usage data for all configured providers and presents it in a pretty-printed JSON format. This provides a comprehensive overview of token usage across the entire system.
+
+```shell
+codexbar --provider all --format json
+```
+
+--------------------------------
+
+### Session Composition: Separation of Concerns (Prose)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/patterns.md
+
+Illustrates the 'separation of concerns' pattern in Prose by composing multiple simple sessions instead of one complex session. It shows a good example of chaining sessions for data fetching, analysis, recommendations, and reporting, contrasting it with a 'bad' monolithic session.
+
+```prose
+# Good: Single responsibility per session
+let data = session "Fetch and validate input data"
+let analysis = session "Analyze data for patterns"
+  context: data
+let recommendations = session "Generate recommendations from analysis"
+  context: analysis
+session "Format recommendations as report"
+  context: recommendations
+
+# Bad: God session
+session "Fetch data, analyze it, generate recommendations, and format a report"
+```
+
+--------------------------------
+
+### OpenProse Nested Choice Blocks Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates the use of nested choice blocks in OpenProse. This allows for hierarchical decision-making, where the outcome of one choice can lead to another set of choices.
+
+```prose
+choice **the type of request**:
+  option "Bug report":
+    choice **the bug severity**:
+      option "Critical":
+        session "Escalate immediately"
+      option "Normal":
+        session "Add to sprint backlog"
+  option "Feature request":
+    session "Add to feature backlog"
+```
+
+--------------------------------
+
+### Override Log Level with Environment Variable
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Demonstrates how to temporarily override the global log level for file and console logging using the `OPENCLAW_LOG_LEVEL` environment variable. This is useful for increasing verbosity for a single run without modifying configuration files.
+
+```bash
+export OPENCLAW_LOG_LEVEL=debug
+```
+
+--------------------------------
+
+### Multi-Perspective Review in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/patterns.md
+
+Illustrates the 'multi-perspective-review' pattern in Prose, where diverse viewpoints are gathered before synthesis. Different agents evaluate from user, technical, and business perspectives, followed by a synthesis step.
+
+```prose
+parallel:
+  user_perspective = session "Evaluate from end-user viewpoint"
+  tech_perspective = session "Evaluate from engineering viewpoint"
+  business_perspective = session "Evaluate from business viewpoint"
+
+session "Synthesize feedback and prioritize improvements"
+  context: { user_perspective, tech_perspective, business_perspective }
+```
+
+--------------------------------
+
+### Configure File Log Path
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Specifies the custom file path for OpenClaw Gateway logs. This configuration is done within the `~/.openclaw/openclaw.json` file under the `logging` object. It allows users to redirect log output from the default location to a preferred path.
+
+```json
+{
+  "logging": {
+    "file": "/path/to/openclaw.log"
+  }
+}
+```
+
+--------------------------------
+
+### Configure Multi-modal Single Entry with Explicit Capabilities
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/media-understanding.md
+
+This configuration sets up a single entry for multi-modal understanding, explicitly defining capabilities for image, audio, and video processing using the Google Gemini model.
+
+```json5
+{
+  tools: {
+    media: {
+      image: {
+        models: [
+          {
+            provider: "google",
+            model: "gemini-3-pro-preview",
+            capabilities: ["image", "video", "audio"],
+          },
+        ],
+      },
+      audio: {
+        models: [
+          {
+            provider: "google",
+            model: "gemini-3-pro-preview",
+            capabilities: ["image", "video", "audio"],
+          },
+        ],
+      },
+      video: {
+        models: [
+          {
+            provider: "google",
+            model: "gemini-3-pro-preview",
+            capabilities: ["image", "video", "audio"],
+          },
+        ],
+      },
+    },
+  },
+}
+```
+
+--------------------------------
+
+### Tail Gateway Log File via CLI
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/logging.md
+
+Command to follow the gateway log file in real-time using the OpenClaw CLI. Supports various output modes like pretty-printed, plain text, and JSON, with options to control colorization and formatting.
+
+```bash
+openclaw logs --follow
+```
+
+```bash
+openclaw logs --follow --json
+```
+
+```bash
+openclaw logs --follow --plain
+```
+
+```bash
+openclaw logs --follow --no-color
+```
+
+--------------------------------
+
+### VM Loop Tracking - Initialization and Iteration Update
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/sqlite.md
+
+SQL examples for tracking loop execution. The first statement shows the initial insertion of an execution record with loop metadata, including max iterations and condition. The second updates the current iteration count.
+
+```sql
+-- Loop metadata tracks iteration state
+INSERT INTO execution (statement_index, statement_text, status, metadata)
+VALUES (10, 'loop until **analysis complete** (max: 5):', 'executing',
+  '{"loop_id": "l1", "max_iterations": 5, "current_iteration": 0, "condition": "**analysis complete**"}');
+
+-- Update iteration
+UPDATE execution
+SET metadata = json_set(metadata, '$.current_iteration', 2),
+    updated_at = datetime('now')
+WHERE json_extract(metadata, '$.loop_id') = 'l1';
+```
+
+--------------------------------
+
+### Approval Workflow with Gateway and Operator UI (Conceptual)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/refactor/clawnet.md
+
+Outlines a proposed centralized approval system where the gateway manages approval records and communicates with operator UIs. This flow ensures that approvals are handled consistently and securely, with clear semantics for resolution and timeouts.
+
+```Pseudocode
+// Gateway receives system.run intent from agent
+function handleRunIntent(agentData) {
+  const approvalRecord = createApprovalRecord(agentData.commandId);
+  broadcastApprovalRequest(approvalRecord);
+}
+
+// Operator UI receives approval request and sends decision
+function sendApprovalDecision(approvalId, decision) { // decision: 'approved' or 'denied'
+  gateway.resolveApproval(approvalId, decision, userScope);
+}
+
+// Gateway processes approval resolution
+function resolveApproval(approvalId, decision, scope) {
+  if (!hasScope(scope, 'operator.approvals')) {
+    reject('Unauthorized');
+    return;
+  }
+  const record = getApprovalRecord(approvalId);
+  if (record.status === 'settled' || isTimeout(record)) {
+    reject('Approval already settled or timed out');
+    return;
+  }
+  record.status = 'settled';
+  record.decision = decision;
+  logApproval(record);
+  if (decision === 'approved') {
+    invokeNodeCommand(record.command);
+  }
+}
+
+```
+
+--------------------------------
+
+### Multiple Nested Unbounded Loops
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates nesting multiple unbounded loops, allowing for deep iterative refinement or complex multi-stage processes.
+
+```prose
+# Multiple unbounded
+loop until **outer condition** (max: 5):
+  loop until **inner condition** (max: 10):
+    session "Deep iteration"
+```
+
+--------------------------------
+
+### Nested Loop Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates how different loop types can be nested within each other, such as an unbounded loop inside a fixed-iteration loop.
+
+```prose
+# Unbounded inside fixed
+repeat 3:
+  loop until **sub-task complete** (max: 10):
+    session "Work on sub-task"
+```
+
+--------------------------------
+
+### Scoped Binding Narration
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/in-context.md
+
+Shows how bindings are annotated with their execution scope and how variable resolution occurs across different scopes. This is crucial for understanding data context in nested function calls.
+
+```text
+[Binding] let result = "computed value" (execution_id: 43)
+
+[Binding] Resolving 'config': found in execution_id 41 (parent scope)
+```
+
+--------------------------------
+
+### Sequential Inside Parallel Composition
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates nesting sequential workflows within parallel branches. Each parallel branch executes its own sequence of tasks concurrently with other branches.
+
+```prose
+parallel:
+  do:
+    session "Multi-step task 1a"
+    session "Multi-step task 1b"
+  do:
+    session "Multi-step task 2a"
+    session "Multi-step task 2b"
+```
+
+--------------------------------
+
+### Pass Parallel Results Using Object Shorthand
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates using object shorthand to pass multiple parallel results as context to a subsequent session. The `{ security, perf, style }` syntax is a concise way to include these variables.
+
+```prose
+parallel:
+  security = session "Security review"
+  perf = session "Performance review"
+  style = session "Style review"
+
+session "Synthesize all reviews"
+  context: { security, perf, style }
+```
+
+--------------------------------
+
+### Simple .prose Workflow Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/prose.md
+
+An example of a simple .prose file demonstrating multi-agent research and synthesis with parallel execution. It defines input, agents with specific models and prompts, and a parallel execution block for findings and draft generation.
+
+```prose
+# Research + synthesis with two agents running in parallel.
+
+input topic: "What should we research?"
+
+agent researcher:
+  model: sonnet
+  prompt: "You research thoroughly and cite sources."
+
+agent writer:
+  model: opus
+  prompt: "You write a concise summary."
+
+parallel:
+  findings = session: researcher
+    prompt: "Research {topic}."
+  draft = session: writer
+    prompt: "Summarize {topic}."
+
+session "Merge the findings + draft into a final answer."
+context: { findings, draft }
+```
+
+--------------------------------
+
+### Subagent Output Confirmation Message (Root Scope)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+This example shows the format of the confirmation message a subagent returns to the VM for the root scope. It includes the binding name, its location in the database, and a summary of the content.
+
+```text
+Binding written: research
+Location: openprose.bindings WHERE name='research' AND run_id='20260116-143052-a7b3c9' AND execution_id IS NULL
+Summary: AI safety research covering alignment, robustness, and interpretability with 15 citations.
+```
+
+--------------------------------
+
+### Accessing Program Outputs
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to access the outputs of an invoked program. Outputs are available as properties of the result object returned by the program call.
+
+```prose
+session "Write summary"
+  context: result.findings
+
+session "Cite sources"
+  context: result.sources
+```
+
+--------------------------------
+
+### health
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Fetches health information from the running Gateway.
+
+```APIDOC
+## health
+
+### Description
+Fetches health information from the running Gateway.
+
+### Method
+GET
+
+### Endpoint
+/health
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+- **json** (boolean) - Optional - Output in JSON format.
+- **timeout** (integer) - Optional - Timeout in milliseconds for the health check.
+- **verbose** (boolean) - Optional - Enable verbose health information.
+
+### Request Example
+```json
+{
+  "example": "openclaw health --verbose"
+}
+```
+
+### Response
+#### Success Response (200)
+- **status** (string) - The health status of the Gateway (e.g., "OK", "Degraded").
+- **details** (object) - (Optional) Detailed health information.
+
+#### Response Example
+```json
+{
+  "example": {
+    "status": "OK",
+    "details": {
+      "cpu_usage": "20%",
+      "memory_usage": "50%"
+    }
+  }
+}
+```
+```
+
+--------------------------------
+
+### Parallel Error Handling in OpenProse
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates how to implement independent error handling for each branch within a 'parallel:' block. Each branch can have its own try/catch mechanism for localized recovery.
+
+```prose
+parallel:
+  try:
+    session "Branch A might fail"
+  catch:
+    session "Recover branch A"
+  try:
+    session "Branch B might fail"
+  catch:
+    session "Recover branch B"
+
+session "Continue with recovered results"
+```
+
+--------------------------------
+
+### For-Each Block Basic Syntax - OpenProse
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates the basic syntax for the 'for' block, which iterates over a collection. It requires a collection to be defined or provided.
+
+```prose
+let fruits = ["apple", "banana", "cherry"]
+for fruit in fruits:
+  session "Describe this fruit"
+    context: fruit
+```
+
+--------------------------------
+
+### Complete Execution Trace Example (Prose)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/in-context.md
+
+Provides a detailed example of a complete program execution trace written in Prose. It includes agent definitions, session calls, parallel execution, loops, and context serialization, along with narration of each step.
+
+```prose
+agent researcher:
+  model: sonnet
+
+let research = session: researcher
+  prompt: "Research AI safety"
+
+parallel:
+  a = session "Analyze risk A"
+  b = session "Analyze risk B"
+
+loop until **analysis complete** (max: 3):
+  session "Synthesize"
+    context: { a, b, research }
+```
+
+--------------------------------
+
+### status
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/cli/index.md
+
+Shows linked session health and recent recipients. Can provide deep diagnostics and usage information.
+
+```APIDOC
+## status
+
+### Description
+Shows linked session health and recent recipients. Can provide deep diagnostics and usage information.
+
+### Method
+GET
+
+### Endpoint
+/status
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+- **json** (boolean) - Optional - Output in JSON format.
+- **all** (boolean) - Optional - Show full diagnosis information (read-only, pasteable).
+- **deep** (boolean) - Optional - Probe channels for deeper status information.
+- **usage** (boolean) - Optional - Show model provider usage and quota details.
+- **timeout** (integer) - Optional - Timeout in milliseconds for the status check.
+- **verbose** (boolean) - Optional - Enable verbose output.
+- **debug** (boolean) - Optional - Alias for `--verbose`.
+
+### Request Example
+```json
+{
+  "example": "openclaw status --usage --deep"
+}
+```
+
+### Response
+#### Success Response (200)
+- **gateway_status** (string) - Status of the Gateway service.
+- **node_host_status** (string) - Status of the node host service.
+- **recent_recipients** (array) - List of recent recipients.
+- **provider_usage** (object) - (Optional) Details on model provider usage and quota.
+
+#### Response Example
+```json
+{
+  "example": {
+    "gateway_status": "Healthy",
+    "node_host_status": "Healthy",
+    "recent_recipients": ["+15551234567", "user@example.com"],
+    "provider_usage": {
+      "anthropic": {"quota": 100000, "used": 5000},
+      "openai": {"quota": 50000, "used": 2500}
+    }
+  }
+}
+```
+```
+
+--------------------------------
+
+### Identity Management: Stable ID and Cute Slug (Conceptual)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/refactor/clawnet.md
+
+Explains the distinction between a stable, unchangeable identifier (like a keypair fingerprint) required for authentication and a human-friendly 'cute slug' used for labeling. This system ensures reliable identification while allowing for user-friendly naming.
+
+```Pseudocode
+// Authentication requires a stable ID
+function authenticateUser(credentials) {
+  const stableId = getStableIdFromCredentials(credentials); // e.g., keypair fingerprint
+  if (!isValidStableId(stableId)) {
+    throw new Error('Invalid stable ID');
+  }
+  // ... proceed with authentication ...
+}
+
+// Gateway registry stores human-readable labels
+interface GatewayRegistryEntry {
+  stableId: string;
+  cuteSlug: string; // e.g., 'scarlet-claw'
+  // ... other properties
+}
+
+function updateCuteSlug(stableId, newSlug) {
+  const entry = findEntryByStableId(stableId);
+  if (entry) {
+    entry.cuteSlug = handleSlugCollision(newSlug);
+    saveRegistryEntry(entry);
+  }
+}
+
+```
+
+--------------------------------
+
+### OpenProse Simple Choice Block Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+A basic example of an OpenProse choice block. It demonstrates how to define criteria and multiple options, each with a session to be executed based on the evaluated criteria.
+
+```prose
+let analysis = session "Analyze the code quality"
+
+choice **the severity of issues found in the analysis**:
+  option "Critical":
+    session "Stop deployment and fix critical issues"
+      context: analysis
+  option "Minor":
+    session "Log issues for later and proceed"
+      context: analysis
+  option "None":
+    session "Proceed with deployment"
+```
+
+--------------------------------
+
+### Email Triage Workflow Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/lobster/SKILL.md
+
+A command-line example demonstrating an email triage workflow. It fetches recent emails using 'gog.gmail.search' and then classifies them using 'email.triage'.
+
+```shell
+gog.gmail.search --query 'newer_than:1d' --max 20 | email.triage
+```
+
+--------------------------------
+
+### Installer Specification for Skills (Markdown)
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/skills.md
+
+Specifies installation methods for skills using metadata, including package manager details like Homebrew formulas or download URLs. Supports platform-specific installations.
+
+```markdown
+---
+name: gemini
+description: Use Gemini CLI for coding assistance and Google search lookups.
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "??",
+        "requires": { "bins": ["gemini"] },
+        "install":
+          [
+            {
+              "id": "brew",
+              "kind": "brew",
+              "formula": "gemini-cli",
+              "bins": ["gemini"],
+              "label": "Install Gemini CLI (brew)",
+            },
+          ],
+      },
+  }
+---
+
+```
+
+--------------------------------
+
+### Implement Parallel For-Each Loop in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/prose.md
+
+Demonstrates the 'parallel for' loop construct in Prose. This allows for concurrent execution of loop iterations, with all iterations starting simultaneously and the program waiting for all to complete.
+
+```prose
+parallel for item in items:
+  session "Process"
+    context: item
+```
+
+--------------------------------
+
+### Examples of Resume Statement Usage in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates the usage of the `resume` statement for continuing persistent agents, contrasting it with `session` and showing output capture.
+
+```prose
+agent captain:
+  model: opus
+  persist: true
+  prompt: "You coordinate and review"
+
+# First invocation - creates memory
+session: captain
+  prompt: "Review the plan"
+  context: plan
+
+# Later invocation - loads memory
+resume: captain
+  prompt: "Review step 1 of the plan"
+  context: step1
+
+# Output capture works with resume
+let review = resume: captain
+  prompt: "Final review of all steps"
+```
+
+--------------------------------
+
+### Canonical Form of Agent and Session (Prose)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates the preserved structure of agent and session definitions in the compiled output. The input syntax directly maps to the output.
+
+```prose
+Input:
+agent researcher:
+  model: sonnet
+
+session: researcher
+  prompt: "Do research"
+
+Output:
+agent researcher:
+  model: sonnet
+session: researcher
+  prompt: "Do research"
+```
+
+--------------------------------
+
+### Complete Loop Syntax Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates the full syntax for loop constructs, combining condition, safety limits, and iteration variables in the correct order.
+
+```prose
+loop until **condition** (max: N) as i:
+  body...
+```
+
+--------------------------------
+
+### Workflow with External Programs and Permissions
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+This example illustrates a workflow that utilizes external programs for web searching and file writing. It defines agents with specific skills and permissions, including restricting bash access, and demonstrates how to initiate research and writing sessions.
+
+```prose
+# Import external programs
+use "@anthropic/web-search"
+use "@anthropic/file-writer" as file-writer
+
+# Define a secure research agent
+agent researcher:
+  model: sonnet
+  prompt: "You are a research assistant"
+  skills: ["web-search"]
+  permissions:
+    read: ["*.md", "*.txt"]
+    bash: deny
+
+# Define a writer agent
+agent writer:
+  model: opus
+  prompt: "You create documentation"
+  skills: ["file-writer"]
+  permissions:
+    write: ["docs/"]
+    bash: deny
+
+# Execute workflow
+session: researcher
+  prompt: "Research AI safety topics"
+
+session: writer
+  prompt: "Write a summary document"
+
+```
+
+--------------------------------
+
+### Subagent Confirmation Message Format
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/prose.md
+
+Illustrates the format of the confirmation message that a subagent returns to the VM after writing its output. This message includes the binding name, its location, and a summary of the content, but not the full output value.
+
+```text
+Binding written: research
+Location: .prose/runs/20260115-143052-a7b3c9/bindings/research.md
+Summary: AI safety research covering alignment, robustness, and interpretability
+
+```
+
+**When inside a block invocation**, include execution_id:
+```
+
+Binding written: result
+Location: .prose/runs/20260115-143052-a7b3c9/bindings/result__43.md
+Execution ID: 43
+Summary: Processed chunk into 3 parts
+
+```
+```
+
+--------------------------------
+
+### Discretion Condition Evaluation in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/prose.md
+
+Demonstrates how discretion markers (**) are used to define AI-evaluated conditions within Prose. It explains the evaluation approach, emphasizing context awareness, semantic interpretation, conservative judgment, and progress detection.
+
+```prose
+loop until **the code is bug-free**:
+  session "Find and fix bugs"
+```
+
+--------------------------------
+
+### Sequential Execution with Dependencies in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/antipatterns.md
+
+Illustrates how to correctly sequence operations that have dependencies, even if they were initially placed in a parallel block. Dependencies are explicitly managed.
+
+```prose
+# Good: Sequential where needed
+let data = session "Fetch data"
+let processed = session "Process the data"
+  context: data
+session "Store processed data"
+  context: processed
+```
+
+--------------------------------
+
+### Discretion Conditions for AI Evaluation
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Shows how discretion markers (`**...**`) are used to wrap conditions for AI evaluation within sessions. This allows for dynamic, context-aware decision-making in the execution flow.
+
+```prose
+let analysis = session "Analyze the codebase"
+
+if **the code has security vulnerabilities**:
+  session "Fix security issues immediately"
+    context: analysis
+elif **the code has performance issues**:
+  session "Optimize performance bottlenecks"
+    context: analysis
+else:
+  session "Proceed with normal review"
+    context: analysis
+```
+
+--------------------------------
+
+### Switching Models for Daily Tasks and Coding
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/help/faq.md
+
+Demonstrates how to switch between different AI models for distinct tasks. This can be done per session using slash commands or by setting a default model and overriding it when needed. Sub-agents can also be configured with specific default models.
+
+```text
+/model gpt-5.2
+/model openai-codex/gpt-5.4
+```
+
+--------------------------------
+
+### SQLite FTS5 for Lexical Search
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/experiments/research/memory.md
+
+Illustrates the use of SQLite's FTS5 extension for efficient lexical search within the memory index. This approach is recommended for initial implementation.
+
+```sql
+CREATE VIRTUAL TABLE memory_fts USING fts5(content, "rowid" UN ???????);
+INSERT INTO memory_fts (rowid, content) SELECT rowid, content FROM memory_table;
+```
+
+--------------------------------
+
+### Implement Unbounded Loops with Conditions in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/prose.md
+
+Illustrates unbounded loops in Prose using the 'loop until' construct. The loop continues until a specified condition is met or a maximum iteration count is reached, providing control over execution.
+
+```prose
+loop until **task complete** (max: 10):
+  session "Work on task"
+```
+
+--------------------------------
+
+### Configure Shared Models and Overrides
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/nodes/media-understanding.md
+
+This example demonstrates configuring a shared list of media models and applying specific overrides for audio and video capabilities. It includes provider-based models like OpenAI and Google, as well as a CLI-based model for image and video processing.
+
+```json
+{
+  "tools": {
+    "media": {
+      "models": [
+        { "provider": "openai", "model": "gpt-5.2", "capabilities": ["image"] },
+        {
+          "provider": "google",
+          "model": "gemini-3-flash-preview",
+          "capabilities": ["image", "audio", "video"]
+        },
+        {
+          "type": "cli",
+          "command": "gemini",
+          "args": [
+            "-m",
+            "gemini-3-flash",
+            "--allowed-tools",
+            "read_file",
+            "Read the media at {{MediaPath}} and describe it in <= {{MaxChars}} characters."
+          ],
+          "capabilities": ["image", "video"]
+        }
+      ],
+      "audio": {
+        "attachments": { "mode": "all", "maxAttachments": 2 }
+      },
+      "video": {
+        "maxChars": 500
+      }
+    }
+  }
+}
+```
+
+--------------------------------
+
+### Parallel For-Each Block - OpenProse
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Illustrates the 'parallel for' block, which executes all iterations concurrently, similar to a fan-out pattern. This is more concise than manually defining parallel sessions.
+
+```prose
+let topics = ["AI", "climate", "space"]
+parallel for topic in topics:
+  session "Research this topic"
+    context: topic
+
+session "Combine all research"
+```
+
+--------------------------------
+
+### Subagent Return Confirmation Message
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/sqlite.md
+
+Illustrates the expected format of confirmation messages returned by subagents to the VM, indicating the location and summary of written bindings. This format is crucial for the VM to track execution state without needing the full content of the bindings.
+
+```plaintext
+Binding written: research
+Location: .prose/runs/20260116-143052-a7b3c9/state.db (bindings table, name='research', execution_id=NULL)
+Summary: AI safety research covering alignment, robustness, and interpretability with 15 citations.
+```
+
+```plaintext
+Binding written: result
+Location: .prose/runs/20260116-143052-a7b3c9/state.db (bindings table, name='result', execution_id=43)
+Execution ID: 43
+Summary: Processed chunk into 3 sub-parts for recursive processing.
+```
+
+--------------------------------
+
+### Query Execution Status in SQL
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/sqlite.md
+
+Retrieves the current execution position (statement index, text, and status) for the task that is currently running. This is used to resume interrupted workflows.
+
+```sql
+SELECT statement_index, statement_text, status
+FROM execution
+WHERE status = 'executing'
+ORDER BY id DESC LIMIT 1;
+```
+
+--------------------------------
+
+### Scoped Binding File Structure for Block Invocations
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/filesystem.md
+
+Illustrates the file format for bindings created within block invocations, including the execution ID for scope resolution. This prevents naming collisions in recursive calls.
+
+```markdown
+# result
+
+kind: let
+execution_id: 43
+
+source:
+
+```prose
+let result = session "Process chunk"
+```
+
+---
+
+Processed chunk into 3 sub-parts...
+```
+
+--------------------------------
+
+### Manage Project-Scoped Persistent Memory
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/lib/README.md
+
+The `project-memory.prose` utility offers project-scoped institutional memory, understanding project architecture and decisions. It recommends a `sqlite+` backend for persistence and takes a mode (ingest, query, update, summarize) and content as input.
+
+```bash
+prose run lib/project-memory.prose --backend sqlite+
+# Inputs: mode (ingest|query|update|summarize), content
+```
+
+--------------------------------
+
+### Agent Persistence and Resumption in OpenCLaw
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Shows how to configure agents for persistence and how to use the `resume` statement to continue agent execution with its preserved state.
+
+```OpenCLaw
+agent PersistentAgent:
+  persist: true
+
+resume: PersistentAgent
+```
+
+--------------------------------
+
+### Optimizing Observation Loops with Signal-Driven Exits
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/antipatterns.md
+
+Shows how to improve observation loops by exiting early when a significant signal (like a blocking error) is detected, instead of waiting for a fixed duration. This prevents wasted time and resources.
+
+```prose
+# Antipattern: Fixed window regardless of findings
+loop 30 times (wait: 2s each):  # Always 60 seconds
+  resume: observer
+    prompt: "Keep watching the stream"
+# Runs all 30 iterations even if blocking error detected on iteration 1
+```
+
+```prose
+# Good: Exit on significant signal
+loop until **blocking error OR completion** (max: 30):
+  resume: observer
+    prompt: "Watch the stream. Signal IMMEDIATELY on blocking errors."
+# Exits as soon as something significant happens
+```
+
+```prose
+# Good: Explicit early exit
+let observation = session: observer
+  prompt: "Monitor for errors. Signal immediately if found."
+  timeout: 120s
+  early_exit: **blocking_error detected**
+```
+
+--------------------------------
+
+### Retry with Exponential Backoff Strategy
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to combine the 'retry:' property with the 'backoff: exponential' strategy to introduce increasing delays between retry attempts, suitable for rate-limited services.
+
+```prose
+session "Rate-limited API"
+  retry: 5
+  backoff: exponential
+```
+
+--------------------------------
+
+### Binding File Structure
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/filesystem.md
+
+Defines the structure of binding files used to store named values (inputs, outputs, let, const). It includes the header, kind, source, and the actual value, separated by '---'.
+
+```markdown
+# research
+
+kind: let
+
+source:
+```prose
+let research = session: researcher
+  prompt: "Research AI safety"
+````
+
+---
+
+AI safety research covers several key areas including alignment,
+robustness, and interpretability. The field has grown significantly
+since 2020 with major contributions from...
+```
+
+--------------------------------
+
+### Example: Email Triage with Lobster
+
+Source: https://github.com/openclaw/openclaw/blob/main/docs/tools/lobster.md
+
+Demonstrates how Lobster can manage a multi-step process like email triage, contrasting it with a non-Lobster approach and showing the approval flow.
+
+```APIDOC
+## Example: Email triage
+
+Without Lobster:
+
+```
+User: "Check my email and draft replies"
+? openclaw calls gmail.list
+? LLM summarizes
+? User: "draft replies to #2 and #5"
+? LLM drafts
+? User: "send #2"
+? openclaw calls gmail.send
+(repeat daily, no memory of what was triaged)
+```
+
+With Lobster:
+
+```json
+{
+  "action": "run",
+  "pipeline": "email.triage --limit 20",
+  "timeoutMs": 30000
+}
+```
+
+Returns a JSON envelope (truncated):
+
+```json
+{
+  "ok": true,
+  "status": "needs_approval",
+  "output": [{ "summary": "5 need replies, 2 need action" }],
+  "requiresApproval": {
+    "type": "approval_request",
+    "prompt": "Send 2 draft replies?",
+    "items": [],
+    "resumeToken": "..."
+  }
+}
+```
+
+User approves ? resume:
+
+```json
+{
+  "action": "resume",
+  "token": "<resumeToken>",
+  "approve": true
+}
+```
+
+One workflow. Deterministic. Safe.
+```
+
+--------------------------------
+
+### Add Error Handling for Potentially Failing Operations
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/antipatterns.md
+
+Optimistic execution, which assumes all operations succeed, can lead to silent failures and data corruption. Implement `try-catch` blocks to handle potential errors gracefully, ensuring subsequent steps only execute with valid data. The example shows a basic API call with and without error handling.
+
+```prose
+# Bad: No error handling
+session "Call external API"
+session "Process API response"
+session "Store results in database"
+session "Send notification"
+
+# Good: Error handling
+try:
+  let response = session "Call external API"
+    retry: 3
+    backoff: "exponential"
+session "Process API response"
+    context: response
+catch as err:
+  session "Handle API failure gracefully"
+    context: err
+```
+
+--------------------------------
+
+### Subagent Output Confirmation Message (Block Invocation)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/postgres.md
+
+This example illustrates the confirmation message format for a subagent's output within a block invocation. It specifies the binding name, its database location including the execution ID, and a brief summary.
+
+```text
+Binding written: result
+Location: openprose.bindings WHERE name='result' AND run_id='20260116-143052-a7b3c9' AND execution_id=43
+Execution ID: 43
+Summary: Processed chunk into 3 sub-parts for recursive processing.
+```
+
+--------------------------------
+
+### Nested Error Handling in OpenProse
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates nested try blocks, explaining that inner catch blocks handle errors locally and do not trigger outer handlers unless the error is rethrown. This allows for granular error management.
+
+```prose
+try:
+  session "Outer operation"
+  try:
+    session "Inner risky operation"
+  catch:
+    session "Handle inner error"  # Outer catch won't run
+  session "Continue outer operation"
+catch:
+  session "Handle outer error only"
+```
+
+--------------------------------
+
+### Basic If/Else Statement
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates the fundamental if/else structure for conditional execution. The code block under 'if' executes if the condition is true, otherwise the 'else' block executes. This is a core control flow mechanism.
+
+```prose
+if **condition**:
+  statements...
+else:
+  statements...
+```
+
+--------------------------------
+
+### Agent Persistence Configuration
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Demonstrates how to configure agent memory persistence. It shows execution-scoped, project-scoped, and custom path persistence options.
+
+```prose
+# Execution-scoped persistence (memory dies with run) agent captain:
+  model: opus
+  persist: true
+  prompt: "You coordinate and review"
+
+# Project-scoped persistence (memory survives across runs) agent advisor:
+  model: opus
+  persist: project
+  prompt: "You provide architectural guidance"
+
+# Custom path persistence agent shared:
+  model: opus
+  persist: ".prose/custom/shared-agent/"
+  prompt: "Shared across programs"
+```
+
+--------------------------------
+
+### Define Resume Statement in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Defines a `resume` statement to continue a persistent agent, loading its accumulated memory. This allows for context-aware continuation of conversations.
+
+```prose
+resume: agentName
+  prompt: "Continue from where we left off"
+```
+
+--------------------------------
+
+### Resume Workflow
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/lobster/SKILL.md
+
+Resumes a previously halted workflow after user approval.
+
+```APIDOC
+## POST /resume
+
+### Description
+Resumes a workflow that was halted for approval. Requires a valid resume token and an approval decision.
+
+### Method
+POST
+
+### Endpoint
+/resume
+
+### Parameters
+#### Request Body
+- **action** (string) - Required - Must be 'resume'.
+- **token** (string) - Required - The resume token obtained from a previous 'needs_approval' response.
+- **approve** (boolean) - Required - True if the user approves the action, false otherwise.
+
+### Request Example
+```json
+{
+  "action": "resume",
+  "token": "<resumeToken>",
+  "approve": true
+}
+```
+
+### Response
+#### Success Response (200)
+- **protocolVersion** (integer) - The version of the protocol.
+- **ok** (boolean) - Indicates if the operation was successful.
+- **status** (string) - The status of the operation (e.g., 'ok' or 'completed').
+- **output** (array) - The structured result of the workflow execution after resuming.
+- **requiresApproval** (object | null) - Contains approval details if the workflow requires further approval, otherwise null.
+
+#### Response Example
+```json
+{
+  "protocolVersion": 1,
+  "ok": true,
+  "status": "completed",
+  "output": [...],
+  "requiresApproval": null
+}
+```
+```
+
+--------------------------------
+
+### OpenProse Multi-line Criteria Choice Block Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+An example of an OpenProse choice block utilizing multi-line criteria enclosed in triple asterisks. This is useful for complex conditions that benefit from a more readable, spread-out format.
+
+```prose
+choice ***
+  which strategy is most appropriate
+  given the current project constraints
+  and timeline requirements
+***:
+  option "MVP approach":
+    session "Build minimum viable product"
+  option "Full feature set":
+    session "Build complete feature set"
+```
+
+--------------------------------
+
+### OpenProse Persistent Agent Memory File Format
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/primitives/session.md
+
+Defines the structure of the memory file used by persistent agents, including 'Current Understanding' and other accumulated knowledge.
+
+```markdown
+# Agent Memory: {name}
+
+## Current Understanding
+
+{Your accumulated knowledge about the project/task}
+
+
+```
+
+--------------------------------
+
+### Complete Fixed Loop Example - OpenProse
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+A comprehensive example showcasing the use of 'repeat' and 'parallel for' loops for generating ideas, research, and synthesizing information.
+
+```prose
+# Generate multiple variations of ideas
+repeat 3:
+  session "Generate a creative startup idea"
+
+session "Select the best idea from the options above"
+
+# Research the selected idea from multiple angles
+let angles = ["market", "technology", "competition"]
+parallel for angle in angles:
+  session "Research this angle of the startup idea"
+    context: angle
+
+session "Synthesize all research into a business plan"
+```
+
+--------------------------------
+
+### Example Agent Definitions
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Provides various examples of agent definitions, showcasing different configurations including model selection, prompts, skills, and permissions.
+
+```prose
+# Define a research agent agent researcher:
+  model: sonnet
+  prompt: "You are a research assistant skilled at finding and synthesizing information"
+
+# Define a writing agent agent writer:
+  model: opus
+  prompt: "You are a technical writer who creates clear, concise documentation"
+
+# Agent with only model agent quick:
+  model: haiku
+
+# Agent with only prompt agent expert:
+  prompt: "You are a domain expert"
+
+# Agent with skills agent web-researcher:
+  model: sonnet
+  skills: ["web-search", "summarizer"]
+
+# Agent with permissions agent file-handler:
+  permissions:
+    read: ["*.md", "*.txt"]
+    write: ["output/"]
+    bash: deny
+```
+
+--------------------------------
+
+### Email Triage with Approval Gate Example
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/lobster/SKILL.md
+
+An example of an email triage workflow that includes an approval step. After fetching and classifying emails, the 'approve' command halts execution, presenting a prompt to the user before proceeding.
+
+```shell
+gog.gmail.search --query 'newer_than:1d' | email.triage | approve --prompt 'Process these?'
+```
+
+--------------------------------
+
+### Examples of Session Definitions in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+Provides various examples of session definitions, including simple prompts, sessions referencing agents, and named sessions.
+
+```prose
+# Simple session
+session "Hello world"
+
+# Session with agent
+agent researcher:
+  model: sonnet
+  prompt: "You research topics thoroughly"
+
+session: researcher
+  prompt: "Research quantum computing applications"
+
+# Named session
+session analysis: researcher
+  prompt: "Analyze the competitive landscape"
+```
+
+--------------------------------
+
+### Session Composition: Explicit Context Flow (Prose)
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/guidance/patterns.md
+
+Demonstrates the 'explicit context flow' pattern in Prose, emphasizing visible data flow through explicit context passing. The 'good' example shows how context is passed between sessions, while the 'bad' example highlights the risks of relying on implicit conversation history.
+
+```prose
+# Good: Explicit flow
+let step1 = session "First step"
+let step2 = session "Second step"
+  context: step1
+let step3 = session "Third step"
+  context: [step1, step2]
+
+# Bad: Implicit flow (relies on conversation state)
+session "First step"
+session "Second step using previous results"
+session "Third step using all previous"
+```
+
+--------------------------------
+
+### Loop Until Condition
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/compiler.md
+
+This loop variant executes repeatedly until a specified condition is met. The OpenProse VM evaluates the condition after each iteration.
+
+```prose
+loop until **the task is complete**:
+  session "Continue working on the task"
+```
+
+--------------------------------
+
+### Create Index for Execution Status in SQL
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/state/sqlite.md
+
+Creates an index on the `status` column of the `execution` table. This optimizes queries that frequently filter or sort by execution status.
+
+```sql
+CREATE INDEX idx_execution_status ON execution(status);
+```
+
+--------------------------------
+
+### Context Passing in Prose
+
+Source: https://github.com/openclaw/openclaw/blob/main/extensions/open-prose/skills/prose/prose.md
+
+Shows how variables are used to capture session outputs and pass them to subsequent sessions in Prose. It covers different forms of context passing, including single variables, arrays, and named objects.
+
+```prose
+let research = session "Research the topic"
+
+session "Write summary"
+  context: research
+```
