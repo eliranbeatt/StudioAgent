@@ -6,6 +6,13 @@ metadata: { "openclaw": { "requires": { "bins": ["node"], "env": ["STUDIO_AGENT_
 
 # Studio Knowledge
 
+Read first:
+
+- `../../references/studio-identity.md`
+- `../../references/studio-ontology.md`
+
+Then follow this process:
+
 1. Read current context if needed:
 
 ```bash
@@ -18,4 +25,11 @@ node ./bridge/studio-bridge.mjs context.get '{"sessionKey":"default","packs":["p
 node ./bridge/studio-bridge.mjs knowledge.refresh '{"sessionKey":"default","newFacts":["..."],"userText":"optional"}'
 ```
 
-3. Store only durable, reusable facts. Avoid chat noise and one-off wording.
+3. Store only durable, reusable facts:
+   - project facts
+   - approved assumptions
+   - element definitions
+   - install constraints
+   - procurement decisions
+   - quote-shaping constraints
+4. Avoid chat noise and one-off wording.

@@ -6,14 +6,32 @@ metadata: { "openclaw": { "requires": { "bins": ["node"], "env": ["STUDIO_AGENT_
 
 # Studio Free Chat
 
+Read first:
+
+- `../../prompts/studio-core-system.md`
+- `../../prompts/free-chat-system.md`
+- `../../references/studio-identity.md`
+- `../../references/project-typology.md`
+- `../../references/studio-ontology.md`
+
+Then follow this process:
+
 1. Ensure there is an active project. If not, use `project.search` and `project.select`.
 2. Keep replies short and Telegram-safe.
 3. Use free chat first. Suggest planning mode only for full-project planning work.
-4. Call:
+4. Preserve studio specificity:
+   - elements
+   - fabrication method
+   - materials and finishes
+   - print / graphics
+   - accounting impact
+   - procurement and lead time
+   - install / teardown logistics
+5. Call:
 
 ```bash
 node ./bridge/studio-bridge.mjs chat.run.start_or_continue '{"sessionKey":"default","userText":"...","autoApprove":true}'
 ```
 
-5. If the bridge returns `awaiting_approval`, hand off to the ChangeSet skill behavior.
-6. Do not mention legacy agent modes or UI tabs.
+6. If the bridge returns `awaiting_approval`, hand off to the ChangeSet skill behavior.
+7. Do not mention legacy agent modes or UI tabs.
