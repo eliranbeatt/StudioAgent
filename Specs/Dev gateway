@@ -1,0 +1,296 @@
+Got it. Then the right model is **not full separation**. It is **one-way privileged control**:
+
+* **Studio side**: users can talk only to the studio agent/workspace, with restricted tools.
+* **Dev side**: your dev bot can edit the studio repo, studio skills, studio config, and redeploy/restart the studio gateway.
+* **But studio users cannot reach back into dev/coding powers**.
+
+That matches OpenClaw’s security model much better than trying to make one shared gateway behave like a hard multi-tenant system. The docs are explicit that one gateway is a **single trusted-operator boundary**, and if you need mixed-trust behavior you should split trust boundaries with separate gateways/credentials, ideally separate OS users or hosts. ([OpenClaw][1])
+
+## Best design for your case
+
+### 1) Two gateways, with one-way control
+
+Use:
+
+* **studio-gateway**
+* **dev-gateway**
+
+OpenClaw supports multiple gateways on the same host when each has its own `OPENCLAW_CONFIG_PATH`, `OPENCLAW_STATE_DIR`, and unique port/workspace defaults. The docs say most setups should use one gateway, but multiple gateways are the right choice for **stronger isolation**. ([OpenClaw][2])
+
+Why this fits your requirement:
+
+* studio users only ever hit **studio-gateway**
+* your dev bot only ever hits **dev-gateway**
+* dev-gateway is allowed to modify and redeploy studio-gateway
+* studio-gateway has no coding route back into dev-gateway
+
+So the separation is **not equality**. It is **admin plane over user plane**.
+
+## What each gateway should own
+
+### Studio gateway
+
+This is the runtime your studio users see.
+
+It should contain:
+
+* the **studio agent**
+* the **studio workspace**
+* only the tools the studio assistant actually needs
+* the studio Telegram bot token / allowlist
+* no Codex ACP runtime as a default
+* no broad repo-maintenance powers for ordinary users
+
+OpenClaw supports per-agent sandbox and per-agent tool restrictions, so the studio agent can stay intentionally limited even if another agent elsewhere is much stronger. ([OpenClaw][3])
+
+### Dev gateway
+
+This is your operator/coding brain.
+
+It should contain:
+
+* the **dev/coder agent**
+* Codex OAuth / ACP as the primary coding runtime
+* full repo access to:
+
+  * OpenClaw repo
+  * studio repo
+  * your other repos
+* authority to create/edit:
+
+  * workspaces
+  * agents
+  * skills
+  * MCP/API connections
+  * deploy scripts
+  * studio config
+
+ACP/Codex is the right model for a coding operator agent, and OpenClaw documents persistent ACP sessions for that workflow. Also, ACP sessions run on the host, not in the OpenClaw sandbox, which is exactly why they belong on the privileged dev side, not the user-facing studio side. ([OpenClaw][4])
+
+## The exact control relationship you want
+
+Design it like this:
+
+**Dev gateway controls studio gateway through files and deployment, not through user chat routing.**
+
+That means the dev bot can:
+
+* edit the **studio repo**
+* edit **studio workspace files**
+* create or modify **studio skills**
+* update **studio-gateway config**
+* add new Telegram/account bindings for studio
+* restart/redeploy studio after changes
+
+OpenClaw’s owner-only `/config`, `/mcp`, and `/plugins` commands can persist config changes to disk when enabled, which makes this practical on the admin side. Skills are also clearly split between per-workspace and shared locations. ([OpenClaw][5])
+
+## Why not one gateway with two bots?
+
+You *can* do one gateway with multiple Telegram accounts and account-scoped bindings. OpenClaw supports multi-account channel routing and explicit account selection/defaults. ([OpenClaw][6])
+
+But for your case, that is weaker, because:
+
+* workspaces are **not hard sandboxes**
+* config/state/credentials live in the gateway state dir, outside any one workspace
+* OpenClaw says the gateway is one trusted boundary, not a hostile multi-user boundary
+
+So if studio users are less trusted, one gateway is the wrong place to enforce that boundary. ([OpenClaw][7])
+
+## The right mental model
+
+Think of it as:
+
+* **Studio gateway = production app**
+* **Dev gateway = admin/control plane**
+
+The dev bot should “impact the studio agent” by changing the things that define it:
+
+* its repo
+* its workspace bootstrap files
+* its skills
+* its config
+* its channel bindings
+* its deployment/runtime
+
+That is cleaner than trying to let the studio agent itself secretly become a coding super-agent.
+
+## Recommended filesystem / deployment layout
+
+A good same-host layout is:
+
+```text
+/home/eliran/openclaw/
+  dev-gateway/
+    state/
+    openclaw.json
+    workspace-dev/
+      repos/
+        openclaw/
+        studio/
+        bsse/
+        other/
+      docs/
+        openclaw-docs/
+      skills/
+      plans/
+      scratch/
+  studio-gateway/
+    state/
+    openclaw.json
+    workspace-studio/
+      skills/
+      data/
+      prompts/
+```
+
+Back that with:
+
+* `OPENCLAW_STATE_DIR=/home/eliran/openclaw/dev-gateway/state`
+* `OPENCLAW_CONFIG_PATH=/home/eliran/openclaw/dev-gateway/openclaw.json`
+
+and separately:
+
+* `OPENCLAW_STATE_DIR=/home/eliran/openclaw/studio-gateway/state`
+* `OPENCLAW_CONFIG_PATH=/home/eliran/openclaw/studio-gateway/openclaw.json`
+
+That is exactly the sort of split OpenClaw documents for multiple gateways and isolated profiles/state. ([OpenClaw][2])
+
+## Telegram setup
+
+Use **two different Telegram bots**:
+
+* `@YourStudioBot` → only talks to studio-gateway
+* `@YourDevBot` → only talks to dev-gateway
+
+Telegram tokens are configured per gateway/account, and pairing/allowlists are stored under the gateway’s state/credentials area. Non-default accounts use their own scoped allowlist files. ([OpenClaw][8])
+
+That gives you the cleanest guarantee:
+
+* studio users cannot accidentally land in dev
+* dev chat never mixes with studio user sessions
+
+## How the dev bot should change the studio agent
+
+I would give the dev bot these powers over the studio side:
+
+### A. Repo authority
+
+The dev bot can open the studio repo, edit code, write skills, run tests, and prepare or apply changes.
+
+### B. Workspace authority
+
+The dev bot can write files into `studio-gateway/workspace-studio/`, especially:
+
+* `AGENTS.md`
+* `TOOLS.md`
+* `SOUL.md`
+* per-workspace skills
+
+Per-agent skills live in `<workspace>/skills`; shared skills can live in shared skill locations. ([OpenClaw][9])
+
+### C. Config authority
+
+The dev bot can update `studio-gateway/openclaw.json`, including:
+
+* agent definitions
+* tools policy
+* sandbox settings
+* bot/channel config
+* bindings
+* MCP/plugin config
+
+OpenClaw’s config lives in the configured config path, and owner-only config commands can persist changes when enabled. ([OpenClaw][10])
+
+### D. Deploy authority
+
+The dev bot can run:
+
+* lint/test/build
+* service restart
+* health checks
+* rollback script
+
+This part is your own deployment policy, but it fits OpenClaw’s documented multiple-gateway model and host-run ACP/operator workflow. ([OpenClaw][2])
+
+## The crucial safety rule
+
+Do **not** let studio users reach coding tools through the studio agent.
+
+In practice that means:
+
+* no ACP/Codex runtime on studio agent
+* no broad `exec` unless truly needed
+* restricted tool allowlist on studio
+* sandbox on studio where possible
+* owner-only config/plugin/mcp commands
+* keep deploy/restart scripts only callable from dev side
+
+Per-agent tool restrictions and sandbox overrides are built for exactly this kind of split. Exec approvals can reduce accidental execution risk, but the docs are clear they are **not** a per-user auth boundary, so they are not enough by themselves. ([OpenClaw][3])
+
+## About your OpenClaw docs / Context7 requirement
+
+For the dev bot, do this:
+
+* keep a **local mirror/clone** of OpenClaw docs in the dev workspace
+* add **Context7** via MCP for fresh docs lookup
+* keep a short internal `MEMORY.md` / `AGENTS.md` with your own operational rules
+
+That is better than dumping all docs into prompt bootstrap files, because workspace/bootstrap context is meant to be lightweight and workspaces are the agent’s normal file context anyway. OpenClaw also supports owner-managed MCP config via commands. ([OpenClaw][5])
+
+## The architecture I would choose for you
+
+### studio-gateway
+
+* one agent: `studio`
+* one Telegram bot
+* restricted tools
+* sandbox on
+* no coding runtime
+* only studio users
+
+### dev-gateway
+
+* one main agent: `dev`
+* Codex via ACP, persistent
+* full repo root with all repos
+* can edit:
+
+  * openclaw repo
+  * studio repo
+  * studio gateway config
+  * studio workspace
+* can deploy/restart studio-gateway
+* only your dev Telegram bot / owner access
+
+That gives you exactly what you asked for:
+
+* studio users cannot access coding abilities from studio
+* dev bot can mainly work on and improve the studio agent
+* dev bot can also manage OpenClaw itself and your other repos
+
+## Final recommendation
+
+Your requirement is best satisfied by a **one-way admin architecture**:
+
+**Dev gateway owns Studio gateway.
+Studio gateway does not own Dev gateway.**
+
+That is the cleanest, safest, and most OpenClaw-aligned version of:
+
+* separate bots
+* separate workspaces
+* strong coding on dev side
+* studio-facing simplicity on user side. ([OpenClaw][1])
+
+Next I can turn this into a concrete folder tree and two copy-paste `openclaw.json` files: one for `dev-gateway`, one for `studio-gateway`.
+
+[1]: https://docs.openclaw.ai/gateway/security?utm_source=chatgpt.com "Security - OpenClaw"
+[2]: https://docs.openclaw.ai/gateway/multiple-gateways?utm_source=chatgpt.com "Multiple Gateways"
+[3]: https://docs.openclaw.ai/tools/multi-agent-sandbox-tools?utm_source=chatgpt.com "Multi-Agent Sandbox & Tools"
+[4]: https://docs.openclaw.ai/tools/acp-agents?utm_source=chatgpt.com "ACP Agents"
+[5]: https://docs.openclaw.ai/tools/slash-commands?utm_source=chatgpt.com "Slash Commands"
+[6]: https://docs.openclaw.ai/gateway/configuration-reference?utm_source=chatgpt.com "Configuration Reference"
+[7]: https://docs.openclaw.ai/concepts/multi-agent?utm_source=chatgpt.com "Multi-Agent Routing"
+[8]: https://docs.openclaw.ai/channels/telegram?utm_source=chatgpt.com "Telegram - OpenClaw"
+[9]: https://docs.openclaw.ai/tools/skills?utm_source=chatgpt.com "Skills - OpenClaw"
+[10]: https://docs.openclaw.ai/start/getting-started?utm_source=chatgpt.com "Getting Started - OpenClaw"

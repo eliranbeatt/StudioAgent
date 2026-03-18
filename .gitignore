@@ -12,6 +12,7 @@
 
 # Production
 /build
+/Recipts
 
 # Misc
 .DS_Store
